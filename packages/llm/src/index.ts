@@ -35,3 +35,4 @@ export function createLlm(
     },
   );
 }
+export { MASKED_SECRET, maskSecrets, restoreMaskedSecrets } from './secrets.js';
