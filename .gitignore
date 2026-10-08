@@ -21,3 +21,5 @@ coverage
 # misc
 *.log
 .DS_Store
+.react-router
+build
