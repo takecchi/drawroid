@@ -51,3 +51,4 @@ export {
   type MemoryScope,
 } from './memory/item.js';
 export { type MemorySelection, selectMemory } from './memory/select.js';
+export type { InvalidMemoryFile, MemoryListing, MemoryStore } from './memory/store.js';
