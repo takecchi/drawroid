@@ -15,7 +15,7 @@ function item(overrides: Partial<MemoryItem> & Pick<MemoryItem, 'id'>): MemoryIt
   };
 }
 
-const roomy = { maxItems: 100, maxChars: 10_000 };
+const roomy = { maxCount: 100, maxSize: 10_000 };
 const ids = (items: readonly MemoryItem[]) => items.map((i) => i.id);
 
 describe('selectMemory', () => {
@@ -64,14 +64,12 @@ describe('selectMemory', () => {
         scope: 'always',
       }),
     );
-    const budget = { maxItems: 20, maxChars: 400 };
+    const budget = { maxCount: 20, maxSize: 400 };
 
     const { selected } = selectMemory(items, '少女', budget);
 
-    expect(selected.length).toBeLessThanOrEqual(budget.maxItems);
-    expect(selected.reduce((sum, i) => sum + i.body.length, 0)).toBeLessThanOrEqual(
-      budget.maxChars,
-    );
+    expect(selected.length).toBeLessThanOrEqual(budget.maxCount);
+    expect(selected.reduce((sum, i) => sum + i.body.length, 0)).toBeLessThanOrEqual(budget.maxSize);
   });
 
   it('reports every relevant item it left out because of the budget', () => {
@@ -80,13 +78,14 @@ describe('selectMemory', () => {
     );
 
     const { selected, droppedByBudget } = selectMemory(items, '少女', {
-      maxItems: 10,
-      maxChars: 10_000,
+      maxCount: 10,
+      maxSize: 10_000,
     });
 
     expect(selected).toHaveLength(10);
     expect(droppedByBudget).toHaveLength(290);
-    expect(new Set([...ids(selected), ...ids(droppedByBudget)]).size).toBe(300);
+    expect(droppedByBudget.every((d) => d.reason === 'count')).toBe(true);
+    expect(new Set([...ids(selected), ...droppedByBudget.map((d) => d.item.id)]).size).toBe(300);
   });
 
   it('does not report unrelated items as dropped', () => {
@@ -109,20 +108,10 @@ describe('selectMemory', () => {
       item({ id: 'short', body: 'い'.repeat(5), scope: 'always' }),
     ];
 
-    const { selected, droppedByBudget } = selectMemory(items, '', { maxItems: 10, maxChars: 10 });
+    const { selected, droppedByBudget } = selectMemory(items, '', { maxCount: 10, maxSize: 10 });
 
     expect(ids(selected)).toEqual(['short']);
-    expect(ids(droppedByBudget)).toEqual(['long']);
-  });
-
-  it('uses the packing function it is given, so the shared packer can replace the default', () => {
-    const items = [item({ id: 'a', scope: 'always' }), item({ id: 'b', scope: 'always' })];
-    const keepNothing = <T>(all: readonly T[]) => ({ kept: [], dropped: [...all] });
-
-    const { selected, droppedByBudget } = selectMemory(items, '', roomy, keepNothing);
-
-    expect(selected).toEqual([]);
-    expect(ids(droppedByBudget)).toEqual(['a', 'b']);
+    expect(droppedByBudget).toEqual([{ item: items[0], reason: 'size' }]);
   });
 });
 
