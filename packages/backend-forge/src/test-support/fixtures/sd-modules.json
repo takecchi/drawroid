@@ -1,0 +1,10 @@
+[
+  {
+    "model_name": "sdxl_vae.safetensors",
+    "filename": "/forge/models/VAE/sdxl_vae.safetensors"
+  },
+  {
+    "model_name": "clip_l.safetensors",
+    "filename": "/forge/models/text_encoder/clip_l.safetensors"
+  }
+]
