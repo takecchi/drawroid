@@ -1,16 +1,15 @@
 import { z } from 'zod';
 
+// API キーの値を設定に置かせない（apiKey を書いたら strict で落とす）: 設定は API の応答と画面に出るため
 const apiKeyFields = {
-  /** 設定ファイルに直接書いた API キー */
-  apiKey: z.string().min(1).optional(),
-  /** API キーを入れた環境変数の名前（推奨） */
+  /** API キーを入れた環境変数の名前 */
   apiKeyEnv: z.string().min(1).optional(),
 };
 
 export const providerConfigSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('openai-compatible'), baseURL: z.url(), ...apiKeyFields }),
-  z.object({ type: z.literal('openai'), baseURL: z.url().optional(), ...apiKeyFields }),
-  z.object({ type: z.literal('anthropic'), baseURL: z.url().optional(), ...apiKeyFields }),
+  z.object({ type: z.literal('openai-compatible'), baseURL: z.url(), ...apiKeyFields }).strict(),
+  z.object({ type: z.literal('openai'), baseURL: z.url().optional(), ...apiKeyFields }).strict(),
+  z.object({ type: z.literal('anthropic'), baseURL: z.url().optional(), ...apiKeyFields }).strict(),
 ]);
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 

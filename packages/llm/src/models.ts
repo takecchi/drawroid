@@ -21,7 +21,6 @@ function resolveApiKey(
   provider: ProviderConfig,
   environment: ModelEnvironment,
 ): string | undefined {
-  if (provider.apiKey !== undefined) return provider.apiKey;
   if (provider.apiKeyEnv === undefined) return undefined;
   const value = environment.env[provider.apiKeyEnv];
   // 値ではなく変数の名前だけを出す: エラーはログと UI に出るため
