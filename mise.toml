@@ -1,0 +1,6 @@
+# 実行系の版をここで一本化する（mise）。ローカルと CI（jdx/mise-action）は同じここを読む。
+# 版を上げるときは package.json の `packageManager` と `engines.node`、
+# pnpm-workspace.yaml の catalog `@types/node` も一緒に見ること。
+[tools]
+node = "22.23.3"
+pnpm = "11.28.2"
