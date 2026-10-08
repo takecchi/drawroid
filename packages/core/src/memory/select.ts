@@ -1,9 +1,9 @@
-import { type CharBudget, type PackByBudget, packGreedily } from '../budget/pack.js';
+import { type PackLimits, type PackResult, packWithinBudget } from '../budget/pack.js';
 import type { MemoryItem } from './item.js';
 
 export interface MemorySelection {
   selected: MemoryItem[];
-  droppedByBudget: MemoryItem[];
+  droppedByBudget: PackResult<MemoryItem>['dropped'];
 }
 
 interface Ranked {
@@ -33,15 +33,19 @@ function compareRanked(a: Ranked, b: Ranked): number {
 export function selectMemory(
   items: readonly MemoryItem[],
   requestGist: string,
-  budget: CharBudget,
-  pack: PackByBudget = packGreedily,
+  limits: PackLimits,
 ): MemorySelection {
   const gist = normalize(requestGist);
   const relevant = items
     .map((item) => ({ item, matchedTags: countMatchedTags(item, gist) }))
-    .filter((ranked) => ranked.item.scope === 'always' || ranked.matchedTags > 0)
-    .sort(compareRanked)
-    .map((ranked) => ranked.item);
-  const { kept, dropped } = pack(relevant, (item) => item.body.length, budget);
-  return { selected: kept, droppedByBudget: dropped };
+    .filter((ranked) => ranked.item.scope === 'always' || ranked.matchedTags > 0);
+  const { included, dropped } = packWithinBudget(relevant, {
+    size: (ranked) => ranked.item.body.length,
+    compare: compareRanked,
+    limits,
+  });
+  return {
+    selected: included.map((ranked) => ranked.item),
+    droppedByBudget: dropped.map(({ item, reason }) => ({ item: item.item, reason })),
+  };
 }
