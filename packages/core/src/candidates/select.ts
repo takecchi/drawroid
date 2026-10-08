@@ -1,5 +1,5 @@
-import { type CharBudget, type PackByBudget, packGreedily } from '../budget/pack.js';
 import type { Candidate } from '../backend.js';
+import { type PackLimits, type PackResult, packWithinBudget } from '../budget/pack.js';
 
 export interface ShownCandidate {
   name: string;
@@ -8,8 +8,8 @@ export interface ShownCandidate {
 
 export interface CandidateSelection {
   shown: ShownCandidate[];
-  droppedByBudget: string[];
-  notesDroppedByBudget: string[];
+  droppedByBudget: PackResult<string>['dropped'];
+  notesDroppedByBudget: PackResult<string>['dropped'];
 }
 
 const normalize = (text: string) => text.normalize('NFKC').toLowerCase();
@@ -27,35 +27,37 @@ export function selectCandidates(
   choices: readonly string[] | undefined,
   notes: ReadonlyMap<string, string>,
   requestGist: string,
-  budget: CharBudget,
-  pack: PackByBudget = packGreedily,
+  limits: PackLimits,
 ): CandidateSelection {
   const gist = normalize(requestGist);
   const allowed =
     choices === undefined ? candidates : candidates.filter((c) => choices.includes(c.name));
   const rank = (c: Candidate) => (notes.has(c.name) ? 0 : appearsInGist(c, gist) ? 1 : 2);
-  const ordered = [...allowed].sort(
-    (a, b) => rank(a) - rank(b) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-  );
 
-  // 名前を先に詰め、説明は残りの文字数に入るぶんだけ付ける: 予算が足りないときは候補より先に説明を削るため（architecture の削る順）
-  const names = pack(ordered, (c) => c.name.length, budget);
-  const usedByNames = names.kept.reduce((sum, c) => sum + c.name.length, 0);
-  const noted = names.kept.filter((c) => notes.has(c.name));
-  const notesKept = pack(noted, (c) => notes.get(c.name)?.length ?? 0, {
-    maxItems: noted.length,
-    maxChars: budget.maxChars - usedByNames,
-  });
-  const keptNoteNames = new Set(notesKept.kept.map((c) => c.name));
+  // 名前を先に詰め、説明は残りの大きさに入るぶんだけ付ける: 予算が足りないときは候補より先に説明を削るため（architecture の削る順）
+  const names = packWithinBudget(
+    allowed.map((c) => ({ name: c.name, rank: rank(c) })),
+    {
+      size: (c) => c.name.length,
+      compare: (a, b) => a.rank - b.rank || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+      limits,
+    },
+  );
+  const notesKept = packWithinBudget(
+    names.included.map((c) => c.name).filter((name) => notes.has(name)),
+    {
+      size: (name) => notes.get(name)?.length ?? 0,
+      limits: limits.maxSize === undefined ? {} : { maxSize: limits.maxSize - names.usedSize },
+    },
+  );
+  const keptNotes = new Set(notesKept.included);
 
   return {
-    shown: names.kept.map((c): ShownCandidate => {
-      const note = notes.get(c.name);
-      return note !== undefined && keptNoteNames.has(c.name)
-        ? { name: c.name, note }
-        : { name: c.name };
+    shown: names.included.map(({ name }): ShownCandidate => {
+      const note = notes.get(name);
+      return note !== undefined && keptNotes.has(name) ? { name, note } : { name };
     }),
-    droppedByBudget: names.dropped.map((c) => c.name),
-    notesDroppedByBudget: notesKept.dropped.map((c) => c.name),
+    droppedByBudget: names.dropped.map(({ item, reason }) => ({ item: item.name, reason })),
+    notesDroppedByBudget: notesKept.dropped,
   };
 }

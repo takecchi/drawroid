@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Candidate } from '../backend.js';
 import { selectCandidates } from './select.js';
 
-const roomy = { maxItems: 100, maxChars: 10_000 };
+const roomy = { maxCount: 100, maxSize: 10_000 };
 const noNotes = new Map<string, string>();
 const loras = (count: number): Candidate[] =>
   Array.from({ length: count }, (_, n) => ({ name: `lora_${String(n).padStart(3, '0')}` }));
@@ -11,19 +11,19 @@ const names = (shown: readonly { name: string }[]) => shown.map((c) => c.name);
 
 describe('selectCandidates', () => {
   it('keeps the list within the budget even with hundreds of LoRAs', () => {
-    const budget = { maxItems: 30, maxChars: 200 };
+    const budget = { maxCount: 30, maxSize: 200 };
 
     const { shown } = selectCandidates(loras(600), undefined, noNotes, '', budget);
 
-    expect(shown.length).toBeLessThanOrEqual(budget.maxItems);
+    expect(shown.length).toBeLessThanOrEqual(budget.maxCount);
     const chars = shown.reduce((sum, c) => sum + c.name.length + (c.note?.length ?? 0), 0);
-    expect(chars).toBeLessThanOrEqual(budget.maxChars);
+    expect(chars).toBeLessThanOrEqual(budget.maxSize);
   });
 
   it('reports every allowed candidate it left out because of the budget', () => {
     const { shown, droppedByBudget } = selectCandidates(loras(300), undefined, noNotes, '', {
-      maxItems: 10,
-      maxChars: 10_000,
+      maxCount: 10,
+      maxSize: 10_000,
     });
 
     expect(shown).toHaveLength(10);
@@ -80,35 +80,35 @@ describe('selectCandidates', () => {
       notes,
       '',
       {
-        maxItems: 10,
-        maxChars: 50,
+        maxCount: 10,
+        maxSize: 50,
       },
     );
 
     expect(shown).toEqual([{ name: 'lora_000' }, { name: 'lora_001' }]);
     expect(droppedByBudget).toEqual([]);
-    expect(notesDroppedByBudget).toEqual(['lora_000']);
+    expect(notesDroppedByBudget).toEqual([{ item: 'lora_000', reason: 'size' }]);
   });
 
   it('drops notes before dropping any candidate whose name would still fit', () => {
     const notes = new Map([['lora_000', 'あ'.repeat(10)]]);
 
     const { shown, notesDroppedByBudget } = selectCandidates(loras(2), undefined, notes, '', {
-      maxItems: 10,
-      maxChars: 20,
+      maxCount: 10,
+      maxSize: 20,
     });
 
     expect(names(shown)).toEqual(['lora_000', 'lora_001']);
-    expect(notesDroppedByBudget).toEqual(['lora_000']);
+    expect(notesDroppedByBudget).toEqual([{ item: 'lora_000', reason: 'size' }]);
   });
 
   it('drops the candidate itself only when even its name does not fit', () => {
     const { shown, droppedByBudget } = selectCandidates(loras(3), undefined, noNotes, '', {
-      maxItems: 10,
-      maxChars: 16,
+      maxCount: 10,
+      maxSize: 16,
     });
 
     expect(names(shown)).toEqual(['lora_000', 'lora_001']);
-    expect(droppedByBudget).toEqual(['lora_002']);
+    expect(droppedByBudget).toEqual([{ item: 'lora_002', reason: 'size' }]);
   });
 });
