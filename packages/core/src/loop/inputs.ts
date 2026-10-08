@@ -1,5 +1,7 @@
 import { clipText, estimateImageTokens, estimateTextTokens } from '../budget/estimate.js';
-import { packWithinBudget } from '../budget/pack.js';
+import { type PackLimits, packWithinBudget } from '../budget/pack.js';
+import type { MemoryItem } from '../memory/item.js';
+import { selectMemory } from '../memory/select.js';
 import {
   sealMessages,
   type BudgetNote,
@@ -25,6 +27,12 @@ export type PreviewImage = {
   longEdge: number;
   /** すでにこの画像を渡した LLM 呼び出しの ID（渡した印） */
   sentInCall?: string;
+};
+
+/** 記憶ストアから読んだ全項目と、この役の記憶の予算。どれを載せるかは組み立て器が選ぶ */
+export type MemoryInput = {
+  items: readonly MemoryItem[];
+  limits: PackLimits;
 };
 
 export class InputOverBudgetError extends Error {
@@ -159,6 +167,27 @@ function seal(args: {
   });
 }
 
+/**
+ * 依頼に関係する記憶を、1項目1区画にして返す。記憶の予算で落とした項目は、記録に残すために notes へ入れる。
+ */
+// 1項目ずつ区画にする: 入力の上限で落とすときも項目の単位で落とし、どれを落としたかを記録に残せるようにするため
+function memorySections(
+  w: SectionWriter,
+  memory: MemoryInput | undefined,
+  carry: Carry,
+): Section[] {
+  if (memory === undefined) return [];
+  const { selected, droppedByBudget } = selectMemory(memory.items, carry.intent, memory.limits);
+  for (const { item, reason } of droppedByBudget) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `memory[${item.id}]`,
+      reason: reason === 'count' ? '記憶の件数の予算に入らない' : '記憶の文字数の予算に入らない',
+    });
+  }
+  return selected.map((item) => ({ name: `memory[${item.id}]`, text: `好み: ${item.body}` }));
+}
+
 function intentSection(w: SectionWriter, carry: Carry, budget: Budget): Section {
   return {
     name: 'intent',
@@ -176,8 +205,9 @@ export function buildThinkInput(args: {
   allowed: readonly ThinkParamKey[];
   budget: Budget;
   window: ModelWindow;
+  memory?: MemoryInput;
 }): BudgetedMessages {
-  const { carry, progress, allowed, budget, window } = args;
+  const { carry, progress, allowed, budget, window, memory } = args;
   const w = new SectionWriter();
   const remaining =
     progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
@@ -193,6 +223,8 @@ export function buildThinkInput(args: {
   if (carry.latest !== undefined && carry.latest.iteration !== carry.best?.iteration) {
     optional.push(w.result('latest', '直近', carry.latest, budget, true));
   }
+  // 記憶は最良・直近より後ろに置く: 入力の上限で削るときは記憶から先に削る（architecture の削る順）
+  optional.push(...memorySections(w, memory, carry));
   return seal({
     system: THINK_SYSTEM,
     writer: w,
@@ -213,8 +245,9 @@ export function buildJudgeInput(args: {
   images: readonly PreviewImage[];
   budget: Budget;
   window: ModelWindow;
+  memory?: MemoryInput;
 }): BudgetedMessages {
-  const { carry, images, budget, window } = args;
+  const { carry, images, budget, window, memory } = args;
   if (images.length === 0) throw new ImageNotAllowedError('評価する画像が無い');
   if (images.length > budget.imagesPerJudge) {
     throw new ImageNotAllowedError(
@@ -238,6 +271,7 @@ export function buildJudgeInput(args: {
   if (carry.best !== undefined) {
     optional.push(w.result('best', 'これまでの最良', carry.best, budget, false));
   }
+  optional.push(...memorySections(w, memory, carry));
   return seal({
     system: JUDGE_SYSTEM,
     writer: w,
