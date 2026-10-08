@@ -67,3 +67,4 @@ export {
   permissionSchema,
   type Permissions,
 } from './permissions/permission.js';
+export { toGenerationRequest } from './permissions/generation-request.js';
