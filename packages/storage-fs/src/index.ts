@@ -1,9 +1,18 @@
 export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 export { initDataDir, type InitializedDataDir } from './init.js';
 export {
+  FsJobStore,
+  formatJobId,
+  ImageAlreadySentError,
+  StoredFileError,
+  type FsJobStoreOptions,
+} from './job-store.js';
+export {
   dataPaths,
+  iterationDirName,
   resolveDataDir,
   TEMP_FILE_PREFIX,
   type DataDirSource,
   type DataPaths,
+  type JobFiles,
 } from './paths.js';
