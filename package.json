@@ -1,0 +1,29 @@
+{
+  "name": "drawroid-monorepo",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.28.2",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck && tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:no-attribution-trailers": "node ./scripts/check-no-attribution-trailers.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "catalog:",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^5.0.0"
+  }
+}

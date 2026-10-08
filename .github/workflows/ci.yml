@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # `ready_for_review` を明示で足す: GitHub の既定 `[opened, synchronize, reopened]` には含まれず、
+    # 足し忘れると下の `if:` で draft の間 skip したまま、ready にしても run が1本も起きないため。
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# 後勝ち: 同じ PR に新しい push が来たら古い run を取り消す。
+# push（main）の run は取り消さない: マージの間隔が CI の所要時間より短いと、main の run が毎回途中で切られて1本も決着しないため。
+# PR は元ブランチ名（head_ref）で、main は ref で群を作る。push の ref は `refs/heads/` から始まるので PR の群と交わらない。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || github.head_ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ci:
+    # `draft == false` だけを単独で書かない: push では `github.event.pull_request` が無く null になり、
+    # `null == false` は false なので、main の CI ごと消えるため。pull_request 以外は先に素通りさせる。
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # 各 step に `!cancelled()` を付ける: 既定の `success()` だと前の失敗で後ろが skip され、1回の run で落ちた検査が1つしか見えないため。
+
+      # 本文の編集（`edited`）では走らない: CI 全体を本文の書き換えのたびに回さないため。本文を直したら CI を再実行して確かめる。
+      - run: pnpm check:no-attribution-trailers
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NO_ATTRIBUTION_TRAILERS_PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      - run: pnpm format:check
+        if: ${{ !cancelled() }}
+
+      - run: pnpm build
+        id: build
+        if: ${{ !cancelled() }}
+
+      - run: pnpm typecheck
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+
+      - run: pnpm lint
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+
+      - run: pnpm test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}

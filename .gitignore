@@ -1,0 +1,23 @@
+# ⚠️ ディレクトリを無視するとき、末尾に `/` を付けないこと。`foo/` はディレクトリにしか
+# 一致せず、同じ名前の symlink（worktree を配る道具が置く）が漏れてコミットされる。
+
+# IDE
+.idea
+.vscode
+
+# Node
+node_modules
+dist
+coverage
+*.tsbuildinfo
+
+# pnpm のストア。リポジトリ自身がマウント点だとここに落ち、prettier が中身を検査して落ちる
+.pnpm-store
+
+# env / secrets
+.env
+.env.*
+
+# misc
+*.log
+.DS_Store
