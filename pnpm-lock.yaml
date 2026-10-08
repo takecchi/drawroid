@@ -83,6 +83,9 @@ importers:
       '@drawroid/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@drawroid/storage-fs':
+        specifier: workspace:*
+        version: link:../../packages/storage-fs
       '@drawroid/web':
         specifier: workspace:*
         version: link:../web
@@ -142,6 +145,15 @@ importers:
       hono:
         specifier: 'catalog:'
         version: 4.13.13
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/storage-fs:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

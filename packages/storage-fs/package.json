@@ -1,10 +1,13 @@
 {
-  "name": "@drawroid/cli",
+  "name": "@drawroid/storage-fs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "drawroid": "./dist/index.js"
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "files": [
     "dist"
@@ -12,13 +15,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@drawroid/api": "workspace:*",
-    "@drawroid/storage-fs": "workspace:*",
-    "@drawroid/web": "workspace:*",
-    "@hono/node-server": "catalog:",
-    "hono": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
