@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { DEFAULT_BUDGET } from '../loop/budget.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import {
   effectivePermissions,
@@ -22,7 +23,7 @@ const context: ParamsSchemaContext = {
     scheduler: [{ name: 'Karras' }],
     vae: [{ name: 'sdxl_vae' }],
   },
-  limits: { promptMaxChars: 40 },
+  budget: { ...DEFAULT_BUDGET, text: { ...DEFAULT_BUDGET.text, prompt: 40 } },
 };
 
 const jsonSchemaKeys = (schema: z.ZodType) =>
@@ -165,5 +166,23 @@ describe('buildParamsSchema with a seed left to the AI', () => {
 
     expect(schema.safeParse({}).success).toBe(false);
     expect(schema.safeParse({ seed: 42 }).success).toBe(true);
+  });
+});
+
+describe('buildParamsSchema with numbers left to the AI', () => {
+  it('keeps numbers within the bounds the input budget is estimated with', () => {
+    const permissions = {
+      ...allOff(),
+      seed: { mode: 'auto' },
+      steps: { mode: 'auto' },
+      cfgScale: { mode: 'auto' },
+    } satisfies Permissions;
+    const { schema } = buildParamsSchema(permissions, context);
+    const worst = { seed: 4294967295, steps: 150, cfgScale: 30 };
+
+    expect(schema.safeParse(worst).success).toBe(true);
+    expect(schema.safeParse({ ...worst, seed: 4294967296 }).success).toBe(false);
+    expect(schema.safeParse({ ...worst, steps: 151 }).success).toBe(false);
+    expect(schema.safeParse({ ...worst, cfgScale: 31 }).success).toBe(false);
   });
 });

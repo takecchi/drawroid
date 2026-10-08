@@ -2,13 +2,14 @@ import { z } from 'zod';
 
 import { type CandidateKind, generationRequestSchema, loraSchema } from '../backend.js';
 import type { ShownCandidate } from '../candidates/select.js';
+import type { Budget } from '../loop/budget.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import type { Permissions } from '../permissions/permission.js';
 
 export interface ParamsSchemaContext {
   // その回に考える役へ見せた候補（selectCandidates の結果）。見せていない候補は選べない
   shown: Partial<Record<CandidateKind, readonly ShownCandidate[]>>;
-  limits: { promptMaxChars: number };
+  budget: Budget;
 }
 
 export type OmittedReason = 'no-candidates-shown' | 'not-supported-yet';
@@ -29,8 +30,8 @@ function shownEnum(context: ParamsSchemaContext, kind: CandidateKind): z.ZodEnum
 const request = generationRequestSchema.shape;
 
 const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSchema> = {
-  prompt: ({ limits }) => z.string().max(limits.promptMaxChars),
-  negativePrompt: ({ limits }) => z.string().max(limits.promptMaxChars),
+  prompt: ({ budget }) => z.string().min(1).max(budget.text.prompt),
+  negativePrompt: ({ budget }) => z.string().max(budget.text.negativePrompt),
   checkpoint: (context) => shownEnum(context, 'checkpoint'),
   vae: (context) => shownEnum(context, 'vae'),
   sampler: (context) => shownEnum(context, 'sampler'),
@@ -39,10 +40,11 @@ const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSche
     const name = shownEnum(context, 'lora');
     return typeof name === 'string' ? name : z.array(loraSchema.extend({ name }));
   },
-  steps: () => request.steps,
-  cfgScale: () => request.cfgScale,
+  // 数値に上限を付けるのは、考える役への入力に載る長さを予算の内に保つため（loop/inputs の見積もりはこの上限を前提にしている）
+  steps: () => request.steps.max(150),
+  cfgScale: () => request.cfgScale.min(1).max(30),
   // 要求では省けば乱数になるが、AI に任せたなら値を決めさせる
-  seed: () => request.seed.unwrap(),
+  seed: () => request.seed.unwrap().max(4294967295),
   width: () => request.width,
   height: () => request.height,
   // アップスケーラーの候補をポートから取れないので、名前を AI に作らせないよう、取れるまで入れない
