@@ -36,3 +36,14 @@ export {
   selectCandidates,
   type ShownCandidate,
 } from './candidates/select.js';
+export { PARAM_KEYS, type ParamKey } from './params/param-key.js';
+export {
+  type DisabledReason,
+  type EffectivePermissions,
+  effectivePermissions,
+  type IterationConditions,
+  mergePermissions,
+  type Permission,
+  permissionSchema,
+  type Permissions,
+} from './permissions/permission.js';
