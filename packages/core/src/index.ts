@@ -22,3 +22,12 @@ export {
   isBackendError,
   type BackendErrorKind,
 } from './backend-error.js';
+export { type CharBudget, type PackByBudget, type Packed, packGreedily } from './budget/pack.js';
+export {
+  MEMORY_SCOPES,
+  memoryItemSchema,
+  memoryScopeSchema,
+  type MemoryItem,
+  type MemoryScope,
+} from './memory/item.js';
+export { type MemorySelection, selectMemory } from './memory/select.js';
