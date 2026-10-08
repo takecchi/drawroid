@@ -5,11 +5,13 @@ import { join, relative } from 'node:path';
 import {
   jobSpecSchema,
   jobStateSchema,
+  type GeneratedImage,
   type ImageRef,
   type JobSpec,
   type JobState,
   type JobStore,
   type LlmCallRecord,
+  type NewJobSpec,
   type PreviewImage,
   type StageName,
 } from '@drawroid/core';
@@ -101,11 +103,7 @@ export class FsJobStore implements JobStore {
     this.randomSuffix = options.randomSuffix ?? (() => randomBytes(3).toString('hex'));
   }
 
-  async createJob(
-    spec: Omit<JobSpec, 'jobId' | 'createdAt'>,
-    state: JobState,
-    now: Date,
-  ): Promise<JobSpec> {
+  async createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec> {
     await mkdir(this.paths.jobs, { recursive: true });
     for (;;) {
       const jobId = formatJobId(now, this.randomSuffix());
@@ -161,6 +159,19 @@ export class FsJobStore implements JobStore {
     const files = this.paths.jobFiles(jobId).iteration(iteration);
     await mkdir(files.dir, { recursive: true });
     await writeJsonAtomic(files[stage], value);
+  }
+
+  async saveImages(
+    jobId: string,
+    iteration: number,
+    images: readonly GeneratedImage[],
+  ): Promise<void> {
+    const files = this.paths.jobFiles(jobId).iteration(iteration);
+    await mkdir(files.images, { recursive: true });
+    for (const [index, image] of images.entries()) {
+      await writeFileAtomic(files.image(index), image.png);
+      await writeJsonAtomic(files.imageMeta(index), { seed: image.seed, metadata: image.metadata });
+    }
   }
 
   async loadPreview(image: ImageRef, longEdge: number): Promise<PreviewImage> {

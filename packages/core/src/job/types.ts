@@ -9,16 +9,34 @@ export const stopConditionsSchema = z.object({
 });
 export type StopConditions = z.infer<typeof stopConditionsSchema>;
 
-/** job.json の中身。ジョブを作ったときに決まり、止める条件の変更のほかは書き換えない */
-export const jobSpecSchema = z.object({
+const jobIdentity = {
   jobId: z.string().min(1),
   createdAt: z.iso.datetime({ offset: true }),
-  request: z.string().min(1),
-  stopConditions: stopConditionsSchema,
-  /** 1回の生成で出す枚数 */
-  batchSize: z.number().int().positive(),
-});
+};
+
+/**
+ * job.json の中身。ジョブを作ったときに決まり、止める条件の変更のほかは書き換えない。
+ * manual は M1 の単発生成（回が1つの手動ジョブ）、auto は M2 のループ。
+ */
+export const jobSpecSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('manual'), ...jobIdentity }),
+  z.object({
+    kind: z.literal('auto'),
+    ...jobIdentity,
+    request: z.string().min(1),
+    stopConditions: stopConditionsSchema,
+    /** 1回の生成で出す枚数 */
+    batchSize: z.number().int().positive(),
+  }),
+]);
 export type JobSpec = z.infer<typeof jobSpecSchema>;
+export type AutoJobSpec = Extract<JobSpec, { kind: 'auto' }>;
+/** createJob に渡す形（jobId と createdAt は置き場所が決める） */
+export type NewJobSpec = JobSpec extends infer S
+  ? S extends JobSpec
+    ? Omit<S, 'jobId' | 'createdAt'>
+    : never
+  : never;
 
 export const STOP_REASON_KINDS = [
   'ai',

@@ -18,6 +18,7 @@ afterEach(async () => {
 });
 
 const spec = {
+  kind: 'auto' as const,
   request: '夕暮れの海辺の少女',
   stopConditions: { aiJudgement: true, maxIterations: 10 },
   batchSize: 2,

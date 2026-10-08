@@ -1,6 +1,7 @@
 import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
-import type { JobSpec, JobState } from './types.js';
+import type { GeneratedImage } from '../backend.js';
+import type { JobSpec, JobState, NewJobSpec } from './types.js';
 
 /** 回の中の段の出力。ファイルがあることが、その段が済んだことを表す */
 export type StageName = 'think' | 'request' | 'judge';
@@ -10,11 +11,7 @@ export type ImageRef = { jobId: string; iteration: number; index: number };
 /** ジョブの置き場所。core はファイルの置き方を知らず、この口だけを使う */
 export interface JobStore {
   /** job.json と、待ち行列に入った state.json を置く。jobId は置き場所が決める */
-  createJob(
-    spec: Omit<JobSpec, 'jobId' | 'createdAt'>,
-    state: JobState,
-    now: Date,
-  ): Promise<JobSpec>;
+  createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec>;
   /** 作成順（＝ jobId の順） */
   listJobIds(): Promise<string[]>;
   readJob(jobId: string): Promise<JobSpec>;
@@ -25,6 +22,9 @@ export interface JobStore {
   /** 段の出力が無ければ undefined */
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown>;
   writeStage(jobId: string, iteration: number, stage: StageName, value: unknown): Promise<void>;
+
+  /** 生成された画像（原寸）とバックエンドのメタデータを置く */
+  saveImages(jobId: string, iteration: number, images: readonly GeneratedImage[]): Promise<void>;
 
   /**
    * LLM に渡す縮小版を返す。無ければ原寸から作って置く。渡した印があれば sentInCall に入る。
