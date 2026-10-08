@@ -25,6 +25,8 @@ catalog:
   '@react-router/node': ^7.18.2
   isbot: ^5.2.1
   vite: ^8.2.1
+  # ドメインの型と LLM の出力スキーマ（packages/core）
+  zod: ^4.6.5
 
 # `pnpm --filter <存在しないパッケージ名>` が黙って exit 0 を返すのを塞ぐ。
 # `.npmrc` に置くと無視される（alteroid で実測済み）ので、ここに置く。
