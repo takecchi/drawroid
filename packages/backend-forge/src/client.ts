@@ -6,7 +6,7 @@ export interface ForgeConnection {
   baseUrl: string;
   // Forge を --api-auth 付きで起動しているときだけ渡す
   auth?: { username: string; password: string };
-  // 1回の HTTP 呼び出しを待つ上限
+  // 1回の HTTP 呼び出しを待つ上限。呼び出しごとに上書きできる
   timeoutMs: number;
   fetch?: typeof fetch;
 }
@@ -22,6 +22,11 @@ const UNREACHABLE_CODES = new Set([
   'UND_ERR_SOCKET',
   'UND_ERR_CONNECT_TIMEOUT',
 ]);
+
+export interface CallOptions {
+  signal?: AbortSignal | undefined;
+  timeoutMs?: number;
+}
 
 export class ForgeClient {
   private readonly baseUrl: URL;
@@ -43,15 +48,15 @@ export class ForgeClient {
     return this.baseUrl.href;
   }
 
-  async getJson<S extends z.ZodType>(path: string, schema: S, signal?: AbortSignal) {
-    return this.requestJson(path, { method: 'GET' }, schema, signal);
+  async getJson<S extends z.ZodType>(path: string, schema: S, options: CallOptions = {}) {
+    return this.requestJson(path, { method: 'GET' }, schema, options);
   }
 
   async postJson<S extends z.ZodType>(
     path: string,
     body: unknown,
     schema: S,
-    signal?: AbortSignal,
+    options: CallOptions = {},
   ) {
     return this.requestJson(
       path,
@@ -61,7 +66,7 @@ export class ForgeClient {
         body: JSON.stringify(body),
       },
       schema,
-      signal,
+      options,
     );
   }
 
@@ -69,11 +74,11 @@ export class ForgeClient {
     path: string,
     init: RequestInit,
     schema: S,
-    signal: AbortSignal | undefined,
+    { signal, timeoutMs = this.timeoutMs }: CallOptions,
   ): Promise<z.infer<S>> {
     const url = new URL(path.replace(/^\//, ''), this.baseUrl);
     const where = `${init.method} ${url.pathname}`;
-    const timeout = AbortSignal.timeout(this.timeoutMs);
+    const timeout = AbortSignal.timeout(timeoutMs);
     const combined = signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
     if (signal?.aborted) throw new BackendError('aborted', `${where}: 呼び手が止めた`);
 
@@ -85,7 +90,7 @@ export class ForgeClient {
       res = await this.fetchImpl(url, { ...init, headers, signal: combined });
       text = await res.text();
     } catch (error) {
-      throw classifyFetchError(error, where, this.baseUrl.href, signal, timeout, this.timeoutMs);
+      throw classifyFetchError(error, where, this.baseUrl.href, signal, timeout, timeoutMs);
     }
 
     if (!res.ok) throw classifyStatus(res.status, text, where, this.baseUrl.href);

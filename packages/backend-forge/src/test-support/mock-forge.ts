@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import { STUB_PNG } from '@drawroid/core/testing';
+
 const FIXTURE_ROUTES: Record<string, string> = {
   'GET /sdapi/v1/sd-models': 'sd-models.json',
   'GET /sdapi/v1/sd-modules': 'sd-modules.json',
@@ -39,11 +41,32 @@ export function json(status: number, body: unknown): MockHandler {
   };
 }
 
+// txt2img の応答の形は api.py の text2imgapi と processing.py の Processed.js に合わせた。画像は中身の無い PNG を枚数ぶん返す
+export const fakeTxt2img: MockHandler = (req, res) => {
+  const body = JSON.parse(req.body) as { batch_size?: number; seed?: number };
+  const batchSize = body.batch_size ?? 1;
+  const firstSeed = body.seed === undefined || body.seed === -1 ? 123456 : body.seed;
+  const allSeeds = Array.from({ length: batchSize }, (_, i) => firstSeed + i);
+  const info = {
+    seed: firstSeed,
+    all_seeds: allSeeds,
+    infotexts: allSeeds.map((seed) => `a cat\nSteps: 4, Seed: ${seed}`),
+    index_of_first_image: 0,
+  };
+  json(200, {
+    images: allSeeds.map(() => Buffer.from(STUB_PNG).toString('base64')),
+    parameters: body,
+    info: JSON.stringify(info),
+  })(req, res);
+};
+
 // 試験のための偽の Forge。雛形（fixtures/）の応答を返し、受けた要求を記録する
 export async function startMockForge(): Promise<MockForge> {
   const routes = new Map<string, MockHandler>(
     Object.entries(FIXTURE_ROUTES).map(([key, file]) => [key, json(200, fixture(file))]),
   );
+  routes.set('POST /sdapi/v1/txt2img', fakeTxt2img);
+  routes.set('POST /sdapi/v1/interrupt', json(200, {}));
   const requests: RecordedRequest[] = [];
   const server = createServer((req, res) => {
     let body = '';

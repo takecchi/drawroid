@@ -12,7 +12,7 @@ export async function probeForge(
   client: ForgeClient,
   signal?: AbortSignal,
 ): Promise<BackendCapabilities> {
-  await client.getJson('/sdapi/v1/cmd-flags', cmdFlagsSchema, signal);
+  await client.getJson('/sdapi/v1/cmd-flags', cmdFlagsSchema, { signal });
   return {
     unavailable: [
       { feature: 'img2img', reason: NOT_YET_SUPPORTED },
