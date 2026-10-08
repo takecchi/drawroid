@@ -2,6 +2,8 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
+import { initDataDir, resolveDataDir } from '@drawroid/storage-fs';
+
 import { parseCliArgs } from './args.js';
 import { listen } from './listen.js';
 
@@ -12,7 +14,15 @@ function resolveWebRoot(): string {
 }
 
 async function main() {
-  const { port } = parseCliArgs(process.argv.slice(2));
+  const { port, dataDir } = parseCliArgs(process.argv.slice(2));
+  const root = resolveDataDir({ cliArg: dataDir, env: process.env.DRAWROID_HOME });
+  const { sweptTempFiles } = await initDataDir(root);
+  process.stdout.write(`drawroid: データディレクトリ ${root}\n`);
+  if (sweptTempFiles.length > 0) {
+    process.stdout.write(
+      `drawroid: 前回の書きかけの一時ファイルを ${sweptTempFiles.length} 個片付けた\n`,
+    );
+  }
   const { address } = await listen({ port, webRoot: resolveWebRoot() });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
 }
