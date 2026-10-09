@@ -7,4 +7,7 @@ export const keys = {
   memoryItem: (id: string) => `/api/memory/${id}`,
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
+  iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,
+  llmCalls: (jobId: string) => `/api/jobs/${jobId}/llm-calls`,
+  llmCall: (jobId: string, callId: string) => `/api/jobs/${jobId}/llm-calls/${callId}`,
 } as const;

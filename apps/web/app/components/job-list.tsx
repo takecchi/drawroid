@@ -1,44 +1,61 @@
-import { useJobs } from '@drawroid/swr';
+import { useJobs, type JobsResponse } from '@drawroid/swr';
+import { Link } from 'react-router';
 
-export function JobList({
-  selectedJobId,
-  onSelect,
-}: {
-  selectedJobId: string | undefined;
-  onSelect: (jobId: string) => void;
-}) {
-  const { data, error } = useJobs();
+import { groupJobsByStatus, JOB_STATUS_ORDER, type JobSummary } from '../lib/job-groups';
+import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
+import { summarizeStopReason } from '../lib/stop-reason';
+
+function JobRow({ job }: { job: JobSummary }) {
+  return (
+    <li>
+      <Link to={`/jobs/${job.jobId}`}>
+        <code>{job.jobId}</code>
+      </Link>{' '}
+      {KIND_LABELS[job.kind]} {formatTime(job.createdAt)} {STATUS_LABELS[job.state.status]}
+      {job.state.status === 'stopped' && <> ({summarizeStopReason(job.state.reason)})</>}
+    </li>
+  );
+}
+
+function InvalidJobs({ invalid }: { invalid: JobsResponse['invalid'] }) {
+  if (invalid.length === 0) return null;
   return (
     <section>
-      <h2>ジョブ</h2>
-      {error !== undefined && <p role="alert">一覧を読めない: {error.message}</p>}
-      {data?.jobs.length === 0 && <p>まだ無い。</p>}
+      <h2>読めないジョブ</h2>
       <ul>
-        {data?.jobs.map((job) => (
-          <li key={job.jobId}>
-            <button
-              type="button"
-              onClick={() => onSelect(job.jobId)}
-              aria-pressed={job.jobId === selectedJobId}
-            >
-              <code>{job.jobId}</code>
-            </button>{' '}
-            {new Date(job.createdAt).toLocaleString('ja-JP')} {job.state.status}
+        {invalid.map(({ jobId, reason }) => (
+          <li key={jobId}>
+            <code>{jobId}</code>: {reason}
           </li>
         ))}
       </ul>
-      {data !== undefined && data.invalid.length > 0 && (
-        <>
-          <h3>読めないジョブ</h3>
+    </section>
+  );
+}
+
+export function JobList() {
+  const { data, error } = useJobs();
+  if (data === undefined) {
+    return error === undefined ? null : <p role="alert">一覧を読めない: {error.message}</p>;
+  }
+  const groups = groupJobsByStatus(data.jobs);
+  return (
+    <>
+      {error !== undefined && <p role="alert">一覧を読めない: {error.message}</p>}
+      {data.jobs.length === 0 && <p>まだ無い。</p>}
+      {JOB_STATUS_ORDER.map((status) => (
+        <section key={status}>
+          <h2>
+            {STATUS_LABELS[status]}（{groups[status].length}）
+          </h2>
           <ul>
-            {data.invalid.map(({ jobId, reason }) => (
-              <li key={jobId}>
-                <code>{jobId}</code>: {reason}
-              </li>
+            {groups[status].map((job) => (
+              <JobRow key={job.jobId} job={job} />
             ))}
           </ul>
-        </>
-      )}
-    </section>
+        </section>
+      ))}
+      <InvalidJobs invalid={data.invalid} />
+    </>
   );
 }
