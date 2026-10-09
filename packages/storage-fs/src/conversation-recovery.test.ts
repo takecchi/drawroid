@@ -145,6 +145,67 @@ describe('filling in the job events a restart left out', () => {
     expect(new Set(after).size).toBe(after.length);
   });
 
+  it('adds job.adopted after the images of an iteration a human settled, and never doubles it', async () => {
+    const conversations = new FsConversationStore(root);
+    const hubs = new ConversationHubs({ store: conversations });
+    const { conversationId } = await conversations.createConversation(new Date());
+    const files = new FsJobStore(root);
+    const spec = await runJob(files, conversationId);
+    // 2 回目は見る役を通らず、人が選んで済んだ（評価の代わりに adopted.json が在る）つもり
+    await rm(dataPaths(root).jobFiles(spec.jobId).iteration(2).judge);
+    await files.writeAdopted(spec.jobId, 2, {
+      by: 'human',
+      image: { iteration: 2, index: 0 },
+      score: 1,
+      interventionId: 'int-1',
+      adoptedAt: '2026-10-09T15:30:00+09:00',
+    });
+
+    await backfillJobEvents({ jobs: files, conversations, hubs });
+    expect(await backfillJobEvents({ jobs: files, conversations, hubs })).toBe(0);
+
+    const events = (await conversations.readEvents(conversationId)).events;
+    expect(jobKeys(events)).toEqual([
+      'job.started',
+      'job.intervention:1',
+      'job.think:1',
+      'job.images:1',
+      'job.judge:1',
+      'job.think:2',
+      'job.images:2',
+      'job.adopted:2',
+      'job.stopped',
+    ]);
+    expect(events.find((e) => e.type === 'job.adopted')).toMatchObject({
+      jobId: spec.jobId,
+      image: { iteration: 2, index: 0 },
+    });
+  });
+
+  it('does not add job.adopted again when the bridge already confirmed it', async () => {
+    const conversations = new FsConversationStore(root);
+    const hubs = new ConversationHubs({ store: conversations });
+    const { conversationId } = await conversations.createConversation(new Date());
+    const files = new FsJobStore(root);
+    const bridged = bridgeJobEvents(files, { hubs });
+    const spec = await runJob(bridged, conversationId);
+    await rm(dataPaths(root).jobFiles(spec.jobId).iteration(2).judge);
+    await bridged.writeAdopted(spec.jobId, 2, {
+      by: 'human',
+      image: { iteration: 2, index: 0 },
+      score: 1,
+      interventionId: 'int-1',
+      adoptedAt: '2026-10-09T15:30:00+09:00',
+    });
+
+    expect(await backfillJobEvents({ jobs: files, conversations, hubs })).toBe(0);
+
+    const adoptedEvents = (await conversations.readEvents(conversationId)).events.filter(
+      (e) => e.type === 'job.adopted',
+    );
+    expect(adoptedEvents).toHaveLength(1);
+  });
+
   it('writes every event of a job whose events were never written at all, in the order they happened', async () => {
     const conversations = new FsConversationStore(root);
     const hubs = new ConversationHubs({ store: conversations });

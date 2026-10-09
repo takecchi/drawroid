@@ -126,6 +126,21 @@ describe('chatItems', () => {
     });
   });
 
+  it('shows a row saying a human chose the image, in place of the judge', () => {
+    const state = confirmAll([
+      { type: 'job.images', jobId: JOB, iteration: 2, images: [{ index: 0, seed: 5 }] },
+      { type: 'job.adopted', jobId: JOB, iteration: 2, image: { iteration: 2, index: 0 } },
+    ]);
+
+    expect(kinds(state)).toEqual(['images', 'adopted']);
+    expect(chatItems(state)[1]).toMatchObject({
+      kind: 'adopted',
+      jobId: JOB,
+      iteration: 2,
+      image: { iteration: 2, index: 0 },
+    });
+  });
+
   it('offers to resend the message whose turn was cut off', () => {
     const state = confirmAll([
       { type: 'user.message', text: '続けて', attachments: [] },

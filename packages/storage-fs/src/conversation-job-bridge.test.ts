@@ -11,6 +11,7 @@ import {
   DEFAULT_BUDGET,
   JobRunner,
   mergePermissions,
+  type AdoptedRecord,
   type ConversationEvent,
   type JobStore,
 } from '@drawroid/core';
@@ -89,6 +90,14 @@ async function submit(store: JobStore, conversationId?: string) {
   );
 }
 
+const adopted: AdoptedRecord = {
+  by: 'human',
+  image: { iteration: 1, index: 0 },
+  score: 1,
+  interventionId: 'int-1',
+  adoptedAt: '2026-10-09T15:30:00+09:00',
+};
+
 const typesOf = (events: ConversationEvent[]) => events.map((e) => e.type);
 
 describe('the bridge from a job to its conversation', () => {
@@ -158,6 +167,33 @@ describe('the bridge from a job to its conversation', () => {
       (e) => e.type === 'job.intervention',
     );
     expect(taken).toMatchObject({ jobId: spec.jobId, kind: 'instruction', iteration: 1 });
+  });
+
+  it('confirms job.adopted, not job.judge, for an iteration a human settled by choosing an image', async () => {
+    const { conversations, store, conversationId, errors } = await setup();
+    const spec = await submit(store, conversationId);
+
+    await store.writeAdopted(spec.jobId, 1, adopted);
+
+    expect(typesOf((await conversations.readEvents(conversationId)).events)).toEqual([
+      'job.started',
+      'job.adopted',
+    ]);
+    expect((await conversations.readEvents(conversationId)).events[1]).toMatchObject({
+      jobId: spec.jobId,
+      iteration: 1,
+      image: { iteration: 1, index: 0 },
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('confirms nothing when a job that belongs to no conversation has an image chosen', async () => {
+    const { conversations, store, conversationId } = await setup();
+    const spec = await submit(store);
+
+    await store.writeAdopted(spec.jobId, 1, adopted);
+
+    expect((await conversations.readEvents(conversationId)).events).toEqual([]);
   });
 
   it('confirms nothing for a job that belongs to no conversation', async () => {

@@ -124,6 +124,14 @@ const jobJudge = z.object({
   reasoning: z.string().optional(),
 });
 
+const jobAdopted = z.object({
+  type: z.literal('job.adopted'),
+  jobId: z.string().min(1),
+  iteration: iterationSchema,
+  /** 人間が選んだ画像。見る役を呼ばずに、この回の評価を打ち切った（adopted.json） */
+  image: z.object({ iteration: iterationSchema, index: z.number().int().nonnegative() }),
+});
+
 const jobIntervention = z.object({
   type: z.literal('job.intervention'),
   jobId: z.string().min(1),
@@ -153,6 +161,7 @@ export const newConversationEventSchema = z.discriminatedUnion('type', [
   jobThink,
   jobImages,
   jobJudge,
+  jobAdopted,
   jobIntervention,
   jobStopped,
 ]);
@@ -177,6 +186,7 @@ export const conversationEventSchema = z.discriminatedUnion('type', [
   jobThink.extend(confirmed),
   jobImages.extend(confirmed),
   jobJudge.extend(confirmed),
+  jobAdopted.extend(confirmed),
   jobIntervention.extend(confirmed),
   jobStopped.extend(confirmed),
 ]);
