@@ -106,6 +106,26 @@ describe('createFsDistillLog', () => {
   });
 });
 
+describe('createFsDistillLog with a distill.json it cannot read', () => {
+  it('rejects both append and read, instead of treating a distill.json that is a directory as empty', async () => {
+    const log = createFsDistillLog(root);
+    await mkdir(distillFile());
+
+    await expect(log.read(JOB)).rejects.toThrow();
+    await expect(log.append(JOB, entry('2026-10-09T16:00:00Z'))).rejects.toThrow();
+  });
+
+  it('writes nothing into a real sibling directory that a path-like job id points at', async () => {
+    const log = createFsDistillLog(root);
+    const sibling = join(paths.jobs, '..', 'sibling');
+    await mkdir(sibling);
+
+    await expect(log.append('../sibling', entry('2026-10-09T16:00:00Z'))).rejects.toThrow();
+
+    expect(await readdir(sibling)).toEqual([]);
+  });
+});
+
 describe('distilling into the data directory', () => {
   it('writes the learned preference as a memory file that names the job, and the distillation into distill.json', async () => {
     const llm: LlmPort = {
