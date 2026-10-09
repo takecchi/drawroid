@@ -16,8 +16,6 @@ import { hasAnyStopCondition } from './stop.js';
 
 /** 止める条件の自然言語として受け取る文字数の上限 */
 export const STOP_TEXT_LIMIT = 300;
-/** 変換できなかった部分として返させる件数と、1件の文字数の上限 */
-const UNPARSED_LIMIT = { count: 3, chars: 80 };
 
 const SYSTEM = [
   '画像生成のループを止める条件を、人間の文から読み取る。',
@@ -36,7 +34,7 @@ export const stopParseOutputSchema = z.object({
     .positive()
     .max(7 * 24 * 60)
     .nullable(),
-  unparsed: z.array(z.string().max(UNPARSED_LIMIT.chars)).max(UNPARSED_LIMIT.count),
+  unparsed: z.array(z.string()),
 });
 export type StopParseOutput = z.infer<typeof stopParseOutputSchema>;
 

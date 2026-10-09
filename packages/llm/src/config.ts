@@ -27,7 +27,8 @@ export const roleConfigSchema = z.object({
   /** providers の鍵 */
   provider: z.string().min(1),
   model: z.string().min(1),
-  contextTokens: z.number().int().positive().default(8192),
+  /** 省略したら provider が報告する窓の長さを読む（detectContextTokens）。読めなければ既定の窓を使う */
+  contextTokens: z.number().int().positive().optional(),
   /** 省略したら上限を送らず、provider 側の設定に任せる */
   maxOutputTokens: z.number().int().positive().optional(),
   structuredOutput: structuredOutputModeSchema.default('native'),

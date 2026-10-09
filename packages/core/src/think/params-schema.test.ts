@@ -101,11 +101,11 @@ describe('buildParamsSchema', () => {
     expect(omitted).toEqual({ checkpoint: 'no-candidates-shown' });
   });
 
-  it('rejects a prompt longer than the output limit', () => {
+  it('accepts a prompt longer than the input budget', () => {
     const permissions = { ...allOff(), prompt: { mode: 'auto' } } satisfies Permissions;
     const { schema } = buildParamsSchema(permissions, context);
 
-    expect(schema.safeParse({ prompt: 'あ'.repeat(41) }).success).toBe(false);
+    expect(schema.safeParse({ prompt: 'あ'.repeat(41) }).success).toBe(true);
   });
 
   it('does not offer inpaint while there is no mask', () => {

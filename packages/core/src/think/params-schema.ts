@@ -32,8 +32,9 @@ function shownEnum(context: ParamsSchemaContext, kind: CandidateKind): z.ZodEnum
 const request = generationRequestSchema.shape;
 
 const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSchema> = {
-  prompt: ({ budget }) => z.string().min(1).max(budget.text.prompt),
-  negativePrompt: ({ budget }) => z.string().max(budget.text.negativePrompt),
+  // 文字数の上限を付けない: プロンプトはバックエンドへそのまま渡し、考える役の入力に載せるときだけ予算で切るため
+  prompt: () => z.string().min(1),
+  negativePrompt: () => z.string(),
   checkpoint: (context) => shownEnum(context, 'checkpoint'),
   vae: (context) => shownEnum(context, 'vae'),
   sampler: (context) => shownEnum(context, 'sampler'),

@@ -55,10 +55,10 @@ const thinkMessages: BudgetedMessages = buildThinkInput({
   budget: DEFAULT_BUDGET,
   window: DEFAULT_MODEL_WINDOW,
 });
-const thinkSchema = buildThinkOutputSchema(
-  { schema: z.object({ prompt: z.string(), steps: z.number().int().max(150) }), omitted: {} },
-  DEFAULT_BUDGET,
-);
+const thinkSchema = buildThinkOutputSchema({
+  schema: z.object({ prompt: z.string(), steps: z.number().int().max(150) }),
+  omitted: {},
+});
 const valid = JSON.stringify({
   params: { prompt: 'girl, beach, sunset', steps: 28 },
   rationale: '最初の案',

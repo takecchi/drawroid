@@ -78,7 +78,7 @@ export class AiSdkLlm implements LlmPort {
       provider: this.models[role].providerName,
       model: config.model,
       window: {
-        contextTokens: config.contextTokens,
+        contextTokens: config.contextTokens ?? DEFAULT_MODEL_WINDOW.contextTokens,
         // 上限を送らないときも、入力の予算からは出力の分を空けておく: 入力で窓を埋めると出力が入らず length で切れるため
         maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MODEL_WINDOW.maxOutputTokens,
       },

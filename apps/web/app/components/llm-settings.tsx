@@ -61,7 +61,7 @@ function RoleFields({
           value={values.contextTokens}
           onChange={(event) => onChange({ ...values, contextTokens: event.target.value })}
           aria-label={`${label}の文脈の上限`}
-          placeholder="8192"
+          placeholder="自動"
           size={8}
         />
       </label>{' '}

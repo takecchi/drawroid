@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
-import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
+import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   createFsMemoryStore,
   dataPaths,
@@ -78,6 +78,14 @@ async function main() {
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
     log,
   });
+  // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
+  const configureLlm = async (llm: LlmConfig) => {
+    const { config, detected } = await detectContextTokens(llm, { env: process.env });
+    for (const { role, contextTokens } of detected) {
+      log(`drawroid: ${role} の役の文脈の上限を LLM から読んだ: ${contextTokens}`);
+    }
+    autoQueue.configure(config);
+  };
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
     log(
@@ -86,7 +94,7 @@ async function main() {
   } else {
     const parsed = llmConfigSchema.safeParse(stored);
     if (parsed.success) {
-      autoQueue.configure(parsed.data);
+      await configureLlm(parsed.data);
     } else {
       log(
         `drawroid: config.json の llm が不正なので未設定のまま進む: ${parsed.error.issues[0]?.message ?? ''}`,
@@ -99,7 +107,7 @@ async function main() {
     read: () => readLlmSettings(configPath),
     write: async (llm: LlmConfig) => {
       await writeLlmSettings(configPath, llm);
-      autoQueue.configure(llm);
+      await configureLlm(llm);
       autoQueue.kick();
     },
   };

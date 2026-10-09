@@ -500,7 +500,7 @@ export class JobRunner {
         window: llm.describe('judge').window,
       });
       const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'ref-gist', messages, {
-        schema: buildRefGistOutputSchema(limits),
+        schema: buildRefGistOutputSchema(),
         signal,
         sentImages: [ref],
         // 要点を印より先に書く: 印だけ残って落ちると、再開で「渡し済み」の画像を渡せず、要点も作れなくなるため。
@@ -569,7 +569,7 @@ export class JobRunner {
     });
     const params = this.paramsShownIn(messages, paramsPlan);
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
-      schema: buildThinkOutputSchema(params, budget, {
+      schema: buildThinkOutputSchema(params, {
         withInterventions: plan.included.length > 0,
       }),
       signal,
@@ -718,7 +718,7 @@ export class JobRunner {
       window: llm.describe('judge').window,
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'judge', messages, {
-      schema: buildJudgeOutputSchema(imageCount, budget),
+      schema: buildJudgeOutputSchema(imageCount),
       signal,
       sentImages: refs,
     });

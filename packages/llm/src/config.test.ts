@@ -58,7 +58,6 @@ describe('llmConfigSchema', () => {
     expect(llmConfigSchema.parse(base).roles.think).toEqual({
       provider: 'local',
       model: 'qwen2.5vl:7b',
-      contextTokens: 8192,
       structuredOutput: 'native',
       imageInput: true,
     });
