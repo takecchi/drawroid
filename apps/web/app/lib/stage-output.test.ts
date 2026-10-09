@@ -8,6 +8,20 @@ describe('readThink', () => {
     expect(readThink(value)).toEqual({ params: { prompt: 'a cat', steps: 20 }, rationale: 'r' });
   });
 
+  it('reads the cfg scale the thinking role decided', () => {
+    expect(readThink({ params: { cfgScale: 6.5 }, rationale: 'r' })).toEqual({
+      params: { cfgScale: 6.5 },
+      rationale: 'r',
+    });
+  });
+
+  it('reads the cfg of a record written before the field was renamed as the cfg scale', () => {
+    expect(readThink({ params: { cfg: 7 }, rationale: 'r' })).toEqual({
+      params: { cfgScale: 7 },
+      rationale: 'r',
+    });
+  });
+
   it('returns undefined when a required field is missing', () => {
     expect(readThink({ params: { prompt: 'a cat' } })).toBeUndefined();
     expect(readThink({ params: { steps: '20' }, rationale: 'r' })).toBeUndefined();

@@ -12,6 +12,7 @@ import {
 import { toLlmCallRecord, type LlmCallRecord } from '../llm/record.js';
 import type { ModelWindow } from './budget.js';
 import { InputOverBudgetError } from './inputs.js';
+import { hasAnyStopCondition } from './stop.js';
 
 /** 止める条件の自然言語として受け取る文字数の上限 */
 export const STOP_TEXT_LIMIT = 300;
@@ -57,16 +58,6 @@ export type StopConditionsDraft =
     }
   | { ok: false; reason: string };
 
-/** AI の判断か、回数・枚数・時間の上限が1つ以上あるか */
-export function hasStopCondition(c: StopConditions): boolean {
-  return (
-    c.aiJudgement ||
-    c.maxIterations !== undefined ||
-    c.maxImages !== undefined ||
-    c.maxDurationMs !== undefined
-  );
-}
-
 export function buildStopParseInput(text: string, window: ModelWindow): BudgetedMessages {
   const clipped = clipText(text, STOP_TEXT_LIMIT);
   const notes: BudgetNote[] =
@@ -98,7 +89,7 @@ export function toStopConditions(output: StopParseOutput): StopConditions {
 }
 
 export function warningsFor(conditions: StopConditions): StopConditionsWarning[] {
-  return hasStopCondition(conditions)
+  return hasAnyStopCondition(conditions)
     ? []
     : [
         {
