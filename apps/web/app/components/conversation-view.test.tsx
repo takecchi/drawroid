@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import {
+  ADOPTED_STOP,
+  HUMAN_STOP,
   LLM_NOT_CONFIGURED_REASON,
   REPEATED_TOOL_CALL_REASON,
   TOOL_THREW_PREFIX,
@@ -227,12 +229,22 @@ describe('the stop card', () => {
     expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
   });
 
-  it.each([
-    ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
-    ['a person chose an image', { kind: 'adopted', detail: '人間が画像を選んだ' }],
-  ])('adds nothing when %s, and does not even read the job', async (_, reason) => {
+  // 止めたあとも、途中の画像から選べる。止まりの理由は、実行器が人の止めに付けるもの
+  it('offers the best image to choose when a person stopped it, through the favorite', async () => {
     vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
-    await stopWith(reason);
+    const { user } = await stopWith(HUMAN_STOP);
+
+    const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
+    expect(within(card).getByText('最良: 2 回目の画像 2 番（見る役の点 0.92）')).toBeTruthy();
+    await user.click(within(card).getByRole('button', { name: CHOOSE }));
+
+    expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
+    expect(adoptImage).not.toHaveBeenCalled();
+  });
+
+  it('adds nothing when a person chose an image, and does not even read the job', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    await stopWith(ADOPTED_STOP);
 
     expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^この画像に決める/ })).toBeNull();
@@ -340,8 +352,8 @@ describe('what the job taught, on the stop card', () => {
   });
 
   it.each([
-    ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
-    ['a person chose an image', { kind: 'adopted', detail: '人間が画像を選んだ' }],
+    ['a person stopped it', HUMAN_STOP],
+    ['a person chose an image', ADOPTED_STOP],
   ])('shows nothing and reads nothing when %s', async (_, reason) => {
     vi.mocked(useJobDistill).mockReturnValue(distilled([], { pending: true }));
     await stopWith(reason);

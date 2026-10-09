@@ -189,8 +189,8 @@ class StopJob extends Error {
   }
 }
 
-const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
-const ADOPTED_STOP: StopReason = { kind: 'adopted', detail: '人間が画像を選んだ' };
+export const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
+export const ADOPTED_STOP: StopReason = { kind: 'adopted', detail: '人間が画像を選んだ' };
 
 /** 口出しを断った理由。manual は口出しを受けない手動のジョブ、unstoppable は重ねると止まらなくなる変更 */
 export type InterventionRejection = 'manual' | 'stopped' | 'unstoppable';
