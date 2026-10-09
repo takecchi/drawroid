@@ -551,6 +551,7 @@ function BestChoice({
           imageKey={imageKey}
           imageLabel={imageLabel}
           verdict={verdict}
+          prominent
         />
         <p className="text-xs text-muted-foreground">続けるなら、話しかけて指示を出す。</p>
       </div>

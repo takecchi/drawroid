@@ -108,7 +108,8 @@ function AdoptedSection({ adopted }: { adopted: NonNullable<Iteration['adopted']
     <AuthorMark as="section" author="human" label="人間">
       <h4 className="font-semibold">評価</h4>
       <p>
-        人が選んだ（{adopted.image.iteration} 回目の画像 {adopted.image.index + 1} 番）: score{' '}
+        {/* 「見る役の点」と書かない: 人が選んだ画像の点は、見る役が付けたものではなく、選んだ印として扱う 1 のため */}
+        人が選んだ（{adopted.image.iteration} 回目の画像 {adopted.image.index + 1} 番）: 点{' '}
         {formatScore(adopted.score)}
       </p>
     </AuthorMark>
@@ -178,11 +179,11 @@ export function IterationView({
                   {adopted !== null &&
                     adopted.image.iteration === iteration.iteration &&
                     adopted.image.index === image.index && (
-                      <div>人が選んだ / score {formatScore(adopted.score)}</div>
+                      <div>人が選んだ / 点 {formatScore(adopted.score)}</div>
                     )}
                   {evaluation !== undefined && (
                     <>
-                      <div>score {formatScore(evaluation.score)}</div>
+                      <div>見る役の点 {formatScore(evaluation.score)}</div>
                       {evaluation.issues.length > 0 && (
                         <BulletList className="text-xs">
                           {evaluation.issues.map((issue, i) => (

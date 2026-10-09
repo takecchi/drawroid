@@ -13,11 +13,17 @@ export function ChooseAsFavorite({
   imageKey,
   imageLabel,
   verdict,
+  prominent = false,
 }: {
   jobId: string;
   imageKey: string;
   imageLabel: string;
   verdict: SelectionVerdict | null;
+  /**
+   * 目立つ形（紫）にする。止まりのカードだけが渡す: 止まったジョブの画像の行と窓にも同じボタンが並ぶので、
+   * どれも紫だと、どれを押せばよいかが分からなくなるため。行と窓は控えめな形（枠だけ）で、名前は同じ
+   */
+  prominent?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -38,9 +44,10 @@ export function ChooseAsFavorite({
   if (verdict === 'favorite') return <p className="text-xs text-ok">お気に入り</p>;
   return (
     <div className="space-y-1">
+      {/* 文字を折り返す: 狭い画面のカードや画像の枡より名前が長く、折り返さないと枠の外へはみ出すため */}
       <Button
-        className="h-7 px-2 text-xs"
-        variant="primary"
+        className="h-auto min-h-7 max-w-full px-2 py-1 text-left text-xs whitespace-normal"
+        variant={prominent ? 'primary' : 'default'}
         disabled={pending}
         aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
         onClick={() => void choose()}
