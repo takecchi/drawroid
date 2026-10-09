@@ -9,9 +9,10 @@ import {
   type MemoryStore,
 } from '@drawroid/core';
 import { MemoryConversationStore } from '@drawroid/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApi } from '../index.js';
+import { defaultHeartbeat } from './conversations.js';
 import {
   memoryBudgetSettings,
   memoryProgressDeps,
@@ -485,6 +486,32 @@ describe('images attached in a conversation', () => {
       `/conversations/no-such-conversation/uploads/${uploadId}`,
     ]) {
       expect((await app.request(path)).status, path).toBe(404);
+    }
+  });
+});
+
+// 既定の間隔は、定数ではなく時間そのもので見る（設計書: 15秒ごとにハートビート。受け入れ条件「既定の間隔で送られる（偽の時計で）」）
+describe('the default heartbeat', () => {
+  it('beats every 15 seconds, not sooner, and stops when asked', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      let beats = 0;
+      const stop = defaultHeartbeat(() => {
+        beats += 1;
+      });
+
+      vi.advanceTimersByTime(14_999);
+      expect(beats).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(beats).toBe(1);
+      vi.advanceTimersByTime(15_000);
+      expect(beats).toBe(2);
+
+      stop();
+      vi.advanceTimersByTime(60_000);
+      expect(beats).toBe(2);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
