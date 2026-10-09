@@ -143,10 +143,30 @@ describe('GET /memory/:id', () => {
       item: { ...item, sources: [jobId, '20200101-000000-gone'] },
       sources: [
         {
+          kind: 'job',
           jobId,
           job: { kind: 'auto', createdAt: '2026-10-01T00:00:00.000Z', request: '猫の絵' },
         },
-        { jobId: '20200101-000000-gone', job: null },
+        { kind: 'job', jobId: '20200101-000000-gone', job: null },
+      ],
+    });
+  });
+
+  it('tells a conversation it was learned in apart from a job, instead of a job that is gone', async () => {
+    const jobId = await createJob();
+    const sources = ['conversation:20261009-063012-conv1', jobId];
+    await putFile('no-broken-fingers', itemFile({ sources }));
+    const res = await api.request('/memory/no-broken-fingers');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      item: { ...item, sources },
+      sources: [
+        { kind: 'conversation', conversationId: '20261009-063012-conv1' },
+        {
+          kind: 'job',
+          jobId,
+          job: { kind: 'auto', createdAt: '2026-10-01T00:00:00.000Z', request: '猫の絵' },
+        },
       ],
     });
   });

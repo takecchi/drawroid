@@ -34,10 +34,11 @@ const detail: MemoryItemDetail = {
   },
   sources: [
     {
+      kind: 'job',
       jobId: 'job-1',
       job: { kind: 'auto', createdAt: '2026-10-01T00:00:00.000Z', request: '猫の絵を描く' },
     },
-    { jobId: 'job-gone', job: null },
+    { kind: 'job', jobId: 'job-gone', job: null },
   ],
 };
 
@@ -170,7 +171,10 @@ describe('MemoryItemView sources', () => {
     mocks.useMemoryItem.mockReturnValue({
       data: {
         item: { ...detail.item, sources: ['conversation:20261009-094204-2c158a', 'job-1'] },
-        sources: [{ jobId: 'conversation:20261009-094204-2c158a', job: null }, detail.sources[0]],
+        sources: [
+          { kind: 'conversation', conversationId: '20261009-094204-2c158a' },
+          detail.sources[0]!,
+        ],
       },
       error: undefined,
       mutate: reload,
