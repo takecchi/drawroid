@@ -2,13 +2,13 @@ import { isApiError, saveBackendSettings, useBackendSettings } from '@drawroid/s
 import { Button, ErrorNote, Input, Section } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
+import { BACKEND_KIND_LABELS } from '../lib/backend-error';
+
 const SOURCE_LABELS = {
   cli: '起動の引数',
   config: 'config.json',
   default: '既定値',
 } as const;
-
-const KIND_LABELS = { forge: 'Forge', a1111: 'A1111' } as const;
 
 export function BackendUrlSettings() {
   const { data, error } = useBackendSettings();
@@ -37,8 +37,8 @@ export function BackendUrlSettings() {
       {data !== undefined && (
         <>
           <p>
-            種類: {KIND_LABELS[data.kind]}（起動時の --backend か config.json の backend.kind
-            で変える）
+            種類: {BACKEND_KIND_LABELS[data.kind]}（起動時の --backend か config.json の
+            backend.kind で変える）
           </p>
           <p>
             いまの URL: <code>{data.url}</code>（{SOURCE_LABELS[data.urlSource]}）
