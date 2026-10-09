@@ -1,6 +1,6 @@
 import type { ZodType } from 'zod';
 
-import { generationRequestSchema, type GenerationRequest, type ImageBackend } from '../backend.js';
+import type { GenerationRequest, ImageBackend } from '../backend.js';
 import { BackendError } from '../backend-error.js';
 import type { AnyImageRef, ImageRef, JobStore, ReferenceImageRef } from '../job/store.js';
 import {
@@ -50,34 +50,34 @@ import {
   hasAnyStopCondition,
   readStopConditions,
 } from './stop.js';
-import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
-import type { Permissions } from '../permissions/permission.js';
-import { buildParamsSchema } from '../think/params-schema.js';
-
-// M2 の allowed を #15 の許可の形に直す。M4 の許可の設定を runner につなぐまでのつなぎ（4-7a で置き換える）
-function permissionsAllowing(allowed: readonly ParamKey[]): Permissions {
-  return Object.fromEntries(
-    PARAM_KEYS.map((key) => [key, allowed.includes(key) ? { mode: 'auto' } : { mode: 'off' }]),
-  ) as Permissions;
-}
-
-/** AI に任せていないパラメータの値（M2 では解像度など） */
-export type GenerationDefaults = {
-  width: number;
-  height: number;
-  steps: number;
-  cfgScale: number;
-  negativePrompt: string;
-};
+import type { BackendCapabilities, Candidate, CandidateKind } from '../backend.js';
+import type { PackLimits } from '../budget/pack.js';
+import type { ParamKey } from '../params/param-key.js';
+import { toGenerationRequest } from '../permissions/generation-request.js';
+import {
+  effectivePermissions,
+  mergePermissions,
+  type Permissions,
+} from '../permissions/permission.js';
+import { buildParamsSchema, type ParamsSchema } from '../think/params-schema.js';
+import type { ShownCandidates } from './inputs.js';
+import {
+  candidateKindsToList,
+  DEFAULT_CANDIDATE_LIMITS,
+  shownCandidatesFor,
+} from './iteration-permissions.js';
 
 export type JobRunnerDeps = {
   store: JobStore;
   llm: LlmPort;
   backend: ImageBackend;
   budget: Budget;
-  /** 考える役が決めてよいパラメータ */
-  allowed: readonly ParamKey[];
-  defaults: GenerationDefaults;
+  /** 全体の既定の許可。ジョブごとの上書き（job.json の permissions）を重ねて使う */
+  permissions: Permissions;
+  /** 候補の種類ごとに、考える役へ見せる候補の件数と文字数。省けば既定値 */
+  candidateLimits?: PackLimits;
+  /** 人間が候補に付けた短い説明（候補の名前から引く）。省けば説明なし */
+  candidateNotes?: ReadonlyMap<string, string>;
   /** 1回の「考える」に載せる人間の指示の上限。省けば既定値 */
   interventionLimits?: InterventionLimits;
   /** 持ち回す参照画像の要点の上限。省けば既定値 */
@@ -88,6 +88,11 @@ export type JobRunnerDeps = {
 };
 
 type Running = { jobId: string; controller: AbortController };
+type BackendView = {
+  capabilities: BackendCapabilities;
+  lists: Partial<Record<CandidateKind, readonly Candidate[]>>;
+};
+type ParamsPlan = { permissions: Permissions; candidates: ShownCandidates; params: ParamsSchema };
 type RunningState = Extract<JobState, { status: 'running' }> & { carry: Carry };
 
 /** ループを止めて、理由を state.json に残すための合図 */
@@ -265,8 +270,60 @@ export class JobRunner {
     }
   }
 
+  /**
+   * ジョブの間に使う、バックエンドの能力と候補の一覧。ジョブの始めに1回だけ取る。
+   */
+  // 回ごとに取り直さない: 候補の一覧（LoRA が数百個など）を毎回取るのは重く、ジョブの途中で変わることも稀なため
+  private async viewBackend(spec: AutoJobSpec, signal: AbortSignal): Promise<BackendView> {
+    const { backend } = this.deps;
+    try {
+      const capabilities = await backend.probe(signal);
+      const permissions = this.jobPermissions(spec, capabilities, false);
+      const lists: Partial<Record<CandidateKind, readonly Candidate[]>> = {};
+      for (const kind of candidateKindsToList(permissions)) {
+        lists[kind] = await backend.listCandidates(kind, signal);
+      }
+      return { capabilities, lists };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw new StopJob({
+        kind: 'error',
+        detail: `バックエンドの能力と候補を取る段: ${messageOf(error)}`,
+        ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
+      });
+    }
+  }
+
+  /** 全体の既定にジョブの上書きを重ね、バックエンドで使えないものを「使わない」に落とした許可 */
+  private jobPermissions(
+    spec: AutoJobSpec,
+    capabilities: BackendCapabilities,
+    hasMask: boolean,
+  ): Permissions {
+    const merged = mergePermissions(this.deps.permissions, spec.permissions ?? {});
+    return effectivePermissions(merged, { capabilities, hasMask }).permissions;
+  }
+
+  /** その回の許可・見せる候補・考える役の出力スキーマのパラメータの部分 */
+  private planParams(spec: AutoJobSpec, view: BackendView, carry: Carry): ParamsPlan {
+    const permissions = this.jobPermissions(spec, view.capabilities, false);
+    const candidates = shownCandidatesFor({
+      permissions,
+      lists: view.lists,
+      notes: this.deps.candidateNotes ?? new Map(),
+      requestGist: carry.intent,
+      limits: this.deps.candidateLimits ?? DEFAULT_CANDIDATE_LIMITS,
+    });
+    const params = buildParamsSchema(permissions, {
+      shown: candidates.shown,
+      budget: this.deps.budget,
+    });
+    return { permissions, candidates, params };
+  }
+
   private async loop(spec: AutoJobSpec, initial: RunningState, signal: AbortSignal): Promise<void> {
     const { store } = this.deps;
+    const backendView = await this.viewBackend(spec, signal);
     let state = initial;
     for (;;) {
       signal.throwIfAborted();
@@ -278,10 +335,24 @@ export class JobRunner {
       const iteration = state.carry.completedIterations + 1;
       // 走っている段には触れず、境目で要点にする: 回の途中で届いた参照画像は、次の回の「考える」から効く（Issue #5 の I）
       const withReferences = await this.takeInReferences(spec, state.carry, iteration, signal);
-      const think = await this.think(spec, conditions, withReferences, iteration, signal);
+      const paramsPlan = this.planParams(spec, backendView, withReferences);
+      const think = await this.think(
+        spec,
+        conditions,
+        withReferences,
+        iteration,
+        paramsPlan,
+        signal,
+      );
       // think.json から求め直す: 考えたあと state.json を書く前に落ちても、再開で同じ要点になるように
       const carry = applyIntegratedIntent(withReferences, think, this.deps.budget);
-      const imageCount = await this.generate(spec, iteration, think, signal);
+      const imageCount = await this.generate(
+        spec,
+        iteration,
+        think,
+        paramsPlan.permissions,
+        signal,
+      );
       const judge = await this.judge(spec, carry, iteration, imageCount, signal);
 
       state = {
@@ -357,9 +428,10 @@ export class JobRunner {
     conditions: StopConditions,
     carry: Carry,
     iteration: number,
+    paramsPlan: ParamsPlan,
     signal: AbortSignal,
   ): Promise<ThinkOutput> {
-    const { store, llm, budget, allowed } = this.deps;
+    const { store, llm, budget } = this.deps;
     const done = await store.readStage(spec.jobId, iteration, 'think');
     if (done !== undefined) return done as ThinkOutput;
 
@@ -374,17 +446,16 @@ export class JobRunner {
         iteration,
         ...(max === undefined ? {} : { remainingIterations: max - iteration + 1 }),
       },
-      allowed,
+      allowed: Object.keys(paramsPlan.params.schema.shape) as ParamKey[],
       budget,
       window: llm.describe('think').window,
       interventions: plan,
+      candidates: paramsPlan.candidates,
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
-      schema: buildThinkOutputSchema(
-        buildParamsSchema(permissionsAllowing(allowed), { shown: {}, budget }),
-        budget,
-        { withInterventions: plan.included.length > 0 },
-      ),
+      schema: buildThinkOutputSchema(paramsPlan.params, budget, {
+        withInterventions: plan.included.length > 0,
+      }),
       signal,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
@@ -403,13 +474,24 @@ export class JobRunner {
     spec: AutoJobSpec,
     iteration: number,
     think: ThinkOutput,
+    permissions: Permissions,
     signal: AbortSignal,
   ): Promise<number> {
     const { store, backend } = this.deps;
     const done = await store.readGeneration(spec.jobId, iteration);
     if (done !== undefined) return done.images.length;
 
-    const request = this.toRequest(spec, think);
+    let request: GenerationRequest;
+    try {
+      request = toGenerationRequest({
+        decided: think.params,
+        permissions,
+        batchSize: spec.batchSize,
+      });
+    } catch (error) {
+      // 「固定」の値がバックエンドに渡せない形のときなど。黙って AI の値に戻さず、理由付きで止める
+      throw new StopJob({ kind: 'error', detail: `生成の要求を組む段: ${messageOf(error)}` });
+    }
     let result;
     try {
       result = await backend.generate(request, signal);
@@ -429,21 +511,6 @@ export class JobRunner {
       result,
     );
     return result.images.length;
-  }
-
-  private toRequest(spec: AutoJobSpec, think: ThinkOutput): GenerationRequest {
-    const { defaults } = this.deps;
-    const p = think.params;
-    return generationRequestSchema.parse({
-      prompt: p.prompt ?? '',
-      negativePrompt: p.negativePrompt ?? defaults.negativePrompt,
-      steps: p.steps ?? defaults.steps,
-      cfgScale: p.cfgScale ?? defaults.cfgScale,
-      ...(p.seed === undefined || p.seed < 0 ? {} : { seed: p.seed }),
-      width: defaults.width,
-      height: defaults.height,
-      batchSize: spec.batchSize,
-    });
   }
 
   private async judge(

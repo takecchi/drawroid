@@ -1,6 +1,7 @@
 import {
   createCarry,
   hasStopCondition,
+  permissionOverridesSchema,
   stopConditionsSchema,
   type JobStore,
   type StopConditions,
@@ -26,6 +27,8 @@ const createBodySchema = z.object({
   batchSize: z.number().int().min(1).max(8).optional(),
   /** 依頼に添える参照画像。最初の回の境目で、見る役が1度だけ見て要点にする */
   references: referenceUploadsSchema.optional(),
+  // このジョブだけの許可の上書き。書いたパラメータだけを、全体の既定に重ねる
+  permissions: permissionOverridesSchema.optional(),
 });
 
 export async function isAutoJob(store: JobStore, jobId: string): Promise<boolean> {
@@ -42,7 +45,7 @@ export function autoJobsRoutes(deps: ApiDeps) {
     .post('/', async (c) => {
       const body = createBodySchema.safeParse(await c.req.json().catch(() => undefined));
       if (!body.success) return invalidRequest(c, describeIssues(body.error));
-      const { request, stopConditions, batchSize, references } = body.data;
+      const { request, stopConditions, batchSize, references, permissions } = body.data;
       const now = (deps.now ?? (() => new Date()))();
       const spec = await store.createJob(
         {
@@ -50,6 +53,7 @@ export function autoJobsRoutes(deps: ApiDeps) {
           request,
           stopConditions: stopConditions ?? DEFAULT_STOP_CONDITIONS,
           batchSize: batchSize ?? DEFAULT_BATCH_SIZE,
+          ...(permissions !== undefined && { permissions }),
         },
         { status: 'queued', carry: createCarry(request, deps.budget).carry },
         now,

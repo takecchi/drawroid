@@ -1,7 +1,11 @@
+import type { SelectionVerdict } from '@drawroid/core';
+import { formatImageKey } from '@drawroid/core';
 import type { IterationsResponse } from '@drawroid/swr';
 
 import { readJudge, readThink } from '../lib/stage-output';
+import { AuthorLabel, InterventionItem, markStyle, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
+import { SelectionControls } from './selection-controls';
 
 export type Iteration = IterationsResponse['iterations'][number];
 
@@ -17,7 +21,8 @@ function ThinkSection({ think }: { think: unknown }) {
   const read = readThink(think);
   if (read === undefined) {
     return (
-      <section>
+      <section style={markStyle('ai')}>
+        <AuthorLabel author="ai">AI（考える役）</AuthorLabel>
         <h4>考える役の決定</h4>
         <pre>{JSON.stringify(think, null, 2)}</pre>
       </section>
@@ -28,7 +33,8 @@ function ThinkSection({ think }: { think: unknown }) {
     return value === undefined ? [] : [[label, value] as const];
   });
   return (
-    <section>
+    <section style={markStyle('ai')}>
+      <AuthorLabel author="ai">AI（考える役）</AuthorLabel>
       <h4>考える役の決定</h4>
       <dl>
         {entries.map(([label, value]) => (
@@ -46,14 +52,16 @@ function ThinkSection({ think }: { think: unknown }) {
 function JudgeSection({ judge, read }: { judge: unknown; read: ReturnType<typeof readJudge> }) {
   if (read === undefined) {
     return (
-      <section>
+      <section style={markStyle('ai')}>
+        <AuthorLabel author="ai">AI（見る役）</AuthorLabel>
         <h4>見る役の評価</h4>
         <pre>{JSON.stringify(judge, null, 2)}</pre>
       </section>
     );
   }
   return (
-    <section>
+    <section style={markStyle('ai')}>
+      <AuthorLabel author="ai">AI（見る役）</AuthorLabel>
       <h4>見る役の評価</h4>
       <dl>
         <dt>次に変えること</dt>
@@ -65,25 +73,38 @@ function JudgeSection({ judge, read }: { judge: unknown; read: ReturnType<typeof
   );
 }
 
-// 回ごとの表示をここに閉じる: 口出しが読めるようになったとき、足す場所をこの部品に限るため
+// 回ごとの表示をここに閉じる: 口出しなど回に紐づく記録を足す場所を、この部品に限るため
 export function IterationView({
   jobId,
   iteration,
   calls,
+  verdicts,
+  interventions = [],
 }: {
   jobId: string;
   iteration: Iteration;
   calls: LlmCallSummary[];
+  verdicts: ReadonlyMap<string, SelectionVerdict>;
+  /** この回に取り込んだ人間の指示。考える役の決定の前に出す */
+  interventions?: Intervention[];
 }) {
   const judge = readJudge(iteration.judge);
   return (
     <article>
       <h3>{iteration.iteration} 回目</h3>
+      {interventions.map((intervention) => (
+        <InterventionItem
+          key={intervention.interventionId}
+          intervention={intervention}
+          showStatus={false}
+        />
+      ))}
       {iteration.think !== null && <ThinkSection think={iteration.think} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {iteration.images.map((image) => {
           // 評価の並びは画像の並びと同じ: 見る役の出力が画像の枚数ぶんをちょうど返すため
           const evaluation = judge?.images[image.index];
+          const imageKey = formatImageKey({ iteration: iteration.iteration, index: image.index });
           return (
             <figure key={image.index} style={{ margin: 0 }}>
               <a href={image.url}>
@@ -105,6 +126,11 @@ export function IterationView({
                   </>
                 )}
               </figcaption>
+              <SelectionControls
+                jobId={jobId}
+                imageKey={imageKey}
+                verdict={verdicts.get(imageKey) ?? null}
+              />
             </figure>
           );
         })}
@@ -124,11 +150,15 @@ export function IterationList({
   heading,
   iterations,
   calls,
+  verdicts,
+  interventions = [],
 }: {
   jobId: string;
   heading: string;
   iterations: Iteration[];
   calls: LlmCallSummary[];
+  verdicts: ReadonlyMap<string, SelectionVerdict>;
+  interventions?: Intervention[];
 }) {
   return (
     <section>
@@ -139,6 +169,12 @@ export function IterationList({
           key={iteration.iteration}
           jobId={jobId}
           iteration={iteration}
+          verdicts={verdicts}
+          interventions={interventions.filter(
+            (intervention) =>
+              intervention.kind === 'instruction' &&
+              intervention.appliedInIteration === iteration.iteration,
+          )}
           calls={calls.filter((call) => call.iteration === iteration.iteration)}
         />
       ))}
