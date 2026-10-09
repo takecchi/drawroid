@@ -154,7 +154,12 @@ export class FsJobStore implements JobStore {
     return this.paths.jobFiles(jobId);
   }
 
-  async createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec> {
+  async createJob(
+    spec: NewJobSpec,
+    state: JobState,
+    now: Date,
+    references: readonly NewReference[] = [],
+  ): Promise<JobSpec> {
     await mkdir(this.paths.jobs, { recursive: true });
     for (;;) {
       const jobId = formatJobId(now, this.randomSuffix());
@@ -168,6 +173,8 @@ export class FsJobStore implements JobStore {
       const full = jobSpecSchema.parse({ ...spec, jobId, createdAt: now.toISOString() });
       // job.json を最後に置く: 一覧は job.json のあるディレクトリだけを数えるので、途中で落ちても半端なジョブが見えないため
       await writeJsonAtomic(files.state, jobStateSchema.parse(state));
+      // 参照画像も job.json より先に置く: ランナーがジョブを見つけた時点で、最初の回の境目に要点にできるように
+      for (const reference of references) await this.addReference(jobId, reference, now);
       await writeJsonAtomic(files.spec, full);
       return full;
     }
