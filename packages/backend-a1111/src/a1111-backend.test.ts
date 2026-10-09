@@ -1,9 +1,10 @@
 import { BackendError, generationRequestSchema, type GenerationImages } from '@drawroid/core';
 import { describeImageBackendContract, STUB_PNG } from '@drawroid/core/testing';
+import { solidPng } from '@drawroid/storage-fs/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { A1111Backend } from './a1111-backend.js';
-import { solidPng, startMockA1111, unusedUrl, type MockA1111 } from './test-support/mock-a1111.js';
+import { startMockA1111, unusedUrl, type MockA1111 } from './test-support/mock-a1111.js';
 
 describeImageBackendContract('A1111Backend against the mock A1111 (v1.10.1 fixtures)', {
   connected: async () => {
