@@ -78,3 +78,8 @@ jobs:
       # ワークスペースの中で起動しない: node_modules の上位探索で @drawroid/* や sharp が見えてしまい、固めたものだけで動くかを確かめられないため。
       # 固める・空のディレクトリへ npm install・起動・`/` と `/api/health` の確認まで scripts/check-packed-install.mjs が行う。
       - run: pnpm check:packed-install
+
+      # 同じ job に足す: build 済みの成果物を使い回せ、job を分けると setup と build をもう一度払うため。固めて入れる道具は scripts/packed-install-core.mjs を共有し、tgz は step ごとに作り直す（step 間で受け渡さない）。
+      # 外のサービスには繋がない: Forge と LLM は scripts/packed-conversation/ の偽物を 127.0.0.1 に立てる。実機の Forge・実際のモデルの挙動は確かめない。
+      # 固めたものを起動し、会話 → 発言 → start_drawing → 進み具合 → 画像と評価 → 停止、と SSE の Last-Event-ID での再開を通す（全体の上限 120 秒）。
+      - run: pnpm check:packed-conversation
