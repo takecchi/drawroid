@@ -43,6 +43,10 @@ export interface LlmSettingsFormValues {
   /** 話す役も考える役と同じモデルを使う（roles.talk を省く） */
   talkSameAsThink: boolean;
   talk: RoleValues;
+  /** スキーマに合わない出力を出し直させる回数（空ならサーバの既定） */
+  validationRetries: string;
+  /** 繋がらない・429 などのときに呼び直す回数（空ならサーバの既定） */
+  networkRetries: string;
 }
 
 export function emptyProviderRow(): ProviderRow {
@@ -81,6 +85,8 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
       judge: roleToValues(undefined),
       talkSameAsThink: true,
       talk: roleToValues(undefined),
+      validationRetries: '',
+      networkRetries: '',
     };
   }
   return {
@@ -92,6 +98,8 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
     judge: roleToValues(config.roles.judge ?? config.roles.think),
     talkSameAsThink: config.roles.talk === undefined,
     talk: roleToValues(config.roles.talk ?? config.roles.think),
+    validationRetries: String(config.validationRetries),
+    networkRetries: String(config.networkRetries),
   };
 }
 
@@ -126,25 +134,18 @@ function buildProvider(row: ProviderRow): LlmSettingsInput['providers'][string] 
   } as LlmSettingsInput['providers'][string];
 }
 
-/**
- * 画面の欄の値から、保存する設定を組む。画面に出していない欄（再試行の回数など）は、保存されていた値を保つ。
- */
+/** 画面の欄の値から、保存する設定を組む */
 // 形の誤り（接続先の URL・数・provider の有無）は、ここで直さずにそのまま送る: サーバの検証が理由付きの 400 を返し、画面はそれを出す
-export function buildLlmSettings(
-  values: LlmSettingsFormValues,
-  previous: StoredLlmConfig | null,
-): LlmSettingsInput {
+export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInput {
   const providers = Object.fromEntries(
     values.providers.map((row) => [row.key.trim(), buildProvider(row)]),
   );
   const think = buildRole(values.think);
+  const validationRetries = optionalNumber(values.validationRetries);
+  const networkRetries = optionalNumber(values.networkRetries);
   return {
-    ...(previous === null
-      ? {}
-      : {
-          validationRetries: previous.validationRetries,
-          networkRetries: previous.networkRetries,
-        }),
+    ...(validationRetries === undefined ? {} : { validationRetries }),
+    ...(networkRetries === undefined ? {} : { networkRetries }),
     providers,
     roles: {
       think,

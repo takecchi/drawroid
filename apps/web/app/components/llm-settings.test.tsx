@@ -162,6 +162,37 @@ describe('LlmSettings', () => {
     expect(saved.roles).toEqual({ think: stored.config!.roles.think });
   });
 
+  it('shows and saves how many times to retry', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    expect(input('出力が形に合わないときの再試行の回数').value).toBe('2');
+    expect(input('繋がらない・混んでいるときの再試行の回数').value).toBe('2');
+    await user.clear(input('出力が形に合わないときの再試行の回数'));
+    await user.type(input('出力が形に合わないときの再試行の回数'), '4');
+    await user.clear(input('繋がらない・混んでいるときの再試行の回数'));
+    await user.type(input('繋がらない・混んでいるときの再試行の回数'), '0');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(mocks.saveLlmSettings).toHaveBeenCalledWith({
+      ...stored.config,
+      validationRetries: 4,
+      networkRetries: 0,
+    });
+  });
+
+  it('leaves an emptied retry count to the server default', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.clear(input('繋がらない・混んでいるときの再試行の回数'));
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    const [saved] = mocks.saveLlmSettings.mock.calls[0] as [object];
+    expect(saved).not.toHaveProperty('networkRetries');
+    expect(saved).toHaveProperty('validationRetries', 2);
+  });
+
   it('shows why when the settings cannot be built, and keeps what was typed', async () => {
     const user = userEvent.setup();
     mocks.saveLlmSettings.mockRejectedValue(
