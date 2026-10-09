@@ -13,7 +13,9 @@ import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createApi } from '../index.js';
+import { hc } from 'hono/client';
+
+import { createApi, type AppType } from '../index.js';
 
 let root: string;
 let store: FsJobStore;
@@ -143,6 +145,27 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
     expect(await store.listInterventions(jobId)).toEqual([]);
   });
 
+  it('gives the hono client a typed body for an intervention', async () => {
+    const jobId = await createAuto();
+    const client = hc<AppType>('http://localhost', { fetch: app.request });
+    const interventions = client.jobs.auto[':jobId'].interventions;
+
+    const res = await interventions.$post({
+      param: { jobId },
+      json: { kind: 'instruction', text: '逆光にして' },
+    });
+    expect(res.status).toBe(202);
+
+    // 本文の形が違えば、送る前に型で弾かれる
+    const wrong = () =>
+      interventions.$post({
+        param: { jobId },
+        // @ts-expect-error instruction には text が要る
+        json: { kind: 'instruction' },
+      });
+    expect((await wrong()).status).toBe(400);
+  });
+
   it('answers 404 for a job that is not an automatic job', async () => {
     const manual = await store.createJob(
       {
@@ -161,5 +184,25 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
 
     expect((await intervene(manual.jobId, { kind: 'instruction', text: 'x' })).status).toBe(404);
     expect((await intervene('no-such-job', { kind: 'instruction', text: 'x' })).status).toBe(404);
+  });
+});
+
+describe('GET /jobs/auto/:jobId/stop-conditions', () => {
+  it('reads the stop conditions in effect, after changes, next to the submitted ones', async () => {
+    const jobId = await createAuto({ aiJudgement: false, maxIterations: 5 });
+    await intervene(jobId, { kind: 'stopConditions', stopConditions: { maxIterations: 8 } });
+    await intervene(jobId, { kind: 'stopConditions', stopConditions: { maxImages: 20 } });
+
+    const res = await app.request(`/jobs/auto/${jobId}/stop-conditions`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      submitted: { aiJudgement: false, maxIterations: 5 },
+      current: { aiJudgement: false, maxIterations: 8, maxImages: 20 },
+    });
+  });
+
+  it('answers 404 for a job that is not an automatic job', async () => {
+    expect((await app.request('/jobs/auto/no-such-job/stop-conditions')).status).toBe(404);
   });
 });
