@@ -64,6 +64,7 @@ async function main() {
       configPath,
       backendKind: args.backend,
       backendUrl: args.backendUrl,
+      caller: 'cli',
       env: process.env,
       webRoot: resolveWebRoot,
     });
@@ -309,6 +310,7 @@ async function main() {
             backendKind: inUse.kind,
             backendUrl: inUse.url,
             backendUrlSource: inUse.urlSource,
+            caller: 'screen',
             env: process.env,
             webRoot: resolveWebRoot,
           });

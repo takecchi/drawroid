@@ -26,6 +26,8 @@ afterEach(() => {
 
 describe('BackendUrlSettings', () => {
   const field = () => screen.getByLabelText<HTMLInputElement>('バックエンドの URL');
+  // 「保存した」だけで探さない: 引数で決まっているときの注意書き（「ここで保存した URL は…」）にも当たり、知らせの有無を見誤るため
+  const savedNotice = /^保存した。.+ に繋ぐ。$/;
 
   it('starts the field with the URL it is connected to now, not an empty field', () => {
     vi.mocked(useBackendSettings).mockReturnValue({
@@ -85,11 +87,11 @@ describe('BackendUrlSettings', () => {
     await user.clear(field());
     await user.type(screen.getByLabelText('バックエンドの URL'), 'http://127.0.0.1:7861');
     await user.click(screen.getByRole('button', { name: '保存' }));
-    await screen.findByText(/保存した/);
+    await screen.findByText(savedNotice);
 
     await user.type(screen.getByLabelText('バックエンドの URL'), 'http://');
 
-    expect(screen.queryByText(/保存した/)).toBeNull();
+    expect(screen.queryByText(savedNotice)).toBeNull();
   });
 
   // 欠けた形や {} で流さない: 本番の API が返す view（保存は urlSource 'config'）でしか起きない崩れを見落とすため
@@ -128,7 +130,7 @@ describe('BackendUrlSettings', () => {
     await user.type(field(), 'http://127.0.0.1:7861');
 
     await user.click(saveButton());
-    await screen.findByText(/保存した。/);
+    await screen.findByText(savedNotice);
 
     expect(saveButton()).toHaveProperty('disabled', false);
   });
@@ -148,7 +150,7 @@ describe('BackendUrlSettings', () => {
       await user.click(saveButton());
 
       expect(await screen.findByText(`保存できない: ${busy}`)).toBeTruthy();
-      expect(screen.queryByText(/保存した。/)).toBeNull();
+      expect(screen.queryByText(savedNotice)).toBeNull();
       expect(field().value).toBe('http://127.0.0.1:7861');
     });
 
