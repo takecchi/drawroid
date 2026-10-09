@@ -3,7 +3,7 @@ import type { ImageBackend, JobStore, ManualGenerationRunner } from '@drawroid/c
 import { describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { LlmNotConfiguredError } from '../stop-conditions.js';
+import { LlmNotConfiguredError } from '../stop-condition-parse.js';
 
 function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
   return createApi({

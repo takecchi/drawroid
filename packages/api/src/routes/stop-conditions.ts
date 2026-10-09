@@ -1,30 +1,21 @@
+import { readStopConditions } from '@drawroid/core';
 import { Hono } from 'hono';
-import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { conflict, describeIssues, invalidRequest } from '../errors.js';
-import { LlmNotConfiguredError } from '../stop-conditions.js';
+import { notFound } from '../errors.js';
+import { isAutoJob } from './auto-jobs.js';
 
-const bodySchema = z.object({
-  text: z.string().refine((text) => text.trim().length > 0, { message: '止める条件の文が空' }),
-});
-
-/** 止める条件の自然言語を案に変換する。案を返すだけで、何も保存しない */
-export function stopConditionsRoutes({ stopConditionParser }: ApiDeps) {
-  return new Hono().post('/parse', async (c) => {
-    const body = bodySchema.safeParse(await c.req.json().catch(() => undefined));
-    if (!body.success) return invalidRequest(c, describeIssues(body.error));
-    try {
-      const draft = await stopConditionParser.parse(body.data.text, c.req.raw.signal);
-      if (!draft.ok) {
-        return c.json({ error: { kind: 'unparsable' as const, message: draft.reason } }, 422);
-      }
-      return c.json({ draft }, 200);
-    } catch (error) {
-      if (error instanceof LlmNotConfiguredError) {
-        return conflict(c, error.message, 'llm_not_configured');
-      }
-      throw error;
-    }
+/** 自動ジョブの止める条件。投入したときの条件と、走行中の変更を重ねた今の条件 */
+export function stopConditionsRoutes({ store }: ApiDeps) {
+  return new Hono().get('/:jobId/stop-conditions', async (c) => {
+    const jobId = c.req.param('jobId');
+    if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
+    const spec = await store.readJob(jobId);
+    if (spec.kind !== 'auto') return notFound(c, `自動ジョブ ${jobId} は無い`);
+    // 投入時の条件も返す: job.json は書き換えないので、画面が「何から変わったか」を出せるように
+    return c.json(
+      { submitted: spec.stopConditions, current: await readStopConditions(store, spec) },
+      200,
+    );
   });
 }

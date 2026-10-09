@@ -33,6 +33,7 @@ export async function setup() {
       stop: async () => undefined,
       addInstruction: notUsed,
       changeStopConditions: notUsed,
+      addReference: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },

@@ -4,6 +4,8 @@ import type {
   InterventionRecord,
   JobStore,
   ManualGenerationRunner,
+  NewReference,
+  ReferenceRecord,
   StopConditions,
   StopConditionsChange,
 } from '@drawroid/core';
@@ -17,6 +19,8 @@ export type AutoJobQueue = {
   addInstruction(jobId: string, text: string): Promise<InterventionRecord>;
   /** 重ねたあとの実際の止める条件を返す。断るときは InterventionRejectedError を投げる */
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
+  /** 断るときは InterventionRejectedError を投げる */
+  addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
 };
 
 export type LlmSettingsStore = {
@@ -25,7 +29,7 @@ export type LlmSettingsStore = {
 };
 
 import type { BackendSettingsPort } from './backend-settings.js';
-import type { StopConditionParser } from './stop-conditions.js';
+import type { StopConditionParser } from './stop-condition-parse.js';
 
 export type ApiDeps = {
   backend: ImageBackend;
