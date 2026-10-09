@@ -631,3 +631,80 @@ describe('interrupting from the human', () => {
     expect(await jobs.listJobIds()).toEqual([]);
   });
 });
+
+describe('interrupting and adopting, in more detail', () => {
+  it('scope all while a tool runs: waits for the tool, then stops the job the tool made', async () => {
+    const judging = blocking(judge, () => true);
+    const { say, talk, conversationId, jobs, jobRunner, toolEntered, openTool } = await setup({
+      judge: judging.script,
+      gateStartDrawing: true,
+      talk: (_call, n) =>
+        n === 0
+          ? {
+              toolCalls: [
+                {
+                  name: 'start_drawing',
+                  input: {
+                    request: '夕暮れの海辺の少女',
+                    stopConditions: { aiJudgement: false, maxIterations: 3 },
+                  },
+                },
+              ],
+            }
+          : { text: 'はい' },
+    });
+    await say('夕暮れの海辺の少女を描いて');
+    await vi.waitFor(() => expect(toolEntered.value).toBe(true));
+
+    const interrupting = talk.interrupt(conversationId, 'all');
+    await tick();
+    openTool();
+    const done = await within(interrupting);
+    await within(talk.idle(conversationId));
+    await within(jobRunner.idle());
+
+    const [jobId] = await jobs.listJobIds();
+    expect(done).toEqual({ turn: true, job: jobId });
+    expect(await stoppedReason(jobs, jobId!)).toBe('human');
+  });
+
+  it('stops as adopted when only the choice is given, even after an instruction taken in an earlier iteration', async () => {
+    const judging = blocking(judge, (n) => n === 1);
+    const { say, talk, conversationId, jobs, jobRunner, llm, submit } = await setup({
+      judge: judging.script,
+      talk: (_call, n) =>
+        n === 0 ? { toolCalls: [{ name: 'adopt_image', input: {} }] } : { text: 'これで止めます' },
+    });
+    const jobId = await submit({ aiJudgement: false, maxIterations: 5 });
+    await jobRunner.addInstruction(jobId, '逆光にして');
+    jobRunner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+
+    await say('これでいい');
+    await within(talk.idle(conversationId));
+    await within(jobRunner.idle());
+
+    expect(await stoppedReason(jobs, jobId)).toBe('adopted');
+    expect(llm.calls.filter((c) => c.purpose === 'think')).toHaveLength(2);
+  });
+
+  it('adopt_image without an iteration takes the latest iteration', async () => {
+    const judging = blocking(judge, (n) => n === 1);
+    const { say, talk, conversationId, jobs, jobRunner, submit } = await setup({
+      judge: judging.script,
+      talk: (_call, n) =>
+        n === 0 ? { toolCalls: [{ name: 'adopt_image', input: {} }] } : { text: 'これで止めます' },
+    });
+    const jobId = await submit({ aiJudgement: false, maxIterations: 5 });
+    jobRunner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+
+    await say('これでいい');
+    await within(talk.idle(conversationId));
+    await within(jobRunner.idle());
+
+    expect(await jobs.readAdopted(jobId, 2)).toMatchObject({ image: { iteration: 2, index: 0 } });
+    expect(await jobs.readSelection(jobId, '2-0')).toMatchObject({ verdict: 'favorite' });
+    expect(await jobs.readSelection(jobId, '1-0')).toBeUndefined();
+  });
+});
