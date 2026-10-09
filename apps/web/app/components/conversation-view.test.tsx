@@ -306,14 +306,39 @@ describe('ConversationView', () => {
     expect(screen.getByRole('link', { name: 'ジョブの詳細' }).getAttribute('href')).toBe(
       `/jobs/${JOB}`,
     );
-    expect(screen.getByAltText(/2 回目の画像 1/).getAttribute('src')).toBe(
+    expect(screen.getByAltText(/2 回目の画像 2 番/).getAttribute('src')).toBe(
       `/api/files/jobs/${JOB}/iterations/2/images/1.preview.webp`,
     );
-    await user.click(screen.getByRole('button', { name: 'お気に入り' }));
+    await user.click(screen.getByRole('button', { name: 'お気に入り: 2 回目の画像 2 番' }));
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
 
-    await user.click(screen.getByRole('button', { name: '却下' }));
+    await user.click(screen.getByRole('button', { name: '却下: 2 回目の画像 2 番' }));
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'rejected');
+  });
+
+  it('names each image button after its image, so that they can be told apart when read aloud', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 1,
+        images: [
+          { index: 0, seed: 1 },
+          { index: 1, seed: 2 },
+        ],
+      }),
+    );
+
+    expect(
+      screen
+        .getAllByRole('button', { name: /^お気に入り/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['お気に入り: 1 回目の画像 1 番', 'お気に入り: 1 回目の画像 2 番']);
+    expect(screen.getByAltText('1 回目の画像 1 番（seed 1）')).toBeTruthy();
   });
 
   it('sends while the assistant is still replying, and stops through the actions', async () => {

@@ -44,10 +44,13 @@ function JobLink({ jobId }: { jobId: string }) {
 function VerdictButtons({
   jobId,
   imageKey,
+  imageLabel,
   verdict,
 }: {
   jobId: string;
   imageKey: string;
+  /** どの画像のボタンか（「2 回目の画像 1 番」）。読み上げでは、どの画像も同じ「お気に入り」になってしまうため */
+  imageLabel: string;
   verdict: SelectionVerdict | null;
 }) {
   const [pending, setPending] = useState(false);
@@ -65,24 +68,29 @@ function VerdictButtons({
     }
   }
   const small = 'h-7 px-2 text-xs';
+  const favorite = verdict === 'favorite' ? 'お気に入りを外す' : 'お気に入り';
+  const reject = verdict === 'rejected' ? '却下を外す' : '却下';
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap gap-1">
+        {/* 読み上げの名前は見える文言で始める: 声で操作する人が、見えている文言で呼べるように */}
         <Button
           className={small}
           disabled={pending}
           aria-pressed={verdict === 'favorite'}
+          aria-label={`${favorite}: ${imageLabel}`}
           onClick={() => void choose(verdict === 'favorite' ? null : 'favorite')}
         >
-          {verdict === 'favorite' ? 'お気に入りを外す' : 'お気に入り'}
+          {favorite}
         </Button>
         <Button
           className={small}
           disabled={pending}
           aria-pressed={verdict === 'rejected'}
+          aria-label={`${reject}: ${imageLabel}`}
           onClick={() => void choose(verdict === 'rejected' ? null : 'rejected')}
         >
-          {verdict === 'rejected' ? '却下を外す' : '却下'}
+          {reject}
         </Button>
       </div>
       {error !== undefined && <p className="text-xs text-destructive">選べない: {error}</p>}
@@ -106,15 +114,24 @@ function ImagesItem({ item }: { item: Extract<ChatItem, { kind: 'images' }> }) {
         const imageKey = formatImageKey({ iteration: item.iteration, index: image.index });
         const urls = jobImageUrls(item.jobId, item.iteration, image.index);
         const verdict = verdicts.get(imageKey) ?? null;
+        // 1 から数える: 人が選んだ回の表示（「N 回目の画像 M 番」）と同じ呼び方にするため
+        const imageLabel = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
         return {
           key: imageKey,
           href: urls.url,
           src: urls.previewUrl,
-          alt: `${item.iteration} 回目の画像 ${image.index}（seed ${image.seed ?? '不明'}）`,
+          alt: `${imageLabel}（seed ${image.seed ?? '不明'}）`,
           score: image.score === undefined ? undefined : formatScore(image.score),
           issues: image.issues,
           verdict,
-          actions: <VerdictButtons jobId={item.jobId} imageKey={imageKey} verdict={verdict} />,
+          actions: (
+            <VerdictButtons
+              jobId={item.jobId}
+              imageKey={imageKey}
+              imageLabel={imageLabel}
+              verdict={verdict}
+            />
+          ),
         };
       })}
     />

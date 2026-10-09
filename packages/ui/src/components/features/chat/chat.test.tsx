@@ -69,6 +69,13 @@ describe('ToolCallCard', () => {
     expect(screen.getByText('済み')).toBeTruthy();
     expect(screen.getByText('ジョブを作った')).toBeTruthy();
   });
+
+  it('is named after the tool and its state, so that it reads as one card', () => {
+    render(<ToolCallCard name="describe_backend" state="error" result="繋がらない" />);
+
+    const card = screen.getByRole('group', { name: 'ツール describe_backend: 失敗' });
+    expect(card.textContent).toContain('繋がらない');
+  });
 });
 
 describe('GenerationProgress', () => {
