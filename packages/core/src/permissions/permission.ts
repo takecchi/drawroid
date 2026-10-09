@@ -69,6 +69,48 @@ export const permissionOverridesSchema = z
   .object(Object.fromEntries(PARAM_KEYS.map((key) => [key, schemaFor(key).optional()])))
   .strict() as unknown as z.ZodType<Partial<Permissions>>;
 
+/** 読めなかった上書きの行。param が '*' なら、上書き全体が読めなかった */
+export interface InvalidPermission {
+  param: string;
+  reason: string;
+}
+
+/**
+ * 書かれた上書き（config.json の permissions）を、行ごとに読む。読めない行は外し、理由を invalid に返す。
+ * 外した行は上書きが無いのと同じなので、土台（既定）に戻る。
+ */
+// 1行の誤りで全体を捨てない: 人間が書き損じた1行のために、起動も画面も止まり、ほかの許可まで効かなくなるため
+export function readPermissionOverrides(raw: unknown): {
+  overrides: Partial<Permissions>;
+  invalid: InvalidPermission[];
+} {
+  if (raw === undefined) return { overrides: {}, invalid: [] };
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return {
+      overrides: {},
+      invalid: [{ param: '*', reason: '許可が、パラメータごとの欄の集まりになっていない' }],
+    };
+  }
+  const overrides: Record<string, unknown> = {};
+  const invalid: InvalidPermission[] = [];
+  for (const [param, value] of Object.entries(raw)) {
+    if (!(PARAM_KEYS as readonly string[]).includes(param)) {
+      invalid.push({ param, reason: '知らないパラメータ' });
+      continue;
+    }
+    const parsed = schemaFor(param as ParamKey).safeParse(value);
+    if (parsed.success) {
+      overrides[param] = parsed.data;
+      continue;
+    }
+    const reason = parsed.error.issues
+      .map((issue) => `${issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}${issue.message}`)
+      .join(' / ');
+    invalid.push({ param, reason });
+  }
+  return { overrides: overrides as Partial<Permissions>, invalid };
+}
+
 export type DisabledReason = { kind: 'backend'; detail: string } | { kind: 'no-mask' };
 
 export interface IterationConditions {

@@ -8,6 +8,7 @@ import {
   permissionOverridesSchema,
   permissionSchema,
   permissionsSchema,
+  readPermissionOverrides,
   REQUIRED_PARAM_KEYS,
   type Permissions,
 } from './permission.js';
@@ -221,5 +222,34 @@ describe('fixed values', () => {
       permissionsSchema.safeParse({ ...allAuto(), width: { mode: 'fixed', value: 'wide' } })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('readPermissionOverrides', () => {
+  it('keeps the rows it can read and says why each of the others is left out', () => {
+    const { overrides, invalid } = readPermissionOverrides({
+      steps: { mode: 'fixed', value: 28 },
+      cfgScale: { mode: 'fixed', value: 'seven' },
+      prompt: { mode: 'off' },
+      denoise: { mode: 'auto' },
+    });
+
+    expect(overrides).toEqual({ steps: { mode: 'fixed', value: 28 } });
+    expect(invalid.map(({ param }) => param)).toEqual(['cfgScale', 'prompt', 'denoise']);
+    expect(invalid[0]?.reason).toContain('value');
+    expect(invalid[2]?.reason).toBe('知らないパラメータ');
+  });
+
+  it('reads nothing written as no overrides', () => {
+    expect(readPermissionOverrides(undefined)).toEqual({ overrides: {}, invalid: [] });
+  });
+
+  it('leaves the whole out when it is not a set of rows, and says so', () => {
+    const { overrides, invalid } = readPermissionOverrides(['steps']);
+
+    expect(overrides).toEqual({});
+    expect(invalid).toEqual([
+      { param: '*', reason: '許可が、パラメータごとの欄の集まりになっていない' },
+    ]);
   });
 });

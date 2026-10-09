@@ -102,6 +102,8 @@ export {
   mergePermissions,
   type Permission,
   permissionOverridesSchema,
+  readPermissionOverrides,
+  type InvalidPermission,
   permissionSchema,
   permissionsSchema,
   REQUIRED_PARAM_KEYS,

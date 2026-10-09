@@ -120,6 +120,7 @@ function PermissionRow({
   row,
   effective,
   unavailable,
+  invalid,
   defaults,
   onChange,
 }: {
@@ -127,6 +128,7 @@ function PermissionRow({
   row: Row;
   effective: Permission | undefined;
   unavailable: string | undefined;
+  invalid: string | undefined;
   defaults: DefaultWords;
   onChange: (row: Row) => void;
 }) {
@@ -140,6 +142,7 @@ function PermissionRow({
       <TableCell className="align-top whitespace-normal">
         {effective !== undefined &&
           `${describePermission(effective)}${row.mode === 'default' ? `（${defaults.note}）` : ''}`}
+        {invalid !== undefined && <ErrorNote>無効（既定に戻る）: {invalid}</ErrorNote>}
         {unavailable !== undefined && (
           <p className="my-1">
             バックエンドで使えない: {unavailable}（許可しても AI の選択肢から外れる）
@@ -187,11 +190,14 @@ function PermissionRow({
 export function PermissionTable({
   rows,
   effective,
+  invalid = new Map(),
   defaults,
   onChange,
 }: {
   rows: Rows;
   effective: Partial<Record<ParamKey, Permission>>;
+  /** 書かれていたが読めなかった行（パラメータ → 理由）。その行は既定に戻っている */
+  invalid?: ReadonlyMap<string, string>;
   defaults: DefaultWords;
   onChange: (rows: Rows) => void;
 }) {
@@ -219,6 +225,7 @@ export function PermissionTable({
             row={rows[param]}
             effective={effective[param]}
             unavailable={unavailable.get(param)}
+            invalid={invalid.get(param)}
             defaults={defaults}
             onChange={(row) => onChange({ ...rows, [param]: row })}
           />
