@@ -102,6 +102,14 @@ try {
         (await toolRow.locator('details summary').textContent()) === '詳しく',
       `${label}: ツールの行は「描き始める」と出し、生の呼び出しは「詳しく」に畳む`,
     );
+    // 見えている要約にはジョブの ID を出さない（閉じた「詳しく」の中の全文には残る）
+    const shownText = String(
+      await toolRow.evaluate((el) => /** @type {HTMLElement} */ (el).innerText),
+    );
+    expect(
+      !/\d{8}-\d{6}-[0-9a-z]+/.test(shownText) && shownText.includes('ジョブで描き始めた。'),
+      `${label}: ツールの行の要約に、ジョブの ID を出さない（見えている文字: ${shownText.replace(/\n/g, ' / ')}）`,
+    );
     if (width < 768) {
       // 描いている間も、入力欄が細くならない: 止める・送るは印だけで、名前は読み上げに残る
       const stop = page.getByRole('button', { name: '止める' });
