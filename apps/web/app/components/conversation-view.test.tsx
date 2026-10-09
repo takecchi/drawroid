@@ -389,6 +389,36 @@ describe('telling the jobs of one conversation apart', () => {
     expect(screen.getByRole('dialog', { name: /猫を描いて 1 回目の画像 1 番/ })).toBeTruthy();
   });
 
+  it('numbers the second job drawn from the same request, so their images still differ', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    for (const jobId of ['job-1', 'job-2']) {
+      stream.emit(
+        confirmed({
+          type: 'job.started',
+          jobId,
+          request: '猫を描いて',
+          stopConditions: { aiJudgement: true, maxIterations: 3 },
+        }),
+      );
+      stream.emit(
+        confirmed({ type: 'job.images', jobId, iteration: 1, images: [{ index: 0, seed: 7 }] }),
+      );
+    }
+
+    expect(
+      await screen.findByRole('button', {
+        name: '大きく見る: 猫を描いて 1 回目の画像 1 番（seed 7）',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: '大きく見る: 猫を描いて（2） 1 回目の画像 1 番（seed 7）',
+      }),
+    ).toBeTruthy();
+  });
+
   it('calls a job without a request a manual generation', () => {
     expect(jobNameOf(undefined)).toBe('手動の生成');
     expect(jobNameOf('  ')).toBe('手動の生成');
