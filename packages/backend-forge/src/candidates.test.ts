@@ -1,0 +1,63 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { listForgeCandidates } from './candidates.js';
+import { ForgeClient } from './client.js';
+import { json, startMockForge, type MockForge } from './test-support/mock-forge.js';
+
+let forge: MockForge;
+let client: ForgeClient;
+
+beforeEach(async () => {
+  forge = await startMockForge();
+  client = new ForgeClient({ baseUrl: forge.url, timeoutMs: 5_000 });
+});
+
+afterEach(async () => {
+  await forge.close();
+});
+
+describe('listForgeCandidates', () => {
+  it('names checkpoints by title so that each one is unambiguous', async () => {
+    expect(await listForgeCandidates(client, 'checkpoint')).toEqual([
+      { name: 'animagine-xl-4.0.safetensors [6327eca98b]', label: 'animagine-xl-4.0' },
+      { name: 'real/juggernaut-xl.safetensors', label: 'real/juggernaut-xl' },
+    ]);
+  });
+
+  it('reads VAEs from sd-modules, which Forge uses instead of sd-vae', async () => {
+    expect(await listForgeCandidates(client, 'vae')).toEqual([
+      { name: 'sdxl_vae.safetensors' },
+      { name: 'clip_l.safetensors' },
+    ]);
+  });
+
+  it('names LoRAs by the name that resolves even when aliases collide, showing the alias', async () => {
+    expect(await listForgeCandidates(client, 'lora')).toEqual([
+      { name: 'detail-tweaker-xl' },
+      { name: 'watercolor_style_v2', label: 'watercolor' },
+    ]);
+  });
+
+  it('lists samplers and schedulers', async () => {
+    expect(await listForgeCandidates(client, 'sampler')).toEqual([
+      { name: 'Euler a' },
+      { name: 'DPM++ 2M' },
+    ]);
+    expect(await listForgeCandidates(client, 'scheduler')).toEqual([
+      { name: 'automatic', label: 'Automatic' },
+      { name: 'karras', label: 'Karras' },
+    ]);
+  });
+
+  it('returns an empty list when Forge has none of a kind', async () => {
+    forge.route('GET /sdapi/v1/loras', json(200, []));
+    expect(await listForgeCandidates(client, 'lora')).toEqual([]);
+  });
+
+  it('reports a list with an unexpected shape as a bad response', async () => {
+    forge.route('GET /sdapi/v1/sd-models', json(200, [{ unexpected: true }]));
+    await expect(listForgeCandidates(client, 'checkpoint')).rejects.toMatchObject({
+      kind: 'bad_response',
+    });
+  });
+});
