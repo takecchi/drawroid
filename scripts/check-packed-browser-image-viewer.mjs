@@ -3,9 +3,10 @@
 // 2. 左右のキーで、同じ回の隣の画像へ、端まで来たら次の回の画像へ送る
 // 3. Esc で閉じ、焦点は最後に見ていた画像の縮小版へ戻る
 // 4. 狭い画面（390×844）でも、窓と画像が画面の中に収まり、横にはみ出さない。横へなぞると次の画像へ送る
+// 5. ジョブの詳細の画像も、同じ窓で大きく見られる
 // 会話は、組み立てた @drawroid/storage-fs で置き場所へ直に書いてから起動する（画像を生成せずに画像の行を作るため）。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,7 +24,7 @@ const PER_ITERATION = 4;
 /**
  * 画像の行が2回ぶんある会話を置き場所へ直に書く（回ごとに 512px の画像4枚。回ごとに色を変える）
  * @param {string} root データディレクトリ
- * @returns {Promise<string>} 会話の ID
+ * @returns {Promise<{ conversationId: string, jobId: string }>}
  */
 async function seed(root) {
   const storage = await import(join(repoRoot, 'packages/storage-fs/dist/index.js'));
@@ -50,16 +51,9 @@ async function seed(root) {
   /** @param {Record<string, unknown>} event */
   const append = (event) => conversations.appendEvent(conversationId, event, new Date());
   await append({ type: 'user.message', text: '海辺の少女を描いて', attachments: [] });
+  const jobs = new storage.FsJobStore(root);
   for (let iteration = 1; iteration <= ITERATIONS; iteration += 1) {
-    const dir = join(
-      root,
-      'jobs',
-      job.jobId,
-      'iterations',
-      String(iteration).padStart(4, '0'),
-      'images',
-    );
-    await mkdir(dir, { recursive: true });
+    const images = [];
     for (let index = 0; index < PER_ITERATION; index += 1) {
       const png = await sharp({
         create: {
@@ -71,8 +65,22 @@ async function seed(root) {
       })
         .png()
         .toBuffer();
-      await writeFile(join(dir, `${index}.png`), png);
+      images.push({ png, seed: index, metadata: {} });
     }
+    // 置き場所の書き方で回を書く: ジョブの詳細は request.json と画像の記録のある回だけを数えるため
+    await jobs.writeGeneration(
+      job.jobId,
+      iteration,
+      {
+        prompt: '海辺の少女',
+        steps: 20,
+        cfgScale: 7,
+        width: 512,
+        height: 512,
+        batchSize: PER_ITERATION,
+      },
+      { images, metadata: {} },
+    );
     await append({
       type: 'job.images',
       jobId: job.jobId,
@@ -80,7 +88,7 @@ async function seed(root) {
       images: Array.from({ length: PER_ITERATION }, (_, index) => ({ index, seed: index })),
     });
   }
-  return conversationId;
+  return { conversationId, jobId: job.jobId };
 }
 
 const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-packed-viewer-'));
@@ -93,7 +101,7 @@ let forge;
 try {
   const bin = await packAndInstall(work);
   const dataDir = join(work, 'data');
-  const conversationId = await seed(dataDir);
+  const { conversationId, jobId } = await seed(dataDir);
   // 偽の Forge に繋ぐ: 画面はバックエンドの状態を読むので、繋がらない先だと 502 がコンソールに出るため
   forge = await startFakeForge({ fixturesDir: FIXTURES, genMs: 0 });
   const port = await freePort();
@@ -159,6 +167,15 @@ try {
       String(focused).startsWith(`大きく見る: ${last}`),
       `${label}: Esc で閉じ、焦点は最後に見ていた画像（${last}）の縮小版へ戻る（${String(focused)}）`,
     );
+
+    // ジョブの詳細の画像も、同じ窓で大きく見られる
+    await page.goto(`${base}/jobs/${jobId}`);
+    await page.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 0）' }).click();
+    await page.getByRole('dialog', { name: /1 回目の画像 1 番/ }).waitFor();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({ state: 'detached' });
+    expect(true, `${label}: ジョブの詳細の画像も、同じ窓で大きく見られる`);
 
     expect(
       problems.length === 0,
