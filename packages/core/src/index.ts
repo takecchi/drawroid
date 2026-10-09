@@ -59,6 +59,7 @@ export type {
   TextPart,
   ToolSpec,
 } from './llm/port.js';
+export { sealMessages } from './llm/port.js';
 export * from './llm/record.js';
 export * from './loop/budget.js';
 export * from './loop/carry.js';
