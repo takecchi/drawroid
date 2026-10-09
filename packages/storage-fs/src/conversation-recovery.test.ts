@@ -167,6 +167,53 @@ describe('filling in the job events a restart left out', () => {
       'job.stopped',
     ]);
   });
+
+  it('carries the thinking left in the stage files onto the think and judge events it writes', async () => {
+    const conversations = new FsConversationStore(root);
+    const hubs = new ConversationHubs({ store: conversations });
+    const { conversationId } = await conversations.createConversation(new Date());
+    const files = new FsJobStore(root);
+    // 思考は段の出力（think.json・judge.json）に残る。橋渡しを通さずに回し、イベントは書き足しだけで出す
+    const runner = new JobRunner({
+      store: files,
+      llm: new ScriptedLlm(
+        { think, judge },
+        {
+          reasoning: {
+            think: (_call, n) => `考える思考${n}`,
+            judge: (_call, n) => `見る思考${n}`,
+          },
+        },
+      ),
+      backend: new StubBackend(),
+      budget: DEFAULT_BUDGET,
+      permissions: basicPermissions({ width: 64, height: 64 }),
+    });
+    await files.createJob(
+      {
+        kind: 'auto',
+        request: '夕暮れの海辺に立つ少女',
+        stopConditions: { aiJudgement: false, maxIterations: 1 },
+        batchSize: 1,
+        conversationId,
+        turn: 1,
+      },
+      { status: 'queued', carry: { intent: '夕暮れの海辺に立つ少女', completedIterations: 0 } },
+      new Date(),
+    );
+    runner.kick();
+    await runner.idle();
+
+    await backfillJobEvents({ jobs: files, conversations, hubs });
+
+    const events = (await conversations.readEvents(conversationId)).events;
+    expect(events.find((e) => e.type === 'job.think')).toMatchObject({
+      reasoning: expect.stringMatching(/^考える思考\d+$/),
+    });
+    expect(events.find((e) => e.type === 'job.judge')).toMatchObject({
+      reasoning: expect.stringMatching(/^見る思考\d+$/),
+    });
+  });
 });
 
 describe('the words of the conversation in the distillation of its job', () => {
