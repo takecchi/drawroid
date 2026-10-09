@@ -25,6 +25,8 @@ catalog:
   # SPA でもビルド時に要る。dependencies に無いと、react-router のビルドが package.json を書き換えて pnpm install を走らせる
   '@react-router/node': ^7.18.2
   isbot: ^5.2.1
+  # Web UI のデータ取得（packages/swr）。ポーリングで画面を更新する
+  swr: ^2.5.1
   vite: ^8.2.1
 
 # `pnpm --filter <存在しないパッケージ名>` が黙って exit 0 を返すのを塞ぐ。
