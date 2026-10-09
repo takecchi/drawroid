@@ -129,6 +129,12 @@ try {
       );
     }
 
+    // 1 回目の隣の画像（2 回目）ができてから窓を開く: 1 回目しか無いと「次の画像」は塗る錠と関わりなく押せないので、
+    // 塗っている間に隣へ送らないこと（2.）も、送ったあと前後へ送れること（4.）も、生成の速さ次第の確かめになるため
+    await page
+      .getByRole('button', { name: /^大きく見る: .*2 回目の画像 1 番/ })
+      .first()
+      .waitFor({ state: 'attached' });
     const thumbnail = page.getByRole('button', { name: /^大きく見る: .*1 回目の画像 1 番/ });
     await thumbnail.scrollIntoViewIfNeeded();
     await thumbnail.click();
@@ -210,6 +216,7 @@ try {
         paintButton: await dialog.getByRole('button', { name: 'マスクを塗る' }).count(),
         lockNote: await dialog.getByText(/塗っている間は前後へ送れない/).count(),
         nextEnabled: await dialog.getByRole('button', { name: '次の画像' }).isEnabled(),
+        position: await dialog.locator('[data-numeric]').first().textContent(),
       };
       expect(
         returned.sentNote === 1 &&
