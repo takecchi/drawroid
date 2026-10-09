@@ -2,10 +2,12 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { stubDeps } from './test-support.js';
+
 import { createApp } from './server.js';
 
 const webRoot = fileURLToPath(new URL('./test-fixtures/web', import.meta.url));
-const app = createApp({ webRoot });
+const app = createApp({ webRoot, deps: stubDeps() });
 
 describe('createApp', () => {
   it('serves the API under /api', async () => {

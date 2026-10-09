@@ -1,0 +1,14 @@
+[
+  {
+    "name": "detail-tweaker-xl",
+    "alias": "detail-tweaker-xl",
+    "path": "/forge/models/Lora/detail-tweaker-xl.safetensors",
+    "metadata": {}
+  },
+  {
+    "name": "watercolor_style_v2",
+    "alias": "watercolor",
+    "path": "/forge/models/Lora/watercolor_style_v2.safetensors",
+    "metadata": { "ss_network_dim": "32" }
+  }
+]
