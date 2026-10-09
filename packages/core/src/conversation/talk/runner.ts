@@ -4,8 +4,9 @@ import type { ConversationEvent } from '../events.js';
 import type { ConversationHubs } from '../hub.js';
 import type { ConversationStore } from '../store.js';
 import { buildTalkInput, type TalkStepRecord } from './input.js';
-import type { TalkLimits } from './limits.js';
+import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
 import type { TalkTool } from './tools.js';
+import { TalkWindowReader } from './window.js';
 
 export type TalkRunnerDeps = {
   store: ConversationStore;
@@ -68,9 +69,13 @@ export class TalkRunner {
   private readonly holdOps = new Map<string, Promise<void>>();
   private readonly now: () => Date;
   private readonly newCallId: (now: Date) => string;
+  private readonly window: TalkWindowReader;
+  /** 最後に読んだ設定の、直近の発言の件数 */
+  private recentMessages = DEFAULT_TALK_LIMITS.recentMessages;
   private seq = 0;
 
   constructor(private readonly deps: TalkRunnerDeps) {
+    this.window = new TalkWindowReader(deps.store);
     this.now = deps.now ?? (() => new Date());
     this.newCallId =
       deps.newCallId ??
@@ -125,9 +130,7 @@ export class TalkRunner {
     try {
       const turn = this.active.get(conversationId);
       if (turn?.readSeqs === undefined) return;
-      const events = await readAll(this.deps.store, conversationId);
-      const read = new Set(events.flatMap((e) => (e.type === 'turn.started' ? e.messageSeqs : [])));
-      const fresh = events.some((e) => e.type === 'user.message' && !read.has(e.seq));
+      const fresh = (await this.window.read(conversationId, 0)).unread.length > 0;
       // 読んでいる間にターンが替わっていたら、新しいターンが読むので何もしない
       if (!fresh || turn.finished || this.active.get(conversationId) !== turn) return;
       this.requestInterrupt(turn);
@@ -217,14 +220,11 @@ export class TalkRunner {
 
   private async runTurnBody(conversationId: string, state: ActiveTurn): Promise<boolean> {
     const hub = this.deps.hubs.get(conversationId);
-    const events = await readAll(this.deps.store, conversationId);
-    const read = new Set(events.flatMap((e) => (e.type === 'turn.started' ? e.messageSeqs : [])));
-    const unread = events
-      .filter((e) => e.type === 'user.message' && !read.has(e.seq))
-      .map((e) => e.seq);
+    // 会話の末尾から、要る分だけ読む（頭から全部は読まない）。直近の発言の件数は、最後に分かっている設定で読み、
+    // 設定を読んでから足りなければ読み足す（読む前に設定を待たない: 発言を受けてからターンを始めるまでを延ばさないため）
+    const window = await this.window.read(conversationId, this.recentMessages);
+    const { unread, nextTurn: turn } = window;
     if (unread.length === 0) return false;
-    const turn =
-      Math.max(0, ...events.flatMap((e) => (e.type === 'turn.started' ? [e.turn] : []))) + 1;
     await hub.confirm({ type: 'turn.started', turn, messageSeqs: unread });
     state.readSeqs = new Set(unread);
     // 発言を受けたら、ターンが全部終わるまでジョブの LLM の段を待たせる
@@ -246,6 +246,12 @@ export class TalkRunner {
       return true;
     }
     const limits = await this.deps.limits();
+    this.recentMessages = limits.recentMessages;
+    const { events, oldest } = await this.window.widen(
+      conversationId,
+      window,
+      limits.recentMessages,
+    );
     const job = await this.deps.jobSummary?.(events);
     const info = llm.describe('talk');
     // ツールには打ち切りを伝えない: 実行中のツールは最後まで走らせる（途中で止めると、ジョブが半分だけできる）
@@ -261,6 +267,7 @@ export class TalkRunner {
         const final = step === limits.maxSteps - 1 || repeated;
         const messages = buildTalkInput({
           events,
+          earlierMessages: oldest !== undefined,
           messageSeqs: unread,
           ...(job === undefined ? {} : { job }),
           steps,
@@ -457,19 +464,5 @@ export class TalkRunner {
       await end('error', `ターンが失敗した: ${message}`);
     }
     return true;
-  }
-}
-
-async function readAll(
-  store: ConversationStore,
-  conversationId: string,
-): Promise<ConversationEvent[]> {
-  const events: ConversationEvent[] = [];
-  let after = 0;
-  for (;;) {
-    const page = await store.readEvents(conversationId, { after });
-    events.push(...page.events);
-    after = page.last;
-    if (!page.more) return events;
   }
 }
