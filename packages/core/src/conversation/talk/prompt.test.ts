@@ -9,6 +9,7 @@ import type { MemoryStore } from '../../memory/store.js';
 import { StubBackend } from '../../testing/stub-backend.js';
 import { createDrawingTools, type DrawingToolDeps } from '../drawing-tools.js';
 import { createMemoryTools } from '../memory-tools.js';
+import { createReviewTools, type ReviewToolDeps } from '../review-tools.js';
 import { buildTalkInput, TALK_SYSTEM, TALK_SYSTEM_MAX_CHARS } from './input.js';
 import { DEFAULT_TALK_LIMITS } from './limits.js';
 import { createReadOnlyTools, TALK_TOOL_DESCRIPTION_MAX_CHARS } from './tools.js';
@@ -22,6 +23,7 @@ const tools = [
   }),
   ...createDrawingTools({} as DrawingToolDeps),
   ...createMemoryTools({ memory: {} as MemoryStore, now: () => new Date() }),
+  ...createReviewTools({} as ReviewToolDeps),
 ];
 const descriptionOf = (name: string) => tools.find((tool) => tool.name === name)!.description;
 const lineWith = (word: string) => TALK_SYSTEM.split('\n').find((line) => line.includes(word));

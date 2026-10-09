@@ -6,7 +6,6 @@ import type { GenerationProgressPort } from '../conversation/generation-progress
 import type { AnyImageRef, ImageRef, JobStore, ReferenceImageRef } from '../job/store.js';
 import {
   stopConditionsChangeSchema,
-  type AdoptIntervention,
   type AdoptedRecord,
   type AutoJobSpec,
   type InterventionRecord,
@@ -43,6 +42,7 @@ import {
   type ReferenceLimits,
 } from '../reference/reference.js';
 import { DEFAULT_BUDGETS, resolveBudgets, type Budgets } from '../budget/settings.js';
+import { adoptionCutting, latestAdoption } from './adoption.js';
 import type { Budget } from './budget.js';
 import {
   adoptAsBest,
@@ -1054,10 +1054,10 @@ export class JobRunner {
     iteration: number,
   ): Promise<AdoptedRecord | undefined> {
     const { store } = this.deps;
-    const done = await store.readAdopted(spec.jobId, iteration);
-    if (done !== undefined) return done;
-    const chosen = latestAdoption(await store.listInterventions(spec.jobId));
-    if (chosen?.image.iteration !== iteration) return undefined;
+    const cut = await adoptionCutting(store, spec.jobId, iteration);
+    if (cut === undefined) return undefined;
+    if (cut.state === 'recorded') return cut.record;
+    const chosen = cut.intervention;
     const record: AdoptedRecord = {
       by: 'human',
       image: chosen.image,
@@ -1213,12 +1213,6 @@ export class JobRunner {
       reason,
     };
   }
-}
-
-function latestAdoption(
-  interventions: readonly InterventionRecord[],
-): AdoptIntervention | undefined {
-  return interventions.findLast((i): i is AdoptIntervention => i.kind === 'adopt');
 }
 
 /** 次の回の「考える」が取り込む、人間の指示があるか（取り込みかけて落ちたものも含む） */

@@ -5,6 +5,7 @@ import type { ImageRef, JobStore } from '../job/store.js';
 import type { AutoJobSpec } from '../job/types.js';
 import type { LlmPort } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
+import { adoptionCutting } from '../loop/adoption.js';
 import { buildJudgeInput } from '../loop/inputs.js';
 import { defaultCallId } from '../loop/runner.js';
 import { buildJudgeOutputSchema, type JudgeOutput } from '../loop/schemas.js';
@@ -208,9 +209,7 @@ async function loopSkipsJudging(
   jobId: string,
   iteration: number,
 ): Promise<boolean> {
-  if ((await jobs.readAdopted(jobId, iteration)) !== undefined) return true;
-  const chosen = (await jobs.listInterventions(jobId)).findLast((i) => i.kind === 'adopt');
-  return chosen?.kind === 'adopt' && chosen.image.iteration === iteration;
+  return (await adoptionCutting(jobs, jobId, iteration)) !== undefined;
 }
 
 async function earlierReview(
