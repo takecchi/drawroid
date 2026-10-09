@@ -164,6 +164,9 @@ describe('distilling in the background after a stopped job is reselected', () =>
     await flush();
     expect(t.llm!.calls).toHaveLength(0);
     t.timers.advance(1);
+    // 期限が来た時点で、もう走っている（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(1);
     await t.distiller.idle();
 
     expect(t.llm!.calls).toHaveLength(1);
@@ -195,6 +198,9 @@ describe('distilling in the background after a stopped job is reselected', () =>
     await flush();
     expect(t.llm!.calls).toHaveLength(0);
     t.timers.advance(1);
+    // 期限が来た時点で、もう走っている（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(1);
     await t.distiller.idle();
 
     expect(t.llm!.calls).toHaveLength(1);
@@ -432,6 +438,9 @@ describe('the default quiet time', () => {
     await flush();
     expect(t.llm!.calls).toHaveLength(0);
     t.timers.advance(1);
+    // 期限が来た時点で、もう走っている（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(1);
     await t.distiller.idle();
 
     expect(t.llm!.calls).toHaveLength(1);
