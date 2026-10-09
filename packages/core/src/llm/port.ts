@@ -2,8 +2,11 @@ import type { ZodType } from 'zod';
 import type { ModelWindow } from '../loop/budget.js';
 
 export type LlmRole = 'think' | 'judge';
-/** stop-parse は止める条件の自然言語を構造化する呼び出し。考える役のモデルで行う */
-export type LlmPurpose = 'think' | 'judge' | 'distill' | 'stop-parse';
+/**
+ * stop-parse は止める条件の自然言語を構造化する呼び出し。考える役のモデルで行う。
+ * ref-gist は見る役が参照画像を1度だけ見て要点を書く呼び出し。
+ */
+export type LlmPurpose = 'think' | 'judge' | 'distill' | 'stop-parse' | 'ref-gist';
 
 export type TextPart = { type: 'text'; text: string };
 export type ImagePart = {

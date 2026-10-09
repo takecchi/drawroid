@@ -53,12 +53,21 @@ function jobFiles(dir: string) {
   const iterations = join(dir, 'iterations');
   const llmCalls = join(dir, 'llm-calls');
   const interventions = join(dir, 'interventions');
+  const refs = join(dir, 'refs');
   return {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
     /** ジョブが止まったときと選び直したときの蒸留の記録 */
     distill: join(dir, 'distill.json'),
+    refs,
+    /** 人間が添えた参照画像（原寸） */
+    ref: (refId: string, ext: string) => join(refs, `${refId}.${ext}`),
+    /** 参照画像の用途の言葉・要点・渡した印 */
+    refMeta: (refId: string) => join(refs, `${refId}.json`),
+    /** LLM に渡す縮小版。長辺を名前に入れる（生成された画像の縮小版と同じ形） */
+    refPreview: (refId: string, longEdge: number) =>
+      join(refs, `${refId}.preview-${longEdge}.webp`),
     interventions,
     /** 口出し1件 */
     intervention: (interventionId: string) => join(interventions, `${interventionId}.json`),

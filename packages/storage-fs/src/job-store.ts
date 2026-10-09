@@ -5,8 +5,11 @@ import { join, relative } from 'node:path';
 import {
   generationRequestSchema,
   interventionRecordSchema,
+  isReferenceImageRef,
   jobSpecSchema,
   jobStateSchema,
+  referenceRecordSchema,
+  type AnyImageRef,
   type GenerationRequest,
   type GenerationResult,
   type ImageRef,
@@ -17,7 +20,10 @@ import {
   type LlmCallRecord,
   type NewIntervention,
   type NewJobSpec,
+  type NewReference,
   type PreviewImage,
+  type ReferenceImageRef,
+  type ReferenceRecord,
   type StageName,
   type StoredGeneration,
 } from '@drawroid/core';
@@ -108,6 +114,16 @@ async function listNames(dir: string): Promise<string[]> {
   }
 }
 
+const EXTENSIONS: Record<ReferenceRecord['mediaType'], string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
+
+function extensionOf(mediaType: ReferenceRecord['mediaType']): string {
+  return EXTENSIONS[mediaType];
+}
+
 // UTC で書く: 地方時だと夏時間の切り替えで、名前の順と作成の順が食い違うため
 export function formatJobId(now: Date, suffix: string): string {
   const iso = now.toISOString(); // 2026-10-09T06:30:12.345Z
@@ -155,7 +171,12 @@ export class FsJobStore implements JobStore {
     return this.paths.jobFiles(jobId);
   }
 
-  async createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec> {
+  async createJob(
+    spec: NewJobSpec,
+    state: JobState,
+    now: Date,
+    references: readonly NewReference[] = [],
+  ): Promise<JobSpec> {
     await mkdir(this.paths.jobs, { recursive: true });
     for (;;) {
       const jobId = formatJobId(now, this.randomSuffix());
@@ -169,6 +190,8 @@ export class FsJobStore implements JobStore {
       const full = jobSpecSchema.parse({ ...spec, jobId, createdAt: now.toISOString() });
       // job.json を最後に置く: 一覧は job.json のあるディレクトリだけを数えるので、途中で落ちても半端なジョブが見えないため
       await writeJsonAtomic(files.state, jobStateSchema.parse(state));
+      // 参照画像も job.json より先に置く: ランナーがジョブを見つけた時点で、最初の回の境目に要点にできるように
+      for (const reference of references) await this.addReference(jobId, reference, now);
       await writeJsonAtomic(files.spec, full);
       return full;
     }
@@ -337,39 +360,105 @@ export class FsJobStore implements JobStore {
     await writeJsonAtomic(files[stage], value);
   }
 
-  async loadPreview(image: ImageRef, longEdge: number): Promise<PreviewImage> {
-    const files = this.jobFiles(image.jobId).iteration(image.iteration);
-    const previewPath = files.preview(image.index, longEdge);
+  async loadPreview(image: AnyImageRef, longEdge: number): Promise<PreviewImage> {
+    const { source, preview, sentInCall } = isReferenceImageRef(image)
+      ? await this.referenceImageFiles(image, longEdge)
+      : await this.generatedImageFiles(image, longEdge);
     let data: Uint8Array;
     try {
-      data = await readFile(previewPath);
+      data = await readFile(preview);
     } catch (error) {
       if (!isNotFound(error)) throw error;
-      data = await sharp(await readFile(files.image(image.index)))
+      data = await sharp(await readFile(source))
         .resize({ width: longEdge, height: longEdge, fit: 'inside', withoutEnlargement: true })
         .webp()
         .toBuffer();
-      await writeFileAtomic(previewPath, data);
+      await writeFileAtomic(preview, data);
     }
     const { width = 0, height = 0 } = await sharp(data).metadata();
-    const sent = (await readJsonIfExists(files.sent(image.index))) as
-      { callId: string } | undefined;
     return {
       key: this.imageKey(image),
       data,
       mediaType: 'image/webp',
       longEdge: Math.max(width, height),
-      ...(sent === undefined ? {} : { sentInCall: sent.callId }),
+      ...(sentInCall === undefined ? {} : { sentInCall }),
     };
   }
 
-  async markSent(image: ImageRef, callId: string, now: Date): Promise<void> {
+  async markSent(image: AnyImageRef, callId: string, now: Date): Promise<void> {
+    if (isReferenceImageRef(image)) {
+      const path = this.refFiles(image.jobId, image.refId).meta;
+      const record = await readValid(path, referenceRecordSchema);
+      if (record.sentInCall !== undefined) {
+        throw new ImageAlreadySentError(this.imageKey(image), record.sentInCall);
+      }
+      await writeJsonAtomic(path, { ...record, sentInCall: callId, sentAt: now.toISOString() });
+      return;
+    }
     const path = this.jobFiles(image.jobId).iteration(image.iteration).sent(image.index);
     const previous = (await readJsonIfExists(path)) as { callId: string } | undefined;
     // 上書きしない: 1枚を2回渡したことが、印を書き換えることで見えなくなるため
     if (previous !== undefined)
       throw new ImageAlreadySentError(this.imageKey(image), previous.callId);
     await writeJsonAtomic(path, { callId, sentAt: now.toISOString() });
+  }
+
+  async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {
+    const files = this.jobFiles(jobId);
+    await mkdir(files.refs, { recursive: true });
+    // 口出しと同じく受けた順の連番にし、refs/<refId>.json を排他的に置いて番号を取る。
+    // 画像のファイルで取り合わない: 拡張子が違うと、同じ番号を2件が取れてしまうため
+    for (;;) {
+      const refId = formatSequenceId((await this.lastSequence(files.refs)) + 1);
+      const record = referenceRecordSchema.parse({
+        refId,
+        receivedAt: now.toISOString(),
+        mediaType: reference.mediaType,
+        ...(reference.note === undefined ? {} : { note: reference.note }),
+      });
+      if (!(await createJsonExclusive(files.refMeta(refId), record))) continue;
+      await writeFileAtomic(files.ref(refId, extensionOf(record.mediaType)), reference.data);
+      return record;
+    }
+  }
+
+  async listReferences(jobId: string): Promise<ReferenceRecord[]> {
+    const files = this.jobFiles(jobId);
+    const records: ReferenceRecord[] = [];
+    for (const name of await this.sequenceNames(files.refs)) {
+      const record = await readValid(join(files.refs, name), referenceRecordSchema);
+      // 番号を取ったあと画像を置く前に落ちた参照は見せない: 渡す画像が無いため
+      if (await exists(files.ref(record.refId, extensionOf(record.mediaType))))
+        records.push(record);
+    }
+    return records;
+  }
+
+  async writeReferenceGist(jobId: string, refId: string, gist: string): Promise<void> {
+    const path = this.refFiles(jobId, refId).meta;
+    const record = await readValid(path, referenceRecordSchema);
+    await writeJsonAtomic(path, referenceRecordSchema.parse({ ...record, gist }));
+  }
+
+  private async generatedImageFiles(image: ImageRef, longEdge: number) {
+    const files = this.jobFiles(image.jobId).iteration(image.iteration);
+    const sent = (await readJsonIfExists(files.sent(image.index))) as
+      { callId: string } | undefined;
+    return {
+      source: files.image(image.index),
+      preview: files.preview(image.index, longEdge),
+      sentInCall: sent?.callId,
+    };
+  }
+
+  private async referenceImageFiles(image: ReferenceImageRef, longEdge: number) {
+    const files = this.refFiles(image.jobId, image.refId);
+    const record = await readValid(files.meta, referenceRecordSchema);
+    return {
+      source: files.image(record.mediaType),
+      preview: files.preview(longEdge),
+      sentInCall: record.sentInCall,
+    };
   }
 
   async writeLlmCall(record: LlmCallRecord): Promise<void> {
@@ -408,8 +497,22 @@ export class FsJobStore implements JobStore {
   }
 
   /** データディレクトリからの相対で、拡張子の無い形（記録と UI で画像を指す） */
-  private imageKey(image: ImageRef): string {
-    const dir = this.jobFiles(image.jobId).iteration(image.iteration).images;
-    return `${relative(this.paths.root, dir).split('\\').join('/')}/${image.index}`;
+  private imageKey(image: AnyImageRef): string {
+    const files = this.jobFiles(image.jobId);
+    const [dir, name] = isReferenceImageRef(image)
+      ? [files.refs, image.refId]
+      : [files.iteration(image.iteration).images, String(image.index)];
+    return `${relative(this.paths.root, dir).split('\\').join('/')}/${name}`;
+  }
+
+  // 連番の形かを確かめてからパスを組む: 外から来た refId でデータディレクトリの外を指させないため
+  private refFiles(jobId: string, refId: string) {
+    if (!isSequenceId(refId)) throw new Error(`refId の形ではない: ${refId}`);
+    const files = this.jobFiles(jobId);
+    return {
+      meta: files.refMeta(refId),
+      image: (mediaType: ReferenceRecord['mediaType']) => files.ref(refId, extensionOf(mediaType)),
+      preview: (longEdge: number) => files.refPreview(refId, longEdge),
+    };
   }
 }

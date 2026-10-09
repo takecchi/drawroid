@@ -5,6 +5,8 @@ import type {
   JobStore,
   ManualGenerationRunner,
   MemoryStore,
+  NewReference,
+  ReferenceRecord,
   StopConditions,
   StopConditionsChange,
 } from '@drawroid/core';
@@ -20,6 +22,8 @@ export type AutoJobQueue = {
   addInstruction(jobId: string, text: string): Promise<InterventionRecord>;
   /** 重ねたあとの実際の止める条件を返す。断るときは InterventionRejectedError を投げる */
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
+  /** 断るときは InterventionRejectedError を投げる */
+  addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
 };
 
 export type LlmSettingsStore = {

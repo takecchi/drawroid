@@ -35,6 +35,7 @@ function makeApp(env: Record<string, string | undefined>) {
       stop: async () => undefined,
       addInstruction: notUsed,
       changeStopConditions: notUsed,
+      addReference: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: {
