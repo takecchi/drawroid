@@ -58,6 +58,7 @@ describe('MemoryList', () => {
         <MemoryList />
       </MemoryRouter>,
     );
+    expect(screen.getByText('まだ無い。')).toBeTruthy();
     expect(screen.getByText('読めない項目')).toBeTruthy();
     expect(screen.getByText('broken')).toBeTruthy();
     expect(screen.getByText(/front matter が無い/)).toBeTruthy();
