@@ -1,6 +1,7 @@
 // 台本の LLM（OpenAI 互換 /v1/chat/completions、ストリーム対応）。役は model 名で見分ける: talk-model / think-model / judge-model。
 // 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing を呼び、結果が来たら短く返す。
 // toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
+// holdTalk() で、次の話す役の呼び出しを releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
@@ -52,17 +53,20 @@ function generate(schema, hint = '') {
 
 /**
  * @param {{ stopAfterIterations: number }} options 見る役が何回目で止めてよいと言うか
- * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number }, restartJudge: (stopAfter: number) => void }>}
+ * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void }>}
  */
 export async function startFakeLlm({ stopAfterIterations }) {
   let judgeCalls = 0;
   let stopAfter = stopAfterIterations;
   // 話す役が、どの経路で呼ばれたか。native に倒れて通っただけ、を見分けるために数える
-  const stats = { nativeTalkCalls: 0, jsonTalkCalls: 0 };
+  const stats = { nativeTalkCalls: 0, jsonTalkCalls: 0, heldTalkCalls: 0, abortedTalkCalls: 0 };
+  let holdNext = false;
+  /** @type {(() => void) | null} */
+  let releaseHeld = null;
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
-    req.on('end', () => {
+    req.on('end', async () => {
       const path = new URL(req.url ?? '/', 'http://x').pathname;
       if (!(req.method === 'POST' && path === '/v1/chat/completions')) {
         res.writeHead(404);
@@ -70,6 +74,19 @@ export async function startFakeLlm({ stopAfterIterations }) {
       }
       const request = JSON.parse(body);
       const role = String(request.model).replace('-model', '');
+      if (role === 'talk' && holdNext) {
+        holdNext = false;
+        stats.heldTalkCalls++;
+        await new Promise((resolve) => {
+          releaseHeld = () => resolve(undefined);
+          res.on('close', () => resolve(undefined));
+        });
+        releaseHeld = null;
+        if (res.destroyed) {
+          stats.abortedTalkCalls++;
+          return;
+        }
+      }
       const hasToolResult =
         request.messages.some((/** @type {{ role: string }} */ m) => m.role === 'tool') ||
         JSON.stringify(request.messages).includes('で描き始めた');
@@ -200,6 +217,10 @@ export async function startFakeLlm({ stopAfterIterations }) {
     throw new Error('偽の LLM のポートを取れなかった');
   return {
     stats,
+    holdTalk: () => {
+      holdNext = true;
+    },
+    releaseTalk: () => releaseHeld?.(),
     restartJudge: (/** @type {number} */ next) => {
       judgeCalls = 0;
       stopAfter = next;
