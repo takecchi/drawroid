@@ -8,6 +8,7 @@ import {
   FieldSet,
   Input,
   Muted,
+  OkNote,
   Section,
   Select,
   SubSection,
@@ -167,6 +168,8 @@ export function LlmSettings() {
   const [edited, setEdited] = useState<LlmSettingsFormValues | undefined>();
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  // 保存できたことを知らせる: 保存しても欄の見た目は変わらないので、押した人が通ったかを分からないため
+  const [saved, setSaved] = useState(false);
 
   const stored = data?.config ?? null;
   const keyStatus = data !== undefined && 'apiKeyEnv' in data ? data.apiKeyEnv : {};
@@ -174,6 +177,7 @@ export function LlmSettings() {
 
   function change(next: Partial<LlmSettingsFormValues>) {
     if (values === undefined) return;
+    setSaved(false);
     setEdited({ ...values, ...next });
   }
 
@@ -186,10 +190,12 @@ export function LlmSettings() {
     event.preventDefault();
     if (values === undefined) return;
     setSaving(true);
+    setSaved(false);
     setSaveError(undefined);
     try {
       await saveLlmSettings(buildLlmSettings(values));
       setEdited(undefined);
+      setSaved(true);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setSaveError(caught.message);
@@ -361,6 +367,7 @@ export function LlmSettings() {
         </form>
       )}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
+      {saved && <OkNote>保存した。次に話しかけたときから、この設定を使う。</OkNote>}
     </Section>
   );
 }
