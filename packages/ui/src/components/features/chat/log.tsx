@@ -191,8 +191,10 @@ export function ChatLog({
         // 高さ 0 の入れ物を下端に貼り付け、ボタンはその上に重ねる: 背（scrollHeight）を変えると、人がスクロールしたかの判定が狂うため
         <div className="pointer-events-none sticky bottom-0 h-0">
           <div className="absolute inset-x-0 bottom-3 flex justify-center">
+            {/* 目立つ形にする: 画像の上に重なっても見分けられるように */}
             <Button
               size="sm"
+              variant="primary"
               aria-label="新しい行へ"
               onClick={jumpToEnd}
               className="pointer-events-auto shadow-md"
