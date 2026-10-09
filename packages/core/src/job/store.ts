@@ -36,7 +36,13 @@ export type StoredGeneration = {
 /** ジョブの置き場所。core はファイルの置き方を知らず、この口だけを使う */
 export interface JobStore {
   /** job.json と、待ち行列に入った state.json を置く。jobId は置き場所が決める */
-  createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec>;
+  createJob(
+    spec: NewJobSpec,
+    state: JobState,
+    now: Date,
+    /** 依頼に添える参照画像。ジョブが一覧に見える前に置く */
+    references?: readonly NewReference[],
+  ): Promise<JobSpec>;
   /** 作成順（＝ jobId の順） */
   listJobIds(): Promise<string[]>;
   readJob(jobId: string): Promise<JobSpec>;
