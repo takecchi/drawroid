@@ -61,10 +61,9 @@ export function autoJobsRoutes(deps: ApiDeps) {
         },
         { status: 'queued', carry: createCarry(request, deps.budget).carry },
         now,
+        // ジョブを作ってから足さない: ランナーが先にジョブを拾うと、最初の回の「考える」に要点が載らないため
+        references ?? [],
       );
-      // 待ち行列を回す前に置く: 最初の回の境目で要点にできるように
-      for (const reference of references ?? [])
-        await store.addReference(spec.jobId, reference, now);
       autoQueue.kick();
       return c.json({ jobId: spec.jobId }, 202);
     })
