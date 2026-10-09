@@ -48,8 +48,12 @@ describe('ReferenceList', () => {
     );
 
     expect(screen.getByText(/白いワンピースの立ち姿/)).toBeTruthy();
-    expect(screen.getByText(/call-0001/)).toBeTruthy();
     expect(screen.getByText(/次の回の境目で/)).toBeTruthy();
+    // 呼び出しの ID は作り手向けなので、閉じた「詳しく」の中に畳む
+    const details = screen.getByText('call-0001').closest('details');
+    expect(details?.open).toBe(false);
+    expect(details?.querySelector('summary')?.textContent).toBe('詳しく');
+    expect(screen.getAllByText('詳しく')).toHaveLength(1);
   });
 
   it('says so when no image is attached', () => {
