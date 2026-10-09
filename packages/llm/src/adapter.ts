@@ -124,6 +124,48 @@ type Streamed = {
 /** 流れている間に呼び手へ渡すもの */
 type StreamEvent = { kind: 'text' | 'reasoning'; text: string };
 
+/**
+ * 本文に書かれた思考（<think>…</think>）を、流れている間に思考へ振り分ける。タグが増分の境目で割れても拾う。
+ * 思考を本文の欄に書くローカル LLM で、思考が返答として画面に出ないようにするため
+ */
+class ThinkTagSplitter {
+  private inThink = false;
+  private pending = '';
+
+  push(chunk: string): StreamEvent[] {
+    const out: StreamEvent[] = [];
+    let buffer = this.pending + chunk;
+    this.pending = '';
+    for (;;) {
+      const tag = this.inThink ? THINK_CLOSE : THINK_OPEN;
+      const at = buffer.toLowerCase().indexOf(tag);
+      if (at === -1) break;
+      this.emit(out, buffer.slice(0, at));
+      buffer = buffer.slice(at + tag.length);
+      this.inThink = !this.inThink;
+    }
+    // 終わりがタグの途中かもしれない分は、次の増分まで持つ
+    const lower = buffer.toLowerCase();
+    const tag = this.inThink ? THINK_CLOSE : THINK_OPEN;
+    let keep = Math.min(tag.length - 1, lower.length);
+    while (keep > 0 && !tag.startsWith(lower.slice(-keep))) keep -= 1;
+    this.pending = buffer.slice(buffer.length - keep);
+    this.emit(out, buffer.slice(0, buffer.length - keep));
+    return out;
+  }
+
+  flush(): StreamEvent[] {
+    const out: StreamEvent[] = [];
+    this.emit(out, this.pending);
+    this.pending = '';
+    return out;
+  }
+
+  private emit(out: StreamEvent[], text: string): void {
+    if (text !== '') out.push({ kind: this.inThink ? 'reasoning' : 'text', text });
+  }
+}
+
 function abortError(signal: AbortSignal): Error {
   if (signal.reason instanceof Error) return signal.reason;
   const error = new Error('呼び手が止めた');
@@ -447,6 +489,19 @@ export class AiSdkLlm implements LlmPort {
       }
       const started = this.now();
       let streamed: Streamed;
+      // 本文の欄に書かれた思考は、思考として流す
+      const splitter = new ThinkTagSplitter();
+      let reasoning = '';
+      let body = '';
+      const emit = function* (part: StreamEvent): Generator<TalkStepPart> {
+        if (part.kind === 'reasoning') {
+          reasoning += part.text;
+          yield { type: 'reasoning-delta', text: part.text };
+        } else {
+          body += part.text;
+          yield { type: 'text-delta', text: part.text };
+        }
+      };
       try {
         const stream = this.pumpStream(call.role, config, {
           instructions: call.messages.system,
@@ -461,11 +516,14 @@ export class AiSdkLlm implements LlmPort {
             break;
           }
           const event = next.value;
-          yield {
-            type: event.kind === 'text' ? 'text-delta' : 'reasoning-delta',
-            text: event.text,
-          };
+          if (event.kind === 'reasoning') {
+            reasoning += event.text;
+            yield { type: 'reasoning-delta', text: event.text };
+            continue;
+          }
+          for (const part of splitter.push(event.text)) yield* emit(part);
         }
+        for (const part of splitter.flush()) yield* emit(part);
       } catch (error) {
         const failure = this.callFailure(call, error);
         attempts.push({
@@ -477,6 +535,16 @@ export class AiSdkLlm implements LlmPort {
         return;
       }
       const durationMs = this.now() - started;
+      // 開きタグをチャットのテンプレートが入れて、閉じタグだけが本文に来るモデル: 流し終えてから、
+      // 閉じタグより前を思考に移して出し直す（流れている間は、閉じタグが来るまで思考と分からないため）
+      const close = body.toLowerCase().lastIndexOf(THINK_CLOSE);
+      if (close !== -1) {
+        const thought = reasoning + body.slice(0, close);
+        const rest = body.slice(close + THINK_CLOSE.length);
+        yield { type: 'retry', reason: '本文に書かれた思考を、思考に移した' };
+        if (thought !== '') yield { type: 'reasoning-delta', text: thought };
+        if (rest !== '') yield { type: 'text-delta', text: rest };
+      }
       const rawOutput = rawOutputOf(streamed);
       if (streamed.finishReason === 'length') {
         attempts.push({ rawOutput, usage: streamed.usage, durationMs });
