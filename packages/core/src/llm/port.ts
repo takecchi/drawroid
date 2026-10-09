@@ -2,7 +2,7 @@ import type { ZodType } from 'zod';
 import type { ModelWindow } from '../loop/budget.js';
 
 export type LlmRole = 'think' | 'judge';
-export type LlmPurpose = 'think' | 'judge';
+export type LlmPurpose = 'think' | 'judge' | 'distill';
 
 export type TextPart = { type: 'text'; text: string };
 export type ImagePart = {

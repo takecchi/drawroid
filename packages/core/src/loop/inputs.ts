@@ -1,7 +1,7 @@
 import { clipText, estimateImageTokens, estimateTextTokens } from '../budget/estimate.js';
-import { type PackLimits, packWithinBudget } from '../budget/pack.js';
+import { packWithinBudget } from '../budget/pack.js';
 import type { MemoryItem } from '../memory/item.js';
-import { selectMemory } from '../memory/select.js';
+import { describeMemoryDrop, type MemoryRoleLimits, selectMemory } from '../memory/select.js';
 import {
   sealMessages,
   type BudgetNote,
@@ -32,7 +32,7 @@ export type PreviewImage = {
 /** 記憶ストアから読んだ全項目と、この役の記憶の予算。どれを載せるかは組み立て器が選ぶ */
 export type MemoryInput = {
   items: readonly MemoryItem[];
-  limits: PackLimits;
+  limits: MemoryRoleLimits;
 };
 
 export class InputOverBudgetError extends Error {
@@ -67,9 +67,9 @@ const JUDGE_SYSTEM = [
 ].join('\n');
 
 /** 入力の1区画。必須でない区画は、入力の上限に入らなければ落とす */
-type Section = { name: string; text: string };
+export type Section = { name: string; text: string };
 
-class SectionWriter {
+export class SectionWriter {
   readonly notes: BudgetNote[] = [];
 
   clip(section: string, text: string, limit: number): string {
@@ -128,7 +128,7 @@ class SectionWriter {
 /**
  * 必須の区画は必ず入れ、任意の区画は渡した順を優先順位として、入力の上限に入るものだけを入れる。
  */
-function seal(args: {
+export function seal(args: {
   system: string;
   writer: SectionWriter;
   required: Section[];
@@ -178,11 +178,11 @@ function memorySections(
 ): Section[] {
   if (memory === undefined) return [];
   const { selected, droppedByBudget } = selectMemory(memory.items, carry.intent, memory.limits);
-  for (const { item, reason } of droppedByBudget) {
+  for (const dropped of droppedByBudget) {
     w.notes.push({
       kind: 'dropped',
-      section: `memory[${item.id}]`,
-      reason: reason === 'count' ? '記憶の件数の予算に入らない' : '記憶の文字数の予算に入らない',
+      section: `memory[${dropped.item.id}]`,
+      reason: describeMemoryDrop(dropped, memory.limits),
     });
   }
   return selected.map((item) => ({ name: `memory[${item.id}]`, text: `好み: ${item.body}` }));
