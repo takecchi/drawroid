@@ -10,8 +10,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { describeIssues, invalidRequest, notFound } from '../errors.js';
+import { notFound } from '../errors.js';
 import { referenceUploadsSchema } from '../references.js';
+import { jsonBody } from '../validate.js';
 
 const DEFAULT_STOP_CONDITIONS: StopConditions = { aiJudgement: true, maxIterations: 10 };
 const DEFAULT_BATCH_SIZE = 1;
@@ -41,32 +42,33 @@ export async function isAutoJob(store: JobStore, jobId: string): Promise<boolean
 export function autoJobsRoutes(deps: ApiDeps) {
   const { store, autoQueue } = deps;
 
-  return new Hono()
-    .post('/', async (c) => {
-      const body = createBodySchema.safeParse(await c.req.json().catch(() => undefined));
-      if (!body.success) return invalidRequest(c, describeIssues(body.error));
-      const { request, stopConditions, batchSize, references, permissions } = body.data;
-      const now = (deps.now ?? (() => new Date()))();
-      const spec = await store.createJob(
-        {
-          kind: 'auto',
-          request,
-          stopConditions: stopConditions ?? DEFAULT_STOP_CONDITIONS,
-          batchSize: batchSize ?? DEFAULT_BATCH_SIZE,
-          ...(permissions !== undefined && { permissions }),
-        },
-        { status: 'queued', carry: createCarry(request, deps.budget).carry },
-        now,
-        // ジョブを作ってから足さない: ランナーが先にジョブを拾うと、最初の回の「考える」に要点が載らないため
-        references ?? [],
-      );
-      autoQueue.kick();
-      return c.json({ jobId: spec.jobId }, 202);
-    })
-    .post('/:jobId/stop', async (c) => {
-      const jobId = c.req.param('jobId');
-      if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
-      await autoQueue.stop(jobId);
-      return c.json({ jobId }, 202);
-    });
+  return (
+    new Hono()
+      // validator を通す: 送る本文の型（参照画像は base64 のまま）を、画面の側が hono/client から引けるようにするため
+      .post('/', jsonBody(createBodySchema), async (c) => {
+        const { request, stopConditions, batchSize, references, permissions } = c.req.valid('json');
+        const now = (deps.now ?? (() => new Date()))();
+        const spec = await store.createJob(
+          {
+            kind: 'auto',
+            request,
+            stopConditions: stopConditions ?? DEFAULT_STOP_CONDITIONS,
+            batchSize: batchSize ?? DEFAULT_BATCH_SIZE,
+            ...(permissions !== undefined && { permissions }),
+          },
+          { status: 'queued', carry: createCarry(request, deps.budget).carry },
+          now,
+          // ジョブを作ってから足さない: ランナーが先にジョブを拾うと、最初の回の「考える」に要点が載らないため
+          references ?? [],
+        );
+        autoQueue.kick();
+        return c.json({ jobId: spec.jobId }, 202);
+      })
+      .post('/:jobId/stop', async (c) => {
+        const jobId = c.req.param('jobId');
+        if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
+        await autoQueue.stop(jobId);
+        return c.json({ jobId }, 202);
+      })
+  );
 }

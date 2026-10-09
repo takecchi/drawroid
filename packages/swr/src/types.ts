@@ -1,3 +1,4 @@
+import type { ReferenceUploadInput } from '@drawroid/api';
 import type { InferRequestType, InferResponseType } from 'hono/client';
 
 import type { client } from './client.js';
@@ -55,14 +56,12 @@ export type AddReferenceResponse = Extract<
   InferResponseType<(typeof client.jobs.auto)[':jobId']['interventions']['$post'], 202>,
   { reference: unknown }
 >;
-// client の json は validator の transform 後の型（data が Uint8Array）で推論されるが、線の上を流れるのは入力の base64 文字列。api は入力側の型を出していないため、data だけを置き換える
-type ReferenceBody = Extract<
-  InferRequestType<(typeof client.jobs.auto)[':jobId']['interventions']['$post']>['json'],
-  { kind: 'reference' }
->['image'];
-export type ReferenceUpload = Omit<ReferenceBody, 'data'> & { data: string };
-/** 線の上では base64 のまま流れる。client の型が transform 後の形を要求するので、ここだけで合わせる */
-export type ReferenceWireBody = ReferenceBody;
+/** 参照画像1枚を送るときの形。data は base64 の文字列（api の validator の変換の前の形） */
+export type ReferenceUpload = ReferenceUploadInput;
+export type ReferencesResponse = InferResponseType<
+  (typeof client.jobs.auto)[':jobId']['references']['$get'],
+  200
+>;
 export type SetSelectionResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['selections'][':imageKey']['$put'],
   200

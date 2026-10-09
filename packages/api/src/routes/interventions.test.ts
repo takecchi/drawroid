@@ -9,7 +9,7 @@ import {
   JobRunner,
   ManualGenerationRunner,
 } from '@drawroid/core';
-import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
+import { ScriptedLlm, STUB_PNG, StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -298,5 +298,73 @@ describe('reference images, at submission and as an intervention', () => {
 
     expect(await store.listReferences(jobId)).toEqual([]);
     expect(await store.listJobIds()).toEqual(before);
+  });
+});
+
+describe('the reference images attached to a job, read back (Issue #46)', () => {
+  const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+
+  it('lists the images in the order received, with the words a human added', async () => {
+    const res = await post('/jobs/auto', {
+      request: '夕暮れの海辺の少女',
+      references: [{ mediaType: 'image/png', data: b64(STUB_PNG), note: 'この構図で' }],
+    });
+    const { jobId } = (await res.json()) as { jobId: string };
+    await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(STUB_PNG), note: '服はこれ' },
+    });
+
+    const listed = await app.request(`/jobs/auto/${jobId}/references`);
+
+    expect(listed.status).toBe(200);
+    const { references } = (await listed.json()) as {
+      references: { refId: string; note?: string; gist?: string; previewUrl: string }[];
+    };
+    expect(references.map((r) => r.note)).toEqual(['この構図で', '服はこれ']);
+    expect(references.every((r) => r.gist === undefined)).toBe(true);
+  });
+
+  it('shows the gist and the call that made it, once the judge has looked at the image', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(STUB_PNG) },
+    });
+    const [stored] = await store.listReferences(jobId);
+    await store.writeReferenceGist(jobId, stored!.refId, '白いワンピースの立ち姿');
+    await store.markSent({ jobId, refId: stored!.refId }, 'call-0001', new Date());
+
+    const { references } = (await (await app.request(`/jobs/auto/${jobId}/references`)).json()) as {
+      references: { gist?: string; sentInCall?: string }[];
+    };
+
+    expect(references[0]).toMatchObject({
+      gist: '白いワンピースの立ち姿',
+      sentInCall: 'call-0001',
+    });
+  });
+
+  it('serves a reduced copy of each listed image', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(STUB_PNG) },
+    });
+    const { references } = (await (await app.request(`/jobs/auto/${jobId}/references`)).json()) as {
+      references: { previewUrl: string }[];
+    };
+
+    const image = await app.request(references[0]!.previewUrl.replace(/^\/api/, ''));
+
+    expect(image.status).toBe(200);
+    expect(image.headers.get('content-type')).toBe('image/webp');
+  });
+
+  it('answers 404 for a job that is not an automatic job, and for an image the job does not have', async () => {
+    const jobId = await createAuto();
+
+    expect((await app.request('/jobs/auto/no-such-job/references')).status).toBe(404);
+    expect((await app.request(`/files/jobs/${jobId}/refs/000009.preview.webp`)).status).toBe(404);
   });
 });
