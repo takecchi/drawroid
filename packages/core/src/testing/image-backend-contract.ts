@@ -9,6 +9,7 @@ import {
   type ImageBackend,
 } from '../backend.js';
 import { BackendError } from '../backend-error.js';
+import { STUB_PNG } from './stub-backend.js';
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -93,6 +94,21 @@ export function describeImageBackendContract(
         });
         await expect(
           backend.generate(withSource, new AbortController().signal, new Map()),
+        ).rejects.toMatchObject({ name: 'BackendError', kind: 'failed' });
+      });
+    });
+
+    // ImageBackend.generate の TSDoc「足りなければ失敗する」: 一部だけ渡されたときも通さない
+    it('refuses to generate when only some of the referenced images are passed', async () => {
+      await withBackend(target.connected, async (backend) => {
+        const source = 'iterations/0001/images/0.png';
+        const withMask = generationRequestSchema.parse({
+          ...request,
+          inpaint: { image: source, mask: 'masks/m1.png', denoisingStrength: 0.5 },
+        });
+        const onlySource = new Map([[source, { data: STUB_PNG, mediaType: 'image/png' as const }]]);
+        await expect(
+          backend.generate(withMask, new AbortController().signal, onlySource),
         ).rejects.toMatchObject({ name: 'BackendError', kind: 'failed' });
       });
     });

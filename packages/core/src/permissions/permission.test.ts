@@ -146,3 +146,25 @@ describe('permissions for the fields a generation cannot do without', () => {
     expect(permissionOverridesSchema.safeParse({ denoise: { mode: 'off' } }).success).toBe(false);
   });
 });
+
+describe('the shape of the permissions', () => {
+  it('refuses the global permissions when any one field is missing', () => {
+    for (const key of PARAM_KEYS) {
+      const { [key]: _, ...rest } = allAuto();
+      expect(permissionsSchema.safeParse(rest).success, key).toBe(false);
+    }
+  });
+
+  it('accepts overrides that leave a non-required field to the AI or turn it off', () => {
+    for (const key of PARAM_KEYS.filter(
+      (k) => !(REQUIRED_PARAM_KEYS as readonly ParamKey[]).includes(k),
+    )) {
+      for (const mode of ['auto', 'off'] as const) {
+        expect(
+          permissionOverridesSchema.safeParse({ [key]: { mode } }).success,
+          `${key} ${mode}`,
+        ).toBe(true);
+      }
+    }
+  });
+});
