@@ -129,7 +129,10 @@ try {
         return inside(canvas.getBoundingClientRect()) && send !== undefined && inside(send.getBoundingClientRect())
           && document.documentElement.scrollWidth <= innerWidth;
       })()`);
-      expect(Boolean(fits), `${label}: 塗る面と「マスクを送る」が画面の中に収まり、横にはみ出さない`);
+      expect(
+        Boolean(fits),
+        `${label}: 塗る面と「マスクを送る」が画面の中に収まり、横にはみ出さない`,
+      );
     }
 
     // 3. 塗りかけがある間は、Esc でも窓の外を押しても閉じない
