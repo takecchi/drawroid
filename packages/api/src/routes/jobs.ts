@@ -7,12 +7,18 @@ export function jobsRoutes({ store }: ApiDeps) {
   return new Hono()
     .get('/', async (c) => {
       const jobs = [];
+      const invalid: { jobId: string; reason: string }[] = [];
       // 新しい順: 画面は直近のジョブを上に出す
       for (const jobId of (await store.listJobIds()).reverse()) {
-        const [spec, state] = await Promise.all([store.readJob(jobId), store.readState(jobId)]);
-        jobs.push({ jobId, kind: spec.kind, createdAt: spec.createdAt, state });
+        try {
+          const [spec, state] = await Promise.all([store.readJob(jobId), store.readState(jobId)]);
+          jobs.push({ jobId, kind: spec.kind, createdAt: spec.createdAt, state });
+        } catch (error) {
+          // 一覧ごと失敗させない: 人間が手で触って壊した1件のために、ほかのジョブまで見えなくなるため
+          invalid.push({ jobId, reason: error instanceof Error ? error.message : String(error) });
+        }
       }
-      return c.json({ jobs }, 200);
+      return c.json({ jobs, invalid }, 200);
     })
     .get('/:jobId', async (c) => {
       const jobId = c.req.param('jobId');

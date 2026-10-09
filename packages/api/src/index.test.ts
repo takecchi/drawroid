@@ -1,10 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { BackendError, ManualGenerationRunner } from '@drawroid/core';
 import { STUB_PNG, StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApi } from './index.js';
@@ -111,6 +111,22 @@ describe('manual jobs', () => {
     const second = await generate();
     const { jobs } = (await (await api.request('/jobs')).json()) as { jobs: { jobId: string }[] };
     expect(jobs.map((j) => j.jobId)).toEqual([second, first]);
+  });
+
+  it('keeps listing the other jobs when one job file is broken, naming the broken one', async () => {
+    const broken = await generate();
+    const intact = await generate();
+    await writeFile(dataPaths(root).jobFiles(broken).state, '{ "status": ');
+    const res = await api.request('/jobs');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      jobs: { jobId: string }[];
+      invalid: { jobId: string; reason: string }[];
+    };
+    expect(body.jobs.map((j) => j.jobId)).toEqual([intact]);
+    expect(body.invalid).toEqual([
+      { jobId: broken, reason: expect.stringContaining('state.json') as unknown },
+    ]);
   });
 
   it('records the cause when the backend fails, so the screen can show it', async () => {
