@@ -29,7 +29,7 @@ export function SetupNotice() {
           {llmMissing && (
             <li>
               LLM が未設定なので、話しかけても返事ができない。{' '}
-              <Link to="/generate#llm" className={link}>
+              <Link to="/settings#llm" className={link}>
                 LLM を設定する
               </Link>
             </li>
@@ -37,7 +37,7 @@ export function SetupNotice() {
           {backendDown && (
             <li>
               画像のバックエンド（Forge / A1111）に繋がらないので、描き始めても止まる。{' '}
-              <Link to="/generate#backend" className={link}>
+              <Link to="/settings#backend" className={link}>
                 バックエンドを確かめる
               </Link>
             </li>

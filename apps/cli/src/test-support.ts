@@ -33,7 +33,7 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
       addMask: notUsed,
     },
     budgetSettings: {
-      read: async () => ({ overrides: {}, effective: DEFAULT_BUDGETS }),
+      read: async () => ({ overrides: {}, effective: DEFAULT_BUDGETS, invalid: [] }),
       write: async () => DEFAULT_BUDGETS,
     },
     progressPreviews: new ProgressPreviews(),

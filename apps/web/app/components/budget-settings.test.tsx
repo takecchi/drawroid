@@ -36,7 +36,9 @@ beforeEach(() => {
   mocks.saveBudgetSettings.mockResolvedValue(stored);
 });
 
-const input = (label: string) => screen.getByLabelText<HTMLInputElement>(label);
+// 欄の名前は「日本語の説明（内部名）」。内部名で指す
+const input = (path: string) =>
+  screen.getByLabelText<HTMLInputElement>((name) => name.endsWith(`（${path}）`));
 const saveButton = () => screen.getByRole('button', { name: '予算を保存' });
 
 describe('BudgetSettings', () => {

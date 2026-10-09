@@ -60,6 +60,26 @@ try {
     `CSS が効いている（body の背景色 ${background}）`,
   );
 
+  // キーボードで最初に届くのは「本文へ移動」で、押すと焦点が本文の枠に入る。枠は tabIndex={-1} が無いと焦点を受けられず、
+  // 押しても焦点が link に残る（jsdom の試験は枠を自前で置くので、root.tsx の枠はここでしか見られない）
+  const focused = async () =>
+    String(
+      await page.evaluate(
+        'document.activeElement ? document.activeElement.id || document.activeElement.textContent : ""',
+      ),
+    );
+  await page.keyboard.press('Tab');
+  const firstStop = await focused();
+  expect(firstStop === '本文へ移動', `Tab で最初に「本文へ移動」に届く（焦点: ${firstStop}）`);
+  const urlBeforeSkip = page.url();
+  await page.keyboard.press('Enter');
+  const afterSkip = await focused();
+  expect(
+    afterSkip === 'main-content',
+    `「本文へ移動」を押すと、焦点が本文の枠に入る（焦点: ${afterSkip.slice(0, 40)}）`,
+  );
+  expect(page.url() === urlBeforeSkip, '「本文へ移動」を押しても URL は変わらない');
+
   // 会話を1つ開く: ログと発言の入力欄が出る
   await link.click();
   await page.waitForURL(`${base}/conversations/${conversation.conversationId}`);
@@ -114,7 +134,19 @@ try {
   await composer.press('Enter');
   await log.getByText(/LLM が未設定/).waitFor();
   await notice.getByRole('link', { name: 'LLM を設定する' }).click();
-  await page.waitForURL(`${base}/generate#llm`);
+  await page.waitForURL(`${base}/settings#llm`);
+  // 設定の画面は、初めての人に要るもの（バックエンドと LLM）が上にあり、予算は「詳しい設定」として畳んである
+  const order = await page.evaluate(
+    '["backend", "llm", "budgets"].map((id) => (document.getElementById(id)?.getBoundingClientRect().top ?? NaN) + window.scrollY)',
+  );
+  expect(
+    Array.isArray(order) && order[0] < order[1] && order[1] < order[2],
+    '設定の画面は、バックエンド・LLM・詳しい設定の順に並ぶ',
+  );
+  expect(
+    (await page.locator('details#budgets').getAttribute('open')) === null,
+    '予算は「詳しい設定」として畳んである',
+  );
   await page.getByLabel('provider 1番目 の名前').fill('local');
   await page.getByLabel('provider local の接続先（baseURL）').fill(llm.url);
   await page.getByLabel('考える役の provider').fill('local');
@@ -122,6 +154,10 @@ try {
   await page.getByRole('button', { name: 'LLM の設定を保存' }).click();
   await page.getByText('まだ LLM が設定されていない').waitFor({ state: 'hidden' });
   expect(true, '案内から LLM の設定へ行き、保存できる');
+  // 前のリンク（/generate#llm）は、設定の画面の同じ欄へ送られる
+  await page.goto(`${base}/generate#llm`);
+  await page.waitForURL(`${base}/settings#llm`);
+  expect(true, '前のリンク（/generate#llm）は、設定の画面の LLM の欄へ送られる');
 
   await page.goto(`${base}/conversations/${conversation.conversationId}`);
   await composer.fill('海辺の少女を描いて');

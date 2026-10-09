@@ -28,7 +28,7 @@ type Draft = StopConditionsDraftResponse['draft'];
 function describeParseError(error: unknown): string {
   if (!isApiError(error)) throw error;
   if (error.kind === 'llm_not_configured') {
-    return `LLM が未設定なので文から案を作れない。下の欄に直接書くこともできる（${error.message}）`;
+    return `LLM が未設定なので文から案を作れない。設定の画面の「LLM の設定」で設定するか、下の欄に直接書く（${error.message}）`;
   }
   if (error.kind === 'unparsable') return `文を読み取れなかった: ${error.message}`;
   return error.message;

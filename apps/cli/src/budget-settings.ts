@@ -1,24 +1,31 @@
 import type { BudgetSettingsPort } from '@drawroid/api';
-import { budgetOverridesSchema, resolveBudgets } from '@drawroid/core';
+import { readBudgetOverrides, resolveBudgets } from '@drawroid/core';
 import { readBudgetSettings, writeBudgetSettings } from '@drawroid/storage-fs';
 
 /**
- * config.json の budgets を、読むたびに検証して既定に重ねる。
+ * config.json の budgets を、読むたびに欄ごとに検証して既定に重ねる。読めない欄は既定に戻し、理由を返す。
+ * 読めない欄が変わったときだけ log に出す（直ったときも出す）。
  * 書き換えたら次に投入するジョブから効く。走っているジョブには届けない。
  */
-export function createBudgetSettings(configPath: string): BudgetSettingsPort {
+// 1 か所の書き損じで投入を止めない（許可の #100 と同じ作り）: 効いていない欄は、ログと設定の口（invalid）で見える
+export function createBudgetSettings(
+  configPath: string,
+  log: (line: string) => void = () => undefined,
+): BudgetSettingsPort {
+  let reported = '';
   return {
     read: async () => {
-      const overrides = (await readBudgetSettings(configPath)) ?? {};
-      const parsed = budgetOverridesSchema.safeParse(overrides);
-      // 読めない予算を既定で置き換えない: 人間が書いたはずの予算が効いていないまま、ジョブが投入されるため
-      if (!parsed.success) {
-        const reason = parsed.error.issues
-          .map((issue) => `${issue.path.join('.') || '(budgets)'}: ${issue.message}`)
-          .join('; ');
-        throw new Error(`config.json の budgets が不正: ${reason}`);
+      const { overrides, invalid } = readBudgetOverrides(await readBudgetSettings(configPath));
+      const now = invalid.map((i) => `${i.path}: ${i.reason}`).join('; ');
+      if (now !== reported) {
+        log(
+          now === ''
+            ? 'drawroid: config.json の budgets がすべて読めるようになった'
+            : `drawroid: config.json の budgets に読めない欄があり、既定に戻した: ${now}`,
+        );
+        reported = now;
       }
-      return { overrides: parsed.data, effective: resolveBudgets(parsed.data) };
+      return { overrides, effective: resolveBudgets(overrides), invalid };
     },
     write: async (overrides) => {
       await writeBudgetSettings(configPath, overrides);

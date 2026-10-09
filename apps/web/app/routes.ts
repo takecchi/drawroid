@@ -4,6 +4,7 @@ export default [
   index('routes/conversations.tsx'),
   route('conversations/:conversationId', 'routes/conversation.tsx'),
   route('generate', 'routes/generate.tsx'),
+  route('settings', 'routes/settings.tsx'),
   route('memory', 'routes/memory.tsx'),
   route('memory/:id', 'routes/memory-item.tsx'),
   route('permissions', 'routes/permissions.tsx'),

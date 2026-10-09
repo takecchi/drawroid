@@ -43,6 +43,7 @@ describe('/settings/budgets', () => {
       overrides: {},
       effective: DEFAULT_BUDGETS,
       defaults: DEFAULT_BUDGETS,
+      invalid: [],
     });
   });
 

@@ -40,7 +40,7 @@ export const noPermissionSettings: PermissionSettingsStore = {
 export function memoryBudgetSettings(initial: BudgetOverrides = {}): BudgetSettingsPort {
   let overrides = initial;
   return {
-    read: async () => ({ overrides, effective: resolveBudgets(overrides) }),
+    read: async () => ({ overrides, effective: resolveBudgets(overrides), invalid: [] }),
     write: async (next) => {
       overrides = next;
       return resolveBudgets(next);

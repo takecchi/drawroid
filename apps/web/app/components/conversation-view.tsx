@@ -1,4 +1,4 @@
-import { formatImageKey, type SelectionVerdict } from '@drawroid/core';
+import { formatImageKey, LLM_NOT_CONFIGURED_REASON, type SelectionVerdict } from '@drawroid/core';
 import { isApiError, jobImageUrls, setSelection, useSelections } from '@drawroid/swr';
 import {
   Button,
@@ -41,6 +41,26 @@ export interface ConversationActions {
   send(text: string, clientMessageId: string): Promise<void>;
   stop(): Promise<void>;
 }
+
+/** 設定の画面の欄への道。名前は設定の画面の欄の名前にそろえる */
+function SettingsLink({ to }: { to: 'llm' | 'backend' }) {
+  return (
+    <Link
+      to={`/settings#${to}`}
+      className="text-xs text-primary underline-offset-4 hover:underline"
+    >
+      {to === 'llm' ? 'LLM の設定へ' : 'バックエンドの設定へ'}
+    </Link>
+  );
+}
+
+/** 設定を直せば直るバックエンドの失敗（繋がらない・URL が違う・認証・応答が無い） */
+const BACKEND_SETUP_ERRORS: ReadonlySet<string> = new Set([
+  'unreachable',
+  'not_found',
+  'unauthorized',
+  'timeout',
+]);
 
 function JobLink({ jobId }: { jobId: string }) {
   return (
@@ -285,7 +305,12 @@ function renderItem(
       );
     case 'turn-error':
       return (
-        <StopNotice key={item.key} tone="error">
+        <StopNotice
+          key={item.key}
+          tone="error"
+          // LLM が未設定で閉じたターンには、設定の欄への道を添える
+          action={item.reason === LLM_NOT_CONFIGURED_REASON ? <SettingsLink to="llm" /> : undefined}
+        >
           応答が失敗した{item.reason === undefined ? '' : `: ${item.reason}`}
         </StopNotice>
       );
@@ -338,7 +363,17 @@ function renderItem(
                 ? 'stopped'
                 : 'done'
           }
-          action={<JobLink jobId={item.jobId} />}
+          action={
+            <>
+              {/* バックエンドに繋がらずに止まったジョブには、設定の欄への道を添える */}
+              {item.reason.kind === 'error' &&
+                item.reason.backendErrorKind !== undefined &&
+                BACKEND_SETUP_ERRORS.has(item.reason.backendErrorKind) && (
+                  <SettingsLink to="backend" />
+                )}
+              <JobLink jobId={item.jobId} />
+            </>
+          }
         >
           描くのを止めた: {summarizeStopReason(item.reason)}
         </StopNotice>

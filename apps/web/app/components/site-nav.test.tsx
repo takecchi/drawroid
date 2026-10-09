@@ -20,7 +20,8 @@ describe('SiteNav', () => {
 
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
     expect(hrefOf('会話')).toBe('/');
-    expect(hrefOf('生成と設定')).toBe('/generate');
+    expect(hrefOf('設定')).toBe('/settings');
+    expect(hrefOf('手動で生成')).toBe('/generate');
     expect(hrefOf('依頼')).toBe('/jobs/new');
     expect(hrefOf('ジョブ')).toBe('/jobs');
     expect(hrefOf('記憶')).toBe('/memory');
@@ -38,9 +39,7 @@ describe('SiteNav', () => {
       );
 
       expect(screen.getByRole('link', { name: '会話' }).getAttribute('aria-current')).toBe('page');
-      expect(
-        screen.getByRole('link', { name: '生成と設定' }).getAttribute('aria-current'),
-      ).toBeNull();
+      expect(screen.getByRole('link', { name: '設定' }).getAttribute('aria-current')).toBeNull();
       cleanup();
     }
   });
