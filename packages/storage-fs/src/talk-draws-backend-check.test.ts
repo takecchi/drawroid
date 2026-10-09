@@ -154,6 +154,23 @@ describe('checking the backend before starting to draw', () => {
     expect(jobIds).toHaveLength(1);
   });
 
+  it('waits for a slow backend that answers within the limit, instead of refusing it', async () => {
+    // たまたま遅いが繋がるバックエンド: 待ちの上限より短い時間で答える（上限で切られたら、待ちを止めて投げる）
+    const { result, jobIds } = await askToDraw(
+      (signal) =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 1_000);
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new BackendError('aborted', '呼び手が止めた'));
+          });
+        }),
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(jobIds).toHaveLength(1);
+  }, 10_000);
+
   it('starts the job without asking when no check is wired', async () => {
     const { result, jobIds } = await askToDraw();
 
