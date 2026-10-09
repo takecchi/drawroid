@@ -1,6 +1,7 @@
 // 固めた @drawroid/cli を空のディレクトリへ npm install して起動し、ヘッドレスの Chromium で Web UI を開けることを確かめる
 // （M0 の受け入れ基準「ブラウザで Web UI が開ける」）。HTTP の確かめ（check-packed-install）では見えない、JS が動いて画面が描かれること・
 // CSS が効いていること・コンソールにエラーが出ないことを見る。
+// 続けて、はじめの一歩（未設定の案内から LLM を設定して、話す役と1往復する）をたどる。
 // 前提: `pnpm build` 済み（web の build/client が要る）。
 // ブラウザは取得しない（scripts/packed-browser-core.mjs の launchBrowser）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -9,6 +10,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 
 import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
+import { startFakeLlm } from './packed-conversation/llm.mjs';
 import { freePort, packAndInstall, startDrawroid } from './packed-install-core.mjs';
 
 const STEP_TIMEOUT_MS = 15_000;
@@ -18,6 +20,8 @@ const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-p
 let child;
 /** @type {import('playwright-core').Browser | undefined} */
 let browser;
+/** @type {Awaited<ReturnType<typeof startFakeLlm>> | undefined} */
+let llm;
 try {
   const bin = await packAndInstall(work);
   const port = await freePort();
@@ -37,7 +41,8 @@ try {
   browser = await launchBrowser();
   const page = await browser.newPage();
   page.setDefaultTimeout(STEP_TIMEOUT_MS);
-  const problems = collectProblems(page, base);
+  // バックエンドを立てないので、バックエンドの状態の読み込みは失敗するのが想定どおり
+  const problems = collectProblems(page, base, { expected: (url) => url.includes('/api/backend') });
 
   const response = await page.goto(`${base}/`);
   expect(response?.status() === 200, '`/` が 200 を返す');
@@ -66,6 +71,40 @@ try {
   await page.getByLabel('発言').waitFor();
   expect(true, '会話を開くと、ログと発言の入力欄が出る');
 
+  // はじめの一歩: LLM もバックエンドも未設定から、案内をたどって LLM を設定し、話す役と1往復する。
+  // バックエンドは立てない（初めて開いた人と同じ）。LLM は check-packed-conversation の偽物を、ローカルの OpenAI 互換の LLM の代わりに使う
+  llm = await startFakeLlm({ stopAfterIterations: 1 });
+  await page.goto(`${base}/`);
+  const notice = page.getByRole('note', { name: 'はじめに要る設定' });
+  await notice.getByRole('link', { name: 'LLM を設定する' }).waitFor();
+  await notice.getByRole('link', { name: 'バックエンドを確かめる' }).waitFor();
+  expect(true, '最初の画面に、LLM とバックエンドが足りないことと、設定への道が出る');
+
+  await page.goto(`${base}/conversations/${conversation.conversationId}`);
+  const log = page.getByLabel('会話のログ');
+  const composer = page.getByLabel('発言');
+  await composer.fill('こんにちは');
+  await composer.press('Enter');
+  await log.getByText(/LLM が未設定/).waitFor();
+  await notice.getByRole('link', { name: 'LLM を設定する' }).click();
+  await page.waitForURL(`${base}/generate#llm`);
+  await page.getByLabel('provider 1番目 の名前').fill('local');
+  await page.getByLabel('provider local の接続先（baseURL）').fill(llm.url);
+  await page.getByLabel('考える役の provider').fill('local');
+  await page.getByLabel('考える役のモデル').fill('talk-model');
+  await page.getByRole('button', { name: 'LLM の設定を保存' }).click();
+  await page.getByText('まだ LLM が設定されていない').waitFor({ state: 'hidden' });
+  expect(true, '案内から LLM の設定へ行き、保存できる');
+
+  await page.goto(`${base}/conversations/${conversation.conversationId}`);
+  await composer.fill('海辺の少女を描いて');
+  await composer.press('Enter');
+  await log.getByText('描き始めました。少しお待ちください。').waitFor();
+  expect(
+    (await notice.getByRole('link', { name: 'LLM を設定する' }).count()) === 0,
+    '設定したあとは案内から LLM が消え、話す役が返事をする（未設定から設定して1往復）',
+  );
+
   expect(
     problems.length === 0,
     `コンソールのエラー・失敗した読み込みが無い${problems.length === 0 ? '' : `:\n${problems.join('\n')}`}`,
@@ -73,5 +112,6 @@ try {
 } finally {
   await browser?.close();
   child?.kill();
+  await llm?.close();
   await rm(work, { recursive: true, force: true });
 }
