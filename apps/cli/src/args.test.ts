@@ -82,4 +82,20 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['--port'])).toThrow('--port に値が無い（例: --port 7878）');
     expect(() => parseCliArgs(['--port'])).not.toThrow(/argument missing/);
   });
+
+  it('tells to type the options without -- in between, instead of calling usable options unknown', () => {
+    const run = () => parseCliArgs(['--', '--port', '7892', '--data-dir', '/data']);
+    expect(run).toThrow(
+      '-- を挟まずに打つ（例: pnpm drawroid --port 7892 --data-dir /data）。-- のあとの指定は受け取らない',
+    );
+    // 使える指定を「知らない」「使えるのは doctor だけ」と言わない
+    expect(run).not.toThrow(/知らない指定|doctor だけ/);
+  });
+
+  it('keeps what came before -- in the example, and shows one when nothing follows it', () => {
+    expect(() => parseCliArgs(['doctor', '--', '--backend-url', 'http://gpu:7860'])).toThrow(
+      '（例: pnpm drawroid doctor --backend-url http://gpu:7860）',
+    );
+    expect(() => parseCliArgs(['--'])).toThrow('（例: pnpm drawroid --port 7878）');
+  });
 });

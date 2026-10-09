@@ -40,6 +40,15 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
 // node の文をそのまま出さない: 英語のうえ、「-- のあとに置け」と、この CLI では落ちる書き方を勧めるため
 function parseKnownArgs(argv: string[]) {
+  // -- のあとは parseArgs が指定ではなく語として受けるので、先に断る。そのままだと「知らない指定: --port …
+  // （使えるのは doctor だけ）」となり、使える --port まで使えないように読める（pnpm drawroid -- --port … で踏む）
+  const separator = argv.indexOf('--');
+  if (separator !== -1) {
+    const intended = [...argv.slice(0, separator), ...argv.slice(separator + 1)].join(' ');
+    throw new Error(
+      `-- を挟まずに打つ（例: pnpm drawroid ${intended === '' ? '--port 7878' : intended}）。-- のあとの指定は受け取らない`,
+    );
+  }
   try {
     return parseArgs({ args: argv, options: OPTIONS, strict: true, allowPositionals: true });
   } catch (error) {
