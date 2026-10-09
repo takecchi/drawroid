@@ -55,10 +55,16 @@ function jobFiles(dir: string) {
   const interventions = join(dir, 'interventions');
   const masks = join(dir, 'masks');
   const refs = join(dir, 'refs');
+  const selections = join(dir, 'selections');
   return {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
+    /** ジョブが止まったときと選び直したときの蒸留の記録 */
+    distill: join(dir, 'distill.json'),
+    selections,
+    /** 回の画像1枚への人間の最終選択（お気に入り・却下） */
+    selection: (imageKey: string) => join(selections, `${imageKey}.json`),
     refs,
     /** 人間が添えた参照画像（原寸） */
     ref: (refId: string, ext: string) => join(refs, `${refId}.${ext}`),

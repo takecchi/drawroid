@@ -175,3 +175,60 @@ describe('generateWithForge response', () => {
     });
   });
 });
+
+describe('generateWithForge with sampler and scheduler names (Issue #41)', () => {
+  const generated = () => forge.requests.some((r) => r.path === '/sdapi/v1/txt2img');
+  const hires = { upscaler: 'Latent', scale: 1.5, steps: 0, denoisingStrength: 0.5 };
+
+  it('refuses a sampler Forge does not have, without asking it to generate', async () => {
+    await expect(generate({ sampler: 'Euler Z' })).rejects.toMatchObject({
+      kind: 'failed',
+      message: expect.stringContaining('Euler Z') as unknown,
+    });
+    expect(generated()).toBe(false);
+  });
+
+  it('refuses a scheduler Forge does not have, without asking it to generate', async () => {
+    await expect(generate({ scheduler: 'exponential-ish' })).rejects.toMatchObject({
+      kind: 'failed',
+      message: expect.stringContaining('exponential-ish') as unknown,
+    });
+    expect(generated()).toBe(false);
+  });
+
+  it('refuses unknown names for the second pass of Hires. fix too', async () => {
+    await expect(generate({ hiresFix: { ...hires, sampler: 'Euler Z' } })).rejects.toMatchObject({
+      kind: 'failed',
+    });
+    await expect(
+      generate({ hiresFix: { ...hires, scheduler: 'exponential-ish' } }),
+    ).rejects.toMatchObject({ kind: 'failed' });
+    expect(generated()).toBe(false);
+  });
+
+  it('refuses a sampler alias, which Forge does not look names up by', async () => {
+    await expect(generate({ sampler: 'k_euler_a' })).rejects.toMatchObject({ kind: 'failed' });
+    expect(generated()).toBe(false);
+  });
+
+  it('sends the names Forge knows as they are, by name or by label', async () => {
+    await generate({
+      sampler: 'DPM++ 2M',
+      scheduler: 'Karras',
+      hiresFix: { ...hires, sampler: 'Euler a', scheduler: 'automatic' },
+    });
+
+    expect(sentPayload()).toMatchObject({
+      sampler_name: 'DPM++ 2M',
+      scheduler: 'Karras',
+      hr_sampler_name: 'Euler a',
+      hr_scheduler: 'automatic',
+    });
+  });
+
+  it('takes a sampler written with its scheduler, as Forge splits it', async () => {
+    await generate({ sampler: 'DPM++ 2M Karras' });
+
+    expect(sentPayload()).toMatchObject({ sampler_name: 'DPM++ 2M Karras' });
+  });
+});

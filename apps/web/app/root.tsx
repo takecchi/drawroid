@@ -1,4 +1,4 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
+import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { ReactNode } from 'react';
 
 export function meta() {
@@ -15,6 +15,11 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
+        <nav style={{ display: 'flex', gap: 16, padding: '8px 16px' }}>
+          <Link to="/">生成</Link>
+          <Link to="/jobs/new">依頼</Link>
+          <Link to="/jobs">ジョブ</Link>
+        </nav>
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -24,5 +29,12 @@ export function Layout({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <>
+      <nav style={{ maxWidth: 960, margin: '0 auto', padding: '8px 16px' }}>
+        <Link to="/">ジョブ</Link> <Link to="/memory">記憶</Link>
+      </nav>
+      <Outlet />
+    </>
+  );
 }

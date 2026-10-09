@@ -1,3 +1,4 @@
+import { interruptGeneration } from '@drawroid/backend-sdapi';
 import type {
   BackendCapabilities,
   Candidate,
@@ -7,7 +8,6 @@ import type {
   GenerationResult,
   ImageBackend,
 } from '@drawroid/core';
-import { z } from 'zod';
 
 import { listForgeCandidates } from './candidates.js';
 import { ForgeClient } from './client.js';
@@ -61,6 +61,6 @@ export class ForgeBackend implements ImageBackend {
   }
 
   async interrupt(): Promise<void> {
-    await this.client.postJson('/sdapi/v1/interrupt', {}, z.unknown());
+    await interruptGeneration(this.client);
   }
 }

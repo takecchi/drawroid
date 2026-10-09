@@ -1,6 +1,7 @@
 import type { GenerationRequest, GenerationResult, InputImage } from '../backend.js';
 import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
+import type { SelectionRecord } from '../selection/selection.js';
 import type {
   InterventionRecord,
   JobSpec,
@@ -81,6 +82,13 @@ export interface JobStore {
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown>;
   writeStage(jobId: string, iteration: number, stage: StageName, value: unknown): Promise<void>;
 
+  /** 回の画像への人間の最終選択を置く（selections/<imageKey>.json）。同じ画像には上書きする */
+  writeSelection(jobId: string, selection: SelectionRecord): Promise<void>;
+  /** 無ければ undefined */
+  readSelection(jobId: string, imageKey: string): Promise<SelectionRecord | undefined>;
+  /** そのジョブの選択すべて（順は決めない） */
+  listSelections(jobId: string): Promise<SelectionRecord[]>;
+
   /** 人間が添えた参照画像を refs/ に置く。refId は置き場所が決め、その名前の順が受けた順になる */
   addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord>;
   /** 受けた順 */
@@ -106,6 +114,13 @@ export interface JobStore {
 
   /** jobId が null の記録は、ジョブに属さない置き場へ置く */
   writeLlmCall(record: LlmCallRecord): Promise<void>;
-  /** 呼び出しの順（＝ callId の順） */
+  /** 呼び出しの順（＝ callId の順）。1つでも読めなければ失敗する（ループの内部向け） */
   listLlmCalls(jobId: string | null): Promise<LlmCallRecord[]>;
+  /** 画面向けに、読めないファイルを外して理由を返す。listLlmCalls は1件の破損で全体が失敗するので、閲覧には使えない */
+  listLlmCallRecords(jobId: string): Promise<{
+    records: LlmCallRecord[];
+    invalid: { callId: string; reason: string }[];
+  }>;
+  /** 回のディレクトリがある回の番号を昇順で返す。回のディレクトリは think を書いた時点でできる */
+  listIterations(jobId: string): Promise<number[]>;
 }

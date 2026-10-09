@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { ForgeBackend } from '@drawroid/backend-forge';
 import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
+  createFsMemoryStore,
   dataPaths,
   FsJobStore,
   initDataDir,
@@ -17,13 +18,21 @@ import {
 
 import { parseCliArgs } from './args.js';
 import { AutoJobQueue } from './auto-job-queue.js';
-import { readConfig, resolveForgeUrl } from './config.js';
+import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
+import { backendOptions, createBackendSettings } from './backend-settings.js';
+import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
+import { ReplaceableBackend } from './replaceable-backend.js';
+import { createStopConditionParser } from './stop-condition-parser.js';
+import { pickWebRoot } from './web-root.js';
 
-// apps/web の成果物を dist へ写さずに、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため
+// tsc の出力（dist）へは apps/web の成果物を写さず、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため。
+// 隣の web/ を先に見るのは配布用の bundle だけで、そちらは scripts/bundle.mjs が写す前に写し先を空にする
 function resolveWebRoot(): string {
-  const webPackageJson = createRequire(import.meta.url).resolve('@drawroid/web/package.json');
-  return join(dirname(webPackageJson), 'build', 'client');
+  return pickWebRoot(join(dirname(fileURLToPath(import.meta.url)), 'web'), () => {
+    const webPackageJson = createRequire(import.meta.url).resolve('@drawroid/web/package.json');
+    return join(dirname(webPackageJson), 'build', 'client');
+  });
 }
 
 async function main() {
@@ -40,17 +49,19 @@ async function main() {
   // どのアダプタを使うかを決めるのは、組み立ての根であるここだけ
   const configPath = dataPaths(root).config;
   const config = await readConfig(configPath);
-  const forgeUrl = resolveForgeUrl(args.forgeUrl, config);
-  const backend = new ForgeBackend({
-    baseUrl: forgeUrl,
-    ...(config.backend?.auth !== undefined && { auth: config.backend.auth }),
-    ...(config.backend?.generateTimeoutMs !== undefined && {
-      generateTimeoutMs: config.backend.generateTimeoutMs,
-    }),
+  const kind = resolveBackendKind(args.backend, config);
+  const { url, source } = resolveBackendUrlWithSource(args.backendUrl, config);
+  const createBackend = backendFactory(kind);
+  const backend = new ReplaceableBackend(createBackend(backendOptions(url, config.backend)));
+  const backendSettings = createBackendSettings({
+    configPath,
+    backend,
+    createBackend,
+    initial: { kind, url, source, config },
   });
   const store = new FsJobStore(root);
   const manualRunner = new ManualGenerationRunner({ backend, store });
-  process.stdout.write(`drawroid: Forge ${forgeUrl}\n`);
+  process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
 
   const log = (line: string) => process.stdout.write(`${line}\n`);
   const autoQueue = new AutoJobQueue({
@@ -95,9 +106,15 @@ async function main() {
       backend,
       store,
       manualRunner,
+      backendSettings,
+      memoryStore: createFsMemoryStore(dataPaths(root).memory),
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,
+      stopConditionParser: createStopConditionParser({
+        store,
+        currentLlm: () => autoQueue.currentLlm(),
+      }),
       env: process.env,
     },
   });
