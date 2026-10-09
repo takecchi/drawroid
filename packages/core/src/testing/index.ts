@@ -15,3 +15,4 @@ export {
   type Script,
   type ScriptedLlmOptions,
 } from './scripted-llm.js';
+export { MemoryConversationStore } from './memory-conversation-store.js';
