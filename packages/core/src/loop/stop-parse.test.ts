@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { LlmCallRecord } from '../llm/record.js';
 import { ScriptedLlm } from '../testing/scripted-llm.js';
-import { parseStopConditions, STOP_TEXT_LIMIT, type StopParseOutput } from './stop-parse.js';
+import {
+  buildStopParseInput,
+  parseStopConditions,
+  STOP_TEXT_LIMIT,
+  type StopParseOutput,
+} from './stop-parse.js';
+import { InputOverBudgetError } from './inputs.js';
 
 const none: StopParseOutput = {
   aiJudgement: false,
@@ -113,5 +119,27 @@ describe('parseStopConditions', () => {
     expect(draft).toMatchObject({ ok: false });
     expect(llm.calls).toEqual([]);
     expect(records).toEqual([]);
+  });
+});
+
+// #68 の P7: 止める条件の文が窓に入らないときは、呼び出す前に断る
+describe('buildStopParseInput', () => {
+  it('refuses before calling the LLM when the input does not fit in the window', () => {
+    expect(() =>
+      buildStopParseInput('10 回まで。良くなったら止めてよい', {
+        contextTokens: 120,
+        maxOutputTokens: 100,
+      }),
+    ).toThrow(InputOverBudgetError);
+  });
+
+  it('builds the input when it fits', () => {
+    const messages = buildStopParseInput('10 回まで', {
+      contextTokens: 8192,
+      maxOutputTokens: 1024,
+    });
+    expect(messages.report.estimatedInputTokens).toBeLessThanOrEqual(
+      messages.report.inputTokenLimit,
+    );
   });
 });

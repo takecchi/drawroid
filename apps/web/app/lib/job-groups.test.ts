@@ -38,6 +38,20 @@ describe('groupJobsByStatus', () => {
     expect(groups.stopped.map((j) => j.jobId)).toEqual(['new', 'mid', 'old']);
   });
 
+  // #68 の J2: 同じ時刻に作られたジョブは jobId で並べ、表示のたびに順が揺れないようにする
+  it('orders jobs created at the same instant by jobId, newest-looking first', () => {
+    const groups = groupJobsByStatus([
+      job('20261009-000000-aaaa', '2026-10-09T00:00:00Z', stopped),
+      job('20261009-000000-cccc', '2026-10-09T00:00:00Z', stopped),
+      job('20261009-000000-bbbb', '2026-10-09T00:00:00Z', stopped),
+    ]);
+    expect(groups.stopped.map((j) => j.jobId)).toEqual([
+      '20261009-000000-cccc',
+      '20261009-000000-bbbb',
+      '20261009-000000-aaaa',
+    ]);
+  });
+
   it('compares instants rather than text when offsets differ', () => {
     const groups = groupJobsByStatus([
       job('later-utc', '2026-10-09T01:00:00Z', stopped),
