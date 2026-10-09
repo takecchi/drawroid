@@ -143,15 +143,19 @@ export async function renameConversation(conversationId: string, title: string):
   await mutate(keys.conversations);
 }
 
-/** 確定したイベントを after より後から1ページ読む（会話の画面が、開くときに読み通すため） */
+/**
+ * 確定したイベントを after より後から1ページ読む（会話の画面が、開くときに読み通すため）。
+ * limit を省けば API の既定の件数
+ */
 export function loadConversationEvents(
   conversationId: string,
   after: number,
+  limit?: number,
 ): Promise<ConversationEventsResponse> {
   return unwrap<ConversationEventsResponse>(() =>
     client.conversations[':conversationId'].events.$get({
       param: { conversationId },
-      query: { after: String(after) },
+      query: { after: String(after), ...(limit === undefined ? {} : { limit: String(limit) }) },
     }),
   );
 }
