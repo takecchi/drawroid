@@ -2,12 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { serveStatic } from '@hono/node-server/serve-static';
-import { createApi } from '@drawroid/api';
+import { createApi, type ApiDeps } from '@drawroid/api';
 import { Hono } from 'hono';
 
-export function createApp({ webRoot }: { webRoot: string }) {
+export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps }) {
   const app = new Hono();
-  app.route('/api', createApi());
+  app.route('/api', createApi(deps));
   // 未知の /api/* を index.html で返さない: API の誤りが 200 の HTML に化けて、呼び手から見えなくなるため
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
   app.use('/*', serveStatic({ root: webRoot }));
