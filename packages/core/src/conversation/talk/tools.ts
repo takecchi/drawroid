@@ -188,7 +188,9 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
       if (carry !== undefined) {
         parts.push(`${carry.completedIterations} 回済み`);
         if (carry.best !== undefined)
-          parts.push(`最良は ${carry.best.iteration} 回目（${carry.best.score.toFixed(2)}）`);
+          parts.push(
+            `最良は ${carry.best.iteration} 回目の ${carry.best.imageIndex + 1}枚目（${carry.best.score.toFixed(2)}）`,
+          );
       }
       if (state.status === 'stopped') parts.push(`止まった理由: ${state.reason.detail}`);
       return { ok: true, result: parts.join('。'), summary: state.status };
