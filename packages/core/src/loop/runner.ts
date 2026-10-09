@@ -51,7 +51,14 @@ import {
   type StageJudgement,
 } from './carry.js';
 import { LlmGate } from './llm-gate.js';
-import { buildJudgeInput, buildRefGistInput, buildThinkInput, type MemoryInput } from './inputs.js';
+import {
+  buildJudgeInput,
+  buildRefGistInput,
+  buildThinkInput,
+  progressOf,
+  type MemoryInput,
+  type Progress,
+} from './inputs.js';
 import {
   buildJudgeOutputSchema,
   buildThinkOutputSchema,
@@ -685,7 +692,12 @@ export class JobRunner {
       const memoryItems = await this.readMemory();
       const think = await this.think(
         spec,
-        conditions,
+        progressOf({
+          iteration,
+          conditions,
+          imagesGenerated: state.imagesGenerated,
+          elapsedMs: this.now().getTime() - Date.parse(state.startedAt),
+        }),
         withReferences,
         iteration,
         paramsPlan,
@@ -770,7 +782,7 @@ export class JobRunner {
 
   private think(
     spec: AutoJobSpec,
-    conditions: StopConditions,
+    progress: Progress,
     carry: Carry,
     iteration: number,
     paramsPlan: ParamsPlan,
@@ -778,13 +790,13 @@ export class JobRunner {
     signal: AbortSignal,
   ): Promise<ThinkOutput> {
     return this.llmStage(signal, (stageSignal) =>
-      this.thinkOnce(spec, conditions, carry, iteration, paramsPlan, memoryItems, stageSignal),
+      this.thinkOnce(spec, progress, carry, iteration, paramsPlan, memoryItems, stageSignal),
     );
   }
 
   private async thinkOnce(
     spec: AutoJobSpec,
-    conditions: StopConditions,
+    progress: Progress,
     carry: Carry,
     iteration: number,
     paramsPlan: ParamsPlan,
@@ -800,13 +812,9 @@ export class JobRunner {
       reopenClaimedBy(iteration, await store.listInterventions(spec.jobId)),
       budget.interventions,
     );
-    const max = conditions.maxIterations;
     const messages = buildThinkInput({
       carry,
-      progress: {
-        iteration,
-        ...(max === undefined ? {} : { remainingIterations: max - iteration + 1 }),
-      },
+      progress,
       allowed: Object.keys(paramsPlan.params.schema.shape) as ParamKey[],
       budget,
       window: llm.describe('think').window,

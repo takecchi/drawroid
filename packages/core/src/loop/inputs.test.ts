@@ -7,7 +7,9 @@ import {
   buildThinkInput,
   ImageNotAllowedError,
   InputOverBudgetError,
+  progressOf,
   type PreviewImage,
+  type Progress,
 } from './inputs.js';
 import { THINK_PARAM_KEYS, type JudgeOutput, type ThinkParams } from './schemas.js';
 
@@ -268,5 +270,59 @@ describe('issues carried into the next call', () => {
       from: extra,
       to: budget.issuesPerImage,
     });
+  });
+});
+
+describe('progressOf', () => {
+  it('carries only the remaining counts whose limit the stop conditions have', () => {
+    const at = { iteration: 3, imagesGenerated: 4, elapsedMs: 90_000 };
+    expect(progressOf({ ...at, conditions: { aiJudgement: true } })).toEqual({ iteration: 3 });
+    expect(
+      progressOf({
+        ...at,
+        conditions: { aiJudgement: true, maxIterations: 5, maxImages: 10, maxDurationMs: 600_000 },
+      }),
+    ).toEqual({ iteration: 3, remainingIterations: 3, remainingImages: 6, remainingMs: 510_000 });
+  });
+
+  it('does not count below zero when the limit has already passed', () => {
+    expect(
+      progressOf({
+        iteration: 2,
+        imagesGenerated: 12,
+        elapsedMs: 700_000,
+        conditions: { aiJudgement: true, maxImages: 10, maxDurationMs: 600_000 },
+      }),
+    ).toEqual({ iteration: 2, remainingImages: 0, remainingMs: 0 });
+  });
+});
+
+describe('the progress line in the think input', () => {
+  const lineFor = (progress: Progress) =>
+    buildThinkInput({ carry: carryAfter(0), progress, allowed: ['prompt'], budget, window })
+      .user.map((p) => (p.type === 'text' ? p.text : ''))
+      .join('\n')
+      .split('\n')
+      .find((line) => line.startsWith('これから'));
+
+  it.each<[string, Progress, string]>([
+    ['no limit', { iteration: 1 }, 'これから 1 回目。'],
+    [
+      'every limit',
+      { iteration: 2, remainingIterations: 4, remainingImages: 7, remainingMs: 330_000 },
+      'これから 2 回目（残り 4 回・7 枚・約 5 分）。',
+    ],
+    [
+      'only the time, under a minute',
+      { iteration: 5, remainingMs: 59_999 },
+      'これから 5 回目（残り 1 分未満）。',
+    ],
+    [
+      'only the images, none left',
+      { iteration: 3, remainingImages: 0 },
+      'これから 3 回目（残り 0 枚）。',
+    ],
+  ])('reads %s', (_name, progress, head) => {
+    expect(lineFor(progress)).toBe(`${head}決めてよいパラメータ: prompt`);
   });
 });
