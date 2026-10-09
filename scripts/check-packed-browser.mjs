@@ -182,7 +182,11 @@ try {
   if (wideViewport !== null) await page.setViewportSize(wideViewport);
   await page.getByLabel('provider 1番目 の名前').fill('local');
   await page.getByLabel('provider local の接続先（baseURL）').fill(llm.url);
-  await page.getByLabel('考える役の provider').fill('local');
+  // 役の provider は、上で定義した provider から選ぶ。1つだけなら、はじめから選んである
+  expect(
+    (await page.getByRole('combobox', { name: '考える役の provider' }).inputValue()) === 'local',
+    '役の provider は打つ欄ではなく、定義した provider が1つだけなら、はじめからそれを選んである',
+  );
   await page.getByLabel('考える役のモデル').fill('talk-model');
   await page.getByRole('button', { name: 'LLM の設定を保存' }).click();
   await page.getByText('まだ LLM が設定されていない').waitFor({ state: 'hidden' });

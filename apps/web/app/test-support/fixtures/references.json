@@ -1,0 +1,14 @@
+{
+  "references": [
+    {
+      "refId": "000001",
+      "receivedAt": "2026-01-01T00:00:00.000Z",
+      "mediaType": "image/png",
+      "note": "この構図で",
+      "gist": "白いワンピースの裾が風になびく構図",
+      "sentInCall": "20260101T000003000Z-000000",
+      "sentAt": "2026-01-01T00:00:04.000Z",
+      "previewUrl": "/api/files/jobs/20260101-000000-000000/refs/000001.preview.webp"
+    }
+  ]
+}

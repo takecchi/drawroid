@@ -17,9 +17,11 @@ import { useState, type FormEvent } from 'react';
 
 import {
   buildLlmSettings,
+  definedProviderNames,
   emptyProviderRow,
   PROVIDER_TYPES,
   REASONING_MODES,
+  roleProviderOf,
   TOOL_CALLING_MODES,
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
@@ -48,25 +50,42 @@ function providerName(row: ProviderRow, index: number): string {
 function RoleFields({
   role,
   values,
+  providerNames,
   onChange,
 }: {
   role: keyof typeof ROLE_LABELS;
   values: RoleValues;
+  /** 上で定義した provider の名前。役の provider はこの中から選ぶ */
+  providerNames: readonly string[];
   onChange: (values: RoleValues) => void;
 }) {
   const label = ROLE_LABELS[role];
+  const provider = roleProviderOf(values, providerNames);
   return (
     <FieldSet legend={label}>
       <FieldRow>
         <Field label="provider">
-          <Input
-            type="text"
-            value={values.provider}
+          <Select
+            value={provider}
             onChange={(event) => onChange({ ...values, provider: event.target.value })}
             aria-label={`${label}の provider`}
-            list="llm-provider-names"
             className="w-56"
-          />
+          >
+            {provider === '' && (
+              <option value="" disabled>
+                {providerNames.length === 0 ? '先に provider を定義する' : '選ぶ'}
+              </option>
+            )}
+            {providerNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+            {/* 定義に無い名前を黙って消さない: 上で名前を変えたときなどに、どの役が古い名前を指しているかを見せるため（保存はサーバが断る） */}
+            {provider !== '' && !providerNames.includes(provider) && (
+              <option value={provider}>{provider}（定義に無い）</option>
+            )}
+          </Select>
         </Field>
         <Field label="モデル">
           <Input
@@ -174,6 +193,7 @@ export function LlmSettings() {
   const stored = data?.config ?? null;
   const keyStatus = data !== undefined && 'apiKeyEnv' in data ? data.apiKeyEnv : {};
   const values = edited ?? (data === undefined ? undefined : toFormValues(stored));
+  const providerNames = definedProviderNames(values?.providers ?? []);
 
   function change(next: Partial<LlmSettingsFormValues>) {
     if (values === undefined) return;
@@ -303,16 +323,12 @@ export function LlmSettings() {
             >
               provider を足す
             </Button>
-            <datalist id="llm-provider-names">
-              {values.providers.map((row, index) => (
-                <option key={index} value={row.key.trim()} />
-              ))}
-            </datalist>
           </SubSection>
           <SubSection title="役ごとのモデル">
             <RoleFields
               role="think"
               values={values.think}
+              providerNames={providerNames}
               onChange={(think) => change({ think })}
             />
             <CheckboxField
@@ -324,6 +340,7 @@ export function LlmSettings() {
               <RoleFields
                 role="judge"
                 values={values.judge}
+                providerNames={providerNames}
                 onChange={(judge) => change({ judge })}
               />
             )}
@@ -333,7 +350,12 @@ export function LlmSettings() {
               onChange={(event) => change({ talkSameAsThink: event.target.checked })}
             />
             {!values.talkSameAsThink && (
-              <RoleFields role="talk" values={values.talk} onChange={(talk) => change({ talk })} />
+              <RoleFields
+                role="talk"
+                values={values.talk}
+                providerNames={providerNames}
+                onChange={(talk) => change({ talk })}
+              />
             )}
           </SubSection>
           <SubSection title="再試行の回数">
