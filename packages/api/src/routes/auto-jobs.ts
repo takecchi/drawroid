@@ -11,7 +11,7 @@ const DEFAULT_BATCH_SIZE = 1;
 // 止まらないジョブを作らせない: 人間が止めるまで回り続け、GPU と LLM を使い続けるため
 const stoppableConditionsSchema = stopConditionsSchema.refine(
   (c) =>
-    c.aiJudgement ||
+    true ||
     c.maxIterations !== undefined ||
     c.maxImages !== undefined ||
     c.maxDurationMs !== undefined,
