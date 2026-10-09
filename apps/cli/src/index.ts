@@ -9,6 +9,7 @@ import {
   DEFAULT_BUDGET,
   ManualGenerationRunner,
   mergePermissions,
+  ProgressPreviews,
   TalkRunner,
 } from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
@@ -33,6 +34,7 @@ import { AutoJobQueue, BASE_PERMISSIONS } from './auto-job-queue.js';
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions, createBackendSettings } from './backend-settings.js';
 import { createBudgetSettings } from './budget-settings.js';
+import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { createPermissionReader } from './permission-reader.js';
@@ -158,6 +160,8 @@ async function main() {
       memoryStore,
       autoQueue,
       budgetSettings,
+      progressPreviews: new ProgressPreviews(),
+      generationProgressSettings: createGenerationProgressSettings(configPath),
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,

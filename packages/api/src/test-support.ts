@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import {
   basicPermissions,
   ConversationHubs,
+  DEFAULT_GENERATION_PROGRESS_SETTINGS,
+  ProgressPreviews,
+  type GenerationProgressSettings,
   generationRequestSchema,
   ManualGenerationRunner,
   resolveBudgets,
@@ -21,6 +24,7 @@ import type {
   BudgetSettingsPort,
   CandidateNotesStore,
   ConversationsPort,
+  GenerationProgressSettingsPort,
   PermissionSettingsStore,
 } from './deps.js';
 import { createApi } from './index.js';
@@ -44,6 +48,27 @@ export function memoryBudgetSettings(initial: BudgetOverrides = {}): BudgetSetti
   };
 }
 
+/** 生成の進み具合の設定をメモリに持つ。config.json を使わない試験のため */
+export function memoryGenerationProgressSettings(
+  initial: GenerationProgressSettings = DEFAULT_GENERATION_PROGRESS_SETTINGS,
+): GenerationProgressSettingsPort {
+  let settings = initial;
+  return {
+    read: async () => settings,
+    write: async (next) => {
+      settings = next;
+    },
+  };
+}
+
+/** 進み具合の置き場と設定。使わない試験でも、createApi の依存として渡す */
+export function memoryProgressDeps() {
+  return {
+    progressPreviews: new ProgressPreviews(),
+    generationProgressSettings: memoryGenerationProgressSettings(),
+  };
+}
+
 /** 会話をメモリに置く。会話を使わない試験でも、createApi の依存として渡す */
 export function memoryConversations(): ConversationsPort {
   const store = new MemoryConversationStore();
@@ -61,6 +86,8 @@ export async function setup() {
   const store = new FsJobStore(root);
   const backend = new StubBackend();
   const budgetSettings = memoryBudgetSettings();
+  const progressPreviews = new ProgressPreviews();
+  const generationProgressSettings = memoryGenerationProgressSettings();
   const api = createApi({
     backend,
     store,
@@ -75,6 +102,8 @@ export async function setup() {
       addMask: notUsed,
     },
     budgetSettings,
+    progressPreviews,
+    generationProgressSettings,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
@@ -86,7 +115,15 @@ export async function setup() {
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
   });
-  return { root, store, api, paths: dataPaths(root), budgetSettings };
+  return {
+    root,
+    store,
+    api,
+    paths: dataPaths(root),
+    budgetSettings,
+    progressPreviews,
+    generationProgressSettings,
+  };
 }
 
 export const request = generationRequestSchema.parse({

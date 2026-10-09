@@ -183,3 +183,5 @@ export * from './conversation/talk/input.js';
 export * from './conversation/talk/limits.js';
 export * from './conversation/talk/runner.js';
 export * from './conversation/talk/tools.js';
+export * from './conversation/progress-poller.js';
+export * from './conversation/progress-preview.js';

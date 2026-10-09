@@ -12,7 +12,12 @@ import { MemoryConversationStore } from '@drawroid/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { memoryBudgetSettings, noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import {
+  memoryBudgetSettings,
+  memoryProgressDeps,
+  noCandidateNotes,
+  noPermissionSettings,
+} from '../test-support.js';
 
 let hubs: ConversationHubs;
 let beats: (() => void)[];
@@ -41,6 +46,7 @@ beforeEach(() => {
       addMask: notUsed,
     },
     budgetSettings: memoryBudgetSettings(),
+    ...memoryProgressDeps(),
     stopConditionParser: { parse: notUsed },
     backendSettings: { read: notUsed, write: notUsed },
     llmSettings: { read: async () => undefined, write: async () => undefined },
