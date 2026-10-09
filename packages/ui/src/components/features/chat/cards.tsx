@@ -205,16 +205,16 @@ export function JudgeNote({
   iteration,
   canStop,
   nextChange,
-  adopted = false,
+  adopted,
 }: {
   iteration: number;
   canStop: boolean;
   nextChange?: string;
-  /** 人間が選んで評価を打ち切った */
-  adopted?: boolean;
+  /** 人間が選んで評価を打ち切ったときの、選ばれた画像（number は 1 から数えた番号） */
+  adopted?: { iteration: number; number: number };
 }) {
   const text = adopted
-    ? 'この回は、人間が選んだ画像で決まり。'
+    ? `この回は、人間が選んだ画像（${adopted.iteration} 回目の画像 ${adopted.number} 番）で決まり。`
     : canStop
       ? 'これで意図どおりと見ている。'
       : `ちょっと違う。${nextChange === undefined ? '' : `次は「${nextChange}」。`}`;

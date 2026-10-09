@@ -110,6 +110,14 @@ describe('JudgeNote', () => {
     expect(screen.getByText('ちょっと違う。次は「手を隠す」。')).toBeTruthy();
     expect(screen.getByText('これで意図どおりと見ている。')).toBeTruthy();
   });
+
+  it('says which image a human chose when the choice settled the iteration', () => {
+    render(<JudgeNote iteration={3} canStop={false} adopted={{ iteration: 2, number: 4 }} />);
+
+    expect(
+      screen.getByText('この回は、人間が選んだ画像（2 回目の画像 4 番）で決まり。'),
+    ).toBeTruthy();
+  });
 });
 
 describe('StopNotice', () => {

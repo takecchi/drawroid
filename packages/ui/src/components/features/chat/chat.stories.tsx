@@ -247,7 +247,7 @@ export const Notices: Story = {
   render: () => (
     <div className="space-y-3 p-6">
       <JudgeNote iteration={3} canStop />
-      <JudgeNote iteration={2} canStop={false} adopted />
+      <JudgeNote iteration={2} canStop={false} adopted={{ iteration: 2, number: 1 }} />
       <StopNotice tone="done">止まった: AI が意図どおりと判断</StopNotice>
       <StopNotice tone="stopped">止まった: 人間が止めた</StopNotice>
       <StopNotice tone="error" action={<Button className="h-6 px-2 text-xs">送り直す</Button>}>
