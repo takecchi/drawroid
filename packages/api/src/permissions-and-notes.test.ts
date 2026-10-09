@@ -26,6 +26,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
+import { memoryBudgetSettings } from './test-support.js';
 
 const base: Permissions = basicPermissions({ width: 64, height: 64 });
 
@@ -76,7 +77,7 @@ beforeEach(async () => {
     memoryStore: createFsMemoryStore(paths.memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
     autoQueue: runner,
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     backendSettings: {
       read: () => Promise.reject(new Error('この試験では使わない')),

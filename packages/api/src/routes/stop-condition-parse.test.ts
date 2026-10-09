@@ -1,10 +1,10 @@
-import { DEFAULT_BUDGET, type StopConditionsDraft } from '@drawroid/core';
+import { type StopConditionsDraft } from '@drawroid/core';
 import type { ImageBackend, JobStore, ManualGenerationRunner, MemoryStore } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
 import { LlmNotConfiguredError } from '../stop-condition-parse.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
   return createApi({
@@ -25,7 +25,7 @@ function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
       addReference: () => Promise.reject(new Error('この試験では使わない')),
       addMask: () => Promise.reject(new Error('この試験では使わない')),
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },

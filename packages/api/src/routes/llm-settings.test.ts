@@ -1,5 +1,4 @@
 import {
-  DEFAULT_BUDGET,
   type ImageBackend,
   type JobStore,
   type ManualGenerationRunner,
@@ -9,7 +8,7 @@ import type { LlmConfig } from '@drawroid/llm';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 const SECRET = 'sk-should-not-leak';
 
@@ -39,7 +38,7 @@ function makeApp(env: Record<string, string | undefined>) {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: {
       read: async () => saved,

@@ -1,11 +1,11 @@
-import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import { ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 import { describe, expect, it } from 'vitest';
 
 import { BackendBusyError, type BackendSettingsView } from '../backend-settings.js';
 import { createApi } from '../index.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 function setup(initial: BackendSettingsView, { busy = false } = {}) {
   let view = initial;
@@ -36,7 +36,7 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },

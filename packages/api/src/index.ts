@@ -5,6 +5,7 @@ import { handleUncaught } from './errors.js';
 import { autoJobsRoutes } from './routes/auto-jobs.js';
 import { backendRoutes } from './routes/backend.js';
 import { backendSettingsRoutes } from './routes/backend-settings.js';
+import { budgetSettingsRoutes } from './routes/budget-settings.js';
 import { candidateNotesRoutes } from './routes/candidate-notes.js';
 import { filesRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
@@ -35,6 +36,7 @@ export type { ReferenceUploadInput } from './references.js';
 export type {
   ApiDeps,
   AutoJobQueue,
+  BudgetSettingsPort,
   CandidateNotesStore,
   LlmSettingsStore,
   PermissionSettingsStore,
@@ -61,6 +63,7 @@ export function createApi(deps: ApiDeps) {
     .route('/settings/llm', llmSettingsRoutes(deps))
     .route('/stop-conditions', stopConditionParseRoutes(deps))
     .route('/settings/permissions', permissionSettingsRoutes(deps))
+    .route('/settings/budgets', budgetSettingsRoutes(deps))
     .onError(handleUncaught);
 }
 
