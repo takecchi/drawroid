@@ -1,4 +1,5 @@
 export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
+export { createFsDistillLog, DISTILL_FILE_NAME } from './distill/log.js';
 export { initDataDir, type InitializedDataDir } from './init.js';
 export {
   formatMemoryFile,
