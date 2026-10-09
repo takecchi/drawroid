@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
 import { backendKindSchema, type BackendKind } from '@drawroid/api';
-import { permissionOverridesSchema } from '@drawroid/core';
 import { z } from 'zod';
 
 // Forge も A1111 も既定で 7860 を待ち受けるので、種類に依らず同じ既定を使う
@@ -28,8 +27,8 @@ const configSchema = z.object({
       return { ...backend, ...(url !== undefined && { url }) };
     })
     .optional(),
-  // 全体の既定の許可。書いたパラメータだけを、土台（M2 の可動範囲）に重ねる
-  permissions: permissionOverridesSchema.optional(),
+  // 全体の既定の許可（permissions）はここで読まない: 1行の書き損じで起動ごと止めないため。
+  // permission-reader が行ごとに読み、読めない行は既定に戻す
 });
 export type Config = z.infer<typeof configSchema>;
 
