@@ -358,7 +358,13 @@ try {
   const before = await log.innerText();
   await page.reload();
   await log.getByText('やっぱり猫も入れて').waitFor();
-  const after = await log.innerText();
+  // 戻るのを待ってから比べる: 画像の選択（お気に入り）は、ログの後から API で読むので、ログが出た時点ではまだ戻っていないことがある
+  let after = await log.innerText();
+  const settleBy = Date.now() + STEP_TIMEOUT_MS;
+  while (after !== before && Date.now() < settleBy) {
+    await sleep(100);
+    after = await log.innerText();
+  }
   if (after !== before) {
     // 違った行を残す（赤の理由を追えるように）
     const was = before.split('\n');
