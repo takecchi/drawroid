@@ -1,4 +1,4 @@
-import type { GenerationRequest, GenerationResult } from '../backend.js';
+import type { GenerationRequest, GenerationResult, InputImage } from '../backend.js';
 import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
 import type { SelectionRecord } from '../selection/selection.js';
@@ -6,7 +6,9 @@ import type {
   InterventionRecord,
   JobSpec,
   JobState,
+  MaskIntervention,
   NewIntervention,
+  NewMask,
   NewReference,
   ReferenceRecord,
 } from './types.js';
@@ -93,6 +95,15 @@ export interface JobStore {
   listReferences(jobId: string): Promise<ReferenceRecord[]>;
   /** 見る役が書いた参照画像の要点を残す */
   writeReferenceGist(jobId: string, refId: string, gist: string): Promise<void>;
+  /** 参照画像の原寸。img2img の元にするときに読む。無ければ undefined */
+  readReferenceImage(image: ReferenceImageRef): Promise<InputImage | undefined>;
+
+  /** inpaint のマスクを、口出しと同じ連番で置く（interventions/ と masks/） */
+  addMask(jobId: string, mask: NewMask, now: Date): Promise<MaskIntervention>;
+  /** マスクの PNG。番号を取ったあと画像を置く前に落ちたものなど、無ければ undefined */
+  readMask(jobId: string, maskId: string): Promise<Uint8Array | undefined>;
+  /** マスクを inpaint に使った回を書き戻す（使ったマスクは切れる） */
+  markMaskUsed(jobId: string, maskId: string, iteration: number): Promise<void>;
 
   /**
    * LLM に渡す縮小版を返す。無ければ原寸から作って置く。渡した印があれば sentInCall に入る。

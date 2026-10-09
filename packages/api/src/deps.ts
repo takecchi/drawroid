@@ -5,6 +5,8 @@ import type {
   JobStore,
   ManualGenerationRunner,
   MemoryStore,
+  MaskIntervention,
+  NewMask,
   NewReference,
   ReferenceRecord,
   StopConditions,
@@ -25,6 +27,8 @@ export type AutoJobQueue = {
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
   /** 断るときは InterventionRejectedError を投げる */
   addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
+  /** 塗った画像があるかは呼び手が確かめる。断るときは InterventionRejectedError を投げる */
+  addMask(jobId: string, mask: NewMask): Promise<MaskIntervention>;
 };
 
 export type LlmSettingsStore = {

@@ -202,10 +202,12 @@ function interventionSection(w: SectionWriter, plan: InterventionPlan | undefine
 }
 
 /** 参照画像の要点。量は carry に入れるときに件数と文字数で締めてある */
-function referenceSections(carry: Carry): Section[] {
+function referenceSections(carry: Carry, withKeys = false): Section[] {
   const references = carry.references ?? [];
   if (references.length === 0) return [];
-  const lines = references.map((reference) => `- ${reference.gist}`);
+  const lines = references.map((reference) =>
+    withKeys ? `- ref:${reference.refId}: ${reference.gist}` : `- ${reference.gist}`,
+  );
   return [{ name: 'references', text: `参照画像の要点:\n${lines.join('\n')}` }];
 }
 
@@ -233,6 +235,8 @@ export type ShownCandidates = {
   shown: Partial<Record<CandidateKind, readonly ShownCandidate[]>>;
   dropped: { kind: CandidateKind; name: string; reason: 'count' | 'size' }[];
   notesDropped: { kind: CandidateKind; name: string }[];
+  /** 説明のファイルを読めなかった理由。あれば、説明なしで渡している */
+  notesProblem?: string;
 };
 
 const CANDIDATE_LABELS: Record<CandidateKind, string> = {
@@ -248,6 +252,10 @@ const CANDIDATE_LABELS: Record<CandidateKind, string> = {
 
 function candidateSections(w: SectionWriter, candidates: ShownCandidates | undefined): Section[] {
   if (candidates === undefined) return [];
+  // 読めなかった説明を、黙って無いことにしない: 人間が書いたはずの説明が効いていない理由を、記録から追えるようにするため
+  if (candidates.notesProblem !== undefined) {
+    w.notes.push({ kind: 'dropped', section: 'candidateNotes', reason: candidates.notesProblem });
+  }
   // 落とした候補と説明を記録に残す: 数百個の LoRA のうち何を見せなかったかを、後から追えるようにするため（M4:119）
   for (const { kind, name, reason } of candidates.dropped) {
     w.notes.push({
@@ -288,8 +296,11 @@ export function buildThinkInput(args: {
   interventions?: InterventionPlan;
   /** 候補を持つパラメータごとに、予算で絞って見せる候補（selectCandidates の結果） */
   candidates?: ShownCandidates;
+  /** img2img を AI に任せる回だけ true。最良・直近・参照画像に、元画像として選ぶときのキーを添える */
+  withImageSourceKeys?: boolean;
 }): BudgetedMessages {
   const { carry, progress, allowed, budget, window, memory, interventions, candidates } = args;
+  const withImageSourceKeys = args.withImageSourceKeys ?? false;
   const w = new SectionWriter();
   const remaining =
     progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
@@ -305,10 +316,16 @@ export function buildThinkInput(args: {
     // 量は selectCandidates の予算で締めてある
     ...candidateSections(w, candidates),
   ];
-  const optional: Section[] = [...referenceSections(carry)];
-  if (carry.best !== undefined) optional.push(w.result('best', '最良', carry.best, budget, true));
+  // 元画像のキーを、その画像を説明する区画の中に書く: 区画が入力の上限で落ちたら、キーも一緒に見えなくなり、
+  // 見えていない画像を元画像に選ばせずに済むため（Issue #5 の G）
+  const keyed = (label: string, key: string) =>
+    withImageSourceKeys ? `${label}（元画像のキー ${key}）` : label;
+  const optional: Section[] = [...referenceSections(carry, withImageSourceKeys)];
+  if (carry.best !== undefined) {
+    optional.push(w.result('best', keyed('最良', 'best'), carry.best, budget, true));
+  }
   if (carry.latest !== undefined && carry.latest.iteration !== carry.best?.iteration) {
-    optional.push(w.result('latest', '直近', carry.latest, budget, true));
+    optional.push(w.result('latest', keyed('直近', 'latest'), carry.latest, budget, true));
   }
   // 記憶は最良・直近より後ろに置く: 入力の上限で削るときは記憶から先に削る（architecture の削る順）
   optional.push(...memorySections(w, memory, carry));

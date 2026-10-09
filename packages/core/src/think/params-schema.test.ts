@@ -132,13 +132,46 @@ describe('buildParamsSchema', () => {
     expect(omitted.inpaint).toBeUndefined();
   });
 
-  it('keeps image-source parameters out until their choices can be offered', () => {
+  it('keeps ControlNet out until there is a way to offer its choices', () => {
     const { schema, omitted } = buildParamsSchema(allAuto(), context);
 
-    for (const key of ['img2img', 'inpaint', 'controlnet'] as const) {
-      expect(jsonSchemaKeys(schema)).not.toContain(key);
-      expect(omitted[key]).toBe('not-supported-yet');
-    }
+    expect(jsonSchemaKeys(schema)).not.toContain('controlnet');
+    expect(omitted.controlnet).toBe('not-supported-yet');
+  });
+});
+
+describe('buildParamsSchema for image inputs', () => {
+  const img2imgOnly = { ...allOff(), img2img: { mode: 'auto' } } satisfies Permissions;
+
+  it('offers img2img only with the image keys that were shown, as an enum (Issue #5 G)', () => {
+    const { schema } = buildParamsSchema(img2imgOnly, {
+      ...context,
+      imageSources: ['best', 'ref:0001'],
+    });
+
+    expect(
+      schema.safeParse({ img2img: { image: 'ref:0001', denoisingStrength: 0.5 } }).success,
+    ).toBe(true);
+    expect(schema.safeParse({ img2img: { image: 'latest', denoisingStrength: 0.5 } }).success).toBe(
+      false,
+    );
+  });
+
+  it('does not offer img2img when no image was shown to start from', () => {
+    const { schema, omitted } = buildParamsSchema(img2imgOnly, context);
+
+    expect(jsonSchemaKeys(schema)).not.toContain('img2img');
+    expect(omitted.img2img).toBe('no-candidates-shown');
+  });
+
+  it('lets the AI decide only how strongly to repaint, since the human chose the image and the mask', () => {
+    const permissions = { ...allOff(), inpaint: { mode: 'auto' } } satisfies Permissions;
+    const { schema } = buildParamsSchema(permissions, context);
+
+    const json = z.toJSONSchema(schema) as unknown as {
+      properties: { inpaint: { properties: object } };
+    };
+    expect(Object.keys(json.properties.inpaint.properties)).toEqual(['denoisingStrength']);
   });
 });
 

@@ -61,7 +61,19 @@ import {
 } from '../permissions/permission.js';
 import { buildParamsSchema, type ParamsSchema } from '../think/params-schema.js';
 import type { ShownCandidates } from './inputs.js';
+import type { InputImageRef } from '../backend.js';
+import type { MaskIntervention, NewMask } from '../job/types.js';
 import {
+  activeMask,
+  generatedImageRef,
+  imageSourcesOf,
+  type ImageSourceKey,
+  loadRequestImages,
+  maskImageRef,
+  parseInputImageRef,
+} from './image-sources.js';
+import {
+  type CandidateNotes,
   candidateKindsToList,
   DEFAULT_CANDIDATE_LIMITS,
   shownCandidatesFor,
@@ -76,8 +88,8 @@ export type JobRunnerDeps = {
   permissions: Permissions;
   /** 候補の種類ごとに、考える役へ見せる候補の件数と文字数。省けば既定値 */
   candidateLimits?: PackLimits;
-  /** 人間が候補に付けた短い説明（候補の名前から引く）。省けば説明なし */
-  candidateNotes?: ReadonlyMap<string, string>;
+  /** 人間が候補に付けた短い説明を読む。ジョブの始めに1回呼ぶ。省けば説明なし */
+  candidateNotes?: () => Promise<CandidateNotes>;
   /** 1回の「考える」に載せる人間の指示の上限。省けば既定値 */
   interventionLimits?: InterventionLimits;
   /** 持ち回す参照画像の要点の上限。省けば既定値 */
@@ -91,8 +103,17 @@ type Running = { jobId: string; controller: AbortController };
 type BackendView = {
   capabilities: BackendCapabilities;
   lists: Partial<Record<CandidateKind, readonly Candidate[]>>;
+  notes: CandidateNotes;
 };
-type ParamsPlan = { permissions: Permissions; candidates: ShownCandidates; params: ParamsSchema };
+type ParamsPlan = {
+  permissions: Permissions;
+  candidates: ShownCandidates;
+  /** 元画像に選べる画像（img2img を AI に任せる回だけ） */
+  sources: { key: ImageSourceKey; ref: InputImageRef }[];
+  /** inpaint に使えるマスク */
+  mask: MaskIntervention | undefined;
+  params: ParamsSchema;
+};
 type RunningState = Extract<JobState, { status: 'running' }> & { carry: Carry };
 
 /** ループを止めて、理由を state.json に残すための合図 */
@@ -196,6 +217,15 @@ export class JobRunner {
     return this.deps.store.addReference(jobId, reference, this.now());
   }
 
+  /**
+   * 走行中・待ち行列のジョブに inpaint のマスクを置く。次の回の境目から、inpaint が AI の選択肢に入る。
+   * 塗った画像があるかは呼び手が確かめる。
+   */
+  async addMask(jobId: string, mask: NewMask): Promise<MaskIntervention> {
+    await this.acceptingJob(jobId);
+    return this.deps.store.addMask(jobId, mask, this.now());
+  }
+
   /** 口出しを受けられる自動ジョブ（止まっていないもの）を返す */
   private async acceptingJob(jobId: string): Promise<AutoJobSpec> {
     const spec = await this.deps.store.readJob(jobId);
@@ -283,7 +313,7 @@ export class JobRunner {
       for (const kind of candidateKindsToList(permissions)) {
         lists[kind] = await backend.listCandidates(kind, signal);
       }
-      return { capabilities, lists };
+      return { capabilities, lists, notes: await this.readCandidateNotes() };
     } catch (error) {
       if (signal.aborted) throw error;
       throw new StopJob({
@@ -291,6 +321,19 @@ export class JobRunner {
         detail: `バックエンドの能力と候補を取る段: ${messageOf(error)}`,
         ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
       });
+    }
+  }
+
+  /**
+   * 人間が候補に付けた説明。ジョブごとに読み直す。
+   */
+  // 読めなくてもジョブを止めない: 説明は考える役への補足で、無くても生成はできるため。理由は呼び出しの記録に残る
+  private async readCandidateNotes(): Promise<CandidateNotes> {
+    if (this.deps.candidateNotes === undefined) return { notes: new Map() };
+    try {
+      return await this.deps.candidateNotes();
+    } catch (error) {
+      return { notes: new Map(), problem: `候補の説明を読めない: ${messageOf(error)}` };
     }
   }
 
@@ -304,21 +347,50 @@ export class JobRunner {
     return effectivePermissions(merged, { capabilities, hasMask }).permissions;
   }
 
-  /** その回の許可・見せる候補・考える役の出力スキーマのパラメータの部分 */
-  private planParams(spec: AutoJobSpec, view: BackendView, carry: Carry): ParamsPlan {
-    const permissions = this.jobPermissions(spec, view.capabilities, false);
+  /** その回の許可・見せる候補・元画像の候補・マスク・考える役の出力スキーマのパラメータの部分 */
+  private planParams(
+    spec: AutoJobSpec,
+    view: BackendView,
+    carry: Carry,
+    mask: MaskIntervention | undefined,
+  ): ParamsPlan {
+    // マスクが無ければ inpaint は「使わない」になり、出力スキーマに現れない。ループはマスクを待たずに進む（M4:121）
+    const permissions = this.jobPermissions(spec, view.capabilities, mask !== undefined);
     const candidates = shownCandidatesFor({
       permissions,
       lists: view.lists,
-      notes: this.deps.candidateNotes ?? new Map(),
+      notes: view.notes,
       requestGist: carry.intent,
       limits: this.deps.candidateLimits ?? DEFAULT_CANDIDATE_LIMITS,
     });
-    const params = buildParamsSchema(permissions, {
+    const sources = permissions.img2img.mode === 'auto' ? imageSourcesOf(carry) : [];
+    const params = this.paramsSchema(permissions, candidates, sources);
+    return { permissions, candidates, sources, mask, params };
+  }
+
+  private paramsSchema(
+    permissions: Permissions,
+    candidates: ShownCandidates,
+    sources: readonly { key: ImageSourceKey }[],
+  ): ParamsSchema {
+    return buildParamsSchema(permissions, {
       shown: candidates.shown,
       budget: this.deps.budget,
+      imageSources: sources.map((source) => source.key),
     });
-    return { permissions, candidates, params };
+  }
+
+  /**
+   * いま inpaint に使えるマスク。いちばん新しい未使用のマスクで、マスクと塗った画像の両方が置かれていること。
+   */
+  private async usableMask(spec: AutoJobSpec): Promise<MaskIntervention | undefined> {
+    const { store } = this.deps;
+    const mask = activeMask(await store.listInterventions(spec.jobId));
+    if (mask === undefined) return undefined;
+    // 番号を取ったあと画像を置く前に落ちたマスクや、消された画像に塗ったマスクは使わない
+    if ((await store.readMask(spec.jobId, mask.interventionId)) === undefined) return undefined;
+    const painted = await store.readImage({ jobId: spec.jobId, ...mask.image });
+    return painted === undefined ? undefined : mask;
   }
 
   private async loop(spec: AutoJobSpec, initial: RunningState, signal: AbortSignal): Promise<void> {
@@ -335,7 +407,8 @@ export class JobRunner {
       const iteration = state.carry.completedIterations + 1;
       // 走っている段には触れず、境目で要点にする: 回の途中で届いた参照画像は、次の回の「考える」から効く（Issue #5 の I）
       const withReferences = await this.takeInReferences(spec, state.carry, iteration, signal);
-      const paramsPlan = this.planParams(spec, backendView, withReferences);
+      const mask = await this.usableMask(spec);
+      const paramsPlan = this.planParams(spec, backendView, withReferences, mask);
       const think = await this.think(
         spec,
         conditions,
@@ -346,13 +419,7 @@ export class JobRunner {
       );
       // think.json から求め直す: 考えたあと state.json を書く前に落ちても、再開で同じ要点になるように
       const carry = applyIntegratedIntent(withReferences, think, this.deps.budget);
-      const imageCount = await this.generate(
-        spec,
-        iteration,
-        think,
-        paramsPlan.permissions,
-        signal,
-      );
+      const imageCount = await this.generate(spec, iteration, think, paramsPlan, signal);
       const judge = await this.judge(spec, carry, iteration, imageCount, signal);
 
       state = {
@@ -451,9 +518,11 @@ export class JobRunner {
       window: llm.describe('think').window,
       interventions: plan,
       candidates: paramsPlan.candidates,
+      withImageSourceKeys: paramsPlan.sources.length > 0,
     });
+    const params = this.paramsShownIn(messages, paramsPlan);
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
-      schema: buildThinkOutputSchema(paramsPlan.params, budget, {
+      schema: buildThinkOutputSchema(params, budget, {
         withInterventions: plan.included.length > 0,
       }),
       signal,
@@ -469,32 +538,83 @@ export class JobRunner {
     return outcome.value;
   }
 
+  /**
+   * 入力の上限で落ちた区画の元画像のキーを、出力スキーマから外す。見せていない画像は元画像に選ばせない（Issue #5 の G）。
+   */
+  private paramsShownIn(messages: BudgetedMessages, paramsPlan: ParamsPlan): ParamsSchema {
+    const dropped = new Set(
+      messages.report.notes.filter((n) => n.kind === 'dropped').map((n) => n.section),
+    );
+    const sectionOf = (key: ImageSourceKey) => (key.startsWith('ref:') ? 'references' : key);
+    const shown = paramsPlan.sources.filter((source) => !dropped.has(sectionOf(source.key)));
+    if (shown.length === paramsPlan.sources.length) return paramsPlan.params;
+    return this.paramsSchema(paramsPlan.permissions, paramsPlan.candidates, shown);
+  }
+
+  /**
+   * 考える役が選んだ元画像のキーと、inpaint の強さを、生成の要求の画像の参照に写す。
+   */
+  private decidedForRequest(think: ThinkOutput, paramsPlan: ParamsPlan): Record<string, unknown> {
+    const decided: Record<string, unknown> = { ...think.params };
+    const img2img = think.params.img2img as { image: string } | undefined;
+    if (img2img !== undefined) {
+      const source = paramsPlan.sources.find((s) => s.key === img2img.image);
+      if (source === undefined) {
+        throw new StopJob({ kind: 'error', detail: `元画像のキー ${img2img.image} の画像が無い` });
+      }
+      decided.img2img = { ...img2img, image: source.ref };
+    }
+    if (think.params.inpaint !== undefined) {
+      const { mask } = paramsPlan;
+      if (mask === undefined) {
+        throw new StopJob({ kind: 'error', detail: 'inpaint を選んだが、使えるマスクが無い' });
+      }
+      decided.inpaint = {
+        ...think.params.inpaint,
+        image: generatedImageRef(mask.image.iteration, mask.image.index),
+        mask: maskImageRef(mask.interventionId),
+      };
+    }
+    return decided;
+  }
+
   /** 生成して画像と request.json を置く。済んでいれば置いた枚数だけを返す */
   private async generate(
     spec: AutoJobSpec,
     iteration: number,
     think: ThinkOutput,
-    permissions: Permissions,
+    paramsPlan: ParamsPlan,
     signal: AbortSignal,
   ): Promise<number> {
     const { store, backend } = this.deps;
     const done = await store.readGeneration(spec.jobId, iteration);
-    if (done !== undefined) return done.images.length;
+    if (done !== undefined) {
+      // 生成のあと印を付ける前に落ちていたら、ここで付け直す
+      await this.markUsedMask(spec, iteration, done.request);
+      return done.images.length;
+    }
 
     let request: GenerationRequest;
     try {
       request = toGenerationRequest({
-        decided: think.params,
-        permissions,
+        decided: this.decidedForRequest(think, paramsPlan),
+        permissions: paramsPlan.permissions,
         batchSize: spec.batchSize,
       });
     } catch (error) {
+      if (error instanceof StopJob) throw error;
       // 「固定」の値がバックエンドに渡せない形のときなど。黙って AI の値に戻さず、理由付きで止める
+      throw new StopJob({ kind: 'error', detail: `生成の要求を組む段: ${messageOf(error)}` });
+    }
+    let images;
+    try {
+      images = await loadRequestImages(store, spec.jobId, request);
+    } catch (error) {
       throw new StopJob({ kind: 'error', detail: `生成の要求を組む段: ${messageOf(error)}` });
     }
     let result;
     try {
-      result = await backend.generate(request, signal);
+      result = await backend.generate(request, signal, images);
     } catch (error) {
       if (signal.aborted) throw error;
       throw new StopJob({
@@ -510,7 +630,20 @@ export class JobRunner {
       { ...request, batchSize: result.images.length },
       result,
     );
+    await this.markUsedMask(spec, iteration, request);
     return result.images.length;
+  }
+
+  // 生成の要求を置いてから印を付ける: 先に付けると、生成の途中で落ちたとき、使っていないマスクが切れてしまうため
+  private async markUsedMask(
+    spec: AutoJobSpec,
+    iteration: number,
+    request: GenerationRequest,
+  ): Promise<void> {
+    const mask =
+      request.inpaint === undefined ? undefined : parseInputImageRef(request.inpaint.mask);
+    if (mask?.kind !== 'mask') return;
+    await this.deps.store.markMaskUsed(spec.jobId, mask.maskId, iteration);
   }
 
   private async judge(

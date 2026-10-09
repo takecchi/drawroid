@@ -4,6 +4,7 @@ import {
   JobRunner,
   mergePermissions,
   type Budget,
+  type CandidateNotes,
   type ImageBackend,
   type InterventionRecord,
   type JobStore,
@@ -12,6 +13,8 @@ import {
   type LlmPort,
   type LlmRole,
   type LlmRoleInfo,
+  type MaskIntervention,
+  type NewMask,
   type NewReference,
   type Permissions,
   type ReferenceRecord,
@@ -32,6 +35,8 @@ export type AutoJobQueueOptions = {
   budget: Budget;
   /** config.json の permissions。全体の既定の許可の土台に重ねる */
   permissions?: Partial<Permissions>;
+  /** candidate-notes.json を読む。ジョブの始めに1回呼ばれる */
+  candidateNotes?: () => Promise<CandidateNotes>;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   log: (line: string) => void;
 };
@@ -55,6 +60,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
       backend: options.backend,
       budget: options.budget,
       permissions: mergePermissions(BASE_PERMISSIONS, options.permissions ?? {}),
+      ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
     });
   }
 
@@ -96,6 +102,10 @@ export class AutoJobQueue implements AutoJobQueuePort {
 
   addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord> {
     return this.runner.addReference(jobId, reference);
+  }
+
+  addMask(jobId: string, mask: NewMask): Promise<MaskIntervention> {
+    return this.runner.addMask(jobId, mask);
   }
 
   idle(): Promise<void> {
