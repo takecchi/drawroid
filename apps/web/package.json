@@ -9,6 +9,7 @@
     "typecheck": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@drawroid/swr": "workspace:*",
     "@react-router/node": "catalog:",
     "isbot": "catalog:",
     "react": "catalog:",
@@ -16,12 +17,14 @@
     "react-router": "catalog:"
   },
   "devDependencies": {
+    "@drawroid/core": "workspace:*",
     "@react-router/dev": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "^5.0.0"
   },
   "exports": {
     "./package.json": "./package.json"
