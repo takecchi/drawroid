@@ -127,7 +127,7 @@ function buildRole(
   const contextTokens = optionalNumber(values.contextTokens);
   const maxOutputTokens = optionalNumber(values.maxOutputTokens);
   return {
-    provider: roleProviderOf(values, names),
+    ...(roleProviderOf(values, names) === '' ? {} : { provider: roleProviderOf(values, names) }),
     model: values.model.trim(),
     ...(contextTokens === undefined ? {} : { contextTokens }),
     ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
