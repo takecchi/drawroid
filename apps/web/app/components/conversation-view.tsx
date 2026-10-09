@@ -4,6 +4,7 @@ import {
   jobImageUrls,
   setSelection,
   useJob,
+  useJobDistill,
   useSelections,
   type ReferenceUpload,
 } from '@drawroid/swr';
@@ -435,7 +436,62 @@ function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped
           score={best.score}
         />
       )}
+      {offersChoice && <LearnedFromJob jobId={item.jobId} />}
     </div>
+  );
+}
+
+/**
+ * このジョブから覚えたこと（蒸留が足した・直した記憶、できなかった理由）。蒸留は止まったあと裏で走るので、
+ * 済むまでは「整理しています」と出し、読み直しは回数に上限を置く（useJobDistill）。
+ * 人が止めた・人が選んだ止まりには出さない（呼び手が出し分ける）
+ */
+function LearnedFromJob({ jobId }: { jobId: string }) {
+  const { data, error, pending, exhausted } = useJobDistill(jobId);
+  const entries = data?.entries ?? [];
+  const learned = entries.flatMap((entry) => [
+    ...entry.added.map((item) => ({
+      key: `add-${entry.at}-${item.id}`,
+      text: `覚えた: ${item.body}`,
+    })),
+    ...entry.edited.map((item) => ({
+      key: `edit-${entry.at}-${item.id}`,
+      text: `直した: ${item.before} → ${item.after}`,
+    })),
+    ...(entry.failure === undefined
+      ? []
+      : [{ key: `failure-${entry.at}`, text: `整理できなかった: ${entry.failure}` }]),
+  ]);
+  return (
+    <section
+      aria-label="このジョブから覚えたこと"
+      className="max-w-[85%] space-y-1 rounded-md border border-border px-3 py-2 text-xs"
+    >
+      <p className="font-medium">このジョブから覚えたこと</p>
+      {error !== undefined ? (
+        <p className="text-destructive">覚えたことを読めない: {error.message}</p>
+      ) : data === undefined || pending ? (
+        <p className="text-muted-foreground">覚えたことを整理しています</p>
+      ) : exhausted ? (
+        <p className="text-muted-foreground">
+          覚えたことは、まだ出ていない。あとで
+          <Link to="/memory" className="text-primary underline-offset-4 hover:underline">
+            記憶
+          </Link>
+          で確かめられる。
+        </p>
+      ) : learned.length === 0 ? (
+        <p className="text-muted-foreground">新しく覚えたことは無い。</p>
+      ) : (
+        <BulletList className="text-xs">
+          {learned.map((item) => (
+            <li key={item.key} className="break-words">
+              {item.text}
+            </li>
+          ))}
+        </BulletList>
+      )}
+    </section>
   );
 }
 

@@ -298,6 +298,8 @@ async function main() {
         write: (notes) => writeCandidateNotes(dataPaths(root).candidateNotes, notes),
       },
       env: process.env,
+      // 止まりのカードの「このジョブから覚えたこと」。読むだけ（書くのは自動ジョブと選び直しの蒸留）
+      distillLog: createFsDistillLog(root),
       // 設定の画面の「確かめる」。バックエンドは、いま使っている種類と URL（画面で繋ぎ直した値を含む）で確かめる
       doctor: {
         run: async () => {

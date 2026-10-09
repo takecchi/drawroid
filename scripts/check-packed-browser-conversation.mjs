@@ -527,6 +527,19 @@ try {
     (await chooseBest.count()) === 0 && (await favorites()) === favoritesBefore + 1,
     '「この画像に決める（お気に入りにする）」で、止まったジョブの最良の画像がお気に入りになり、ボタンの代わりに「お気に入り」と出る',
   );
+  // 7b. 同じ止まりに「このジョブから覚えたこと」が出て、蒸留の記録が読めたら、整理中から確定した中身（覚えた・直した・無い・できなかった）に変わる
+  const learnedCard = narrow.getByRole('region', { name: 'このジョブから覚えたこと' }).first();
+  await learnedCard
+    .getByText(/^(覚えた: |直した: |整理できなかった: |新しく覚えたことは無い。)/)
+    .first()
+    .waitFor();
+  const learnedBox = await learnedCard.boundingBox();
+  expect(
+    learnedBox !== null &&
+      learnedBox.x + learnedBox.width <= 390 &&
+      (await learnedCard.getByText('覚えたことを整理しています').count()) === 0,
+    '狭い画面で、止まりのカードに「このジョブから覚えたこと」が画面の幅の中に出て、蒸留の記録が読めると確定した中身に変わる',
+  );
   const narrowReplies = await narrowLog.getByText(REPLY).count();
   const narrowHeld = relay.stats.thinkingHeld;
   relay.holdAfterThinking();

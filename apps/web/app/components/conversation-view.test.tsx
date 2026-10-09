@@ -6,6 +6,7 @@ import {
   recheckBackendStatus,
   setSelection,
   useJob,
+  useJobDistill,
   useSelections,
 } from '@drawroid/swr';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -24,6 +25,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   recheckBackendStatus: vi.fn(),
   setSelection: vi.fn(),
   useJob: vi.fn(),
+  useJobDistill: vi.fn(),
   useSelections: vi.fn(),
 }));
 // jsdom には canvas の描画が無い: マスクを PNG にする所は差し替える
@@ -91,6 +93,12 @@ beforeEach(() => {
   seq = 0;
   vi.mocked(useSelections).mockReturnValue({ data: { selections: [] } } as never);
   vi.mocked(useJob).mockReturnValue({ data: undefined } as never);
+  vi.mocked(useJobDistill).mockReturnValue({
+    data: undefined,
+    error: undefined,
+    pending: false,
+    exhausted: false,
+  } as never);
 });
 
 afterEach(() => {
@@ -187,6 +195,94 @@ describe('the stop card', () => {
     expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^この画像に決める/ })).toBeNull();
     expect(useJob).not.toHaveBeenCalledWith(JOB);
+  });
+});
+
+describe('what the job taught, on the stop card', () => {
+  const distilled = (entries: unknown[], state: { pending?: boolean; exhausted?: boolean } = {}) =>
+    ({
+      data: { entries },
+      error: undefined,
+      pending: state.pending ?? false,
+      exhausted: state.exhausted ?? false,
+    }) as never;
+
+  async function stopWith(reason: object) {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason }));
+    await waitFor(() => expect(screen.getByText(/描くのを止めた/)).toBeTruthy());
+  }
+  const learned = () => screen.getByRole('region', { name: 'このジョブから覚えたこと' });
+
+  it('lists what was added, what was changed from what to what, and why it could not learn', async () => {
+    vi.mocked(useJobDistill).mockReturnValue(
+      distilled([
+        {
+          kind: 'stopped',
+          at: '2026-10-10T05:00:00.000Z',
+          added: [{ id: 'm-2', body: '指の崩れは許容しない' }],
+          edited: [{ id: 'm-1', before: '彩度は普通', after: '彩度は控えめ' }],
+        },
+        {
+          kind: 'reselection',
+          at: '2026-10-10T05:01:00.000Z',
+          added: [],
+          edited: [],
+          failure: '形が合わない',
+        },
+      ]),
+    );
+    await stopWith({ kind: 'ai', detail: '止めてよい' });
+
+    expect(
+      within(learned())
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([
+      '覚えた: 指の崩れは許容しない',
+      '直した: 彩度は普通 → 彩度は控えめ',
+      '整理できなかった: 形が合わない',
+    ]);
+    expect(useJobDistill).toHaveBeenCalledWith(JOB);
+  });
+
+  it('says it is still sorting out what it learned while the distill has not been written', async () => {
+    vi.mocked(useJobDistill).mockReturnValue(distilled([], { pending: true }));
+    await stopWith({ kind: 'limit:iterations', detail: '3 回に達した' });
+
+    expect(within(learned()).getByText('覚えたことを整理しています')).toBeTruthy();
+  });
+
+  it('says nothing came out yet, with a way to the memory, once it has stopped reading again', async () => {
+    vi.mocked(useJobDistill).mockReturnValue(distilled([], { exhausted: true }));
+    await stopWith({ kind: 'error', detail: '見る段: 形が合わない' });
+
+    expect(within(learned()).getByText(/覚えたことは、まだ出ていない/)).toBeTruthy();
+    expect(within(learned()).getByRole('link', { name: '記憶' }).getAttribute('href')).toBe(
+      '/memory',
+    );
+  });
+
+  it('says nothing new was learned when the distill changed nothing', async () => {
+    vi.mocked(useJobDistill).mockReturnValue(
+      distilled([{ kind: 'stopped', at: '2026-10-10T05:00:00.000Z', added: [], edited: [] }]),
+    );
+    await stopWith({ kind: 'ai', detail: '止めてよい' });
+
+    expect(within(learned()).getByText('新しく覚えたことは無い。')).toBeTruthy();
+  });
+
+  it.each([
+    ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
+    ['a person chose an image', { kind: 'adopted', detail: '人間が画像を選んだ' }],
+  ])('shows nothing and reads nothing when %s', async (_, reason) => {
+    vi.mocked(useJobDistill).mockReturnValue(distilled([], { pending: true }));
+    await stopWith(reason);
+
+    expect(screen.queryByRole('region', { name: 'このジョブから覚えたこと' })).toBeNull();
+    expect(useJobDistill).not.toHaveBeenCalled();
   });
 });
 
