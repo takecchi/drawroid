@@ -315,12 +315,12 @@ export function StopNotice({
   );
 }
 
-export type ChatStatus = 'queued' | 'waiting-llm' | 'job.paused';
+export type ChatStatus = 'queued' | 'waiting-llm' | 'job.held';
 
 const STATUS_TEXT: Record<ChatStatus, string> = {
   queued: '順番を待っています',
   'waiting-llm': '考えています',
-  'job.paused': '話を聞いています（描くのは待たせています）',
+  'job.held': '話を聞いています（描くのは待たせています）',
 };
 
 /** 今の状態の1行。確定しないので、次の状態か確定したイベントで消える */

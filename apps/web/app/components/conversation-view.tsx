@@ -267,7 +267,7 @@ function renderItem(
     case 'status':
       return <StatusLine key={item.key} status={item.status} />;
     case 'held':
-      return <StatusLine key={item.key} status="job.paused" />;
+      return <StatusLine key={item.key} status="job.held" />;
   }
 }
 
