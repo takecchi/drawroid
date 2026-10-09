@@ -34,10 +34,15 @@ function JobHeader({ job }: { job: JobDetailData }) {
   const { spec, state } = job;
   return (
     <Section>
-      <h1 className="text-2xl font-semibold">
-        <code>{spec.jobId}</code>
+      {/* 見出しは依頼の文にする: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す */}
+      <h1 className="line-clamp-3 text-2xl font-semibold break-words">
+        {spec.kind === 'auto' ? spec.request : '手動の生成'}
       </h1>
       <DescriptionList>
+        <dt>ID</dt>
+        <dd>
+          <code>{spec.jobId}</code>
+        </dd>
         <dt>種類</dt>
         <dd>{KIND_LABELS[spec.kind]}</dd>
         <dt>作成</dt>
@@ -184,7 +189,10 @@ export function JobDetail({ jobId }: { jobId: string }) {
         <ErrorNote>LLM の記録を読めない: {llmCalls.error.message}</ErrorNote>
       )}
       {interventions.data !== undefined && (
-        <InterventionList interventions={interventions.data.interventions} />
+        <InterventionList
+          interventions={interventions.data.interventions}
+          stopped={data.state.status === 'stopped'}
+        />
       )}
       {references.data !== undefined && <ReferenceList references={references.data.references} />}
       {iterations.data !== undefined && (

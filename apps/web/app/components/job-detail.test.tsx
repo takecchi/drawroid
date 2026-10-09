@@ -137,4 +137,33 @@ describe('JobDetail', () => {
     renderDetail();
     expect(screen.queryByRole('note', { name: 'はじめに要る設定' })).toBeNull();
   });
+
+  // 見出しは依頼の文: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す
+  it('puts the request as the heading, and keeps the ID below it', () => {
+    serve(stopped({ kind: 'ai', detail: '意図どおり' }));
+    renderDetail();
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('夕暮れの海');
+    expect(screen.getByText(JOB).tagName).toBe('CODE');
+  });
+
+  it('says a mask that inpaint never used was left unused once the job stopped', () => {
+    serve(stopped({ kind: 'ai', detail: '意図どおり' }));
+    vi.mocked(useInterventions).mockReturnValue({
+      data: {
+        interventions: [
+          {
+            kind: 'mask',
+            interventionId: 'm-1',
+            receivedAt: '2026-01-01T00:00:30.000Z',
+            image: { iteration: 1, index: 0 },
+          },
+        ],
+      },
+    } as never);
+    renderDetail();
+
+    expect(screen.getByText('使わずに止まった')).toBeTruthy();
+    expect(screen.queryByText('まだ inpaint に使っていない')).toBeNull();
+  });
 });
