@@ -162,6 +162,18 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         const uploadId = await store.addUpload(id, { data, mediaType }, new Date());
         return c.json({ uploadId }, 201);
       })
+      // 会話で添えた画像を読む（人の発言の行に並べる）。ID の形は置き場所が確かめ、合わなければ無い扱いにする
+      .get('/:conversationId/uploads/:uploadId', async (c) => {
+        const { conversationId: id, uploadId } = c.req.param();
+        if (!(await store.hasConversation(id))) return notFound(c, missing(id));
+        const upload = await store.readUpload(id, uploadId);
+        if (upload === undefined) return notFound(c, `添えた画像 ${uploadId} は無い`);
+        // 長く持たせる: 添えた画像は置いたあと変わらず、同じ ID で別の画像になることも無いため
+        return c.body(upload.data as Uint8Array<ArrayBuffer>, 200, {
+          'content-type': upload.mediaType,
+          'cache-control': 'private, max-age=31536000, immutable',
+        });
+      })
       // 中断。turn は走っている話す役のターンだけ、all はそれに加えて会話のジョブも止める。
       // 走っているものが無くても 202 で受ける（何もしない）。応答には、実際に打ち切った・止めたものを返す
       .post('/:conversationId/interrupt', jsonBody(interruptSchema), async (c) => {

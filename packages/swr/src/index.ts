@@ -1,5 +1,5 @@
 export { ApiError, isApiError, readApiError } from './api-error.js';
-export { jobImageUrls } from './urls.js';
+export { conversationUploadUrl, jobImageUrls } from './urls.js';
 export {
   useBackendSettings,
   useBudgetSettings,

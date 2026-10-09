@@ -437,4 +437,37 @@ describe('images attached in a conversation', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('gives back the attached image as it was sent, with its type', async () => {
+    const id = await newConversation();
+    const sent = await json('POST', `/conversations/${id}/uploads`, {
+      mediaType: 'image/png',
+      data: png,
+    });
+    const { uploadId } = (await sent.json()) as { uploadId: string };
+
+    const res = await app.request(`/conversations/${id}/uploads/${uploadId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(Buffer.from(await res.arrayBuffer()).toString('base64')).toBe(png);
+  });
+
+  it('answers 404 for an image not attached in that conversation, or an ID of another shape', async () => {
+    const id = await newConversation();
+    const other = await newConversation();
+    const sent = await json('POST', `/conversations/${other}/uploads`, {
+      mediaType: 'image/png',
+      data: png,
+    });
+    const { uploadId } = (await sent.json()) as { uploadId: string };
+
+    for (const path of [
+      `/conversations/${id}/uploads/${uploadId}`,
+      `/conversations/${id}/uploads/..%2F..%2Fconversation.json`,
+      `/conversations/no-such-conversation/uploads/${uploadId}`,
+    ]) {
+      expect((await app.request(path)).status, path).toBe(404);
+    }
+  });
 });
