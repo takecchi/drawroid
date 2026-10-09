@@ -54,12 +54,30 @@ export function createMemoryTools(deps: MemoryToolDeps): TalkTool[] {
     async run(raw, context) {
       const input = rememberInput.parse(raw);
       const at = deps.now().toISOString();
+      const source = conversationSource(context.conversationId);
+      // 同じ本文の記憶が既にあれば、新しく作らず、その出所に会話を足す: 人が別の会話で同じ好みを言い直すたびに、
+      // 同じ記憶が増えないように（本文は前後の空白を除いて比べる。入力は trim 済み）
+      const existing = (await deps.memory.list()).items.find(
+        (item) => item.body.trim() === input.body,
+      );
+      if (existing !== undefined) {
+        const { before } = await deps.memory.update(existing.id, (current) =>
+          current === null || current.sources.includes(source)
+            ? undefined
+            : { ...current, sources: [...current.sources, source], updatedAt: at },
+        );
+        if (before !== null) {
+          const text = `既にあった（記憶 ${existing.id}）ので、出所にこの会話を足した: ${existing.body}`;
+          return { ok: true, result: text, summary: text };
+        }
+        // 比べてから足すまでのあいだに人間が消した: 新しく書く
+      }
       const item = memoryItemSchema.parse({
         id: (deps.newMemoryId ?? defaultMemoryId)(),
         body: input.body,
         tags: input.tags,
         scope: input.scope,
-        sources: [conversationSource(context.conversationId)],
+        sources: [source],
         createdAt: at,
         updatedAt: at,
       });
