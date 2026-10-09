@@ -1,20 +1,36 @@
 export {
   BACKEND_FEATURES,
+  CANDIDATE_KIND_FEATURE,
   CANDIDATE_KINDS,
   candidateKindSchema,
   candidateSchema,
+  CONTROL_MODES,
+  controlNetUnitSchema,
   generationRequestSchema,
   hiresFixSchema,
+  inputImageRefSchema,
+  inputImageRefsOf,
+  img2imgSchema,
+  INPAINT_FILLS,
+  inpaintSchema,
   loraSchema,
+  RESIZE_MODES,
+  resizeModeSchema,
   type BackendCapabilities,
   type BackendFeature,
+  type BackendLimits,
   type Candidate,
   type CandidateKind,
+  type ControlNetUnit,
   type GeneratedImage,
+  type GenerationImages,
   type GenerationRequest,
   type GenerationRequestInput,
   type GenerationResult,
   type ImageBackend,
+  type InputImage,
+  type InputImageRef,
+  type ResizeMode,
 } from './backend.js';
 export {
   BACKEND_ERROR_KINDS,
@@ -42,6 +58,9 @@ export * from './llm/record.js';
 export * from './loop/budget.js';
 export * from './loop/carry.js';
 export * from './loop/inputs.js';
+export * from './job/manual.js';
+export * from './job/store.js';
+export * from './job/types.js';
 export * from './loop/schemas.js';
 export {
   MEMORY_SCOPES,
