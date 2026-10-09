@@ -92,6 +92,34 @@ try {
     page.setDefaultTimeout(STEP_TIMEOUT_MS);
     const problems = collectProblems(page, base);
     await page.goto(`${base}/conversations/${conversation.conversationId}`);
+
+    // ツールの行は、人が読む見出しと短い要約で出し、生の呼び出し（JSON）は「詳しく」に畳む
+    const toolRow = page.getByRole('group', { name: 'ツール 描き始める: 済み' });
+    await toolRow.waitFor();
+    expect(
+      !(await toolRow.getByText(/stopConditions/).isVisible()) &&
+        (await toolRow.locator('details summary').textContent()) === '詳しく',
+      `${label}: ツールの行は「描き始める」と出し、生の呼び出しは「詳しく」に畳む`,
+    );
+    if (width < 768) {
+      // 描いている間も、入力欄が細くならない: 止める・送るは印だけで、名前は読み上げに残る
+      const stop = page.getByRole('button', { name: '止める' });
+      await stop.waitFor();
+      const send = page.getByRole('button', { name: '送る' });
+      const field = await page.getByLabel('発言').boundingBox();
+      const stopBox = await stop.boundingBox();
+      const sendBox = await send.boundingBox();
+      expect(
+        field !== null &&
+          stopBox !== null &&
+          sendBox !== null &&
+          field.width >= 200 &&
+          stopBox.width <= 56 &&
+          sendBox.width <= 56,
+        `${label}: 描いている間も入力欄は 200px 以上あり、止める・送るは印だけ（欄 ${field?.width}px・止める ${stopBox?.width}px・送る ${sendBox?.width}px）`,
+      );
+    }
+
     const thumbnail = page.getByRole('button', { name: /^大きく見る: 1 回目の画像 1 番/ });
     await thumbnail.scrollIntoViewIfNeeded();
     await thumbnail.click();
