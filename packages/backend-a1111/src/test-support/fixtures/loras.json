@@ -1,0 +1,14 @@
+[
+  {
+    "name": "detail-tweaker-xl",
+    "alias": "detail-tweaker-xl",
+    "path": "/webui/models/Lora/detail-tweaker-xl.safetensors",
+    "metadata": {}
+  },
+  {
+    "name": "watercolor_style_v2",
+    "alias": "watercolor",
+    "path": "/webui/models/Lora/watercolor_style_v2.safetensors",
+    "metadata": { "ss_output_name": "watercolor", "ss_network_dim": "32" }
+  }
+]

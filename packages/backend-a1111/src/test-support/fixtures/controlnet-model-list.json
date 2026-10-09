@@ -1,0 +1,7 @@
+{
+  "model_list": [
+    "control_v11f1p_sd15_depth [cfd03158]",
+    "control_v11p_sd15_canny [d14c016b]",
+    "diffusers_xl_canny_full [2b69fca4]"
+  ]
+}

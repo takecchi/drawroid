@@ -1,5 +1,6 @@
 # 生成物
 dist/
+bundle/
 build/
 .react-router/
 coverage/

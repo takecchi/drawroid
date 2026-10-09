@@ -1,5 +1,7 @@
 import { clipText, estimateImageTokens, estimateTextTokens } from '../budget/estimate.js';
 import { packWithinBudget } from '../budget/pack.js';
+import type { MemoryItem } from '../memory/item.js';
+import { describeMemoryDrop, type MemoryRoleLimits, selectMemory } from '../memory/select.js';
 import type { InterventionPlan } from '../intervention/plan.js';
 import type { ReferenceLimits } from '../reference/reference.js';
 import {
@@ -29,6 +31,12 @@ export type PreviewImage = {
   longEdge: number;
   /** すでにこの画像を渡した LLM 呼び出しの ID（渡した印） */
   sentInCall?: string;
+};
+
+/** 記憶ストアから読んだ全項目と、この役の記憶の予算。どれを載せるかは組み立て器が選ぶ */
+export type MemoryInput = {
+  items: readonly MemoryItem[];
+  limits: MemoryRoleLimits;
 };
 
 export class InputOverBudgetError extends Error {
@@ -63,9 +71,9 @@ const JUDGE_SYSTEM = [
 ].join('\n');
 
 /** 入力の1区画。必須でない区画は、入力の上限に入らなければ落とす */
-type Section = { name: string; text: string };
+export type Section = { name: string; text: string };
 
-class SectionWriter {
+export class SectionWriter {
   readonly notes: BudgetNote[] = [];
 
   clip(section: string, text: string, limit: number): string {
@@ -124,7 +132,7 @@ class SectionWriter {
 /**
  * 必須の区画は必ず入れ、任意の区画は渡した順を優先順位として、入力の上限に入るものだけを入れる。
  */
-function seal(args: {
+export function seal(args: {
   system: string;
   writer: SectionWriter;
   required: Section[];
@@ -161,6 +169,27 @@ function seal(args: {
     inputTokenLimit,
     notes,
   });
+}
+
+/**
+ * 依頼に関係する記憶を、1項目1区画にして返す。記憶の予算で落とした項目は、記録に残すために notes へ入れる。
+ */
+// 1項目ずつ区画にする: 入力の上限で落とすときも項目の単位で落とし、どれを落としたかを記録に残せるようにするため
+function memorySections(
+  w: SectionWriter,
+  memory: MemoryInput | undefined,
+  carry: Carry,
+): Section[] {
+  if (memory === undefined) return [];
+  const { selected, droppedByBudget } = selectMemory(memory.items, carry.intent, memory.limits);
+  for (const dropped of droppedByBudget) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `memory[${dropped.item.id}]`,
+      reason: describeMemoryDrop(dropped, memory.limits),
+    });
+  }
+  return selected.map((item) => ({ name: `memory[${item.id}]`, text: `好み: ${item.body}` }));
 }
 
 /** 口出しの原文。AI の判断の区画とは見出しで分け、人間の指示として渡す */
@@ -256,6 +285,7 @@ export function buildThinkInput(args: {
   allowed: readonly ParamKey[];
   budget: Budget;
   window: ModelWindow;
+  memory?: MemoryInput;
   /** planInterventions の結果。載せた口出しは必須の区画にする */
   interventions?: InterventionPlan;
   /** 候補を持つパラメータごとに、予算で絞って見せる候補（selectCandidates の結果） */
@@ -263,7 +293,7 @@ export function buildThinkInput(args: {
   /** img2img を AI に任せる回だけ true。最良・直近・参照画像に、元画像として選ぶときのキーを添える */
   withImageSourceKeys?: boolean;
 }): BudgetedMessages {
-  const { carry, progress, allowed, budget, window, interventions, candidates } = args;
+  const { carry, progress, allowed, budget, window, memory, interventions, candidates } = args;
   const withImageSourceKeys = args.withImageSourceKeys ?? false;
   const w = new SectionWriter();
   const remaining =
@@ -291,6 +321,8 @@ export function buildThinkInput(args: {
   if (carry.latest !== undefined && carry.latest.iteration !== carry.best?.iteration) {
     optional.push(w.result('latest', keyed('直近', 'latest'), carry.latest, budget, true));
   }
+  // 記憶は最良・直近より後ろに置く: 入力の上限で削るときは記憶から先に削る（architecture の削る順）
+  optional.push(...memorySections(w, memory, carry));
   return seal({
     system: THINK_SYSTEM,
     writer: w,
@@ -311,8 +343,9 @@ export function buildJudgeInput(args: {
   images: readonly PreviewImage[];
   budget: Budget;
   window: ModelWindow;
+  memory?: MemoryInput;
 }): BudgetedMessages {
-  const { carry, images, budget, window } = args;
+  const { carry, images, budget, window, memory } = args;
   if (images.length === 0) throw new ImageNotAllowedError('評価する画像が無い');
   if (images.length > budget.imagesPerJudge) {
     throw new ImageNotAllowedError(
@@ -328,6 +361,7 @@ export function buildJudgeInput(args: {
   if (carry.best !== undefined) {
     optional.push(w.result('best', 'これまでの最良', carry.best, budget, false));
   }
+  optional.push(...memorySections(w, memory, carry));
   return seal({
     system: JUDGE_SYSTEM,
     writer: w,

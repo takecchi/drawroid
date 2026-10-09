@@ -135,3 +135,63 @@ describe('memoryItemSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('selectMemory with a separate frame for always items', () => {
+  const manyAlways = (count: number) =>
+    Array.from({ length: count }, (_, n) =>
+      item({
+        id: `always-${String(n).padStart(3, '0')}`,
+        scope: 'always',
+        updatedAt: '2026-10-09T00:00:00Z',
+      }),
+    );
+
+  it('keeps passing tagged items that match the request however many always items there are', () => {
+    const items = [...manyAlways(300), item({ id: 'anime', tags: ['アニメ'] })];
+
+    const { selected } = selectMemory(items, 'アニメ調の少女', {
+      maxCount: 3,
+      maxSize: 10_000,
+      always: { maxCount: 3, maxSize: 10_000 },
+    });
+
+    expect(ids(selected)).toContain('anime');
+    expect(selected.filter((i) => i.scope === 'always')).toHaveLength(3);
+  });
+
+  it('keeps each frame within its own budget and reports what each frame left out', () => {
+    const tagged = Array.from({ length: 200 }, (_, n) =>
+      item({ id: `anime-${String(n).padStart(3, '0')}`, tags: ['アニメ'] }),
+    );
+    const limits = {
+      maxCount: 4,
+      maxSize: 10_000,
+      always: { maxCount: 2, maxSize: 10_000 },
+    };
+
+    const { selected, droppedByBudget } = selectMemory(
+      [...manyAlways(100), ...tagged],
+      'アニメ',
+      limits,
+    );
+
+    expect(selected.filter((i) => i.scope === 'always')).toHaveLength(2);
+    expect(selected.filter((i) => i.scope === 'tagged')).toHaveLength(4);
+    expect(droppedByBudget).toHaveLength(98 + 196);
+  });
+
+  it('does not let tagged items use room that the always frame left unused', () => {
+    const items = [
+      item({ id: 'always', scope: 'always' }),
+      item({ id: 'anime-1', tags: ['アニメ'] }),
+      item({ id: 'anime-2', tags: ['アニメ'] }),
+    ];
+
+    const { selected } = selectMemory(items, 'アニメ', {
+      maxCount: 1,
+      always: { maxCount: 5 },
+    });
+
+    expect(selected).toHaveLength(2);
+  });
+});
