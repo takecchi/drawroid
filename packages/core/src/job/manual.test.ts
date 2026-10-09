@@ -109,6 +109,28 @@ describe('ManualGenerationRunner', () => {
     expect(backend.requests).toEqual([]);
   });
 
+  it('keeps serving later jobs when the stopped mark of an earlier job cannot be written', async () => {
+    class FailsOnceToMarkStopped extends MemoryJobStore {
+      private failures = 1;
+      override async writeState(jobId: string, state: JobState) {
+        if (state.status === 'stopped' && this.failures-- > 0) throw new Error('disk full');
+        await super.writeState(jobId, state);
+      }
+    }
+    const backend = new StubBackend();
+    const store = new FailsOnceToMarkStopped();
+    const runner = new ManualGenerationRunner({ backend, store });
+    const first = await runner.start(params);
+    const second = await runner.start(params);
+
+    await expect(runner.idle()).resolves.toBeUndefined();
+    expect(store.states.get(first.jobId)).toMatchObject({ status: 'running' });
+    expect(store.states.get(second.jobId)).toMatchObject({
+      status: 'stopped',
+      imagesGenerated: 2,
+    });
+  });
+
   it('does not let two generations overlap', async () => {
     const backend = new StubBackend({ generateDelayMs: 10 });
     let running = 0;

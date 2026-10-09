@@ -136,7 +136,7 @@ export class FsJobStore implements JobStore {
   }
 
   readState(jobId: string): Promise<JobState> {
-    return readValid(this.jobFiles(jobId).state, jobStateSchema);
+    return readJson(this.jobFiles(jobId).state) as Promise<JobState>;
   }
 
   async writeState(jobId: string, state: JobState): Promise<void> {
