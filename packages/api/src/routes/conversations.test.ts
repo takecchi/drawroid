@@ -178,6 +178,20 @@ describe('SSE', () => {
     expect(confirmed(frames).map((f) => f.id)).toEqual(['3']);
   });
 
+  it('lets Last-Event-ID win over ?after= even when it is the smaller one', async () => {
+    const id = await newConversation();
+    for (const text of ['1', '2', '3', '4']) await say(id, text);
+
+    // 大きい方を取るのではなく、Last-Event-ID を位置とする
+    const frames = await readStream(
+      `/conversations/${id}/stream?after=3`,
+      (f) => confirmed(f).length >= 3,
+      { 'Last-Event-ID': '1' },
+    );
+
+    expect(confirmed(frames).map((f) => f.id)).toEqual(['2', '3', '4']);
+  });
+
   it('starts from ?after= when no Last-Event-ID is sent', async () => {
     const id = await newConversation();
     for (const text of ['1', '2', '3']) await say(id, text);
