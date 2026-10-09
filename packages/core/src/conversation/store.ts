@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 import type { LlmCallRecord } from '../llm/record.js';
+import type { REFERENCE_MEDIA_TYPES } from '../job/types.js';
 import type { ConversationEvent, NewConversationEvent } from './events.js';
+
+type ReferenceMediaType = (typeof REFERENCE_MEDIA_TYPES)[number];
 
 /** 最初の発言から作る会話のタイトルの長さの上限 */
 export const CONVERSATION_TITLE_CHARS = 40;
@@ -67,4 +70,14 @@ export interface ConversationStore {
   ): Promise<ConversationEventPage>;
   /** 話す役の LLM 呼び出しの記録を置く（conversations/<id>/llm-calls/<callId>.json）。ジョブには属さない */
   writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void>;
+  /** 会話で人間が添えた画像を置く（uploads/）。描き始めるときに、ジョブの参照画像（refs/）へ写す */
+  addUpload(conversationId: string, upload: ConversationUpload, now: Date): Promise<string>;
+  /** 添えた画像を読む。無ければ undefined */
+  readUpload(conversationId: string, uploadId: string): Promise<ConversationUpload | undefined>;
 }
+
+/** 会話で人間が添えた画像1枚 */
+export type ConversationUpload = {
+  data: Uint8Array;
+  mediaType: ReferenceMediaType;
+};

@@ -187,3 +187,4 @@ export * from './conversation/progress-poller.js';
 export * from './conversation/progress-preview.js';
 export * from './conversation/job-bridge.js';
 export * from './conversation/drawing.js';
+export * from './conversation/drawing-tools.js';
