@@ -3,6 +3,7 @@ import {
   interruptConversation,
   loadConversationEvents,
   postConversationMessage,
+  uploadConversationImage,
 } from '@drawroid/swr';
 
 import type { ConversationActions } from '../components/conversation-view';
@@ -22,9 +23,10 @@ export const apiConversationSource: ConversationSource = {
 /** 発言と止める。止めるボタンは scope: all（絵も含めて止める。設計書の「人間が止める」） */
 export function apiConversationActions(conversationId: string): ConversationActions {
   return {
-    send: async (text, clientMessageId) => {
-      await postConversationMessage(conversationId, text, clientMessageId);
+    send: async (text, clientMessageId, attachments) => {
+      await postConversationMessage(conversationId, text, clientMessageId, attachments);
     },
     stop: () => interruptConversation(conversationId, 'all'),
+    upload: async (image) => (await uploadConversationImage(conversationId, image)).uploadId,
   };
 }

@@ -9,6 +9,7 @@ import {
   stopConditionsSchema,
   type InterventionRecord,
   type NewReference,
+  type ReferenceRecord,
   type StopConditions,
   type StopConditionsChange,
 } from '../job/types.js';
@@ -17,8 +18,12 @@ import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
 import { adoptImage as adoptChosenImage } from '../selection/adopt.js';
-import { formatImageKey } from '../selection/selection.js';
-import { narrowPermissions } from './drawing.js';
+import {
+  indexOfTalkImageNumber,
+  narrowPermissions,
+  talkImageLabel,
+  talkImageNumberSchema,
+} from './drawing.js';
 import type { ConversationStore } from './store.js';
 import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js';
 
@@ -30,6 +35,8 @@ export type DrawingRunner = {
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
   /** 人間が選んだ画像を、走っているジョブに置く（お気に入りへの記録はしない） */
   adopt(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord>;
+  /** 走っているジョブに参照画像を添える。次の回の境目で、見る役が1度だけ見て要点にする */
+  addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
 };
 
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
@@ -89,6 +96,22 @@ function backendProblem(error: unknown): string {
 const MAX_REQUEST_CHARS = 2000;
 const MAX_INSTRUCTION_CHARS = 2000;
 
+/** 会話で添えた画像の指し方。uploadId は、話す役の入力の発言に「（添えた画像: …）」として載る */
+const attachmentsSchema = z
+  .array(
+    z.object({
+      uploadId: z.string().min(1),
+      note: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('用途の言葉（「この構図で」など）'),
+    }),
+  )
+  .optional();
+
 const startInputSchema = z.object({
   request: z.string().trim().min(1).max(MAX_REQUEST_CHARS).describe('描くものの要点'),
   stopConditions: stopConditionsSchema
@@ -101,36 +124,58 @@ const startInputSchema = z.object({
     .describe(
       '人間の許可を狭めるときだけ書く（使わないにする・候補の中の値で固定する・候補を絞る）。広げることはできない',
     ),
-  attachments: z
-    .array(
-      z.object({
-        uploadId: z.string().min(1),
-        note: z
-          .string()
-          .trim()
-          .min(1)
-          .max(200)
-          .optional()
-          .describe('用途の言葉（「この構図で」など）'),
-      }),
-    )
-    .optional()
-    .describe('人間がこの会話で添えた画像を、参照画像として使うとき'),
+  attachments: attachmentsSchema.describe(
+    '人間がこの会話で添えた画像を、参照画像として使うとき。発言の「（添えた画像: …）」の ID を書く',
+  ),
 });
 
-const adoptInputSchema = z.object({
-  iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
-  index: z.number().int().nonnegative().optional().describe('その回の何枚目か（0 から）。省けば 0'),
-});
+// 知らない欄は断る: 前の 0 から数える欄（index）で渡されたとき、黙って省いた扱い（1枚目）にしないため
+const adoptInputSchema = z
+  .object({
+    iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
+    number: talkImageNumberSchema,
+  })
+  .strict();
 
 const reviseInputSchema = z
   .object({
     instruction: z.string().trim().min(1).max(MAX_INSTRUCTION_CHARS).optional(),
     stopConditions: stopConditionsChangeSchema.optional(),
+    attachments: attachmentsSchema.describe(
+      '人間がこの会話で添えた画像を、描いている絵の参照画像に足すとき。発言の「（添えた画像: …）」の ID を書く',
+    ),
   })
-  .refine((input) => input.instruction !== undefined || input.stopConditions !== undefined, {
-    message: '指示か止める条件の変更のどちらかを書く',
-  });
+  .refine(
+    (input) =>
+      input.instruction !== undefined ||
+      input.stopConditions !== undefined ||
+      (input.attachments ?? []).length > 0,
+    { message: '指示・止める条件の変更・添えた画像のどれかを書く' },
+  );
+
+/**
+ * 会話で添えた画像を、参照画像の形で読む。1枚でもこの会話に無ければ、どれも使わずに理由を返す
+ * （一部だけ添えたまま進めると、人間が添えたつもりの画像が黙って欠けるため）
+ */
+async function readAttachments(
+  conversations: ConversationStore,
+  conversationId: string,
+  attachments: readonly { uploadId: string; note?: string | undefined }[],
+): Promise<{ ok: true; references: NewReference[] } | { ok: false; reason: string }> {
+  const references: NewReference[] = [];
+  for (const attachment of attachments) {
+    const upload = await conversations.readUpload(conversationId, attachment.uploadId);
+    if (upload === undefined) {
+      return { ok: false, reason: `添えた画像 ${attachment.uploadId} はこの会話に無い` };
+    }
+    references.push({
+      data: upload.data,
+      mediaType: upload.mediaType,
+      ...(attachment.note !== undefined && { note: attachment.note }),
+    });
+  }
+  return { ok: true, references };
+}
 
 /** 結果の文を、話す役へ返す result と画面に出す summary の両方に使う */
 function outcome(ok: boolean, text: string): TalkToolOutcome {
@@ -194,21 +239,13 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (!hasAnyStopCondition(stopConditions)) {
         return outcome(false, 'この止める条件では止まらない。回数か AI の判断を足す');
       }
-      const references: NewReference[] = [];
-      for (const attachment of input.attachments ?? []) {
-        const upload = await deps.conversations.readUpload(
-          context.conversationId,
-          attachment.uploadId,
-        );
-        if (upload === undefined) {
-          return outcome(false, `添えた画像 ${attachment.uploadId} はこの会話に無い`);
-        }
-        references.push({
-          data: upload.data,
-          mediaType: upload.mediaType,
-          ...(attachment.note !== undefined && { note: attachment.note }),
-        });
-      }
+      const attached = await readAttachments(
+        deps.conversations,
+        context.conversationId,
+        input.attachments ?? [],
+      );
+      if (!attached.ok) return outcome(false, attached.reason);
+      const references = attached.references;
       const budgets = await deps.budgets();
       const spec = await deps.jobs.createJob(
         {
@@ -236,12 +273,19 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
   const reviseDrawing: TalkTool = {
     name: 'revise_drawing',
     description:
-      '描いている絵に、人間の指示（「次は夕焼けにして」など）を伝える・止める条件を変える。次の回の境目から効く。描いている絵が無いときは使えない',
+      '描いている絵に、人間の指示（「次は夕焼けにして」など）を伝える・止める条件を変える・人間が添えた画像を参照画像に足す。次の回の境目から効く。描いている絵が無いときは使えない',
     inputSchema: reviseInputSchema,
     async run(raw, context) {
       const input = reviseInputSchema.parse(raw);
       const jobId = await activeJobOf(context);
       if (jobId === undefined) return outcome(false, '描いている絵が無い');
+      // 添えた画像は先に全部読む: 無い画像があれば、指示も止める条件も変えずに断るため
+      const attached = await readAttachments(
+        deps.conversations,
+        context.conversationId,
+        input.attachments ?? [],
+      );
+      if (!attached.ok) return outcome(false, attached.reason);
       const done: string[] = [];
       if (input.instruction !== undefined) {
         await deps.runner.addInstruction(jobId, input.instruction);
@@ -250,6 +294,12 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (input.stopConditions !== undefined) {
         const conditions = await deps.runner.changeStopConditions(jobId, input.stopConditions);
         done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
+      }
+      for (const reference of attached.references) {
+        await deps.runner.addReference(jobId, reference);
+      }
+      if (attached.references.length > 0) {
+        done.push(`参照画像を ${attached.references.length} 枚添えた`);
       }
       return outcome(true, `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`);
     },
@@ -280,15 +330,24 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       const generations = await deps.jobs.listGenerations(jobId);
       const iteration = input.iteration ?? generations.at(-1)?.iteration;
       if (iteration === undefined) return outcome(false, 'まだ画像が1枚もできていない');
-      const image = { iteration, index: input.index ?? 0 };
+      const image = { iteration, index: indexOfTalkImageNumber(input.number) };
+      const label = talkImageLabel(image);
       // 画面の「採る」ボタンと同じ口を通す
       const adopted = await adoptChosenImage(
         { jobs: deps.jobs, runner: deps.runner, now: deps.now },
         jobId,
         image,
       );
-      if (!adopted.ok) return outcome(false, adopted.message);
-      return outcome(true, `画像 ${formatImageKey(image)} をお気に入りにして採った`);
+      // 断りの文は話す役の数え方で書き直す: 共通の口の文は、置き場所のキー（0 から数える）を使うため
+      if (!adopted.ok) {
+        return outcome(
+          false,
+          adopted.reason === 'no-image'
+            ? `${label}の画像は無い`
+            : `絵がもう止まっていて、${label}を採れなかった`,
+        );
+      }
+      return outcome(true, `${label}をお気に入りにして採った`);
     },
   };
 

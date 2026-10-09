@@ -121,6 +121,11 @@ export type SetSelectionResponse = InferResponseType<
 >;
 /** 設定の画面の「確かめる」の結果。項目ごとに ok（よい）か、足りないなら todo（何をすればよいか） */
 export type DoctorResponse = InferResponseType<typeof client.doctor.$post, 200>;
+/** 会話へ送り込んだ画像の ID */
+export type ConversationUploadResponse = InferResponseType<
+  (typeof client.conversations)[':conversationId']['uploads']['$post'],
+  201
+>;
 export type AdoptImageResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['adopt']['$post'],
   200

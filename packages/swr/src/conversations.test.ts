@@ -16,6 +16,7 @@ import {
   loadConversationEvents,
   postConversationMessage,
   renameConversation,
+  uploadConversationImage,
 } from './mutations.js';
 
 const json = (status: number, body: unknown) =>
@@ -128,6 +129,34 @@ describe('changing conversations', () => {
     const post = requestOf(fetchMock.mock.calls[0]!);
     expect(post.url).toContain(`/api/conversations/${ID}/messages`);
     expect(JSON.parse(String(post.body))).toEqual({ text: '描いて', clientMessageId: 'm-1' });
+  });
+
+  it('uploads an image to the conversation and answers its ID', async () => {
+    fetchMock.mockResolvedValue(json(201, { uploadId: '20261010-120000-ab12' }));
+
+    expect(await uploadConversationImage(ID, { mediaType: 'image/png', data: 'iVBORw0K' })).toEqual(
+      { uploadId: '20261010-120000-ab12' },
+    );
+
+    const post = requestOf(fetchMock.mock.calls[0]!);
+    expect(post.url).toContain(`/api/conversations/${ID}/uploads`);
+    expect(JSON.parse(String(post.body))).toEqual({ mediaType: 'image/png', data: 'iVBORw0K' });
+  });
+
+  it('posts the IDs of the attached images with the message', async () => {
+    fetchMock.mockResolvedValue(json(202, { seq: 4 }));
+
+    await postConversationMessage(ID, 'この2枚で描いて', 'm-2', [
+      { uploadId: 'u-1' },
+      { uploadId: 'u-2' },
+    ]);
+
+    const post = requestOf(fetchMock.mock.calls[0]!);
+    expect(JSON.parse(String(post.body))).toEqual({
+      text: 'この2枚で描いて',
+      clientMessageId: 'm-2',
+      attachments: [{ uploadId: 'u-1' }, { uploadId: 'u-2' }],
+    });
   });
 
   it('asks to interrupt the turn or everything', async () => {

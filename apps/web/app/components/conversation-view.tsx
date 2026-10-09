@@ -1,5 +1,11 @@
 import { formatImageKey, LLM_NOT_CONFIGURED_REASON, type SelectionVerdict } from '@drawroid/core';
-import { isApiError, jobImageUrls, setSelection, useSelections } from '@drawroid/swr';
+import {
+  isApiError,
+  jobImageUrls,
+  setSelection,
+  useSelections,
+  type ReferenceUpload,
+} from '@drawroid/swr';
 import {
   BulletList,
   Button,
@@ -36,13 +42,24 @@ import { useConversationStream, type ConversationSource } from '../lib/conversat
 import { formatScore } from '../lib/format';
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
+import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
 import { SetupNotice } from './setup-notice';
 
 /** 発言と止めるの送り先。どちらも HTTP API（会話 C）に乗る。画面にだけある経路は作らない */
 export interface ConversationActions {
-  send(text: string, clientMessageId: string): Promise<void>;
+  /** attachments は、upload で会話へ送り込んだ画像の ID */
+  send(text: string, clientMessageId: string, attachments?: { uploadId: string }[]): Promise<void>;
   stop(): Promise<void>;
+  /** 添える画像を1枚会話へ送り込み、ID を返す。無ければ画像を添えられない */
+  upload?(image: ReferenceUpload): Promise<string>;
+}
+
+/** 入力欄に添えた画像。縮小版の object URL は、外す・送る・画面を離れるときに片付ける */
+interface PendingAttachment {
+  id: string;
+  file: File;
+  url: string;
 }
 
 /** 設定の画面の欄への道。名前は設定の画面の欄の名前にそろえる */
@@ -383,7 +400,16 @@ function renderItem(
             )
           }
         >
-          {item.text}
+          {item.attachments === 0 ? (
+            item.text
+          ) : (
+            <>
+              {item.text}
+              <span className="mt-1 block text-xs opacity-80">
+                画像を {item.attachments} 枚添えた
+              </span>
+            </>
+          )}
         </MessageRow>
       );
     case 'assistant':
@@ -536,16 +562,62 @@ export function ConversationView({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | undefined>();
+  const [attached, setAttached] = useState<PendingAttachment[]>([]);
+  const [refusals, setRefusals] = useState<string[]>([]);
+  const nextAttachmentId = useRef(0);
+  // 画面を離れるときに、残っている縮小版を片付ける
+  const attachedRef = useRef(attached);
+  attachedRef.current = attached;
+  useEffect(() => () => attachedRef.current.forEach((item) => URL.revokeObjectURL(item.url)), []);
   // 会話が変わったときだけ作り直す: 入力欄に1文字打つたびに数千行を組み直すと、長い会話で打鍵が重くなるため
   const items = useMemo(() => chatItems(chat), [chat]);
   const running = useMemo(() => isRunning(chat), [chat]);
 
-  async function send(text: string) {
+  function attach(files: File[]) {
+    const accepted: PendingAttachment[] = [];
+    const reasons: string[] = [];
+    for (const file of files) {
+      const problem = referenceFileProblem(file, attached.length + accepted.length);
+      if (problem === undefined) {
+        accepted.push({
+          id: `attachment-${nextAttachmentId.current++}`,
+          file,
+          url: URL.createObjectURL(file),
+        });
+      } else {
+        reasons.push(problem);
+      }
+    }
+    setRefusals(reasons);
+    if (accepted.length > 0) setAttached((current) => [...current, ...accepted]);
+  }
+
+  function removeAttachment(id: string) {
+    setRefusals([]);
+    setAttached((current) => {
+      current.filter((item) => item.id === id).forEach((item) => URL.revokeObjectURL(item.url));
+      return current.filter((item) => item.id !== id);
+    });
+  }
+
+  // 添えた画像は、発言の前に1枚ずつ会話へ送り込み、その ID を発言に載せる（送り直す発言には載せない）
+  async function send(text: string, withAttachments: readonly PendingAttachment[] = attached) {
     setSending(true);
     setSendError(undefined);
     try {
-      await actions.send(text, newClientMessageId());
+      const uploadIds: { uploadId: string }[] = [];
+      for (const item of withAttachments) {
+        if (actions.upload === undefined) break;
+        const built = await buildReferenceUpload({ file: item.file, note: '' });
+        if (!built.ok) throw new Error(built.reason);
+        uploadIds.push({ uploadId: await actions.upload(built.value) });
+      }
+      await actions.send(text, newClientMessageId(), uploadIds);
       setDraft((current) => (current === text ? '' : current));
+      if (withAttachments.length > 0) {
+        withAttachments.forEach((item) => URL.revokeObjectURL(item.url));
+        setAttached((current) => current.filter((item) => !withAttachments.includes(item)));
+      }
     } catch (caught) {
       setSendError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -565,7 +637,7 @@ export function ConversationView({
   // 行に渡す「送り直す」は変わらない関数にする: 変わると、下書きのたびに全部の行を作り直すことになるため
   const sendRef = useRef(send);
   sendRef.current = send;
-  const resend = useCallback((text: string) => void sendRef.current(text), []);
+  const resend = useCallback((text: string) => void sendRef.current(text, []), []);
   const stoppedJobs = useMemo(
     () => new Set(items.flatMap((item) => (item.kind === 'job-stopped' ? [item.jobId] : []))),
     [items],
@@ -658,8 +730,24 @@ export function ConversationView({
             running={running}
             sending={sending}
             notice={
-              sendError === undefined ? undefined : <ErrorNote>送れない: {sendError}</ErrorNote>
+              sendError === undefined && refusals.length === 0 ? undefined : (
+                <>
+                  {refusals.map((reason) => (
+                    <ErrorNote key={reason}>添えられない: {reason}</ErrorNote>
+                  ))}
+                  {sendError !== undefined && <ErrorNote>送れない: {sendError}</ErrorNote>}
+                </>
+              )
             }
+            {...(actions.upload !== undefined && {
+              attachments: attached.map((item) => ({
+                id: item.id,
+                name: item.file.name,
+                url: item.url,
+              })),
+              onAttach: attach,
+              onRemoveAttachment: removeAttachment,
+            })}
           />
         }
       />

@@ -669,7 +669,7 @@ try {
     'job.held の間、生成は進むが、見る役の段（job.judge）は始まらない',
     JSON.stringify(heldConv.stream.frames.map((f) => f.event)),
   );
-  llm.queueTalkTool('adopt_image', { iteration: 1, index: 0 });
+  llm.queueTalkTool('adopt_image', { iteration: 1, number: 1 });
   llm.releaseTalk();
   await waitFor(() => stopped(heldConv.stream), 'held: job.stopped');
   const heldFrames = heldConv.stream.frames;
@@ -704,7 +704,7 @@ try {
   assert(
     adoptCall !== undefined &&
       adoptCall.data?.input?.iteration === 1 &&
-      adoptCall.data?.input?.index === 0,
+      adoptCall.data?.input?.number === 1,
     'tool.call（adopt_image）が確定する',
     JSON.stringify(heldConfirmed.map((f) => f.event)),
   );
