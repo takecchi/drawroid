@@ -143,6 +143,19 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
     expect(await store.listInterventions(jobId)).toEqual([]);
   });
 
+  it('reads back what humans said to a job, as they said it', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, { kind: 'instruction', text: '逆光にして' });
+
+    const res = await app.request(`/jobs/auto/${jobId}/interventions`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      interventions: [expect.objectContaining({ kind: 'instruction', text: '逆光にして' })],
+    });
+    expect((await app.request('/jobs/auto/no-such-job/interventions')).status).toBe(404);
+  });
+
   it('answers 404 for a job that is not an automatic job', async () => {
     const manual = await store.createJob(
       {
