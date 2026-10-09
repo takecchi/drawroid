@@ -220,3 +220,35 @@ describe('the default budget', () => {
     expect(judge.report.notes.filter((n) => n.kind === 'dropped')).toEqual([]);
   });
 });
+
+describe('issues carried into the next call', () => {
+  it('lists only issuesPerImage issues of the best result and notes that it clipped the rest', () => {
+    const extra = budget.issuesPerImage + 2;
+    const issues = Array.from({ length: extra }, (_, i) => `issue-${i}`);
+    const best = {
+      iteration: 1,
+      imageIndex: 0,
+      score: 0.5,
+      params: {},
+      issues,
+      nextChange: 'change',
+    };
+    const carry: Carry = { intent: 'request', completedIterations: 1, best, latest: best };
+    const messages = buildThinkInput({
+      carry,
+      progress: { iteration: 2 },
+      allowed: THINK_PARAM_KEYS,
+      budget,
+      window,
+    });
+    const text = messages.user.map((p) => (p.type === 'text' ? p.text : '')).join('');
+    expect(text).toContain(`issue-${budget.issuesPerImage - 1}`);
+    expect(text).not.toContain(`issue-${budget.issuesPerImage}`);
+    expect(messages.report.notes).toContainEqual({
+      kind: 'clipped',
+      section: 'best.issues',
+      from: extra,
+      to: budget.issuesPerImage,
+    });
+  });
+});

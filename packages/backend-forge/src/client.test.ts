@@ -29,6 +29,15 @@ describe('ForgeClient errors', () => {
     });
   });
 
+  it('names the URL and the underlying reason when fetch fails without a known code', async () => {
+    // fetch はポート 1 を危険なポートとして、繋ぎに行かずに断る
+    const url = 'http://127.0.0.1:1';
+    await expect(clientFor(url).getJson('/sdapi/v1/cmd-flags', anything)).rejects.toMatchObject({
+      kind: 'unreachable',
+      message: expect.stringMatching(/127\.0\.0\.1:1.*bad port/) as unknown,
+    });
+  });
+
   it('says the API is missing when the path is not found (wrong URL or no --api)', async () => {
     await expect(
       clientFor(`${forge.url}/wrong`).getJson('/sdapi/v1/cmd-flags', anything),
@@ -43,6 +52,23 @@ describe('ForgeClient errors', () => {
     await expect(
       clientFor(forge.url).getJson('/sdapi/v1/cmd-flags', anything),
     ).rejects.toMatchObject({ kind: 'unauthorized' });
+  });
+
+  it('says authentication failed on 403 as well', async () => {
+    forge.route('GET /sdapi/v1/cmd-flags', json(403, { detail: 'Forbidden' }));
+    await expect(
+      clientFor(forge.url).getJson('/sdapi/v1/cmd-flags', anything),
+    ).rejects.toMatchObject({ kind: 'unauthorized' });
+  });
+
+  it('cuts a very long reason from Forge down to 500 characters', async () => {
+    forge.route('POST /sdapi/v1/txt2img', json(500, { detail: 'Z'.repeat(2000) }));
+    const error: unknown = await clientFor(forge.url)
+      .postJson('/sdapi/v1/txt2img', {}, anything)
+      .catch((e: unknown) => e);
+    const reasonLength = /Z+/.exec((error as Error).message)?.[0].length ?? 0;
+    expect(reasonLength).toBeGreaterThan(400);
+    expect(reasonLength).toBeLessThanOrEqual(500);
   });
 
   it('passes on the reason Forge gives when it fails', async () => {

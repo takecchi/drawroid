@@ -1,0 +1,11 @@
+[
+  { "name": "None", "model_name": null, "model_path": null, "model_url": null, "scale": 4 },
+  { "name": "Lanczos", "model_name": null, "model_path": null, "model_url": null, "scale": 4 },
+  {
+    "name": "R-ESRGAN 4x+ Anime6B",
+    "model_name": "RealESRGAN_x4plus_anime_6B",
+    "model_path": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+    "model_url": null,
+    "scale": 4
+  }
+]

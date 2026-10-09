@@ -145,6 +145,19 @@ describe('AiSdkLlm.generateStructured', () => {
     expect(outcome.attempts).toHaveLength(1);
   });
 
+  it('cuts a very long failure reason at 300 characters and ends it with an ellipsis', async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error('x'.repeat(2000));
+      },
+    });
+    const outcome = await adapter(model).generateStructured(call());
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.reason).toBe(`LLM の呼び出しに失敗した: ${'x'.repeat(300)}…`);
+    }
+  });
+
   it('throws when the call is aborted, so the job can stop as stopped by a human', async () => {
     const controller = new AbortController();
     const model = new MockLanguageModelV4({
@@ -229,6 +242,10 @@ describe('extractJson', () => {
   it('reads an object wrapped in prose or a code block', () => {
     expect(extractJson('結果は {"a":1} です')).toEqual({ a: 1 });
     expect(extractJson('```json\n{"a":2}\n```')).toEqual({ a: 2 });
+  });
+
+  it('reads the object in a code block even when the text before it contains a brace', () => {
+    expect(extractJson('注意 {メモ}\n```json\n{"canStop":true}\n```')).toEqual({ canStop: true });
   });
 
   it('throws when there is no object', () => {

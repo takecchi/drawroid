@@ -10,7 +10,7 @@ import {
   ManualGenerationRunner,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { hc } from 'hono/client';
@@ -40,7 +40,12 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     autoQueue: {
       kick: () => undefined,
       stop: (jobId) => runner.stop(jobId),
@@ -144,6 +149,19 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
       expect((await intervene(jobId, body)).status).toBe(400);
     }
     expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
+  it('reads back what humans said to a job, as they said it', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, { kind: 'instruction', text: '逆光にして' });
+
+    const res = await app.request(`/jobs/auto/${jobId}/interventions`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      interventions: [expect.objectContaining({ kind: 'instruction', text: '逆光にして' })],
+    });
+    expect((await app.request('/jobs/auto/no-such-job/interventions')).status).toBe(404);
   });
 
   it('gives the hono client a typed body for an intervention', async () => {

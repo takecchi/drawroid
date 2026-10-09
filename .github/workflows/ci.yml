@@ -41,6 +41,10 @@ jobs:
       - run: pnpm format:check
         if: ${{ !cancelled() }}
 
+      # build より前に置く: 鍵の重なった package.json は依存を黙って落とすので、その上での build・試験の結果は当てにならないため。
+      - run: pnpm check:duplicate-json-keys
+        if: ${{ !cancelled() }}
+
       - run: pnpm build
         id: build
         if: ${{ !cancelled() }}
@@ -53,3 +57,17 @@ jobs:
 
       - run: pnpm test
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+
+  packed-install:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # ci ジョブの build と分けて、ここでも build する: 固める手順は web の build/client を写すので、job を跨いだ成果物の受け渡し（artifact）を持ち込まないため。
+      - run: pnpm build
+
+      # ワークスペースの中で起動しない: node_modules の上位探索で @drawroid/* や sharp が見えてしまい、固めたものだけで動くかを確かめられないため。
+      # 固める・空のディレクトリへ npm install・起動・`/` と `/api/health` の確認まで scripts/check-packed-install.mjs が行う。
+      - run: pnpm check:packed-install

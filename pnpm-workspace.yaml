@@ -13,6 +13,8 @@ catalog:
   # CI の実行系（Node 22）に合わせる
   '@types/node': ^22.20.1
   zod: ^4.4.3
+  # 記憶のファイルの front matter（packages/storage-fs）。人間が手で書くので、自前の読み方ではなく YAML として読む
+  yaml: ^2.9.1
   hono: ^4.13.5
   '@hono/node-server': ^2.1.0
   # Web UI（apps/web）。React Router v7 を SPA モード（ssr: false）で使う
@@ -25,7 +27,14 @@ catalog:
   # SPA でもビルド時に要る。dependencies に無いと、react-router のビルドが package.json を書き換えて pnpm install を走らせる
   '@react-router/node': ^7.18.2
   isbot: ^5.2.1
+  # Web UI のデータ取得（packages/swr）。ポーリングで画面を更新する
+  swr: ^2.5.1
   vite: ^8.2.1
+  # Web UI の部品の試験（apps/web）
+  jsdom: ^30.1.2
+  '@testing-library/react': ^16.3.3
+  '@testing-library/dom': ^10.4.2
+  '@testing-library/user-event': ^14.6.7
 
 # `pnpm --filter <存在しないパッケージ名>` が黙って exit 0 を返すのを塞ぐ。
 # `.npmrc` に置くと無視される（alteroid で実測済み）ので、ここに置く。

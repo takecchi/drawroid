@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/',
+      '**/bundle/',
       '**/node_modules/',
       '**/*.d.ts',
       '**/build/',
@@ -23,6 +24,8 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         process: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
   },
