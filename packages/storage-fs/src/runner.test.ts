@@ -629,6 +629,37 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     expect(await store.listInterventions(spec.jobId)).toEqual([]);
   });
 
+  it('refuses every kind of intervention on a manual job, with the reason manual', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const manual = await store.createJob(
+      {
+        kind: 'manual',
+        request: generationRequestSchema.parse({
+          prompt: 'a cat',
+          negativePrompt: '',
+          loras: [],
+          steps: 4,
+          cfgScale: 7,
+          width: 64,
+          height: 64,
+          batchSize: 1,
+        }),
+      },
+      { status: 'queued' },
+      new Date(),
+    );
+    const rejected = { name: 'InterventionRejectedError', reason: 'manual' };
+
+    await expect(runner.addInstruction(manual.jobId, '逆光にして')).rejects.toMatchObject(rejected);
+    await expect(
+      runner.changeStopConditions(manual.jobId, { maxIterations: 3 }),
+    ).rejects.toMatchObject(rejected);
+    await expect(
+      runner.addReference(manual.jobId, { data: new Uint8Array([1]), mediaType: 'image/png' }),
+    ).rejects.toMatchObject(rejected);
+    expect(await store.listInterventions(manual.jobId)).toEqual([]);
+  });
+
   it('refuses a change that would leave the job with no way to stop, and writes nothing', async () => {
     const { store, runner } = setup({ scripts: { think, judge: judge() } });
     const spec = await submit(store, { aiJudgement: false, maxIterations: 5 });
@@ -803,5 +834,61 @@ describe('a reference image goes to the LLM once, shrunk, then travels as its gi
     expect(textOf(judge1!)).not.toContain(GIST);
     expect(textOf(think2!)).toContain(GIST);
     expect(textOf(judge2!)).toContain(GIST);
+  });
+
+  it('stops the job as an error naming the reference gist when the gist cannot be made', async () => {
+    const { store, runner } = setup({
+      scripts: { think, judge: judge(), 'ref-gist': () => ({ gist: '' }) },
+    });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 3 });
+    await store.addReference(
+      spec.jobId,
+      { data: await bigReference(), mediaType: 'image/jpeg' },
+      new Date(),
+    );
+    runner.kick();
+    await runner.idle();
+
+    const { reason, carry } = await stoppedState(store, spec.jobId);
+    expect(reason.kind).toBe('error');
+    expect(reason.detail).toMatch(/^参照画像の要点: /);
+    expect(carry?.completedIterations).toBe(0);
+  });
+
+  /** 要点を残したあと、渡した印を付ける所で落ちたものとみなす（返らなくなる） */
+  class CrashAtMarkSentStore extends FsJobStore {
+    reached = false;
+    override markSent(): Promise<void> {
+      this.reached = true;
+      return new Promise(() => undefined);
+    }
+  }
+
+  it('keeps the gist before marking the reference as sent, so a crash in between neither loses it nor sends the image twice', async () => {
+    const first = setup({
+      scripts: { think, judge: judge(), 'ref-gist': refGist },
+      store: new CrashAtMarkSentStore(root),
+    });
+    const spec = await submit(first.store, { aiJudgement: false, maxIterations: 1 });
+    await first.store.addReference(
+      spec.jobId,
+      { data: await bigReference(), mediaType: 'image/jpeg' },
+      new Date(),
+    );
+    first.runner.kick();
+    while (!(first.store as CrashAtMarkSentStore).reached) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    const second = setup({ scripts: { think, judge: judge(), 'ref-gist': refGist } });
+    second.runner.kick();
+    await second.runner.idle();
+
+    expect(first.llm.calls.filter((c) => c.purpose === 'ref-gist')).toHaveLength(1);
+    expect(second.llm.calls.map((c) => c.purpose)).toEqual(['think', 'judge']);
+    expect(textOf(second.llm.calls[0]!)).toContain(GIST);
+    const { reason, carry } = await stoppedState(second.store, spec.jobId);
+    expect(reason.kind).toBe('limit:iterations');
+    expect(carry?.references).toEqual([expect.objectContaining({ gist: GIST })]);
   });
 });

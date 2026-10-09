@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { generationRequestSchema } from '../backend.js';
+import type { JobStore } from '../job/store.js';
 import type { InterventionRecord } from '../job/types.js';
 import { createCarry } from './carry.js';
 import { DEFAULT_BUDGET } from './budget.js';
@@ -7,6 +9,7 @@ import {
   activeMask,
   generatedImageRef,
   imageSourcesOf,
+  loadRequestImages,
   maskImageRef,
   parseInputImageRef,
   referenceImageRef,
@@ -71,5 +74,37 @@ describe('activeMask (Issue #5 H)', () => {
 
   it('is gone when there is no mask', () => {
     expect(activeMask([])).toBeUndefined();
+  });
+});
+
+describe('loadRequestImages', () => {
+  const png = new Uint8Array([1, 2, 3]);
+  // 参照画像 000001 だけがある置き場所
+  const store = {
+    readImage: async () => undefined,
+    readMask: async () => undefined,
+    readReferenceImage: async (key: { refId: string }) =>
+      key.refId === '000001' ? { data: png, mediaType: 'image/png' } : undefined,
+  } as unknown as JobStore;
+  const request = (image: string, mask: string) =>
+    generationRequestSchema.parse({
+      prompt: 'x',
+      steps: 20,
+      cfgScale: 7,
+      width: 512,
+      height: 512,
+      inpaint: { image, mask, denoisingStrength: 0.5 },
+    });
+
+  it('reads every image the request points at', async () => {
+    const images = await loadRequestImages(store, 'job', request('ref:000001', 'ref:000001'));
+    expect([...images.keys()]).toEqual(['ref:000001']);
+    expect(images.get('ref:000001')?.data).toEqual(png);
+  });
+
+  it('throws and names every missing reference when the store lacks an image', async () => {
+    await expect(
+      loadRequestImages(store, 'job', request('image:1-0', 'mask:000009')),
+    ).rejects.toThrow('要求が指す画像が無い: image:1-0, mask:000009');
   });
 });

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ReferenceRecord } from '../job/types.js';
 import { DEFAULT_BUDGET, DEFAULT_MODEL_WINDOW } from '../loop/budget.js';
 import { createCarry } from '../loop/carry.js';
-import { buildRefGistInput, ImageNotAllowedError } from '../loop/inputs.js';
+import { buildRefGistInput, buildThinkInput, ImageNotAllowedError } from '../loop/inputs.js';
 import { carriedReferences, DEFAULT_REFERENCE_LIMITS } from './reference.js';
 
 const limits = { maxCount: 2, gistChars: 5, noteChars: 10 };
@@ -58,11 +58,65 @@ describe('buildRefGistInput', () => {
     expect(parts.map((part) => part.type === 'image' && part.key)).toEqual(['jobs/j1/refs/r1']);
   });
 
+  const textOf = (messages: ReturnType<typeof buildRefGistInput>) =>
+    messages.user.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
+
+  it('clips the note the human added at the note limit', () => {
+    const note = '用途'.repeat(200);
+    const text = textOf(
+      buildRefGistInput({
+        carry,
+        image: preview,
+        note,
+        budget: DEFAULT_BUDGET,
+        limits: { ...DEFAULT_REFERENCE_LIMITS, noteChars: 10 },
+        window: DEFAULT_MODEL_WINDOW,
+      }),
+    );
+    expect(text).toContain('人間が添えた用途: ');
+    expect(text).not.toContain(note);
+    expect(text).not.toContain('用途'.repeat(11));
+  });
+
   it('refuses a reference that was already shown to the LLM', () => {
     expect(() => build({ ...preview, sentInCall: 'c1' })).toThrow(ImageNotAllowedError);
   });
 
   it('refuses a reference that was not shrunk', () => {
     expect(() => build({ ...preview, longEdge: 2000 })).toThrow(ImageNotAllowedError);
+  });
+});
+
+describe('reference gists in the thinking input (M3:102)', () => {
+  const base = createCarry('海辺の少女', DEFAULT_BUDGET).carry;
+  const carry = {
+    ...base,
+    references: [
+      { refId: '000001', gist: '白いワンピースの立ち姿' },
+      { refId: '000002', gist: '逆光の海辺' },
+      { refId: '000003', gist: '青い背景' },
+    ],
+  };
+  const build = (withImageSourceKeys?: boolean) =>
+    buildThinkInput({
+      carry,
+      progress: { iteration: 1 },
+      allowed: ['prompt'],
+      budget: DEFAULT_BUDGET,
+      window: DEFAULT_MODEL_WINDOW,
+      ...(withImageSourceKeys === undefined ? {} : { withImageSourceKeys }),
+    })
+      .user.map((part) => (part.type === 'text' ? part.text : ''))
+      .join('\n');
+
+  it('carries every gist, not only the first', () => {
+    const text = build();
+    for (const reference of carry.references) expect(text).toContain(reference.gist);
+  });
+
+  it('writes the source image key next to a gist only when img2img is left to the AI', () => {
+    expect(build(true)).toContain('ref:000002: 逆光の海辺');
+    expect(build(false)).not.toContain('元画像のキー');
+    expect(build(false)).not.toContain('ref:000002');
   });
 });

@@ -206,4 +206,29 @@ describe('the loop applies the permissions of the job', () => {
     const dropped = report.notes.filter((n) => n.section.startsWith('candidates.lora['));
     expect(dropped).toHaveLength(490);
   });
+
+  it('keeps the LoRA list within 20 names and 600 characters when no limits are given (M4:119)', async () => {
+    const loras = Array.from({ length: 500 }, (_, n) => ({
+      name: `lora-${String(n).padStart(3, '0')}`,
+    }));
+    const permissions = mergePermissions(base, { loras: { mode: 'auto' } });
+    const { store, llm, runner } = setup({
+      think: thinkWith({ loras: [{ name: 'lora-000', weight: 0.7 }] }),
+      permissions,
+      backend: { candidates: { lora: loras } },
+    });
+
+    await runOne(store, runner);
+
+    const line = textOf(thinkCall(llm))
+      .split('\n')
+      .find((l) => l.startsWith('LoRAの候補'));
+    expect(line).toBeDefined();
+    const shown = line!.match(/lora-\d{3}/g) ?? [];
+    expect(shown.length).toBeLessThanOrEqual(20);
+    expect([...line!].length).toBeLessThanOrEqual(600);
+    const { report } = thinkCall(llm).messages;
+    const dropped = report.notes.filter((n) => n.section.startsWith('candidates.lora['));
+    expect(dropped.length).toBe(500 - shown.length);
+  });
 });

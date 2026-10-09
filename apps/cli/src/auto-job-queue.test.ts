@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DEFAULT_BUDGET, type JobState, type LlmPort } from '@drawroid/core';
+import { DEFAULT_BUDGET, type JobState, type LlmPort, type Permissions } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import { llmConfigSchema, createLlm, type LlmConfig } from '@drawroid/llm';
 import { FsJobStore } from '@drawroid/storage-fs';
@@ -46,7 +46,11 @@ const config: LlmConfig = llmConfigSchema.parse({
   roles: { think: { provider: 'cloud', model: 'm' } },
 });
 
-function makeQueue(options: { backend?: StubBackend; env?: Record<string, string> }) {
+function makeQueue(options: {
+  backend?: StubBackend;
+  env?: Record<string, string>;
+  permissions?: () => Promise<Partial<Permissions>>;
+}) {
   const llm = new ScriptedLlm({ think, judge });
   const queue = new AutoJobQueue({
     store,
@@ -55,6 +59,7 @@ function makeQueue(options: { backend?: StubBackend; env?: Record<string, string
     budget: DEFAULT_BUDGET,
     createLlm: (c, env) => (env['TEST_KEY'] ? llm : createLlm(c, { env })),
     log: (line) => logs.push(line),
+    ...(options.permissions === undefined ? {} : { permissions: options.permissions }),
   });
   return { queue, llm };
 }
@@ -94,6 +99,34 @@ describe('AutoJobQueue', () => {
     const state = await stateOf(spec.jobId);
     expect(state).toMatchObject({ status: 'stopped', reason: { kind: 'limit:iterations' } });
     expect(backend.requests).toHaveLength(2);
+  });
+
+  it('generates with the value the config permissions fixed, whatever the AI returned (M4:117)', async () => {
+    const backend = new StubBackend();
+    const { queue } = makeQueue({
+      backend,
+      permissions: async () => ({ steps: { mode: 'fixed', value: 28 } }),
+    });
+    queue.configure(config);
+    await submit(1);
+
+    queue.kick();
+    await queue.idle();
+
+    expect(backend.requests).toHaveLength(1);
+    expect(backend.requests[0]).toMatchObject({ steps: 28 });
+  });
+
+  it('uses the basic permissions when the config has none', async () => {
+    const backend = new StubBackend();
+    const { queue } = makeQueue({ backend });
+    queue.configure(config);
+    await submit(1);
+
+    queue.kick();
+    await queue.idle();
+
+    expect(backend.requests[0]).toMatchObject({ steps: 20 });
   });
 
   it('goes back to unconfigured when a later configuration cannot be built, and keeps the job queued', async () => {

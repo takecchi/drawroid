@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hc } from 'hono/client';
 
 import { createApi, type AppType } from '../index.js';
+import { MAX_MASK_BYTES } from '../masks.js';
 import { MAX_REFERENCE_BYTES } from '../references.js';
 import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
 
@@ -154,6 +155,21 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
       expect((await intervene(jobId, body)).status).toBe(400);
     }
     expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
+  it('accepts an instruction up to 2000 characters and refuses a longer one, writing nothing', async () => {
+    const jobId = await createAuto();
+
+    for (const length of [21, 2000]) {
+      const text = '光'.repeat(length);
+      expect((await intervene(jobId, { kind: 'instruction', text })).status).toBe(202);
+    }
+    expect(await store.listInterventions(jobId)).toHaveLength(2);
+
+    const res = await intervene(jobId, { kind: 'instruction', text: '光'.repeat(2001) });
+
+    expect(res.status).toBe(400);
+    expect(await store.listInterventions(jobId)).toHaveLength(2);
   });
 
   it('reads back what humans said to a job, as they said it', async () => {
@@ -345,6 +361,41 @@ describe('inpaint masks, as an intervention', () => {
     });
 
     expect(res.status).toBe(404);
+    expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
+  // PNG の署名で始まる、指定した大きさのバイト列
+  const pngOfSize = (bytes: number) => {
+    const data = new Uint8Array(bytes);
+    data.set(STUB_PNG.subarray(0, 8));
+    return Buffer.from(data).toString('base64');
+  };
+
+  it('accepts a mask of exactly the size limit', async () => {
+    const jobId = await createAuto();
+    await withFirstImage(jobId);
+
+    const res = await intervene(jobId, {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: { data: pngOfSize(MAX_MASK_BYTES) },
+    });
+
+    expect(res.status).toBe(202);
+    expect(await store.listInterventions(jobId)).toHaveLength(1);
+  });
+
+  it('refuses a mask over the size limit, writing nothing', async () => {
+    const jobId = await createAuto();
+    await withFirstImage(jobId);
+
+    const res = await intervene(jobId, {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: { data: pngOfSize(MAX_MASK_BYTES + 1) },
+    });
+
+    expect(res.status).toBe(400);
     expect(await store.listInterventions(jobId)).toEqual([]);
   });
 
