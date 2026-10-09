@@ -9,7 +9,7 @@ import {
   JobRunner,
   ManualGenerationRunner,
 } from '@drawroid/core';
-import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
+import { ScriptedLlm, STUB_PNG, StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -280,5 +280,63 @@ describe('reference images, at submission and as an intervention', () => {
 
     expect(await store.listReferences(jobId)).toEqual([]);
     expect(await store.listJobIds()).toEqual(before);
+  });
+});
+
+describe('inpaint masks, as an intervention', () => {
+  const png = Buffer.from(STUB_PNG).toString('base64');
+
+  async function withFirstImage(jobId: string) {
+    await store.writeGeneration(
+      jobId,
+      1,
+      generationRequestSchema.parse({ prompt: 'a', steps: 4, cfgScale: 7, width: 64, height: 64 }),
+      { images: [{ png: STUB_PNG, seed: 1, metadata: {} }], metadata: {} },
+    );
+  }
+
+  it('keeps a mask painted on an image of the job, tied to that image', async () => {
+    const jobId = await createAuto();
+    await withFirstImage(jobId);
+
+    const res = await intervene(jobId, {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: { data: png },
+    });
+
+    expect(res.status).toBe(202);
+    const [stored] = await store.listInterventions(jobId);
+    expect(stored).toMatchObject({ kind: 'mask', image: { iteration: 1, index: 0 } });
+    expect(stored).not.toHaveProperty('usedInIteration');
+    const mask = await store.readMask(jobId, stored!.interventionId);
+    expect(Array.from(mask ?? [])).toEqual(Array.from(STUB_PNG));
+  });
+
+  it('refuses a mask painted on an image the job does not have, writing nothing', async () => {
+    const jobId = await createAuto();
+
+    const res = await intervene(jobId, {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: { data: png },
+    });
+
+    expect(res.status).toBe(404);
+    expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
+  it('refuses a mask that is not a PNG', async () => {
+    const jobId = await createAuto();
+    await withFirstImage(jobId);
+
+    const res = await intervene(jobId, {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: { data: Buffer.from('not a png').toString('base64') },
+    });
+
+    expect(res.status).toBe(400);
+    expect(await store.listInterventions(jobId)).toEqual([]);
   });
 });
