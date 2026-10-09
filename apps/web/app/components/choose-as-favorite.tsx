@@ -41,7 +41,11 @@ export function ChooseAsFavorite({
       setPending(false);
     }
   }
-  if (verdict === 'favorite') return <p className="text-xs text-ok">お気に入り</p>;
+  // すでにお気に入りなら、カードは「お気に入り」と出す。行・窓・ジョブの詳細は何も出さない: そこではお気に入りの
+  // ボタン（押された形）や「今の状態」が同じことを出しており、重ねると「お気に入り」が何度も並ぶため
+  if (verdict === 'favorite') {
+    return prominent ? <p className="text-xs text-ok">お気に入り</p> : null;
+  }
   return (
     <div className="space-y-1">
       {/* 文字を折り返す: 狭い画面のカードや画像の枡より名前が長く、折り返さないと枠の外へはみ出すため */}

@@ -235,6 +235,29 @@ describe('IterationList and the image cells of a stopped job', () => {
   });
 });
 
+describe('IterationList for a stopped job whose image is already a favorite', () => {
+  it('does not say favorite once more under the selection buttons, which already show it', () => {
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[iteration]}
+        calls={[]}
+        verdicts={new Map([['1-0', 'favorite']])}
+        adopt={{ stopped: true }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', {
+        name: /^この画像に決める（お気に入りにする）: 1 回目の画像 1 番/,
+      }),
+    ).toBeNull();
+    // お気に入りであることは、選ぶボタンの側（今の状態）が出す。決めるボタンの代わりの一文は重ねない
+    expect(screen.queryAllByText('お気に入り', { selector: 'p' })).toHaveLength(0);
+  });
+});
+
 describe('IterationList and what was left out of the AI choices', () => {
   const withExcluded = (excluded: Iteration['excluded']): Iteration => ({ ...iteration, excluded });
 

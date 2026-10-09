@@ -18,6 +18,12 @@ export const LLM_NOT_CONFIGURED_REASON =
 /**
  * 同じターンで同じ引数のツールをもう一度呼んだときの断りの理由。画面はこの文を見て、人の言葉の要約に置き換える
  */
+/**
+ * ツールが投げたときに、結果の文の頭に付ける言葉。画面は、これを外してから理由を読む
+ * （外さないと「できなかった: 失敗した: …」と二重になり、REPEATED_TOOL_CALL_REASON とも照らせないため）
+ */
+export const TOOL_THREW_PREFIX = '失敗した: ';
+
 export const REPEATED_TOOL_CALL_REASON =
   'このターンで同じ引数ですでに呼んだので、もう一度は走らせなかった。結果は前のとおり';
 
@@ -446,7 +452,11 @@ export class TalkRunner {
             });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            result = { ok: false, result: `失敗した: ${message}`, summary: `失敗した: ${message}` };
+            result = {
+              ok: false,
+              result: `${TOOL_THREW_PREFIX}${message}`,
+              summary: `${TOOL_THREW_PREFIX}${message}`,
+            };
           }
           state.phase = 'other';
           await hub.confirm({

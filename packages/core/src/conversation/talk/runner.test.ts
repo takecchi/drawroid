@@ -10,7 +10,7 @@ import { ScriptedLlm, type TalkScript } from '../../testing/scripted-llm.js';
 import { StubBackend } from '../../testing/stub-backend.js';
 import { ConversationHubs, type HubMessage } from '../hub.js';
 import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
-import { TalkRunner } from './runner.js';
+import { TalkRunner, REPEATED_TOOL_CALL_REASON, TOOL_THREW_PREFIX } from './runner.js';
 import { createReadOnlyTools, type TalkTool } from './tools.js';
 
 const now = () => new Date('2026-10-09T08:00:00.000Z');
@@ -197,7 +197,11 @@ describe('TalkRunner', () => {
     const results = all.flatMap((e) => (e.type === 'tool.result' ? [e] : []));
     expect(results).toHaveLength(2);
     expect(results[0]).toMatchObject({ ok: true });
-    expect(results[1]).toMatchObject({ ok: false, summary: expect.stringMatching(/同じ引数/) });
+    // 画面はこの形（頭の言葉 + 断りの文）を見て、人の言葉に置き換える
+    expect(results[1]).toMatchObject({
+      ok: false,
+      summary: `${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`,
+    });
     // 繰り返したら、次のステップはツールを渡さない。上限（6）まで回さない
     expect(llm.steps).toHaveLength(3);
     expect(llm.steps[2]?.tools).toEqual([]);

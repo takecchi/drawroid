@@ -853,7 +853,7 @@ function renderItem(
                 `${item.previewUrl}?progress=${item.step ?? Math.round(item.progress * 100)}`
           }
           // 生成中の回はまだ採れない: 採れるのはできあがった画像だけ（JobRunner.adopt）
-          hint="できあがったら、画像の行で「この画像で決める」を選べます"
+          hint="できあがったら、画像の行の「この画像で決める」で選べる"
         />
       );
     case 'status':
@@ -1031,7 +1031,7 @@ export function ConversationView({
             {error !== undefined && <ErrorNote>会話を読めない: {error}</ErrorNote>}
             {loaded && items.length === 0 && (
               <Muted className="py-12 text-center">
-                描いてほしいものや、聞きたいことを書いてください。
+                描いてほしいものや、聞きたいことを話しかける。
               </Muted>
             )}
             {rows}
