@@ -1,5 +1,6 @@
 import {
   isApiError,
+  useInterventions,
   useIterations,
   useJob,
   useLlmCalls,
@@ -9,6 +10,7 @@ import {
 import { Link } from 'react-router';
 
 import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
+import { InterventionList } from './intervention-view';
 import { IterationList } from './iteration-view';
 import { JobOperations } from './job-operations';
 import { LlmTotals } from './llm-call-view';
@@ -112,6 +114,8 @@ export function JobDetail({ jobId }: { jobId: string }) {
   // useJob の応答を待たずに取り始めない: 止まったかどうかが分かるまで、ポーリングするかを決められないため
   const live = data !== undefined && data.state.status !== 'stopped';
   const iterations = useIterations(data === undefined ? undefined : jobId, { live });
+  // 手動ジョブには口出しが無く、取りに行くと 404 になる: 自動ジョブのときだけ取る
+  const interventions = useInterventions(data?.spec.kind === 'auto' ? jobId : undefined, { live });
   const llmCalls = useLlmCalls(data === undefined ? undefined : jobId, { live });
   const selections = useSelections(data === undefined ? undefined : jobId);
   // 外した選択（verdict が null）は入れない: 画像の側は「無い」を未選択として扱うため
@@ -141,8 +145,14 @@ export function JobDetail({ jobId }: { jobId: string }) {
       {iterations.error !== undefined && (
         <p role="alert">回を読めない: {iterations.error.message}</p>
       )}
+      {interventions.error !== undefined && (
+        <p role="alert">人間の指示を読めない: {interventions.error.message}</p>
+      )}
       {llmCalls.error !== undefined && (
         <p role="alert">LLM の記録を読めない: {llmCalls.error.message}</p>
+      )}
+      {interventions.data !== undefined && (
+        <InterventionList interventions={interventions.data.interventions} />
       )}
       {iterations.data !== undefined && (
         <>
@@ -152,6 +162,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             iterations={iterations.data.iterations}
             calls={llmCalls.data?.calls ?? []}
             verdicts={verdicts}
+            interventions={interventions.data?.interventions ?? []}
           />
           <InvalidList
             title="読めない回"
