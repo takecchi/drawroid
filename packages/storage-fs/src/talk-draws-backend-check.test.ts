@@ -129,8 +129,14 @@ describe('checking the backend before starting to draw', () => {
     expect(next).toContain('Forge が起動しているか');
   });
 
+  // 待つ上限は 5 秒（#221 の約束）。定数から作る文の数だけでなく、実際に待った長さも絶対の数で見る
   it('says how long it waited when the backend does not answer', async () => {
+    const started = Date.now();
+    let waited = 0;
     const { result, jobIds } = await askToDraw(async (signal) => {
+      signal.addEventListener('abort', () => {
+        waited = Date.now() - started;
+      });
       // 応答の無いバックエンド: 待ちの上限で切られる
       await new Promise((_, reject) =>
         signal.addEventListener('abort', () =>
@@ -140,7 +146,9 @@ describe('checking the backend before starting to draw', () => {
     });
 
     expect(jobIds).toEqual([]);
-    expect(result!.summary).toMatch(/\d+ 秒待っても応答が無い/);
+    expect(result!.summary).toContain('5 秒待っても応答が無い');
+    // 5 秒の手前では切らない（遅い CI でも切るのが早まることは無いので、下の端だけを見る）
+    expect(waited).toBeGreaterThanOrEqual(4_950);
   }, 10_000);
 
   it('asks the backend once and starts the job when it can be reached', async () => {
