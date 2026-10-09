@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { Button, CheckboxField, ErrorNote, Field, Input } from './common';
+import { Button, CheckboxField, ErrorNote, Field, FilePicker, Input } from './common';
 
 afterEach(cleanup);
 
@@ -46,5 +47,33 @@ describe('Field', () => {
       'checked',
       true,
     );
+  });
+});
+
+describe('FilePicker', () => {
+  const file = (name: string) => new File(['x'], name, { type: 'image/png' });
+
+  it('stays a file input found by the surrounding label and shows the picked names', async () => {
+    const user = userEvent.setup();
+    render(
+      <Field label="参照画像を選ぶ">
+        <FilePicker multiple />
+      </Field>,
+    );
+
+    expect(screen.getByText('選んでいない')).toBeTruthy();
+    await user.upload(screen.getByLabelText(/参照画像を選ぶ/), [file('a.png'), file('b.png')]);
+
+    expect(screen.getByText('a.png、b.png')).toBeTruthy();
+  });
+
+  it('shows the names it is given instead of the last pick', () => {
+    render(
+      <Field label="参照画像を選ぶ">
+        <FilePicker selected={['kept.png']} />
+      </Field>,
+    );
+
+    expect(screen.getByText('kept.png')).toBeTruthy();
   });
 });

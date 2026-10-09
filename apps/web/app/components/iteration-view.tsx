@@ -14,6 +14,7 @@ import {
 } from '@drawroid/ui';
 
 import { describeExcludedReason, describeWanted } from '../lib/excluded-reason';
+import { formatScore } from '../lib/format';
 import { readJudge, readThink } from '../lib/stage-output';
 import { InterventionItem, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
@@ -148,7 +149,7 @@ export function IterationView({
                   <div>seed {image.seed ?? '不明'}</div>
                   {evaluation !== undefined && (
                     <>
-                      <div>score {evaluation.score}</div>
+                      <div>score {formatScore(evaluation.score)}</div>
                       {evaluation.issues.length > 0 && (
                         <BulletList className="text-xs">
                           {evaluation.issues.map((issue, i) => (

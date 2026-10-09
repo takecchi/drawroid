@@ -1,10 +1,12 @@
-import type {
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
+import {
+  useState,
+  type ButtonHTMLAttributes,
+  type ChangeEvent,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -159,6 +161,52 @@ export function FieldSet({
       <legend className="px-1 text-sm font-semibold">{legend}</legend>
       {children}
     </fieldset>
+  );
+}
+
+/**
+ * ファイルを選ぶ欄。ブラウザ既定の見た目（英語の「Choose Files」）の代わりに、日本語のボタンと選んだファイル名を出す。
+ * ネイティブの input は見えなくするだけで残す: 外側の label（`Field`）で引け、押すとファイルの選択が開くのも、ブラウザに任せるため。
+ * `Field` の中に置く（この部品は自分では label を持たない）。
+ */
+export function FilePicker({
+  buttonLabel = 'ファイルを選ぶ',
+  selected,
+  onChange,
+  disabled,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  buttonLabel?: string;
+  /** 出すファイル名。省くと、最後に選んだファイルの名前を出す */
+  selected?: string[];
+}) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const names = selected ?? picked;
+  function change(event: ChangeEvent<HTMLInputElement>) {
+    setPicked(Array.from(event.target.files ?? [], (file) => file.name));
+    onChange?.(event);
+  }
+  return (
+    <span className={cn('flex min-w-0 flex-wrap items-center gap-2', className)}>
+      <input
+        type="file"
+        className="peer sr-only"
+        disabled={disabled}
+        onChange={change}
+        {...props}
+      />
+      {/* 読み上げから外す: 名前は外側の label が持ち、同じ文言を二度読ませないため */}
+      <span
+        aria-hidden
+        className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium hover:bg-muted peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+      >
+        {buttonLabel}
+      </span>
+      <span className="min-w-0 text-sm break-all text-muted-foreground">
+        {names.length === 0 ? '選んでいない' : names.join('、')}
+      </span>
+    </span>
   );
 }
 

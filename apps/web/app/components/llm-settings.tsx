@@ -27,6 +27,13 @@ import {
   type StructuredOutputMode,
 } from '../lib/llm-settings-form';
 
+// 種類ごとの見本: openai-compatible はローカルの LLM が多く、鍵を要らないことが多いので、名前の見本ではなく空でよいことを示す
+const API_KEY_ENV_PLACEHOLDERS: Record<ProviderType, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  'openai-compatible': '鍵が要らなければ空',
+};
+
 const ROLE_LABELS = { think: '考える役', judge: '見る役' } as const;
 
 function providerName(row: ProviderRow, index: number): string {
@@ -227,7 +234,7 @@ export function LlmSettings() {
                           changeProvider(index, { ...row, apiKeyEnv: event.target.value })
                         }
                         aria-label={`provider ${name} の API キーの環境変数`}
-                        placeholder="ANTHROPIC_API_KEY"
+                        placeholder={API_KEY_ENV_PLACEHOLDERS[row.type]}
                         className="w-64"
                       />
                     </Field>
