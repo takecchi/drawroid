@@ -1,5 +1,6 @@
 import { PARAM_KEYS, type ParamKey, type Permission } from '@drawroid/core';
 import { createAutoJob, isApiError, usePermissionSettings } from '@drawroid/swr';
+import { Button, ErrorNote, Field, Input, Muted, Textarea } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import { buildOverrides, toRows, type Rows } from '../lib/permission-form';
@@ -73,29 +74,24 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)}>
-      <p>
-        <label>
-          依頼
-          <br />
-          <textarea
-            value={request}
-            onChange={(event) => setRequest(event.target.value)}
-            rows={4}
-            cols={60}
-            placeholder="例: 夕暮れの海辺に立つ少女。柔らかい光で"
-          />
-        </label>
-      </p>
+    <form onSubmit={(event) => void submit(event)} className="space-y-4">
+      <Field label="依頼" wide>
+        <Textarea
+          value={request}
+          onChange={(event) => setRequest(event.target.value)}
+          rows={4}
+          placeholder="例: 夕暮れの海辺に立つ少女。柔らかい光で"
+        />
+      </Field>
       <ReferenceAttacher items={references} onChange={setReferences} disabled={sending} />
       <StopConditionsEditor values={stopForm} onChange={setStopForm} />
-      <details>
-        <summary>このジョブだけの許可</summary>
-        <p>
+      <details className="space-y-2">
+        <summary className="cursor-pointer">このジョブだけの許可</summary>
+        <Muted>
           書いた欄だけが、このジョブで全体の既定より優先される。投入したあとに全体の既定を変えても、ここで書いた欄は変わらない。
-        </p>
+        </Muted>
         {globalPermissions.error !== undefined && (
-          <p role="alert">全体の既定の許可を読めない: {globalPermissions.error.message}</p>
+          <ErrorNote>全体の既定の許可を読めない: {globalPermissions.error.message}</ErrorNote>
         )}
         <PermissionTable
           rows={permissionRows}
@@ -106,25 +102,30 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
           onChange={setPermissionRows}
         />
       </details>
-      <p>
-        <label>
-          1回の枚数（1〜8）{' '}
-          <input
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="1回の枚数（1〜8）">
+          <Input
             value={batchSize}
             onChange={(event) => setBatchSize(event.target.value)}
             inputMode="numeric"
-            size={3}
+            className="w-24"
           />
-        </label>
-        {!batchValid && <span role="alert"> 1〜8 の整数で書く</span>}
-      </p>
-      <button
+        </Field>
+        {!batchValid && (
+          <span role="alert" className="pb-2 text-sm text-destructive">
+            {' '}
+            1〜8 の整数で書く
+          </span>
+        )}
+      </div>
+      <Button
         type="submit"
+        variant="primary"
         disabled={sending || request.trim() === '' || stopBlocker !== undefined || !batchValid}
       >
         投入する
-      </button>
-      {error !== undefined && <p role="alert">送れない: {error}</p>}
+      </Button>
+      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
     </form>
   );
 }

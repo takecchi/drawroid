@@ -1,59 +1,59 @@
 import { useJobs, type JobsResponse } from '@drawroid/swr';
+import { Badge, ErrorNote, Item, ItemList, Muted, Section } from '@drawroid/ui';
 import { Link } from 'react-router';
 
 import { groupJobsByStatus, JOB_STATUS_ORDER, type JobSummary } from '../lib/job-groups';
 import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
 import { summarizeStopReason } from '../lib/stop-reason';
+import { JobStatusBadge } from './job-status-badge';
 
 function JobRow({ job }: { job: JobSummary }) {
   return (
-    <li>
-      <Link to={`/jobs/${job.jobId}`}>
+    <Item>
+      <Link to={`/jobs/${job.jobId}`} className="underline underline-offset-2">
         <code>{job.jobId}</code>
-      </Link>{' '}
-      {KIND_LABELS[job.kind]} {formatTime(job.createdAt)} {STATUS_LABELS[job.state.status]}
+      </Link>
+      <Badge>{KIND_LABELS[job.kind]}</Badge>
+      <span className="text-muted-foreground">{formatTime(job.createdAt)}</span>
+      <JobStatusBadge status={job.state.status} />
       {job.state.status === 'stopped' && <> ({summarizeStopReason(job.state.reason)})</>}
-    </li>
+    </Item>
   );
 }
 
 function InvalidJobs({ invalid }: { invalid: JobsResponse['invalid'] }) {
   if (invalid.length === 0) return null;
   return (
-    <section>
-      <h2>読めないジョブ</h2>
-      <ul>
+    <Section title="読めないジョブ">
+      <ItemList>
         {invalid.map(({ jobId, reason }) => (
-          <li key={jobId}>
+          <Item key={jobId}>
             <code>{jobId}</code>: {reason}
-          </li>
+          </Item>
         ))}
-      </ul>
-    </section>
+      </ItemList>
+    </Section>
   );
 }
 
 export function JobList() {
   const { data, error } = useJobs();
   if (data === undefined) {
-    return error === undefined ? null : <p role="alert">一覧を読めない: {error.message}</p>;
+    return error === undefined ? null : <ErrorNote>一覧を読めない: {error.message}</ErrorNote>;
   }
   const groups = groupJobsByStatus(data.jobs);
   return (
     <>
-      {error !== undefined && <p role="alert">一覧を読めない: {error.message}</p>}
-      {data.jobs.length === 0 && <p>まだ無い。</p>}
+      {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
+      {data.jobs.length === 0 && <Muted>まだ無い。</Muted>}
       {JOB_STATUS_ORDER.map((status) => (
-        <section key={status}>
-          <h2>
-            {STATUS_LABELS[status]}（{groups[status].length}）
-          </h2>
-          <ul>
+        <Section key={status} title={`${STATUS_LABELS[status]}（${groups[status].length}）`}>
+          <ItemList>
             {groups[status].map((job) => (
               <JobRow key={job.jobId} job={job} />
             ))}
-          </ul>
-        </section>
+          </ItemList>
+        </Section>
       ))}
       <InvalidJobs invalid={data.invalid} />
     </>

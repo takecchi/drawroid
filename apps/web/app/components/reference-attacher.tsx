@@ -1,3 +1,4 @@
+import { Button, ErrorNote, Field, FieldSet, Input, Item, ItemList } from '@drawroid/ui';
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 
 import {
@@ -16,7 +17,7 @@ function Thumbnail({ file }: { file: File }) {
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
   return url === undefined ? null : (
-    <img src={url} alt={file.name} style={{ maxWidth: 96, maxHeight: 96 }} />
+    <img src={url} alt={file.name} className="max-h-24 max-w-24 rounded" />
   );
 }
 
@@ -49,32 +50,25 @@ export function ReferenceAttacher({
   }
 
   return (
-    <fieldset>
-      <legend>参照画像（{MAX_REFERENCES_PER_REQUEST} 枚まで）</legend>
-      <p>
-        <label>
-          参照画像を選ぶ{' '}
-          <input
-            type="file"
-            multiple
-            accept={REFERENCE_MEDIA_TYPES.join(',')}
-            disabled={disabled}
-            onChange={pick}
-          />
-        </label>
-      </p>
+    <FieldSet legend={`参照画像（${MAX_REFERENCES_PER_REQUEST} 枚まで）`}>
+      <Field label="参照画像を選ぶ">
+        <Input
+          type="file"
+          multiple
+          accept={REFERENCE_MEDIA_TYPES.join(',')}
+          disabled={disabled}
+          onChange={pick}
+        />
+      </Field>
       {refusals.map((reason) => (
-        <p key={reason} role="alert">
-          添えられない: {reason}
-        </p>
+        <ErrorNote key={reason}>添えられない: {reason}</ErrorNote>
       ))}
-      <ul>
+      <ItemList>
         {items.map((item) => (
-          <li key={item.id}>
-            <Thumbnail file={item.file} />{' '}
-            <label>
-              用途の言葉{' '}
-              <input
+          <Item key={item.id} className="items-center">
+            <Thumbnail file={item.file} />
+            <Field label="用途の言葉">
+              <Input
                 value={item.note}
                 aria-label={`用途の言葉（${item.file.name}）`}
                 onChange={(event) =>
@@ -84,21 +78,21 @@ export function ReferenceAttacher({
                     ),
                   )
                 }
-                size={30}
                 placeholder="例: この構図で"
+                className="w-72"
               />
-            </label>{' '}
-            <button
-              type="button"
+            </Field>
+            <Button
               disabled={disabled}
               aria-label={`${item.file.name} を外す`}
+              className="h-7 px-2 text-xs"
               onClick={() => onChange(items.filter((it) => it.id !== item.id))}
             >
               外す
-            </button>
-          </li>
+            </Button>
+          </Item>
         ))}
-      </ul>
-    </fieldset>
+      </ItemList>
+    </FieldSet>
   );
 }

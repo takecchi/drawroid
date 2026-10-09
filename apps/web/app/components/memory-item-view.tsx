@@ -5,6 +5,19 @@ import {
   useMemoryItem,
   type MemoryItemDetail,
 } from '@drawroid/swr';
+import {
+  Button,
+  ErrorNote,
+  Field,
+  Input,
+  Item,
+  ItemList,
+  Muted,
+  Section,
+  Select,
+  SubSection,
+  Textarea,
+} from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 
@@ -24,13 +37,15 @@ function formatTime(iso: string): string {
 export function MemoryItemView({ id }: { id: string }) {
   const { data, error, mutate } = useMemoryItem(id);
   return (
-    <section>
+    <Section>
       <p>
-        <Link to="/memory">記憶の一覧へ</Link>
+        <Link to="/memory" className="underline underline-offset-2">
+          記憶の一覧へ
+        </Link>
       </p>
-      {error !== undefined && <p role="alert">この記憶を読めない: {error.message}</p>}
+      {error !== undefined && <ErrorNote>この記憶を読めない: {error.message}</ErrorNote>}
       {data !== undefined && <MemoryItemBody id={id} detail={data} reload={() => mutate()} />}
-    </section>
+    </Section>
   );
 }
 
@@ -96,85 +111,82 @@ function MemoryItemBody({
 
   return (
     <>
-      <p>
+      <p className="text-sm">
         作成 {formatTime(base.createdAt)} / 更新 {formatTime(base.updatedAt)}
       </p>
 
-      <h3>学んだジョブ</h3>
-      {detail.sources.length === 0 && <p>無い。</p>}
-      <ul>
-        {detail.sources.map(({ jobId, job }) => (
-          <li key={jobId}>
-            <Link to={`/jobs/${encodeURIComponent(jobId)}`}>
-              <code>{jobId}</code>
-            </Link>{' '}
-            {job === null ? (
-              '消えたジョブ'
-            ) : (
-              <>
-                {job.kind} {formatTime(job.createdAt)} {job.request.slice(0, 60)}
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+      <SubSection title="学んだジョブ">
+        {detail.sources.length === 0 && <Muted>無い。</Muted>}
+        <ItemList>
+          {detail.sources.map(({ jobId, job }) => (
+            <Item key={jobId}>
+              <Link
+                to={`/jobs/${encodeURIComponent(jobId)}`}
+                className="underline underline-offset-2"
+              >
+                <code>{jobId}</code>
+              </Link>{' '}
+              {job === null ? (
+                '消えたジョブ'
+              ) : (
+                <>
+                  {job.kind} {formatTime(job.createdAt)} {job.request.slice(0, 60)}
+                </>
+              )}
+            </Item>
+          ))}
+        </ItemList>
+      </SubSection>
 
-      <h3>直す</h3>
-      <form onSubmit={save}>
-        <p>
-          <label>
-            本文
-            <br />
-            <textarea
+      <SubSection title="直す">
+        <form onSubmit={save} className="space-y-3">
+          <Field label="本文" wide>
+            <Textarea
               value={values.body}
               onChange={(event) => setValues({ ...values, body: event.target.value })}
               rows={3}
-              cols={60}
             />
-          </label>
-        </p>
-        <p>
-          <label>
-            tags（カンマ区切り）{' '}
-            <input
+          </Field>
+          <Field label="tags（カンマ区切り）">
+            <Input
               type="text"
               value={values.tags}
               onChange={(event) => setValues({ ...values, tags: event.target.value })}
-              size={40}
+              className="w-80"
             />
-          </label>
-        </p>
-        <p>
-          <label>
-            scope{' '}
-            <select
+          </Field>
+          <Field label="scope">
+            <Select
               value={values.scope}
               onChange={(event) =>
                 setValues({ ...values, scope: event.target.value as MemoryItem['scope'] })
               }
+              className="w-72"
             >
               <option value="always">{SCOPE_LABELS.always}</option>
               <option value="tagged">{SCOPE_LABELS.tagged}</option>
-            </select>
-          </label>
-        </p>
-        <button type="submit" disabled={busy}>
-          保存
-        </button>{' '}
-        <button type="button" onClick={remove} disabled={busy}>
-          消す
-        </button>
-      </form>
+            </Select>
+          </Field>
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" disabled={busy}>
+              保存
+            </Button>
+            <Button variant="danger" onClick={remove} disabled={busy}>
+              消す
+            </Button>
+          </div>
+        </form>
+      </SubSection>
 
       {problem?.kind === 'conflict' && (
-        <p role="alert">
+        <ErrorNote>
           開いたあとにファイルが変わった。読み直してから直す。{' '}
-          <button type="button" onClick={reloadLatest} disabled={busy}>
+          <Button onClick={reloadLatest} disabled={busy}>
             読み直す
-          </button>
-        </p>
+          </Button>
+        </ErrorNote>
       )}
-      {problem?.kind === 'other' && <p role="alert">できなかった: {problem.message}</p>}
+      {problem?.kind === 'other' && <ErrorNote>できなかった: {problem.message}</ErrorNote>}
     </>
   );
 }

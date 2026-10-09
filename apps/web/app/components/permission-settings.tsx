@@ -1,5 +1,6 @@
 import type { ParamKey, Permission } from '@drawroid/core';
 import { isApiError, savePermissionSettings, usePermissionSettings } from '@drawroid/swr';
+import { Button, ErrorNote, Muted, OkNote, Section } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import { buildOverrides, toRows, type Rows } from '../lib/permission-form';
@@ -43,28 +44,27 @@ export function PermissionSettings() {
   }
 
   return (
-    <section>
-      <h2>許可</h2>
-      <p>
+    <Section title="許可">
+      <Muted>
         パラメータごとに、AI
         に任せるか・人間が固定するか・使わないかを決める。保存すると、走行中のジョブにも次の回から効く。
-      </p>
-      {error !== undefined && <p role="alert">許可を読めない: {error.message}</p>}
+      </Muted>
+      {error !== undefined && <ErrorNote>許可を読めない: {error.message}</ErrorNote>}
       {rows !== undefined && data !== undefined && (
-        <form onSubmit={(event) => void save(event)}>
+        <form onSubmit={(event) => void save(event)} className="space-y-3">
           <PermissionTable
             rows={rows}
             effective={data.permissions as Partial<Record<ParamKey, Permission>>}
             defaults={{ option: '既定のまま', note: '既定' }}
             onChange={setEdited}
           />
-          <button type="submit" disabled={saving}>
+          <Button type="submit" variant="primary" disabled={saving}>
             許可を保存
-          </button>
+          </Button>
         </form>
       )}
-      {saved && <p>保存した。走行中のジョブにも次の回から効く。</p>}
-      {problem !== undefined && <p role="alert">保存できない: {problem}</p>}
-    </section>
+      {saved && <OkNote>保存した。走行中のジョブにも次の回から効く。</OkNote>}
+      {problem !== undefined && <ErrorNote>保存できない: {problem}</ErrorNote>}
+    </Section>
   );
 }

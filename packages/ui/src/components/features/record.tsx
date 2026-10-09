@@ -19,7 +19,8 @@ export function AuthorMark({
   children,
 }: {
   author: Author;
-  label: string;
+  /** 省くと色の印だけになる（中身の見出しで作者が分かるとき） */
+  label?: string;
   /** 文言の横に添える時刻など */
   meta?: ReactNode;
   as?: 'div' | 'section';
@@ -35,10 +36,9 @@ export function AuthorMark({
         className,
       )}
     >
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <AuthorLabel author={author}>{label}</AuthorLabel>
-        {meta !== undefined && <span className="text-xs text-muted-foreground">{meta}</span>}
-      </div>
+      {/* 文言と時刻を枠の直下に置く（行で包まない）: 文言の親が記録1件ぶんの枠になり、文言から記録の中身を辿れるようにするため */}
+      {label !== undefined && <AuthorLabel author={author}>{label}</AuthorLabel>}
+      {meta !== undefined && <span className="ml-2 text-xs text-muted-foreground">{meta}</span>}
       {children}
     </Tag>
   );

@@ -1,4 +1,5 @@
 import { addMask, isApiError } from '@drawroid/swr';
+import { Button, CheckboxField, ErrorNote, Field, Input, OkNote } from '@drawroid/ui';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 
 import { encodeMaskPng } from '../lib/mask-png';
@@ -36,9 +37,9 @@ export function MaskPainter({
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)}>
+      <Button className="h-7 px-2 text-xs" onClick={() => setOpen(true)}>
         マスクを塗る
-      </button>
+      </Button>
     );
   }
 
@@ -87,12 +88,12 @@ export function MaskPainter({
 
   const alt = `${image.iteration} 回目の画像 ${image.index}`;
   return (
-    <div>
-      <div style={{ position: 'relative', display: 'inline-block', maxWidth: 640 }}>
+    <div className="space-y-2">
+      <div className="relative inline-block max-w-full">
         <img
           src={image.url}
           alt={alt}
-          style={{ display: 'block', maxWidth: '100%' }}
+          className="block max-w-full"
           onLoad={(event) =>
             setSize({
               width: event.currentTarget.naturalWidth,
@@ -106,68 +107,60 @@ export function MaskPainter({
           aria-label="マスクを塗る所"
           width={size?.width ?? 0}
           height={size?.height ?? 0}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            mixBlendMode: 'screen',
-            opacity: 0.6,
-            touchAction: 'none',
-            cursor: 'crosshair',
-          }}
+          className="absolute inset-0 size-full cursor-crosshair touch-none opacity-60 mix-blend-screen"
           onPointerDown={start}
           onPointerMove={extend}
           onPointerUp={() => setDrawing(false)}
           onPointerLeave={() => setDrawing(false)}
         />
       </div>
-      <div>
-        <label>
-          筆の太さ（px）{' '}
-          <input
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="筆の太さ（px）">
+          <Input
             type="number"
             min={1}
             max={512}
             value={radius}
             onChange={(event) => setRadius(Math.max(1, Number(event.target.value) || 1))}
-            style={{ width: 64 }}
+            className="h-7 w-20"
           />
-        </label>{' '}
-        <label>
-          <input
-            type="checkbox"
-            checked={erase}
-            onChange={(event) => setErase(event.target.checked)}
-          />
-          消しゴム
-        </label>{' '}
-        <button
-          type="button"
+        </Field>
+        <CheckboxField
+          label="消しゴム"
+          checked={erase}
+          onChange={(event) => setErase(event.target.checked)}
+          className="pb-1"
+        />
+        <Button
+          className="h-7 px-2 text-xs"
           disabled={strokes.length === 0}
           onClick={() => setStrokes((current) => current.slice(0, -1))}
         >
           ひとつ戻す
-        </button>{' '}
-        <button type="button" disabled={strokes.length === 0} onClick={() => setStrokes([])}>
+        </Button>
+        <Button
+          className="h-7 px-2 text-xs"
+          disabled={strokes.length === 0}
+          onClick={() => setStrokes([])}
+        >
           全部消す
-        </button>{' '}
-        <button
-          type="button"
+        </Button>
+        <Button
+          className="h-7 px-2 text-xs"
           disabled={sending || strokes.length === 0 || size === undefined}
           onClick={() => void send()}
         >
           マスクを送る
-        </button>{' '}
-        <button type="button" onClick={() => setOpen(false)}>
+        </Button>
+        <Button className="h-7 px-2 text-xs" onClick={() => setOpen(false)}>
           閉じる
-        </button>
+        </Button>
       </div>
-      <p style={{ margin: '4px 0' }}>
+      <p className="text-xs">
         白く塗った所を、次の回の inpaint で描き直す。マスクは1回使うか、新しいマスクを送ると切れる。
       </p>
-      {sent && <p>送った。次の回の境目から inpaint に使える。</p>}
-      {error !== undefined && <p role="alert">送れない: {error}</p>}
+      {sent && <OkNote>送った。次の回の境目から inpaint に使える。</OkNote>}
+      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
     </div>
   );
 }

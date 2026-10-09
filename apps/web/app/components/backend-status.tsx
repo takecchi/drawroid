@@ -1,3 +1,4 @@
+import { BulletList, Muted, Section } from '@drawroid/ui';
 import { useBackendStatus } from '@drawroid/swr';
 
 import { BackendErrorMessage } from './backend-error-message';
@@ -5,29 +6,28 @@ import { BackendErrorMessage } from './backend-error-message';
 export function BackendStatus() {
   const { data, error, isLoading } = useBackendStatus();
   return (
-    <section>
-      <h2>バックエンドの状態</h2>
+    <Section title="バックエンドの状態">
       {error !== undefined ? (
         <BackendErrorMessage kind={error.kind} message={error.message} />
       ) : isLoading || data === undefined ? (
-        <p>確認しています。</p>
+        <Muted>確認しています。</Muted>
       ) : (
         <>
-          <p>繋がっている。</p>
+          <p className="text-sm">繋がっている。</p>
           {data.capabilities.unavailable.length > 0 && (
             <>
-              <p>使えない機能</p>
-              <ul>
+              <p className="text-sm">使えない機能</p>
+              <BulletList>
                 {data.capabilities.unavailable.map(({ feature, reason }) => (
                   <li key={feature}>
                     {feature}: {reason}
                   </li>
                 ))}
-              </ul>
+              </BulletList>
             </>
           )}
         </>
       )}
-    </section>
+    </Section>
   );
 }

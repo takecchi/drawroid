@@ -1,5 +1,7 @@
 import { PARAM_KEYS, type CandidateKind, type ParamKey, type Permission } from '@drawroid/core';
 import { useBackendStatus, useCandidates } from '@drawroid/swr';
+import { CheckboxField, ErrorNote, Input, Select, Textarea } from '@drawroid/ui';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@drawroid/ui/shadcn';
 
 import {
   candidateKindOf,
@@ -40,39 +42,37 @@ function ChoicesField({
   // 今の候補に無い名前も残して見せる: バックエンドから消えた候補を、絞り込みから黙って落とさないため
   const shown = [...names, ...(choices ?? []).filter((name) => !names.includes(name))];
   return (
-    <div>
-      <label>
-        <input
-          type="checkbox"
-          checked={choices !== undefined}
-          onChange={(event) => onChange(event.target.checked ? [] : undefined)}
-        />
-        候補を絞る
-      </label>
+    <div className="space-y-1">
+      <CheckboxField
+        label="候補を絞る"
+        checked={choices !== undefined}
+        onChange={(event) => onChange(event.target.checked ? [] : undefined)}
+      />
       {error !== undefined && (
-        <p role="alert">
+        <ErrorNote>
           {label}の候補を読めない: {error.message}
-        </p>
+        </ErrorNote>
       )}
       {choices !== undefined && (
-        <ul style={{ listStyle: 'none', paddingLeft: 16, margin: 0 }}>
+        <ul className="space-y-1 pl-4">
           {shown.map((name) => (
             <li key={name}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={choices.includes(name)}
-                  onChange={(event) =>
-                    onChange(
-                      event.target.checked
-                        ? [...choices, name]
-                        : choices.filter((chosen) => chosen !== name),
-                    )
-                  }
-                />
-                {name}
-                {!names.includes(name) && '（今の候補に無い）'}
-              </label>
+              <CheckboxField
+                label={
+                  <>
+                    {name}
+                    {!names.includes(name) && '（今の候補に無い）'}
+                  </>
+                }
+                checked={choices.includes(name)}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? [...choices, name]
+                      : choices.filter((chosen) => chosen !== name),
+                  )
+                }
+              />
             </li>
           ))}
         </ul>
@@ -93,23 +93,24 @@ function FixedField({
   const label = `${PARAM_LABELS[param]} の固定の値`;
   if (fixedValueKindOf(param) === 'json') {
     return (
-      <textarea
+      <Textarea
         aria-label={label}
         value={text}
         onChange={(event) => onChange(event.target.value)}
         rows={3}
-        cols={40}
         placeholder="JSON で書く"
+        className="w-80"
       />
     );
   }
   return (
-    <input
+    <Input
       type="text"
       inputMode={fixedValueKindOf(param) === 'number' ? 'decimal' : undefined}
       aria-label={label}
       value={text}
       onChange={(event) => onChange(event.target.value)}
+      className="w-64"
     />
   );
 }
@@ -132,34 +133,33 @@ function PermissionRow({
   const label = PARAM_LABELS[param];
   const kind = candidateKindOf(param);
   return (
-    <tr>
-      <th scope="row" style={{ textAlign: 'left', verticalAlign: 'top' }}>
+    <TableRow className="align-top">
+      <TableHead scope="row" className="align-top">
         {label}
-      </th>
-      <td style={{ verticalAlign: 'top' }}>
+      </TableHead>
+      <TableCell className="align-top whitespace-normal">
         {effective !== undefined &&
           `${describePermission(effective)}${row.mode === 'default' ? `（${defaults.note}）` : ''}`}
         {unavailable !== undefined && (
-          <p style={{ margin: '4px 0' }}>
+          <p className="my-1">
             バックエンドで使えない: {unavailable}（許可しても AI の選択肢から外れる）
           </p>
         )}
-        {param === 'inpaint' && (
-          <p style={{ margin: '4px 0' }}>マスクを塗った回だけ、AI の選択肢に出る</p>
-        )}
-      </td>
-      <td style={{ verticalAlign: 'top' }}>
-        <select
+        {param === 'inpaint' && <p className="my-1">マスクを塗った回だけ、AI の選択肢に出る</p>}
+      </TableCell>
+      <TableCell className="space-y-2 align-top whitespace-normal">
+        <Select
           aria-label={`${label} の許可`}
           value={row.mode}
           onChange={(event) => onChange({ ...row, mode: event.target.value as Row['mode'] })}
+          className="w-48"
         >
           {MODES.map((mode) => (
             <option key={mode} value={mode} disabled={mode === 'off' && isRequired(param)}>
               {mode === 'default' ? defaults.option : MODE_LABELS[mode]}
             </option>
           ))}
-        </select>
+        </Select>
         {row.mode === 'auto' && kind !== undefined && (
           <ChoicesField
             kind={kind}
@@ -175,8 +175,8 @@ function PermissionRow({
             onChange={(fixedText) => onChange({ ...row, fixedText })}
           />
         )}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -203,15 +203,15 @@ export function PermissionTable({
     ]),
   );
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">パラメータ</th>
-          <th scope="col">いま</th>
-          <th scope="col">変える</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">パラメータ</TableHead>
+          <TableHead scope="col">いま</TableHead>
+          <TableHead scope="col">変える</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {PARAM_KEYS.map((param) => (
           <PermissionRow
             key={param}
@@ -223,7 +223,7 @@ export function PermissionTable({
             onChange={(row) => onChange({ ...rows, [param]: row })}
           />
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

@@ -1,10 +1,21 @@
 import type { SelectionVerdict } from '@drawroid/core';
 import { formatImageKey } from '@drawroid/core';
 import type { IterationsResponse } from '@drawroid/swr';
+import {
+  AuthorMark,
+  BulletList,
+  CodeBlock,
+  DescriptionList,
+  Disclosure,
+  ImageCard,
+  ImageGrid,
+  Muted,
+  Section,
+} from '@drawroid/ui';
 
 import { describeExcludedReason, describeWanted } from '../lib/excluded-reason';
 import { readJudge, readThink } from '../lib/stage-output';
-import { AuthorLabel, InterventionItem, markStyle, type Intervention } from './intervention-view';
+import { InterventionItem, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
 import { MaskPainter } from './mask-painter';
 import { SelectionControls } from './selection-controls';
@@ -23,11 +34,10 @@ function ThinkSection({ think }: { think: unknown }) {
   const read = readThink(think);
   if (read === undefined) {
     return (
-      <section style={markStyle('ai')}>
-        <AuthorLabel author="ai">AI（考える役）</AuthorLabel>
-        <h4>考える役の決定</h4>
-        <pre>{JSON.stringify(think, null, 2)}</pre>
-      </section>
+      <AuthorMark as="section" author="ai" label="AI（考える役）">
+        <h4 className="font-semibold">考える役の決定</h4>
+        <CodeBlock>{JSON.stringify(think, null, 2)}</CodeBlock>
+      </AuthorMark>
     );
   }
   const entries = Object.entries(PARAM_LABELS).flatMap(([key, label]) => {
@@ -35,58 +45,55 @@ function ThinkSection({ think }: { think: unknown }) {
     return value === undefined ? [] : [[label, value] as const];
   });
   return (
-    <section style={markStyle('ai')}>
-      <AuthorLabel author="ai">AI（考える役）</AuthorLabel>
-      <h4>考える役の決定</h4>
-      <dl>
+    <AuthorMark as="section" author="ai" label="AI（考える役）">
+      <h4 className="font-semibold">考える役の決定</h4>
+      <DescriptionList>
         {entries.map(([label, value]) => (
           <div key={label}>
             <dt>{label}</dt>
             <dd>{value}</dd>
           </div>
         ))}
-      </dl>
+      </DescriptionList>
       <p>理由: {read.rationale}</p>
-    </section>
+    </AuthorMark>
   );
 }
 
 function ExcludedSection({ excluded }: { excluded: NonNullable<Iteration['excluded']> }) {
   return (
-    <section style={markStyle('ai')}>
-      <h4>この回に AI の選択肢から外したもの</h4>
-      <ul>
+    <AuthorMark as="section" author="ai">
+      <h4 className="font-semibold">この回に AI の選択肢から外したもの</h4>
+      <BulletList>
         {excluded.map((item) => (
           <li key={item.param}>
             {item.param}（{describeWanted(item.wanted)}）: {describeExcludedReason(item.reason)}
           </li>
         ))}
-      </ul>
-    </section>
+      </BulletList>
+    </AuthorMark>
   );
 }
 
 function JudgeSection({ judge, read }: { judge: unknown; read: ReturnType<typeof readJudge> }) {
   if (read === undefined) {
     return (
-      <section style={markStyle('ai')}>
-        <AuthorLabel author="ai">AI（見る役）</AuthorLabel>
-        <h4>見る役の評価</h4>
-        <pre>{JSON.stringify(judge, null, 2)}</pre>
-      </section>
+      <AuthorMark as="section" author="ai" label="AI（見る役）">
+        <h4 className="font-semibold">見る役の評価</h4>
+        <CodeBlock>{JSON.stringify(judge, null, 2)}</CodeBlock>
+      </AuthorMark>
     );
   }
   return (
-    <section style={markStyle('ai')}>
-      <AuthorLabel author="ai">AI（見る役）</AuthorLabel>
-      <h4>見る役の評価</h4>
-      <dl>
+    <AuthorMark as="section" author="ai" label="AI（見る役）">
+      <h4 className="font-semibold">見る役の評価</h4>
+      <DescriptionList>
         <dt>次に変えること</dt>
         <dd>{read.nextChange}</dd>
         <dt>止めてよいか</dt>
         <dd>{read.canStop ? '止めてよい' : '止めない'}</dd>
-      </dl>
-    </section>
+      </DescriptionList>
+    </AuthorMark>
   );
 }
 
@@ -110,8 +117,8 @@ export function IterationView({
 }) {
   const judge = readJudge(iteration.judge);
   return (
-    <article>
-      <h3>{iteration.iteration} 回目</h3>
+    <article className="space-y-3 border-t border-border pt-3 first:border-t-0 first:pt-0">
+      <h3 className="text-sm font-semibold">{iteration.iteration} 回目</h3>
       {interventions.map((intervention) => (
         <InterventionItem
           key={intervention.interventionId}
@@ -123,52 +130,52 @@ export function IterationView({
         <ExcludedSection excluded={iteration.excluded} />
       )}
       {iteration.think !== null && <ThinkSection think={iteration.think} />}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <ImageGrid>
         {iteration.images.map((image) => {
           // 評価の並びは画像の並びと同じ: 見る役の出力が画像の枚数ぶんをちょうど返すため
           const evaluation = judge?.images[image.index];
           const imageKey = formatImageKey({ iteration: iteration.iteration, index: image.index });
+          const verdict = verdicts.get(imageKey) ?? null;
           return (
-            <figure key={image.index} style={{ margin: 0 }}>
-              <a href={image.url}>
-                <img src={image.previewUrl} alt={`seed ${image.seed}`} style={{ maxWidth: 320 }} />
-              </a>
-              <figcaption>
-                seed {image.seed ?? '不明'}
-                {evaluation !== undefined && (
-                  <>
-                    <br />
-                    score {evaluation.score}
-                    {evaluation.issues.length > 0 && (
-                      <ul>
-                        {evaluation.issues.map((issue, i) => (
-                          <li key={i}>{issue}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </figcaption>
-              <SelectionControls
-                jobId={jobId}
-                imageKey={imageKey}
-                verdict={verdicts.get(imageKey) ?? null}
-              />
+            <ImageCard
+              key={image.index}
+              href={image.url}
+              src={image.previewUrl}
+              alt={`seed ${image.seed}`}
+              verdict={verdict}
+              caption={
+                <>
+                  <div>seed {image.seed ?? '不明'}</div>
+                  {evaluation !== undefined && (
+                    <>
+                      <div>score {evaluation.score}</div>
+                      {evaluation.issues.length > 0 && (
+                        <BulletList className="text-xs">
+                          {evaluation.issues.map((issue, i) => (
+                            <li key={i}>{issue}</li>
+                          ))}
+                        </BulletList>
+                      )}
+                    </>
+                  )}
+                </>
+              }
+            >
+              <SelectionControls jobId={jobId} imageKey={imageKey} verdict={verdict} />
               {canPaintMask && (
                 <MaskPainter
                   jobId={jobId}
                   image={{ iteration: iteration.iteration, index: image.index, url: image.url }}
                 />
               )}
-            </figure>
+            </ImageCard>
           );
         })}
-      </div>
+      </ImageGrid>
       {iteration.judge !== null && <JudgeSection judge={iteration.judge} read={judge} />}
-      <details>
-        <summary>request</summary>
-        <pre>{JSON.stringify(iteration.request, null, 2)}</pre>
-      </details>
+      <Disclosure summary="request">
+        <CodeBlock>{JSON.stringify(iteration.request, null, 2)}</CodeBlock>
+      </Disclosure>
       {calls.length > 0 && <LlmCallList jobId={jobId} calls={calls} />}
     </article>
   );
@@ -192,9 +199,8 @@ export function IterationList({
   canPaintMask?: boolean;
 }) {
   return (
-    <section>
-      <h2>{heading}</h2>
-      {iterations.length === 0 && <p>まだ画像は無い。</p>}
+    <Section title={heading}>
+      {iterations.length === 0 && <Muted>まだ画像は無い。</Muted>}
       {iterations.map((iteration) => (
         <IterationView
           key={iteration.iteration}
@@ -210,6 +216,6 @@ export function IterationList({
           calls={calls.filter((call) => call.iteration === iteration.iteration)}
         />
       ))}
-    </section>
+    </Section>
   );
 }
