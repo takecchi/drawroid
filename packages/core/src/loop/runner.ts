@@ -136,7 +136,11 @@ export class JobRunner {
         '重ねると AI の判断も上限も無くなり、ジョブが止まらなくなる',
       );
     }
-    await store.addIntervention(jobId, { stopConditions: parsed }, this.now());
+    await store.addIntervention(
+      jobId,
+      { kind: 'stopConditions', stopConditions: parsed },
+      this.now(),
+    );
     return changed;
   }
 
@@ -144,7 +148,9 @@ export class JobRunner {
     const interventions = await this.deps.store.listInterventions(spec.jobId);
     return effectiveStopConditions(
       spec.stopConditions,
-      interventions.map((intervention) => intervention.stopConditions),
+      interventions.flatMap((intervention) =>
+        intervention.kind === 'stopConditions' ? [intervention.stopConditions] : [],
+      ),
     );
   }
 

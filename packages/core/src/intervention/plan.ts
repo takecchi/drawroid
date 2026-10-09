@@ -1,20 +1,17 @@
 import { clipText } from '../budget/estimate.js';
 import { packWithinBudget } from '../budget/pack.js';
+import type { InstructionIntervention, InterventionRecord } from '../job/types.js';
 import type { BudgetNote } from '../llm/port.js';
-import {
-  pendingInterventions,
-  type Intervention,
-  type InterventionLimits,
-} from './intervention.js';
+import { pendingInterventions, type InterventionLimits } from './intervention.js';
 
-/** 次の「考える」に載せる口出し。text は上限で切ったもの */
-export type PlannedIntervention = { id: string; text: string };
+/** 次の「考える」に載せる人間の指示。text は上限で切ったもの */
+export type PlannedIntervention = { interventionId: string; text: string };
 
 export type InterventionPlan = {
   /** 載せるもの（受けた順） */
   included: PlannedIntervention[];
   /** 入りきらず、次の回へ持ち越すもの（受けた順） */
-  carried: Intervention[];
+  carried: InstructionIntervention[];
   notes: BudgetNote[];
 };
 
@@ -22,7 +19,7 @@ export type InterventionPlan = {
  * 未反映の口出しのうち、次の「考える」に載せるものを上限の内で決める。
  */
 export function planInterventions(
-  interventions: readonly Intervention[],
+  interventions: readonly InterventionRecord[],
   limits: InterventionLimits,
 ): InterventionPlan {
   // 1件の上限を合計の上限で頭打ちにする: 先頭の1件が合計に入らないと、以後ずっと持ち越されて反映されないため
@@ -46,7 +43,7 @@ export function planInterventions(
     if (c.clippedFrom !== undefined) {
       notes.push({
         kind: 'clipped',
-        section: `interventions.${intervention.id}`,
+        section: `interventions.${intervention.interventionId}`,
         from: c.clippedFrom,
         to: textEach,
       });
@@ -55,13 +52,13 @@ export function planInterventions(
   for (const intervention of carried) {
     notes.push({
       kind: 'dropped',
-      section: `interventions.${intervention.id}`,
+      section: `interventions.${intervention.interventionId}`,
       reason: '口出しの上限に入らないので次の回へ持ち越す',
     });
   }
   return {
     included: included.map(({ intervention, clipped: c }) => ({
-      id: intervention.id,
+      interventionId: intervention.interventionId,
       text: c.text,
     })),
     carried,

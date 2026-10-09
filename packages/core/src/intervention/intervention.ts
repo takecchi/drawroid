@@ -1,11 +1,4 @@
-/** 人間の口出し1件。AI の判断とは別に、受けた原文のまま記録する */
-export type Intervention = {
-  id: string;
-  receivedAt: string;
-  text: string;
-  /** 「考える」に取り込んだ回。未反映の間は無い */
-  appliedInIteration?: number;
-};
+import type { InstructionIntervention, InterventionRecord } from '../job/types.js';
 
 /** 1回の「考える」に載せる口出しの件数と文字数（maxSize は原文の文字数の合計、textEach は1件の文字数） */
 export type InterventionLimits = {
@@ -21,9 +14,14 @@ export const DEFAULT_INTERVENTION_LIMITS: InterventionLimits = {
   textEach: 200,
 };
 
-/** まだ「考える」に取り込んでいない口出しを、受けた順に返す */
-export function pendingInterventions(interventions: readonly Intervention[]): Intervention[] {
+/** 人間の指示のうち、まだ「考える」に取り込んでいないものを、受けた順に返す */
+export function pendingInterventions(
+  interventions: readonly InterventionRecord[],
+): InstructionIntervention[] {
   return interventions
-    .filter((intervention) => intervention.appliedInIteration === undefined)
+    .filter(
+      (intervention): intervention is InstructionIntervention =>
+        intervention.kind === 'instruction' && intervention.appliedInIteration === undefined,
+    )
     .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
 }

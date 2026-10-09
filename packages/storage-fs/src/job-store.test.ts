@@ -139,20 +139,21 @@ describe('FsJobStore interventions', () => {
     const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
     await jobs.addIntervention(
       a.jobId,
-      { stopConditions: { maxIterations: 3 } },
+      { kind: 'stopConditions', stopConditions: { maxIterations: 3 } },
       new Date('2026-10-09T06:31:00Z'),
     );
     await jobs.addIntervention(
       a.jobId,
-      { stopConditions: { maxIterations: null } },
+      { kind: 'instruction', text: '逆光にして' },
       new Date('2026-10-09T06:32:00Z'),
     );
 
     const listed = await jobs.listInterventions(a.jobId);
-    expect(listed.map((i) => i.stopConditions)).toEqual([
-      { maxIterations: 3 },
-      { maxIterations: null },
+    expect(listed).toEqual([
+      expect.objectContaining({ kind: 'stopConditions', stopConditions: { maxIterations: 3 } }),
+      expect.objectContaining({ kind: 'instruction', text: '逆光にして' }),
     ]);
+    expect(listed[1]).not.toHaveProperty('appliedInIteration');
     expect(await readdir(dataPaths(root).jobFiles(a.jobId).interventions)).toHaveLength(2);
   });
 
@@ -166,7 +167,19 @@ describe('FsJobStore interventions', () => {
     const jobs = store();
     const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
     await expect(
-      jobs.addIntervention(a.jobId, { stopConditions: {} }, new Date('2026-10-09T06:31:00Z')),
+      jobs.addIntervention(
+        a.jobId,
+        { kind: 'stopConditions', stopConditions: {} },
+        new Date('2026-10-09T06:31:00Z'),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('refuses an empty instruction', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(
+      jobs.addIntervention(a.jobId, { kind: 'instruction', text: '' }, new Date()),
     ).rejects.toThrow();
   });
 });

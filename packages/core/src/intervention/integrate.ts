@@ -2,7 +2,7 @@ import { clipText } from '../budget/estimate.js';
 import type { Budget } from '../loop/budget.js';
 import type { Carry } from '../loop/carry.js';
 import type { ThinkOutput } from '../loop/schemas.js';
-import type { Intervention } from './intervention.js';
+import type { InterventionRecord } from '../job/types.js';
 import type { InterventionPlan } from './plan.js';
 
 export class InterventionNotIntegratedError extends Error {
@@ -19,21 +19,21 @@ export class InterventionNotIntegratedError extends Error {
 // 口出しの原文を carry に足さない: 次の回から原文が積み増しで入力に載り、口出しの回数に比例して膨らむため
 export function integrateInterventions(args: {
   carry: Carry;
-  interventions: readonly Intervention[];
+  interventions: readonly InterventionRecord[];
   plan: InterventionPlan;
   output: ThinkOutput;
   iteration: number;
   budget: Budget;
-}): { carry: Carry; interventions: Intervention[] } {
+}): { carry: Carry; interventions: InterventionRecord[] } {
   const { carry, interventions, plan, output, iteration, budget } = args;
   if (plan.included.length === 0) return { carry, interventions: [...interventions] };
   if (output.intent === undefined) throw new InterventionNotIntegratedError(iteration);
 
-  const applied = new Set(plan.included.map((planned) => planned.id));
+  const applied = new Set(plan.included.map((planned) => planned.interventionId));
   return {
     carry: { ...carry, intent: clipText(output.intent, budget.text.intent).text },
     interventions: interventions.map((intervention) =>
-      applied.has(intervention.id)
+      intervention.kind === 'instruction' && applied.has(intervention.interventionId)
         ? { ...intervention, appliedInIteration: iteration }
         : intervention,
     ),

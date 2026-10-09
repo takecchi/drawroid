@@ -3,12 +3,9 @@ import {
   integrateInterventions,
   InterventionNotIntegratedError,
 } from '../intervention/integrate.js';
-import {
-  DEFAULT_INTERVENTION_LIMITS,
-  pendingInterventions,
-  type Intervention,
-} from '../intervention/intervention.js';
+import { DEFAULT_INTERVENTION_LIMITS, pendingInterventions } from '../intervention/intervention.js';
 import { planInterventions } from '../intervention/plan.js';
+import type { InterventionRecord } from '../job/types.js';
 import type { BudgetedMessages } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
 import { DEFAULT_BUDGET, DEFAULT_MODEL_WINDOW } from './budget.js';
@@ -21,11 +18,16 @@ const window = DEFAULT_MODEL_WINDOW;
 const limits = DEFAULT_INTERVENTION_LIMITS;
 const full = (limit: number) => 'あ'.repeat(limit);
 
-function said(id: string, text: string, n: number): Intervention {
-  return { id, text, receivedAt: new Date(Date.UTC(2026, 9, 9, 0, 0, n)).toISOString() };
+function said(interventionId: string, text: string, n: number): InterventionRecord {
+  return {
+    kind: 'instruction',
+    interventionId,
+    text,
+    receivedAt: new Date(Date.UTC(2026, 9, 9, 0, 0, n)).toISOString(),
+  };
 }
 
-function think(carry: Carry, interventions: readonly Intervention[], iteration: number) {
+function think(carry: Carry, interventions: readonly InterventionRecord[], iteration: number) {
   const plan = planInterventions(interventions, limits);
   const messages = buildThinkInput({
     carry,
@@ -91,7 +93,13 @@ describe('taking interventions into the next think', () => {
 
   it('keeps carried-over interventions pending until a later think takes them in', () => {
     let carry = createCarry('海辺の少女', budget).carry;
-    let interventions = [1, 2, 3, 4, 5].map((n) => said(`i${n}`, `指示${n}`, n));
+    const stopChange: InterventionRecord = {
+      kind: 'stopConditions',
+      interventionId: 's',
+      receivedAt: new Date(Date.UTC(2026, 9, 9, 0, 0, 0)).toISOString(),
+      stopConditions: { maxIterations: 4 },
+    };
+    let interventions = [stopChange, ...[1, 2, 3, 4, 5].map((n) => said(`i${n}`, `指示${n}`, n))];
     for (const iteration of [2, 3]) {
       const { plan } = think(carry, interventions, iteration);
       ({ carry, interventions } = integrateInterventions({
@@ -103,13 +111,16 @@ describe('taking interventions into the next think', () => {
         budget,
       }));
     }
-    expect(interventions.map((i) => i.appliedInIteration)).toEqual([2, 2, 2, 3, 3]);
+    expect(
+      interventions.map((i) => (i.kind === 'instruction' ? i.appliedInIteration : i.kind)),
+    ).toEqual(['stopConditions', 2, 2, 2, 3, 3]);
+    expect(interventions[0]).toEqual(stopChange);
     expect(pendingInterventions(interventions)).toEqual([]);
   });
 
   it('never lets the think input exceed its budget, however many interventions arrive (M3:100)', () => {
     let carry = createCarry(full(budget.text.intent * 2), budget).carry;
-    let interventions: Intervention[] = [];
+    let interventions: InterventionRecord[] = [];
     const estimated = new Map<number, number>();
     for (let iteration = 2; iteration <= 50; iteration += 1) {
       for (let k = 0; k < 5; k += 1) {

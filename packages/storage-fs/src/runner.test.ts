@@ -453,9 +453,26 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     await runner.idle();
 
     expect(await store.readJob(spec.jobId)).toEqual(spec);
-    expect((await store.listInterventions(spec.jobId)).map((i) => i.stopConditions)).toEqual([
-      { maxIterations: 1, maxImages: 10 },
+    expect(await store.listInterventions(spec.jobId)).toEqual([
+      expect.objectContaining({
+        kind: 'stopConditions',
+        stopConditions: { maxIterations: 1, maxImages: 10 },
+      }),
     ]);
+  });
+
+  it('is not moved by a human instruction, which only goes to the think', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 2 });
+    await store.addIntervention(
+      spec.jobId,
+      { kind: 'instruction', text: 'あと10回は回して' },
+      new Date(),
+    );
+    runner.kick();
+    await runner.idle();
+
+    expect((await stoppedState(store, spec.jobId)).carry.completedIterations).toBe(2);
   });
 
   it('refuses to change a job that has already stopped', async () => {
