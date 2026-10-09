@@ -25,9 +25,31 @@ export type RoleModels = Record<LlmRole, { providerName: string; model: Language
 export type AdapterOptions = {
   validationRetries: number;
   networkRetries: number;
+  /**
+   * 役ごとの設定が、config.json の llm.roles のどの鍵にあるか。見る役を省いた設定では、見る役も think を使う。
+   * 出力が上限で切れたときに、上げるべき設定の場所を名指すために使う。省けば役の名前と同じ鍵
+   */
+  configKeys?: Record<LlmRole, LlmRole>;
   /** 所要時間を測る時計（試験で差し替える） */
   now?: () => number;
 };
+
+const ROLE_LABELS: Record<LlmRole, string> = { think: '考える役', judge: '見る役' };
+
+// サーバが length を HTTP のエラーとして返すことがある（本文に finish_reason=length などと書く）。AI SDK の結果の
+// finishReason だけを見ると、その形を取りこぼす
+const LENGTH_IN_MESSAGE = /finish_?reason\W{0,3}length/i;
+
+/** 出力が上限（maxOutputTokens）で切れたことを表す。同じ上限で出し直しても同じ所で切れるので、出し直さない */
+class OutputCutAtLimit extends Error {
+  constructor(
+    readonly rawOutput: string,
+    readonly usage: LlmUsage,
+    readonly detail?: string,
+  ) {
+    super('出力が上限で切れた');
+  }
+}
 
 function clip(text: string, limit: number): string {
   const chars = [...text];
@@ -102,6 +124,19 @@ export class AiSdkLlm implements LlmPort {
       } catch (error) {
         if (call.signal.aborted) throw error;
         const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof OutputCutAtLimit || LENGTH_IN_MESSAGE.test(message)) {
+          const cut = error instanceof OutputCutAtLimit ? error : undefined;
+          attempts.push({
+            rawOutput: cut?.rawOutput ?? '',
+            usage: cut?.usage ?? { inputTokens: null, outputTokens: null },
+            durationMs: this.now() - started,
+          });
+          return {
+            ok: false,
+            reason: this.cutAtLimitReason(call.role, cut === undefined ? message : cut.detail),
+            attempts,
+          };
+        }
         attempts.push({
           rawOutput: '',
           usage: { inputTokens: null, outputTokens: null },
@@ -177,13 +212,40 @@ export class AiSdkLlm implements LlmPort {
         abortSignal: call.signal,
         ...(output === undefined ? {} : { output }),
       });
+      if (result.finishReason === 'length') {
+        throw new OutputCutAtLimit(result.text, toUsage(result.usage));
+      }
       return { text: result.text, usage: toUsage(result.usage) };
     } catch (error) {
-      // 検証は core のスキーマで自前で行う。AI SDK の検証で落ちた出力も、生の文字列として受け取る
+      // 検証は core のスキーマで自前で行う。AI SDK の検証で落ちた出力も、生の文字列として受け取る。
+      // ただし上限で切れたものは別にする: スキーマに合わないとして同じ上限で出し直しても、同じ所で切れるため
       if (NoObjectGeneratedError.isInstance(error)) {
+        if (error.finishReason === 'length') {
+          throw new OutputCutAtLimit(error.text ?? '', toUsage(error.usage));
+        }
         return { text: error.text ?? '', usage: toUsage(error.usage) };
       }
       throw error;
     }
+  }
+
+  // どの設定をいくつに上げればよいかを名指す: 「上限を上げる」だけでは、画面のどの欄・config.json のどの鍵か分からないため
+  private cutAtLimitReason(role: LlmRole, detail: string | undefined): string {
+    const key = this.options.configKeys?.[role] ?? role;
+    const config = this.roles[role];
+    const suggested = Math.max(config.maxOutputTokens * 2, 2048);
+    const inherited =
+      key === role ? '' : `${ROLE_LABELS[role]}は${ROLE_LABELS[key]}の設定を使っているので、`;
+    const lines = [
+      `${ROLE_LABELS[role]}の出力が、出力の上限（maxOutputTokens = ${config.maxOutputTokens}）で切れた。`,
+      `${inherited}LLM の設定の${ROLE_LABELS[key]}の「出力の上限（トークン）」（config.json の llm.roles.${key}.maxOutputTokens）を ${suggested} 以上に上げる。`,
+      // 入力に使える量は「文脈の上限 − 出力の上限」なので、出力だけを上げると入力が削られる
+      suggested >= config.contextTokens
+        ? `あわせて「文脈の上限（トークン）」（llm.roles.${key}.contextTokens、いま ${config.contextTokens}）を、モデルとサーバが許す範囲で ${suggested} より大きくする。`
+        : `入力に使えるのは「文脈の上限（いま ${config.contextTokens}）− 出力の上限」なので、モデルとサーバが許すなら llm.roles.${key}.contextTokens も上げる。`,
+      '考える過程（reasoning）を出すモデルでは、その分も出力の上限に数えられる。上げても切れるなら、サーバかモデルの側で考える過程を切る。',
+    ];
+    if (detail !== undefined) lines.push(`（元のエラー: ${clip(detail, ERROR_SUMMARY_LIMIT)}）`);
+    return lines.join('');
   }
 }

@@ -23,15 +23,36 @@ export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export const structuredOutputModeSchema = z.enum(['native', 'json', 'text']);
 export type StructuredOutputMode = z.infer<typeof structuredOutputModeSchema>;
 
-export const roleConfigSchema = z.object({
-  /** providers の鍵 */
-  provider: z.string().min(1),
-  model: z.string().min(1),
-  contextTokens: z.number().int().positive().default(8192),
-  maxOutputTokens: z.number().int().positive().default(1024),
-  structuredOutput: structuredOutputModeSchema.default('native'),
-  imageInput: z.boolean().default(true),
-});
+/**
+ * 出力の上限の既定。4096 と、文脈の上限の半分の小さい方。
+ * 考える役は、出力の文字数の上限まで書くと drawroid の見積もりで約 1140 トークンになる（口出しを載せた回）。
+ * 1024 では足りないことがあり、考える過程を出すモデルではさらに食うので、余裕をみる。
+ * 半分で抑える: 入力に使えるのは「文脈の上限 − 出力の上限」で、文脈の小さいモデルで入力が無くならないように
+ */
+export function defaultMaxOutputTokens(contextTokens: number): number {
+  return Math.min(4096, Math.floor(contextTokens / 2));
+}
+
+export const roleConfigSchema = z
+  .object({
+    /** providers の鍵 */
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    contextTokens: z.number().int().positive().default(8192),
+    /** 省けば defaultMaxOutputTokens(contextTokens) */
+    maxOutputTokens: z.number().int().positive().optional(),
+    structuredOutput: structuredOutputModeSchema.default('native'),
+    imageInput: z.boolean().default(true),
+  })
+  .transform(({ maxOutputTokens, ...role }) => ({
+    ...role,
+    maxOutputTokens: maxOutputTokens ?? defaultMaxOutputTokens(role.contextTokens),
+  }))
+  // 出力の上限が文脈の上限以上だと、入力に使える量が無くなる
+  .refine((role) => role.maxOutputTokens < role.contextTokens, {
+    message: '出力の上限（maxOutputTokens）は、文脈の上限（contextTokens）より小さくする',
+    path: ['maxOutputTokens'],
+  });
 export type RoleConfig = z.infer<typeof roleConfigSchema>;
 
 export const llmConfigSchema = z
