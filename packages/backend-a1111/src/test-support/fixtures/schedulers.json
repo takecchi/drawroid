@@ -1,0 +1,23 @@
+[
+  {
+    "name": "automatic",
+    "label": "Automatic",
+    "aliases": null,
+    "default_rho": -1,
+    "need_inner_model": false
+  },
+  {
+    "name": "karras",
+    "label": "Karras",
+    "aliases": null,
+    "default_rho": 7.0,
+    "need_inner_model": false
+  },
+  {
+    "name": "sgm_uniform",
+    "label": "SGM Uniform",
+    "aliases": ["SGMUniform"],
+    "default_rho": -1,
+    "need_inner_model": true
+  }
+]
