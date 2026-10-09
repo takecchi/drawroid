@@ -88,4 +88,39 @@ describe('ChatLog', () => {
     grow();
     expect(log.scrollTop).toBe(1800);
   });
+
+  it('follows again when a person scrolls back down to the end, even if the rows there grew as they came into view', () => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+
+    // 末尾（ここでは 600）へ戻したが、その出来事が届くまでに、画面に入った行が見積もりより高く描かれた
+    log.scrollTop = 600;
+    size.scrollHeight = 1100;
+    fireEvent.scroll(log);
+
+    // 背が伸びた知らせ（ResizeObserver）は、この出来事より先に来ていて、もう来ない
+    expect(log.scrollTop).toBe(1100);
+    size.scrollHeight = 1300;
+    grow();
+    expect(log.scrollTop).toBe(1300);
+  });
+
+  it('keeps following when the rows above shrink and pull the position up with them', () => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    // 画面の外の行の描画を飛ばし始め、上の行が見積もりの背へ縮んだ: 人は何もしていないのに位置が上へ動く
+    // 縮んだあとの位置は、末尾から 50px（追う範囲の外）
+    size.scrollHeight = 950;
+    log.scrollTop = 500;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1200;
+    grow();
+
+    expect(log.scrollTop).toBe(1200);
+  });
 });

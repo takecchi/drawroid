@@ -73,6 +73,7 @@ export function ChatLog({
   // 描き直しを起こさない値で持つ: 背が伸びたときの観測の中から読むため
   const following = useRef(true);
   const lastTop = useRef(0);
+  const lastHeight = useRef(0);
   useEffect(() => {
     const element = ref.current;
     if (element !== null && following.current) element.scrollTop = element.scrollHeight;
@@ -98,9 +99,23 @@ export function ChatLog({
         const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
         // 末尾から遠いだけでは追うのをやめない: 末尾へ動かした出来事が届くまでに画像の背が伸びると、
         // 人が何もしていなくても遠く見えるため。やめるのは、人が上へ戻した（位置が上に動いた）ときだけ
+        // 下へ動かしたときは、前に見たときの末尾までの距離でも見る: 末尾へ戻した出来事が届くまでに、画面に入った行が
+        // 見積もりの背より高く描かれると（長い会話で画面の外の描画を飛ばしているとき）、末尾まで戻したのに遠く見えるため
+        const grown = element.scrollHeight - lastHeight.current;
+        const movedDown = element.scrollTop > lastTop.current;
         if (distance < FOLLOW_THRESHOLD_PX) following.current = true;
-        else if (element.scrollTop < lastTop.current) following.current = false;
+        else if (movedDown && distance - grown < FOLLOW_THRESHOLD_PX) {
+          following.current = true;
+          // 伸びた知らせ（ResizeObserver）はこの出来事より先に来ていて、もう来ないことがあるので、ここで末尾まで寄せる
+          element.scrollTop = element.scrollHeight;
+          // 上へ動いても、背が縮んだときは人が戻したとみなさない: 上の行が縮むと、位置もそのぶん上へ引かれるため
+        } else if (
+          element.scrollTop < lastTop.current &&
+          element.scrollHeight >= lastHeight.current
+        )
+          following.current = false;
         lastTop.current = element.scrollTop;
+        lastHeight.current = element.scrollHeight;
       }}
       // スクロールの錨止めを切る: 上の行の背が伸びるとブラウザが位置をずらし、その出来事を人が上へ戻ったと読んでしまうため
       className={cn('min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]', className)}
