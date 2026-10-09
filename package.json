@@ -19,13 +19,15 @@
     "check:no-attribution-trailers": "node ./scripts/check-no-attribution-trailers.mjs",
     "check:duplicate-json-keys": "node ./scripts/check-duplicate-json-keys.mjs",
     "check:packed-install": "node ./scripts/check-packed-install.mjs",
-    "check:packed-conversation": "node ./scripts/check-packed-conversation.mjs"
+    "check:packed-conversation": "node ./scripts/check-packed-conversation.mjs",
+    "check:packed-browser": "node ./scripts/check-packed-browser.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "catalog:",
     "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
+    "playwright-core": "^1.64.0",
     "prettier": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "^8.67.0",
