@@ -451,6 +451,48 @@ describe('remember', () => {
     expect(recalled.result).toContain('逆光が好き');
   });
 
+  it('does not write the same body twice, and adds the conversation to the sources of the one there is', async () => {
+    const memory = createFsMemoryStore(dataPaths(root).memory);
+    const ids = ['backlight', 'second', 'third'];
+    const [remember] = createMemoryTools({
+      memory,
+      now: () => new Date('2026-10-09T06:30:12.000Z'),
+      newMemoryId: () => ids.shift()!,
+    });
+    const context = (conversationId: string): TalkToolContext => ({
+      conversationId,
+      turn: 1,
+      events: [],
+      limits: DEFAULT_TALK_LIMITS,
+      signal: new AbortController().signal,
+    });
+    const say = (body: string, conversationId: string) =>
+      remember!.run(
+        remember!.inputSchema.parse({ body, scope: 'always' }),
+        context(conversationId),
+      );
+
+    await say('逆光が好き', '20261009-063012-conv1');
+    // 別の会話で、前後の空白だけが違う同じ本文を頼まれる
+    const again = await say('  逆光が好き \n', '20261009-070000-conv2');
+    // 同じ会話でもう一度頼まれる
+    const thrice = await say('逆光が好き', '20261009-070000-conv2');
+
+    const { items } = await memory.list();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: 'backlight',
+      body: '逆光が好き',
+      sources: ['conversation:20261009-063012-conv1', 'conversation:20261009-070000-conv2'],
+    });
+    // 話す役が人に「もう覚えていた」と伝えられる結果を返す
+    expect(again.ok).toBe(true);
+    expect(again.result).toContain('既にあった');
+    expect(again.result).toContain('backlight');
+    expect(thrice.ok).toBe(true);
+    expect(thrice.result).toContain('既にあった');
+  });
+
   it('refuses a tagged preference without the words it applies to', () => {
     const [remember] = createMemoryTools({
       memory: createFsMemoryStore(dataPaths(root).memory),
