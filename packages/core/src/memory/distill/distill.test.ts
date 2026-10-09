@@ -73,6 +73,15 @@ class InMemoryStore implements MemoryStore {
   async remove(id: string) {
     return this.items.delete(id);
   }
+
+  // 読んでから書くまでに await を挟まないので、それだけで1つの手順になる
+  async update(id: string, change: (current: MemoryItem | null) => MemoryItem | undefined) {
+    const before = this.items.get(id) ?? null;
+    const written = change(before);
+    if (written === undefined) return { before };
+    this.items.set(id, written);
+    return { before, written };
+  }
 }
 
 class InMemoryLog implements DistillLog {

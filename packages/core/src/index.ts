@@ -117,7 +117,12 @@ export {
   parseParams,
 } from './think/params-schema.js';
 export { toGenerationRequest } from './permissions/generation-request.js';
-export type { InvalidMemoryFile, MemoryListing, MemoryStore } from './memory/store.js';
+export type {
+  InvalidMemoryFile,
+  MemoryListing,
+  MemoryStore,
+  MemoryUpdate,
+} from './memory/store.js';
 export { DEFAULT_MEMORY_LIMITS, type MemoryLimits } from './memory/limits.js';
 export { applyDistillOperations } from './memory/distill/apply.js';
 export { DEFAULT_DISTILL_BUDGET, type DistillBudget } from './memory/distill/budget.js';

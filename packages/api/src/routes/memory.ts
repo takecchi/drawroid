@@ -79,20 +79,27 @@ export function memoryRoutes({ memoryStore, store }: ApiDeps) {
           if (!isMemoryId(id)) return notFound(c, `記憶 ${id} は無い`);
           const { expectedUpdatedAt, ...edit } = c.req.valid('json');
 
-          let current;
+          // 比べることと書くことを、ストアの update の中で1つの手順にする: 比べてから書くまでのあいだに
+          // 蒸留などが書くと、その内容を黙って上書きするため（Issue #44）
+          let read = false;
+          let outcome;
           try {
-            current = await memoryStore.get(id);
+            outcome = await memoryStore.update(id, (current) => {
+              read = true;
+              // 画面で開いたあとに変わったものを黙って上書きしない: 人間のファイル編集や蒸留の書き込みを失わないため
+              if (current === null || current.updatedAt !== expectedUpdatedAt) return undefined;
+              return { ...current, ...edit, updatedAt: new Date().toISOString() };
+            });
           } catch (error) {
-            return invalidFile(c, message(error));
+            // 読めないファイルだけを invalid_file にする。書くときの失敗は、ほかのルートと同じく投げる
+            if (!read) return invalidFile(c, message(error));
+            throw error;
           }
-          if (current === null) return notFound(c, `記憶 ${id} は無い`);
-          // 画面で開いたあとに変わったものを黙って上書きしない: 人間のファイル編集や蒸留の書き込みを失わないため
-          if (current.updatedAt !== expectedUpdatedAt) {
+          if (outcome.before === null) return notFound(c, `記憶 ${id} は無い`);
+          if (outcome.written === undefined) {
             return conflict(c, 'conflict', '開いたあとに記憶が書き換えられた');
           }
-          const item = { ...current, ...edit, updatedAt: new Date().toISOString() };
-          await memoryStore.put(item);
-          return c.json({ item }, 200);
+          return c.json({ item: outcome.written }, 200);
         },
       )
       .delete('/:id', async (c) => {

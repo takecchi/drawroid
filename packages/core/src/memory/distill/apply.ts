@@ -31,31 +31,44 @@ export async function applyDistillOperations(args: {
 
   for (const operation of operations) {
     if (operation.op === 'add') {
-      const id = await unusedId(store, newMemoryId);
       const after = preferenceOf(operation);
-      await store.put({ id, ...after, sources: [jobId], createdAt: at, updatedAt: at });
+      const id = await addUnderNewId(store, newMemoryId, (newId) => ({
+        id: newId,
+        ...after,
+        sources: [jobId],
+        createdAt: at,
+        updatedAt: at,
+      }));
       applied.push({ op: 'add', id, after });
       continue;
     }
 
     const shown = shownById.get(operation.id);
-    const current = await store.get(operation.id);
     if (shown === undefined) {
       skipped.push({ operation, reason: '入力に載せていない項目は直さない' });
-    } else if (edited.has(operation.id)) {
+      continue;
+    }
+    if (edited.has(operation.id)) {
       skipped.push({ operation, reason: '同じ蒸留の中で、同じ項目をすでに直した' });
-    } else if (current === null) {
-      skipped.push({ operation, reason: '蒸留のあいだに人間が消した' });
-    } else if (current.updatedAt !== shown.updatedAt) {
-      skipped.push({ operation, reason: '蒸留のあいだに項目が直された' });
-    } else {
-      const after = preferenceOf(operation);
+      continue;
+    }
+    const after = preferenceOf(operation);
+    // 比べることと書くことを、ストアの update の中で1つの手順にする: 比べてから書くまでのあいだに
+    // 人間の編集（PUT /api/memory/:id）が書くと、その内容を黙って上書きするため（Issue #44）
+    const { before, written } = await store.update(operation.id, (current) => {
+      if (current === null || current.updatedAt !== shown.updatedAt) return undefined;
       const sources = current.sources.includes(jobId)
         ? current.sources
         : [...current.sources, jobId];
-      await store.put({ ...current, ...after, sources, updatedAt: at });
-      applied.push({ op: 'edit', id: current.id, before: preferenceOf(current), after });
-      edited.add(current.id);
+      return { ...current, ...after, sources, updatedAt: at };
+    });
+    if (before === null) {
+      skipped.push({ operation, reason: '蒸留のあいだに人間が消した' });
+    } else if (written === undefined) {
+      skipped.push({ operation, reason: '蒸留のあいだに項目が直された' });
+    } else {
+      applied.push({ op: 'edit', id: before.id, before: preferenceOf(before), after });
+      edited.add(before.id);
     }
   }
   return { applied, skipped };
@@ -63,10 +76,18 @@ export async function applyDistillOperations(args: {
 
 const ID_ATTEMPTS = 20;
 
-async function unusedId(store: MemoryStore, newMemoryId: () => string): Promise<string> {
+// 空いているかを確かめることと書くことを1つの手順にする: 確かめてから書くまでのあいだに同じ id が書かれると、上書きするため
+async function addUnderNewId(
+  store: MemoryStore,
+  newMemoryId: () => string,
+  itemFor: (id: string) => MemoryItem,
+): Promise<string> {
   for (let attempt = 0; attempt < ID_ATTEMPTS; attempt += 1) {
     const id = newMemoryId();
-    if ((await store.get(id)) === null) return id;
+    const { written } = await store.update(id, (current) =>
+      current === null ? itemFor(id) : undefined,
+    );
+    if (written !== undefined) return id;
   }
   throw new Error(`記憶の新しい ID が ${ID_ATTEMPTS} 回続けて既存の項目と重なった`);
 }
