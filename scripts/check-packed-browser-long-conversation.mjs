@@ -14,9 +14,11 @@ import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
+import { startFakeForge } from './packed-conversation/forge.mjs';
 import { freePort, packAndInstall, repoRoot, startDrawroid } from './packed-install-core.mjs';
 
 const STEP_TIMEOUT_MS = 30_000;
+const FIXTURES = join(repoRoot, 'packages/backend-forge/src/test-support/fixtures');
 const ROWS = 300;
 const OLDEST = '0 番目の頼み: いちばん古い発言';
 
@@ -107,16 +109,16 @@ const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-p
 let child;
 /** @type {import('playwright-core').Browser | undefined} */
 let browser;
+/** @type {Awaited<ReturnType<typeof startFakeForge>> | undefined} */
+let forge;
 try {
   const bin = await packAndInstall(work);
   const dataDir = join(work, 'data');
   const conversationId = await seedLongConversation(dataDir);
+  // 偽の Forge に繋ぐ: 画面はバックエンドの状態を読むので、繋がらない先だと 502 がコンソールに出て、壊れていないかの確かめと混ざるため
+  forge = await startFakeForge({ fixturesDir: FIXTURES, genMs: 0 });
   const port = await freePort();
-  ({ child } = await startDrawroid(
-    bin,
-    ['--data-dir', dataDir, '--backend-url', 'http://127.0.0.1:1'],
-    port,
-  ));
+  ({ child } = await startDrawroid(bin, ['--data-dir', dataDir, '--backend-url', forge.url], port));
   const base = `http://127.0.0.1:${port}`;
 
   browser = await launchBrowser();
@@ -177,5 +179,6 @@ try {
 } finally {
   await browser?.close();
   child?.kill();
+  await forge?.close();
   await rm(work, { recursive: true, force: true });
 }
