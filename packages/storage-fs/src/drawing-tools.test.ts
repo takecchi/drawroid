@@ -174,18 +174,25 @@ describe('start_drawing', () => {
   });
 
   it.each([
-    ['turning on what the human turned off', { vae: { mode: 'auto' } }],
+    ['turning on what the human turned off', { vae: { mode: 'auto' } }, 'VAE'],
     [
       'fixing to a candidate the human did not choose',
       { checkpoint: { mode: 'fixed', value: 'real.safetensors' } },
+      'checkpoint',
     ],
-  ])('refuses %s, and makes no job', async (_, permissions) => {
-    const { jobs, context } = await setup();
+    ['changing what the human fixed', { width: { mode: 'fixed', value: 1024 } }, '幅'],
+    ['handing back to the AI what the human fixed', { width: { mode: 'auto' } }, '幅'],
+  ])('refuses %s, naming the parameter, and makes no job', async (_, permissions, label) => {
+    const { jobs, runner, context, conversationId, conversations } = await setup();
 
     const outcome = await run('start_drawing', { request: '海辺', permissions }, context);
+    await runner.idle();
 
     expect(outcome.ok).toBe(false);
+    expect(outcome.summary).toContain(label);
     expect(await jobIds(jobs)).toEqual([]);
+    const types = (await conversations.readEvents(conversationId)).events.map((e) => e.type);
+    expect(types).not.toContain('job.started');
   });
 
   it('refuses a second drawing while the conversation already has one going, saying which', async () => {
