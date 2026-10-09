@@ -107,3 +107,4 @@ export {
 } from './think/params-schema.js';
 export { toGenerationRequest } from './permissions/generation-request.js';
 export type { InvalidMemoryFile, MemoryListing, MemoryStore } from './memory/store.js';
+export { DEFAULT_MEMORY_LIMITS, type MemoryLimits } from './memory/limits.js';
