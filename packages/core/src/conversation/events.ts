@@ -183,6 +183,12 @@ export const conversationEventSchema = z.discriminatedUnion('type', [
 export type ConversationEvent = z.infer<typeof conversationEventSchema>;
 export type ConversationEventType = ConversationEvent['type'];
 
+/**
+ * 増分の text は、画面が継ぎ足す増分。replace が true のときだけ、ここまでの全文で置き換える
+ * （購読を始めたときに流す写し。つなぎ直した画面には途中の本文が残っているので、継ぎ足すと二重になるため）
+ */
+const replaceSchema = z.literal(true).optional();
+
 /** 確定しないイベント。ファイルに書かず、ハブがメモリの写しから流す（SSE で id: を付けない） */
 export const liveEventSchema = z.discriminatedUnion('type', [
   z.object({
@@ -190,6 +196,7 @@ export const liveEventSchema = z.discriminatedUnion('type', [
     partId: partIdSchema,
     turn: turnSchema,
     text: z.string(),
+    replace: replaceSchema,
   }),
   z.object({
     type: z.literal('delta.reasoning'),
@@ -204,6 +211,7 @@ export const liveEventSchema = z.discriminatedUnion('type', [
       }),
     ]),
     text: z.string(),
+    replace: replaceSchema,
   }),
   z.object({
     type: z.literal('generation.progress'),

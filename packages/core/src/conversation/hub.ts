@@ -138,7 +138,11 @@ export class ConversationHub {
     for (const copy of snapshot) {
       const key = copyKeyOf(copy);
       if (confirmedLater.some((event) => endsCopy(event, key))) continue;
-      this.deliver(subscriber, { kind: 'live', event: copy });
+      const event =
+        copy.type === 'delta.text' || copy.type === 'delta.reasoning'
+          ? { ...copy, replace: true as const }
+          : copy;
+      this.deliver(subscriber, { kind: 'live', event });
     }
     // 後ろから見て、すでに流した確定（seq <= last）が終わらせた部品の増分を落とす
     const stale = new Set<number>();

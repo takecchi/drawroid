@@ -248,3 +248,21 @@ describe('confirming', () => {
     expect(confirmed.map((e) => e.seq).sort()).toEqual([1, 2, 3, 4]);
   });
 });
+
+describe('the copy given to a new subscriber', () => {
+  it('marks the text so far as a replacement, while later increments stay increments to append', async () => {
+    const { hub } = await setup();
+    hub.live(delta('p1', 'いらっ'));
+    hub.live(delta('p1', 'しゃい'));
+
+    const watcher = collector();
+    await hub.subscribe(0, watcher.send);
+    hub.live(delta('p1', 'ませ'));
+
+    // つなぎ直した画面には途中の本文が残っているので、写しは継ぎ足さずに置き換える
+    expect(watcher.received.map((m) => m.event)).toEqual([
+      { ...delta('p1', 'いらっしゃい'), replace: true },
+      delta('p1', 'ませ'),
+    ]);
+  });
+});
