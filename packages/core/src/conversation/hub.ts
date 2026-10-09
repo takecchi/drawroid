@@ -36,6 +36,11 @@ function endsCopy(event: ConversationEvent, key: string): boolean {
   switch (event.type) {
     case 'job.images':
       return key === `progress:${event.jobId}:${event.iteration}`;
+    // 段の思考の写しは、その段が確定した時点で古くなる（部品の ID は jobReasoningPartId と同じ形）
+    case 'job.think':
+      return key === `part:job:${event.jobId}:${event.iteration}:think`;
+    case 'job.judge':
+      return key === `part:job:${event.jobId}:${event.iteration}:judge`;
     case 'job.stopped':
       return key.startsWith(`progress:${event.jobId}:`);
     case 'turn.ended':
