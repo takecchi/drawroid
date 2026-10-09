@@ -13,10 +13,10 @@ import {
 } from '../job/types.js';
 import { createCarry } from '../loop/carry.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
-import { InterventionRejectedError } from '../loop/runner.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
-import { formatImageKey, selectImage } from '../selection/selection.js';
+import { adoptImage as adoptChosenImage } from '../selection/adopt.js';
+import { formatImageKey } from '../selection/selection.js';
 import { narrowPermissions } from './drawing.js';
 import type { ConversationStore } from './store.js';
 import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js';
@@ -249,28 +249,14 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       const iteration = input.iteration ?? generations.at(-1)?.iteration;
       if (iteration === undefined) return outcome(false, 'まだ画像が1枚もできていない');
       const image = { iteration, index: input.index ?? 0 };
-      const key = formatImageKey(image);
-      const generation = await deps.jobs.readGeneration(jobId, iteration);
-      if (generation === undefined || image.index >= generation.images.length) {
-        return outcome(false, `画像 ${key} は無い`);
-      }
-      // ジョブに採らせてから、お気に入りを書く: 採らせる前にジョブが止まったら、何も書かずに失敗にするため
-      try {
-        await deps.runner.adopt(jobId, image);
-      } catch (error) {
-        if (error instanceof InterventionRejectedError) {
-          return outcome(false, `絵がもう止まっていて、画像 ${key} を採れなかった`);
-        }
-        throw error;
-      }
-      await selectImage({
-        store: deps.jobs,
+      // 画面の「採る」ボタンと同じ口を通す
+      const adopted = await adoptChosenImage(
+        { jobs: deps.jobs, runner: deps.runner, now: deps.now },
         jobId,
-        imageKey: key,
-        verdict: 'favorite',
-        now: deps.now(),
-      });
-      return outcome(true, `画像 ${key} をお気に入りにして採った`);
+        image,
+      );
+      if (!adopted.ok) return outcome(false, adopted.message);
+      return outcome(true, `画像 ${formatImageKey(image)} をお気に入りにして採った`);
     },
   };
 

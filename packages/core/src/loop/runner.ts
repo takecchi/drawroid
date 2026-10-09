@@ -287,7 +287,21 @@ export class JobRunner {
     if (generation === undefined || image.index >= generation.images.length) {
       throw new Error(`ジョブ ${jobId} の回 ${image.iteration} に画像 ${image.index} が無い`);
     }
-    return this.deps.store.addIntervention(jobId, { kind: 'adopt', image }, this.now());
+    const record = await this.deps.store.addIntervention(
+      jobId,
+      { kind: 'adopt', image },
+      this.now(),
+    );
+    // その回をまだ見る役が見ていなければ、走っている LLM の呼び出しをやり直させる: 見る役の呼び出しが走っていると、
+    // 返るまで選択が効かず、見終えたあとの選択（job.adopted の出ない差し替え）になるため。やり直した段は選択を見て見る役を飛ばす。
+    // 会話のターンが待たせている間（話す役の adopt_image）は、もともと走っていないので何も起きない
+    if (
+      this.running?.jobId === jobId &&
+      (await this.deps.store.readStage(jobId, image.iteration, 'judge')) === undefined
+    ) {
+      this.running.gate.restartStage();
+    }
+    return record;
   }
 
   /**

@@ -44,6 +44,7 @@ export {
   saveMemoryItem,
   savePermissionSettings,
   setSelection,
+  adoptImage,
   startManualJob,
   stopJob,
 } from './mutations.js';
@@ -83,6 +84,7 @@ export type {
   ReferenceUpload,
   SelectionsResponse,
   SetSelectionResponse,
+  AdoptImageResponse,
   StopConditionsDraftResponse,
   StopConditionsResponse,
 } from './types.js';
