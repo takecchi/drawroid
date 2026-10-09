@@ -7,6 +7,7 @@ import { filesRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
+import { memoryRoutes } from './routes/memory.js';
 
 export {
   BackendBusyError,
@@ -27,6 +28,7 @@ export function createApi(deps: ApiDeps) {
     .route('/settings/backend', backendSettingsRoutes(deps))
     .route('/jobs/manual', manualJobsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))
+    .route('/memory', memoryRoutes(deps))
     .route('/files', filesRoutes(deps));
 }
 

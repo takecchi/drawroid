@@ -4,7 +4,13 @@ import { dirname, join } from 'node:path';
 
 import { ForgeBackend, type ForgeBackendOptions } from '@drawroid/backend-forge';
 import { ManualGenerationRunner } from '@drawroid/core';
-import { dataPaths, FsJobStore, initDataDir, resolveDataDir } from '@drawroid/storage-fs';
+import {
+  createFsMemoryStore,
+  dataPaths,
+  FsJobStore,
+  initDataDir,
+  resolveDataDir,
+} from '@drawroid/storage-fs';
 
 import { parseCliArgs } from './args.js';
 import { createBackendSettings, forgeBackendOptions } from './backend-settings.js';
@@ -49,7 +55,13 @@ async function main() {
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),
-    deps: { backend, store, manualRunner, backendSettings },
+    deps: {
+      backend,
+      store,
+      memoryStore: createFsMemoryStore(dataPaths(root).memory),
+      manualRunner,
+      backendSettings,
+    },
   });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
 }

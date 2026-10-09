@@ -16,6 +16,11 @@ export function conflict(c: Context, kind: string, message: string) {
   return c.json(errorBody(kind, message), 409);
 }
 
+// 422: 在るのに読めないファイル。404（無い）と分け、画面が「直してもらう」案内を出せるようにする
+export function invalidFile(c: Context, message: string) {
+  return c.json(errorBody('invalid_file', message), 422);
+}
+
 export function notFound(c: Context, message: string) {
   return c.json(errorBody('not_found', message), 404);
 }
