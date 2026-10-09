@@ -57,7 +57,6 @@ export class AutoJobQueue implements AutoJobQueuePort {
   }
 
   configure(config: LlmConfig | undefined): void {
-    this.llm = undefined;
     if (config === undefined) return;
     try {
       this.llm = this.makeLlm(config, this.options.env);
