@@ -144,6 +144,9 @@ describe('ChatLog', () => {
     ['the wheel', (log: HTMLElement) => fireEvent.wheel(log)],
     ['a touch', (log: HTMLElement) => fireEvent.touchMove(log)],
     ['a key', (log: HTMLElement) => fireEvent.keyDown(log, { key: 'ArrowUp' })],
+    ['the PageUp key', (log: HTMLElement) => fireEvent.keyDown(log, { key: 'PageUp' })],
+    ['the Home key', (log: HTMLElement) => fireEvent.keyDown(log, { key: 'Home' })],
+    ['the space key', (log: HTMLElement) => fireEvent.keyDown(log, { key: ' ' })],
     ['the scroll bar', (log: HTMLElement) => fireEvent.pointerDown(log)],
   ])('stops following when a person scrolls up a short way from the end with %s', (_, touch) => {
     const { log, size } = renderLog();
@@ -171,6 +174,62 @@ describe('ChatLog', () => {
     grow();
 
     expect(log.scrollTop).toBe(350);
+  });
+
+  // 線は画面の背（ここでは 400px）の半分。半分より短ければ引かれただけ、半分ちょうどからは人が動かした
+  it.each([
+    [150, 'keeps following', 1300],
+    [200, 'stops following', 400],
+  ])('when the position moves %ipx up without a person touching the log, %s', (up, _, end) => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    log.scrollTop = 600 - up;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1300;
+    grow();
+
+    expect(log.scrollTop).toBe(end);
+  });
+
+  // 人が触れたと見るのは、上へ動く前の 1 秒以内だけ（#288）
+  it.each([
+    [1000, 'stops following', 578],
+    [1001, 'keeps following', 1112],
+  ])('when the end pulls the position up %i ms after the wheel, %s', (after, _, end) => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    fireEvent.wheel(log);
+    now.mockReturnValue(10_000 + after);
+    log.scrollTop = 578;
+    size.scrollHeight = 1112;
+    fireEvent.scroll(log);
+    grow();
+
+    expect(log.scrollTop).toBe(end);
+    now.mockRestore();
+  });
+
+  // 行の中のボタンを押した・文字を打ったのは、ログを動かそうとしたのではない
+  it.each([
+    ['a press on a button in a row', () => fireEvent.pointerDown(screen.getByText('行'))],
+    ['a key that does not scroll', (log: HTMLElement) => fireEvent.keyDown(log, { key: 'a' })],
+  ])('keeps following when the end pulls the position up a little after %s', (_, press) => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    press(log);
+    log.scrollTop = 578;
+    size.scrollHeight = 1112;
+    fireEvent.scroll(log);
+    grow();
+
+    expect(log.scrollTop).toBe(1112);
   });
 });
 
@@ -281,6 +340,52 @@ describe('ChatLog and the marker for new rows', () => {
     log.scrollTop = 800;
     fireEvent.scroll(log);
 
+    expect(marker()).toBeNull();
+  });
+
+  it('keeps the marker while a person scrolls down without reaching the end', () => {
+    const { log, size, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1200;
+    rowsArrive(2);
+
+    log.scrollTop = 300;
+    fireEvent.scroll(log);
+
+    expect(marker()).not.toBeNull();
+  });
+
+  it('shows no marker when the log is drawn again without new rows', () => {
+    const { log, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+
+    rowsArrive(1);
+
+    expect(marker()).toBeNull();
+  });
+
+  // 押した直後から追う: 末尾へ動かした知らせ（scroll）は、次の行より遅れて届くことがある
+  it('follows the end right after the marker is pressed, before the scroll is reported', () => {
+    const { log, size, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1200;
+    rowsArrive(2);
+
+    fireEvent.click(marker()!);
+    expect(marker()).toBeNull();
+    size.scrollHeight = 1400;
+    rowsArrive(3);
+
+    expect(log.scrollTop).toBe(1400);
     expect(marker()).toBeNull();
   });
 });

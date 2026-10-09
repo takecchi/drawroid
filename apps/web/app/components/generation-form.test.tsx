@@ -20,14 +20,17 @@ afterEach(cleanup);
 
 const lists: Record<string, { name: string; label?: string }[]> = {
   checkpoint: [{ name: 'anime.safetensors', label: 'anime' }],
+  vae: [{ name: 'clear.vae.pt' }],
+  sampler: [{ name: 'Euler a' }],
+  scheduler: [{ name: 'Karras' }],
   lora: [{ name: 'detail' }],
 };
 
-function backendIs(kind: 'forge' | 'a1111' | undefined) {
+function backendIs(kind: 'forge' | 'a1111' | undefined, error?: Error) {
   mocks.useBackendSettings.mockReturnValue({
     data:
       kind === undefined ? undefined : { kind, url: 'http://127.0.0.1:7860', urlSource: 'default' },
-    error: undefined,
+    error,
   });
 }
 
@@ -61,20 +64,31 @@ describe('GenerationForm', () => {
   });
 
   // 読み込み中に「Forge」と出すと、A1111 を選んだ人には違う名前が一瞬見える
-  it('does not lean to either backend before it knows which one is chosen', () => {
-    backendIs(undefined);
+  // 設定が読めなかったとき（バックエンドの設定の API が落ちている）も、種類は分からないので同じ
+  it.each([
+    ['while the backend settings are loading', undefined],
+    ['when the backend settings could not be read', new Error('読めない')],
+  ])('does not lean to either backend before it knows which one is chosen, %s', (_, error) => {
+    backendIs(undefined, error);
     render(<GenerationForm onStarted={() => {}} />);
 
-    expect(defaultOf('checkpoint')).toBe('バックエンド（Forge / A1111）の既定');
+    for (const label of ['checkpoint', 'vae', 'sampler', 'scheduler']) {
+      expect(defaultOf(label)).toBe('バックエンド（Forge / A1111）の既定');
+      // 寄せないだけで、選べなくはしない
+      expect(screen.getByLabelText<HTMLSelectElement>(label).disabled).toBe(false);
+    }
   });
 
-  it('starts a job with the chosen candidate and LoRA, and hands over its id', async () => {
+  it('starts a job with the chosen candidates and LoRA, and hands over its id', async () => {
     const user = userEvent.setup();
     const onStarted = vi.fn();
     render(<GenerationForm onStarted={onStarted} />);
 
     await user.type(screen.getByLabelText('prompt'), 'a cat');
     await user.selectOptions(screen.getByLabelText('checkpoint'), 'anime.safetensors');
+    await user.selectOptions(screen.getByLabelText('vae'), 'clear.vae.pt');
+    await user.selectOptions(screen.getByLabelText('sampler'), 'Euler a');
+    await user.selectOptions(screen.getByLabelText('scheduler'), 'Karras');
     await user.selectOptions(screen.getByLabelText('LoRA'), 'detail');
     await user.clear(screen.getByLabelText('LoRA の重み'));
     await user.type(screen.getByLabelText('LoRA の重み'), '0.6');
@@ -84,6 +98,9 @@ describe('GenerationForm', () => {
     expect(mocks.startManualJob).toHaveBeenCalledWith({
       prompt: 'a cat',
       checkpoint: 'anime.safetensors',
+      vae: 'clear.vae.pt',
+      sampler: 'Euler a',
+      scheduler: 'Karras',
       loras: [{ name: 'detail', weight: 0.6 }],
       steps: 20,
       cfgScale: 7,
