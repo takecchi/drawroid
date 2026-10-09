@@ -21,11 +21,18 @@ permissions:
 
 jobs:
   ci:
-    # `draft == false` だけを単独で書かない: push では `github.event.pull_request` が無く null になり、
-    # `null == false` は false なので、main の CI ごと消えるため。pull_request 以外は先に素通りさせる。
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # job に `if:` を付けて draft の間 skip しない: GitHub は skipped の必須チェックを通過として扱い、
+    # draft の間に立った run だけで自動マージが通ってしまうため（#103）。
+    # draft の間は job を走らせ、検査をせずに失敗で終える。ready にした時点の run（ready_for_review）が本当の検査をする。
     runs-on: ubuntu-latest
     steps:
+      - name: draft の間は検査をせずに失敗で終える
+        id: draft
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft
+        run: |
+          echo "::error::draft の PR では CI の検査を走らせない。ready にすると走る（#103）"
+          exit 1
+
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
@@ -33,30 +40,30 @@ jobs:
 
       # 本文の編集（`edited`）では走らない: CI 全体を本文の書き換えのたびに回さないため。本文を直したら CI を再実行して確かめる。
       - run: pnpm check:no-attribution-trailers
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' && github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ github.token }}
           NO_ATTRIBUTION_TRAILERS_PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - run: pnpm format:check
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' }}
 
       # build より前に置く: 鍵の重なった package.json は依存を黙って落とすので、その上での build・試験の結果は当てにならないため。
       - run: pnpm check:duplicate-json-keys
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' }}
 
       - run: pnpm build
         id: build
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' }}
 
       - run: pnpm typecheck
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' && steps.build.outcome == 'success' }}
 
       - run: pnpm lint
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' && steps.build.outcome == 'success' }}
 
       - run: pnpm test
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.draft.outcome != 'failure' && steps.build.outcome == 'success' }}
 
   packed-install:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
