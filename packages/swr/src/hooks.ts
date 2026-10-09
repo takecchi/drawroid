@@ -31,11 +31,22 @@ import type {
 const JOBS_POLL_MS = 2000;
 const RUNNING_JOB_POLL_MS = 1000;
 const JOB_FILES_POLL_MS = 2000;
+/** バックエンドに繋がらない間に読み直す間隔。Forge の起動（数十秒）を待つ人に、遅れを感じさせない程度に控えめにする */
+export const BACKEND_DOWN_RETRY_MS = 10_000;
 
-// 失敗の型を ApiError に固定する: 画面が error.kind と error.message を、型の確認なしに読めるようにするため
+// 失敗の型を ApiError に固定する: 画面が error.kind と error.message を、型の確認なしに読めるようにするため。
+// 繋がらない間は一定の間隔で読み直し、読めたら止める（SWR は失敗している間だけ onErrorRetry を呼ぶ）:
+// 既定の再試行は間隔を倍々に延ばし最大で約 21 分空くので、Forge を後から起動しても「繋がらない」の案内が残るため。
+// refreshInterval にしない: 繋がっている間まで、そのたびにバックエンドへ問い合わせることになるため
 export function useBackendStatus() {
-  return useSWR<BackendStatus, ApiError>(keys.backend, () =>
-    unwrap<BackendStatus>(() => client.backend.$get()),
+  return useSWR<BackendStatus, ApiError>(
+    keys.backend,
+    () => unwrap<BackendStatus>(() => client.backend.$get()),
+    {
+      onErrorRetry: (_error, _key, _config, revalidate, options) => {
+        setTimeout(() => void revalidate(options), BACKEND_DOWN_RETRY_MS);
+      },
+    },
   );
 }
 
