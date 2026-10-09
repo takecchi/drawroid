@@ -24,6 +24,8 @@ export type ChatItem =
       text: string;
       /** 読んだターンが途中で途切れた理由（「送り直す」を出す） */
       turnInterrupted?: string;
+      /** 途切れたあと、同じ本文がもう送られた（「送り直す」を外す） */
+      resent?: boolean;
     }
   | {
       kind: 'assistant';
@@ -231,6 +233,15 @@ export function chatItems(state: ChatState): ChatItem[] {
     const key = `seq:${event.seq}`;
     switch (event.type) {
       case 'user.message': {
+        // 送り直した元の行からは「送り直す」を外す: 残すと、もう一度押して同じ発言（描いて、など）を二重に送れてしまうため
+        for (const [index, earlier] of items.entries()) {
+          if (
+            earlier.kind === 'user' &&
+            earlier.turnInterrupted !== undefined &&
+            earlier.text === event.text
+          )
+            items[index] = { ...earlier, resent: true };
+        }
         const item = { kind: 'user' as const, key, seq: event.seq, at: event.at, text: event.text };
         pendingUser.push(item);
         items.push(item);
