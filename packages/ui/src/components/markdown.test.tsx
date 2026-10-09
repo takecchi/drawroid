@@ -77,6 +77,32 @@ describe('Markdown', () => {
     expect(root.textContent).toContain('参照');
   });
 
+  it.each([false, true])(
+    'keeps only the words of an image with an unsafe URL, with no image or link element (remoteImages: %s)',
+    (remoteImages) => {
+      const root = render(
+        <Markdown remoteImages={remoteImages}>
+          {[
+            '![夕暮れ](javascript:alert(1))',
+            '',
+            '![海](data:image/png;base64,AAAA)',
+            '',
+            '![参照の画像][x]',
+            '',
+            '![](javascript:alert(2))',
+            '',
+            '[x]: javascript:alert(3)',
+          ].join('\n')}
+        </Markdown>,
+      ).container;
+
+      expect(root.querySelector('img, a, [src], [href]')).toBeNull();
+      expect(root.textContent).toContain('画像: 夕暮れ');
+      expect(root.textContent).toContain('画像: 海');
+      expect(root.textContent).toContain('画像: 参照の画像');
+    },
+  );
+
   it('opens outside links in a new tab with rel="noopener noreferrer"', () => {
     draw('[参考](https://example.com/ref) と <https://example.com/auto>');
 

@@ -168,11 +168,15 @@ function convert(tree: Root, idPrefix: string, options: MdastOptions): Out[] {
     if ('children' in node) (node.children as MNode[]).forEach(collect);
   })(tree);
 
+  function imageLabel(alt?: string | null): string {
+    const label = display(alt ?? '');
+    return label === '' ? '画像' : '画像: ' + label;
+  }
+
   function imageLink(src: string, alt?: string | null, title?: string | null): El {
     const p: Record<string, unknown> = { href: src };
     if (title !== null && title !== undefined) p.title = display(title);
-    const label = display(alt ?? '');
-    return el('a', p, [label === '' ? '画像' : '画像: ' + label]);
+    return el('a', p, [imageLabel(alt)]);
   }
 
   function all(parent: Parent): Out[] {
@@ -235,7 +239,9 @@ function convert(tree: Root, idPrefix: string, options: MdastOptions): Out[] {
       }
       case 'image': {
         const src = safeUrl(node.url);
-        if (options.remoteImages === false && src !== '') {
+        // 許さない URL の画像は、src の無い <img> にせず文字だけ残す: 壊れた画像の印が出て、説明は読み上げにしか残らないため
+        if (src === '') return imageLabel(node.alt);
+        if (options.remoteImages === false) {
           return imageLink(src, node.alt, node.title);
         }
         const p: Record<string, unknown> = { src };
@@ -256,7 +262,8 @@ function convert(tree: Root, idPrefix: string, options: MdastOptions): Out[] {
         const def = definitions.get(String(node.identifier).toUpperCase());
         if (!def) return undefined;
         const src = safeUrl(def.url || '');
-        if (options.remoteImages === false && src !== '') {
+        if (src === '') return imageLabel(node.alt);
+        if (options.remoteImages === false) {
           return imageLink(src, node.alt, def.title);
         }
         const p: Record<string, unknown> = {
