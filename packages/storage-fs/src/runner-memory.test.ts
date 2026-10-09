@@ -206,14 +206,14 @@ describe('a stopped job leaves what it taught to the next job', () => {
     expect((await memoryStore.list()).items.map((i) => i.body)).toEqual([FINGERS]);
   });
 
-  it('does not call the distillation for a job with neither instructions nor selections', async () => {
-    const { runner, submit, callsOf } = setup();
+  it('distills once when a job stops, even with neither instructions nor selections', async () => {
+    const { runner, submit, callsOf } = setup({ distill: () => ({ operations: [] }) });
     await submit('夕暮れの海辺の少女');
 
     runner.kick();
     await runner.idle();
 
-    expect(callsOf('distill')).toHaveLength(0);
+    expect(callsOf('distill')).toHaveLength(1);
   });
 
   it('keeps the reason the job stopped for when the distillation answers badly', async () => {

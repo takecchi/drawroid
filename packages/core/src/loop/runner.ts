@@ -358,8 +358,6 @@ export class JobRunner {
           .map((i) => ({ id: i.interventionId, text: i.text })),
         selections: await summarizeSelections(store, jobId),
       };
-      if (material.interventions.length === 0 && material.selections.length === 0) return;
-
       const startedAt = this.now();
       const callId = this.newCallId(startedAt);
       const result = await distillStoppedJob(
