@@ -66,6 +66,16 @@ describe('IterationList and masks', () => {
   });
 });
 
+describe('IterationList and what was sent to the backend', () => {
+  it('calls the parameters sent for the iteration the generation request, in Japanese', () => {
+    renderList(false, { ...iteration, request: { steps: 28 } } as unknown as Iteration);
+
+    expect(screen.getByText('生成の要求')).toBeTruthy();
+    expect(screen.queryByText('request')).toBeNull();
+    expect(screen.getByText(/"steps": 28/)).toBeTruthy();
+  });
+});
+
 describe('IterationList and an iteration the human picked an image in', () => {
   const adoptedRecord = {
     by: 'human',

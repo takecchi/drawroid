@@ -18,6 +18,16 @@ import { formatDuration } from '../lib/format';
 export type LlmCallSummary = LlmCallsResponse['calls'][number];
 export type LlmUsageRow = LlmCallsResponse['byIteration'][number];
 
+/** 呼び出しの目的の呼び方。役の名前は設定の画面（考える役・見る役・話す役）にそろえる */
+const PURPOSE_LABELS: Record<LlmCallSummary['purpose'], string> = {
+  think: '考える役',
+  judge: '見る役',
+  'ref-gist': '参照画像の要点',
+  distill: '覚える',
+  'stop-parse': '止める条件を読む',
+  talk: '話す役',
+};
+
 function tokens(value: number | null): string {
   return value === null ? '不明' : String(value);
 }
@@ -86,9 +96,9 @@ export function LlmCallList({
       <ItemList>
         {calls.map((call) => (
           <Item key={call.callId} className="block">
-            {call.purpose} / {call.model} / 入力 {tokens(call.usage.inputTokens)} トークン / 出力{' '}
-            {tokens(call.usage.outputTokens)} トークン / {formatDuration(call.durationMs)} /{' '}
-            {call.ok ? '成功' : '失敗'} / {call.attempts} 回試行
+            {PURPOSE_LABELS[call.purpose]} / {call.model} / 入力 {tokens(call.usage.inputTokens)}{' '}
+            トークン / 出力 {tokens(call.usage.outputTokens)} トークン /{' '}
+            {formatDuration(call.durationMs)} / {call.ok ? '成功' : '失敗'} / {call.attempts} 回試行
             <CallDetails jobId={jobId} callId={call.callId} />
           </Item>
         ))}
