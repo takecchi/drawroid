@@ -15,7 +15,10 @@ import {
   type GenerationRequest,
   type GenerationResult,
   type ImageRef,
+  type InputImage,
   type InterventionRecord,
+  type MaskIntervention,
+  type NewMask,
   type JobSpec,
   type JobState,
   type JobStore,
@@ -348,6 +351,47 @@ export class FsJobStore implements JobStore {
     await writeJsonAtomic(path, { ...record, appliedInIteration: iteration });
   }
 
+  async addMask(jobId: string, mask: NewMask, now: Date): Promise<MaskIntervention> {
+    const files = this.jobFiles(jobId);
+    await mkdir(files.interventions, { recursive: true });
+    await mkdir(files.masks, { recursive: true });
+    // 口出しと同じ連番で番号を取る: マスクの受けた順を、ほかの口出しとの前後も含めて名前の順で表すため。
+    // 番号を取ってから PNG を置く。PNG を置く前に落ちたマスクは、readMask が無いと返し、使われない
+    for (;;) {
+      const interventionId = formatSequenceId((await this.lastSequence(files.interventions)) + 1);
+      const record = interventionRecordSchema.parse({
+        kind: 'mask',
+        interventionId,
+        receivedAt: now.toISOString(),
+        image: mask.image,
+      });
+      if (!(await createJsonExclusive(files.intervention(interventionId), record))) continue;
+      await writeFileAtomic(files.mask(interventionId), mask.data);
+      return record as MaskIntervention;
+    }
+  }
+
+  async readMask(jobId: string, maskId: string): Promise<Uint8Array | undefined> {
+    if (!isSequenceId(maskId)) return undefined;
+    try {
+      return await readFile(this.jobFiles(jobId).mask(maskId));
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw error;
+    }
+  }
+
+  async markMaskUsed(jobId: string, maskId: string, iteration: number): Promise<void> {
+    if (!isSequenceId(maskId)) throw new Error(`maskId の形ではない: ${maskId}`);
+    const path = this.jobFiles(jobId).intervention(maskId);
+    const record = await readValid(path, interventionRecordSchema);
+    if (record.kind !== 'mask') {
+      throw new StoredFileError(path, new Error('マスクではないので、使った回を持たない'));
+    }
+    if (record.usedInIteration === iteration) return;
+    await writeJsonAtomic(path, { ...record, usedInIteration: iteration });
+  }
+
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown> {
     return readJsonIfExists(this.jobFiles(jobId).iteration(iteration)[stage]);
   }
@@ -468,6 +512,20 @@ export class FsJobStore implements JobStore {
     const path = this.refFiles(jobId, refId).meta;
     const record = await readValid(path, referenceRecordSchema);
     await writeJsonAtomic(path, referenceRecordSchema.parse({ ...record, gist }));
+  }
+
+  async readReferenceImage(image: ReferenceImageRef): Promise<InputImage | undefined> {
+    if (!isJobId(image.jobId) || !isSequenceId(image.refId)) return undefined;
+    const files = this.refFiles(image.jobId, image.refId);
+    const record = await readJsonIfExists(files.meta);
+    if (record === undefined) return undefined;
+    const { mediaType } = referenceRecordSchema.parse(record);
+    try {
+      return { data: await readFile(files.image(mediaType)), mediaType };
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw error;
+    }
   }
 
   private async generatedImageFiles(image: ImageRef, longEdge: number) {

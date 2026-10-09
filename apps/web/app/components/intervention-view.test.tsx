@@ -35,6 +35,24 @@ function iterationOf(n: number): Iteration {
 }
 
 describe('InterventionList', () => {
+  it('shows which image a mask was painted on and whether inpaint has used it', () => {
+    const mask = (id: string, usedInIteration?: number): Intervention => ({
+      kind: 'mask',
+      interventionId: id,
+      receivedAt: '2026-01-01T00:03:00.000Z',
+      image: { iteration: 2, index: 1 },
+      ...(usedInIteration === undefined ? {} : { usedInIteration }),
+    });
+    render(<InterventionList interventions={[mask('m-1'), mask('m-2', 3)]} />);
+
+    const items = screen
+      .getAllByText('人間の指示')
+      .map((label) => label.parentElement?.textContent);
+    expect(items[0]).toContain('2 回目の画像 1 にマスクを塗った');
+    expect(items[0]).toContain('まだ inpaint に使っていない');
+    expect(items[1]).toContain('3 回目の inpaint に使った');
+  });
+
   it('lists instructions and stop condition changes in the order received', () => {
     render(
       <InterventionList

@@ -22,6 +22,7 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
       addInstruction: notUsed,
       changeStopConditions: notUsed,
       addReference: notUsed,
+      addMask: notUsed,
     },
     budget: DEFAULT_BUDGET,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },

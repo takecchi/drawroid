@@ -35,6 +35,7 @@ beforeEach(async () => {
       addInstruction: notUsed,
       changeStopConditions: notUsed,
       addReference: notUsed,
+      addMask: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
