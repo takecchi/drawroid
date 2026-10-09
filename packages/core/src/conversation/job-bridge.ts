@@ -51,12 +51,14 @@ export const jobEvents = {
     jobId: string,
     iteration: number,
     images: readonly { seed: number | null }[],
+    request: Pick<GenerationRequest, 'width' | 'height'>,
   ): NewConversationEvent {
     return {
       type: 'job.images',
       jobId,
       iteration,
       images: images.map((image, index) => ({ index, seed: image.seed })),
+      size: { width: request.width, height: request.height },
     };
   },
   judge(jobId: string, iteration: number, value: unknown): NewConversationEvent {
@@ -154,7 +156,7 @@ export function bridgeJobEvents(
       result: GenerationResult,
     ) {
       await inner.writeGeneration(jobId, iteration, request, result);
-      await emit(jobId, async () => jobEvents.images(jobId, iteration, result.images));
+      await emit(jobId, async () => jobEvents.images(jobId, iteration, result.images, request));
     },
 
     async markInterventionApplied(jobId: string, interventionId: string, iteration: number) {

@@ -129,7 +129,12 @@ describe('the bridge from a job to its conversation', () => {
       rationale: '夕暮れの光を足す',
       params: { prompt: 'girl, beach, sunset', cfgScale: 6 },
     });
-    expect(events[2]).toMatchObject({ iteration: 1, images: [{ index: 0 }] });
+    // 頼んだ大きさも載せる: 画面が、読み込む前から画像の背を取るため
+    expect(events[2]).toMatchObject({
+      iteration: 1,
+      images: [{ index: 0 }],
+      size: { width: 512, height: 512 },
+    });
     expect(events[3]).toMatchObject({
       iteration: 1,
       images: [{ index: 0, score: 0.4, issues: ['手が崩れている'] }],

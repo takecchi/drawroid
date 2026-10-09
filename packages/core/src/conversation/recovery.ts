@@ -112,7 +112,7 @@ async function expectedEvents(jobs: JobStore, spec: AutoJobSpec): Promise<NewCon
     }
     const generation = await jobs.readGeneration(jobId, iteration);
     if (generation !== undefined)
-      events.push(jobEvents.images(jobId, iteration, generation.images));
+      events.push(jobEvents.images(jobId, iteration, generation.images, generation.request));
     const judge = await jobs.readStage(jobId, iteration, 'judge');
     if (judge !== undefined) events.push(jobEvents.judge(jobId, iteration, judge));
     const adopted = await jobs.readAdopted(jobId, iteration);

@@ -250,6 +250,8 @@ export interface ImageRowItem {
   /** 渡すと、画像を押して大きく見られる（ImageViewer）。viewerKey は窓の画像の key と同じ値 */
   onOpen?: () => void;
   viewerKey?: string;
+  /** 画像の大きさ（縦横の比）。渡すと、読み込む前から背を取る（ImageCard） */
+  size?: { width: number; height: number };
 }
 
 /** 1回ぶんの画像。評価が来ていれば点数と問題点を重ねる */
@@ -279,6 +281,7 @@ export function ImageRow({
             verdict={image.verdict}
             {...(image.onOpen !== undefined && { onOpen: image.onOpen })}
             {...(image.viewerKey !== undefined && { viewerKey: image.viewerKey })}
+            {...(image.size !== undefined && { size: image.size })}
             caption={
               (image.score !== undefined || (image.issues?.length ?? 0) > 0) && (
                 <>

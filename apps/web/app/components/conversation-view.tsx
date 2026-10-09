@@ -264,6 +264,7 @@ function ImagesItem({
           alt: `${imageLabel}（seed ${image.seed ?? '不明'}）`,
           viewerKey,
           onOpen: () => open(viewerKey),
+          ...(item.size !== undefined && { size: item.size }),
           score: image.score === undefined ? undefined : formatScore(image.score),
           issues: image.issues,
           verdict,

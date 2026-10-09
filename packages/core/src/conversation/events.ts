@@ -105,6 +105,11 @@ const jobImages = z.object({
   images: z.array(
     z.object({ index: z.number().int().nonnegative(), seed: z.number().int().nullable() }),
   ),
+  /**
+   * 頼んだ画像の大きさ（px）。画面は縦横の比として使い、読み込む前から画像の背を取る（hires で拡大しても比は変わらない）。
+   * 読み込んでから背が伸びると、上の画像が遅れて読み込まれたとき、読んでいる行が押し下げられるため。古い記録には無い
+   */
+  size: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
 });
 
 const jobJudge = z.object({

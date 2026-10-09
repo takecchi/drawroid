@@ -306,6 +306,14 @@ describe('filling in the job events a restart left out', () => {
       'job.judge:2',
       'job.stopped',
     ]);
+    // 書き足した画像のイベントにも、頼んだ大きさを載せる（画面が読み込む前から画像の背を取るため）
+    const images = (await conversations.readEvents(conversationId)).events.filter(
+      (event) => event.type === 'job.images',
+    );
+    expect(images.map((event) => event.size)).toEqual([
+      { width: 64, height: 64 },
+      { width: 64, height: 64 },
+    ]);
   });
 
   it('carries the thinking left in the stage files onto the think and judge events it writes', async () => {

@@ -107,6 +107,7 @@ describe('chatItems', () => {
           { index: 0, seed: 5 },
           { index: 1, seed: 6 },
         ],
+        size: { width: 512, height: 768 },
       },
       {
         type: 'job.judge',
@@ -118,12 +119,14 @@ describe('chatItems', () => {
       },
     ]);
 
+    // 頼んだ大きさは、点数を重ねたあとも残す（画面が画像の背を取るのに使う）
     expect(chatItems(state)[0]).toMatchObject({
       kind: 'images',
       images: [
         { index: 0, seed: 5 },
         { index: 1, score: 0.4, issues: ['手が崩れている'] },
       ],
+      size: { width: 512, height: 768 },
     });
   });
 
