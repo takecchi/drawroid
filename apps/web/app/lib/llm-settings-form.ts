@@ -109,11 +109,25 @@ function optionalNumber(text: string): number | undefined {
   return trimmed === '' ? undefined : Number(trimmed);
 }
 
-function buildRole(values: RoleValues): LlmSettingsInput['roles']['think'] {
+/** 定義した provider の名前（空と重なりを除き、並べた順） */
+export function definedProviderNames(providers: readonly ProviderRow[]): string[] {
+  return [...new Set(providers.map((row) => row.key.trim()).filter((name) => name !== ''))];
+}
+
+/** 役が使う provider。まだ選んでいなくて、定義した provider が1つだけなら、それを選んだことにする */
+export function roleProviderOf(role: RoleValues, names: readonly string[]): string {
+  const chosen = role.provider.trim();
+  return chosen === '' && names.length === 1 ? (names[0] ?? '') : chosen;
+}
+
+function buildRole(
+  values: RoleValues,
+  names: readonly string[],
+): LlmSettingsInput['roles']['think'] {
   const contextTokens = optionalNumber(values.contextTokens);
   const maxOutputTokens = optionalNumber(values.maxOutputTokens);
   return {
-    provider: values.provider.trim(),
+    provider: roleProviderOf(values, names),
     model: values.model.trim(),
     ...(contextTokens === undefined ? {} : { contextTokens }),
     ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
@@ -140,7 +154,8 @@ export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInpu
   const providers = Object.fromEntries(
     values.providers.map((row) => [row.key.trim(), buildProvider(row)]),
   );
-  const think = buildRole(values.think);
+  const names = definedProviderNames(values.providers);
+  const think = buildRole(values.think, names);
   const validationRetries = optionalNumber(values.validationRetries);
   const networkRetries = optionalNumber(values.networkRetries);
   return {
@@ -149,8 +164,8 @@ export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInpu
     providers,
     roles: {
       think,
-      ...(values.judgeSameAsThink ? {} : { judge: buildRole(values.judge) }),
-      ...(values.talkSameAsThink ? {} : { talk: buildRole(values.talk) }),
+      ...(values.judgeSameAsThink ? {} : { judge: buildRole(values.judge, names) }),
+      ...(values.talkSameAsThink ? {} : { talk: buildRole(values.talk, names) }),
     },
   };
 }
