@@ -61,6 +61,27 @@ describe('InterventionList', () => {
     expect(items[1]).toContain('3 回目の inpaint に使った');
   });
 
+  it('says what was never taken in once the job stopped', () => {
+    render(
+      <InterventionList
+        stopped
+        interventions={[
+          instruction('i-1', 'もっと青く'),
+          {
+            kind: 'mask',
+            interventionId: 'm-1',
+            receivedAt: '2026-01-01T00:03:00.000Z',
+            image: { iteration: 2, index: 1 },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('取り込まずに止まった')).toBeTruthy();
+    expect(screen.getByText('使わずに止まった')).toBeTruthy();
+    expect(screen.queryByText('次の回の境目で取り込む')).toBeNull();
+  });
+
   it('names the image a human chose, counting from 1', () => {
     render(
       <InterventionList
