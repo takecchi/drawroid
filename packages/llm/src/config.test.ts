@@ -59,7 +59,6 @@ describe('llmConfigSchema', () => {
       provider: 'local',
       model: 'qwen2.5vl:7b',
       contextTokens: 8192,
-      maxOutputTokens: 1024,
       structuredOutput: 'native',
       imageInput: true,
     });

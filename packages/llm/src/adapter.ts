@@ -7,6 +7,7 @@ import type {
   LlmRoleInfo,
   LlmUsage,
 } from '@drawroid/core';
+import { DEFAULT_MODEL_WINDOW } from '@drawroid/core';
 import {
   generateText,
   NoObjectGeneratedError,
@@ -76,7 +77,11 @@ export class AiSdkLlm implements LlmPort {
     return {
       provider: this.models[role].providerName,
       model: config.model,
-      window: { contextTokens: config.contextTokens, maxOutputTokens: config.maxOutputTokens },
+      window: {
+        contextTokens: config.contextTokens,
+        // 上限を送らないときも、入力の予算からは出力の分を空けておく: 入力で窓を埋めると出力が入らず length で切れるため
+        maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MODEL_WINDOW.maxOutputTokens,
+      },
       imageInput: config.imageInput,
     };
   }
@@ -172,7 +177,9 @@ export class AiSdkLlm implements LlmPort {
         model: this.models[call.role].model,
         instructions,
         messages,
-        maxOutputTokens: config.maxOutputTokens,
+        ...(config.maxOutputTokens === undefined
+          ? {}
+          : { maxOutputTokens: config.maxOutputTokens }),
         maxRetries: this.options.networkRetries,
         abortSignal: call.signal,
         ...(output === undefined ? {} : { output }),

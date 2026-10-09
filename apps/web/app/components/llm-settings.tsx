@@ -73,7 +73,7 @@ function RoleFields({
           value={values.maxOutputTokens}
           onChange={(event) => onChange({ ...values, maxOutputTokens: event.target.value })}
           aria-label={`${label}の出力の上限`}
-          placeholder="1024"
+          placeholder="なし"
           size={8}
         />
       </label>

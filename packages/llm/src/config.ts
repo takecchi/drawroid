@@ -28,7 +28,8 @@ export const roleConfigSchema = z.object({
   provider: z.string().min(1),
   model: z.string().min(1),
   contextTokens: z.number().int().positive().default(8192),
-  maxOutputTokens: z.number().int().positive().default(1024),
+  /** 省略したら上限を送らず、provider 側の設定に任せる */
+  maxOutputTokens: z.number().int().positive().optional(),
   structuredOutput: structuredOutputModeSchema.default('native'),
   imageInput: z.boolean().default(true),
 });

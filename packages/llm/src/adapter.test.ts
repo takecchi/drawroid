@@ -263,4 +263,12 @@ describe('describe', () => {
       imageInput: true,
     });
   });
+
+  it('reserves the configured output limit in the window', () => {
+    const model = new MockLanguageModelV4();
+    const window = adapter(model, role({ contextTokens: 4096, maxOutputTokens: 3000 })).describe(
+      'think',
+    ).window;
+    expect(window).toEqual({ contextTokens: 4096, maxOutputTokens: 3000 });
+  });
 });
