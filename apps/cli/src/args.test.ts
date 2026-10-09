@@ -5,7 +5,11 @@ import { DEFAULT_PORT } from './listen.js';
 
 describe('parseCliArgs', () => {
   it('uses the default port when none is given', () => {
-    expect(parseCliArgs([])).toEqual({ port: DEFAULT_PORT, dataDir: undefined });
+    expect(parseCliArgs([])).toEqual({
+      port: DEFAULT_PORT,
+      dataDir: undefined,
+      forgeUrl: undefined,
+    });
   });
 
   it('accepts --port', () => {
@@ -14,6 +18,12 @@ describe('parseCliArgs', () => {
 
   it('accepts --data-dir', () => {
     expect(parseCliArgs(['--data-dir', '/data'])).toMatchObject({ dataDir: '/data' });
+  });
+
+  it('accepts --forge-url', () => {
+    expect(parseCliArgs(['--forge-url', 'http://gpu:7860'])).toMatchObject({
+      forgeUrl: 'http://gpu:7860',
+    });
   });
 
   it('rejects a port outside 1-65535 or not an integer', () => {
