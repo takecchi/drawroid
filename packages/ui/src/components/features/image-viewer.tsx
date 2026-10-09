@@ -139,7 +139,10 @@ export function ImageViewer({
               原寸を新しいタブで開く
             </a>
           </div>
-          {details?.(image)}
+          {details !== undefined && (
+            // 画像の背を削りすぎない: 評価や選ぶボタンが長くても、窓の下の方で巻き取る
+            <div className="max-h-[40%] shrink-0 overflow-y-auto">{details(image)}</div>
+          )}
         </DialogContent>
       )}
     </Dialog>

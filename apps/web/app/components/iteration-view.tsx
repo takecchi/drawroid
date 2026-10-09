@@ -1,5 +1,5 @@
 import type { SelectionVerdict } from '@drawroid/core';
-import { formatImageKey } from '@drawroid/core';
+import { formatImageKey, parseImageKey } from '@drawroid/core';
 import type { IterationsResponse } from '@drawroid/swr';
 import {
   AuthorMark,
@@ -247,6 +247,58 @@ function viewerImagesOf(iterations: readonly Iteration[]): ViewerImage[] {
   );
 }
 
+/** 大きく見る窓の画像の下: 見る役の点と言葉、お気に入り・却下、（自動ジョブなら）「この画像で決める」。画像の枡と同じ部品・同じ口 */
+function JobViewerDetails({
+  jobId,
+  iteration,
+  index,
+  verdicts,
+  adopt,
+}: {
+  jobId: string;
+  iteration: Iteration;
+  index: number;
+  verdicts: ReadonlyMap<string, SelectionVerdict>;
+  adopt?: { disabledReason?: string };
+}) {
+  const evaluation = readJudge(iteration.judge)?.images[index];
+  const imageKey = formatImageKey({ iteration: iteration.iteration, index });
+  return (
+    <div className="space-y-2 text-sm">
+      {evaluation !== undefined && (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <div>見る役の点 {formatScore(evaluation.score)}</div>
+          {evaluation.issues.length > 0 && (
+            <BulletList className="text-xs">
+              {evaluation.issues.map((issue, i) => (
+                <li key={i}>{issue}</li>
+              ))}
+            </BulletList>
+          )}
+        </div>
+      )}
+      <SelectionControls
+        jobId={jobId}
+        imageKey={imageKey}
+        verdict={verdicts.get(imageKey) ?? null}
+      />
+      {adopt !== undefined && (
+        <AdoptButton
+          jobId={jobId}
+          image={{ iteration: iteration.iteration, index }}
+          imageLabel={imageTitle(iteration.iteration, index)}
+          chosen={
+            iteration.adopted !== null &&
+            iteration.adopted.image.iteration === iteration.iteration &&
+            iteration.adopted.image.index === index
+          }
+          {...(adopt.disabledReason !== undefined && { disabledReason: adopt.disabledReason })}
+        />
+      )}
+    </div>
+  );
+}
+
 export function IterationList({
   jobId,
   heading,
@@ -270,7 +322,25 @@ export function IterationList({
   const viewerImages = useMemo(() => viewerImagesOf(iterations), [iterations]);
   return (
     <Section title={heading}>
-      <ImageViewer images={viewerImages} openKey={viewing} onOpenKeyChange={setViewing} />
+      <ImageViewer
+        images={viewerImages}
+        openKey={viewing}
+        onOpenKeyChange={setViewing}
+        details={(image) => {
+          const at = parseImageKey(image.key);
+          const iteration = iterations.find((candidate) => candidate.iteration === at?.iteration);
+          if (at === undefined || iteration === undefined) return null;
+          return (
+            <JobViewerDetails
+              jobId={jobId}
+              iteration={iteration}
+              index={at.index}
+              verdicts={verdicts}
+              {...(adopt !== undefined && { adopt })}
+            />
+          );
+        }}
+      />
       {iterations.length === 0 && <EmptyState title="まだ画像は無い。" />}
       {iterations.map((iteration) => (
         <IterationView
