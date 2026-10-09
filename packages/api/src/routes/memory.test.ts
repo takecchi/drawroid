@@ -33,7 +33,12 @@ beforeEach(async () => {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
@@ -260,3 +265,7 @@ describe('DELETE /memory/:id', () => {
     expect((await api.request('/memory/.hidden', { method: 'DELETE' })).status).toBe(404);
   });
 });
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
+}

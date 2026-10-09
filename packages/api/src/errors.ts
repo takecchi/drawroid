@@ -1,5 +1,6 @@
 import { isBackendError } from '@drawroid/core';
 import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ZodError } from 'zod';
 
@@ -9,10 +10,26 @@ function errorBody(kind: string, message: string): ApiErrorBody {
   return { error: { kind, message } };
 }
 
+/**
+ * ルートの外で投げられた例外を、ほかのエラーと同じ `{ error: { kind, message } }` の形で返す（アプリ全体の受け口）。
+ * hono が投げる HTTPException（読めない本文など）はその状態のまま、それ以外は 500 にする。
+ */
+// 想定外の例外の文面を返さない: 置き場所のパスや設定の中身が、応答に出ないようにするため
+export function handleUncaught(error: Error, c: Context) {
+  if (error instanceof HTTPException) {
+    const status = error.status as ContentfulStatusCode;
+    const kind = status === 400 ? 'invalid_request' : 'http_error';
+    return c.json(errorBody(kind, error.message), status);
+  }
+  console.error(error);
+  return c.json(errorBody('internal_error', 'サーバの中で想定外の失敗があった'), 500);
+}
+
 export function invalidRequest(c: Context, message: string) {
   return c.json(errorBody('invalid_request', message), 400);
 }
 
+/** 要求は正しいが、対象の今の状態では受けられない（止まったジョブへの口出し・走っている生成など） */
 export function conflict(c: Context, kind: string, message: string) {
   return c.json(errorBody(kind, message), 409);
 }

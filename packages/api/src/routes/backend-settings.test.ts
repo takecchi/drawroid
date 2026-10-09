@@ -27,7 +27,12 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
       },
     },
     // 繋ぎ直しの経路は自動ジョブと LLM の設定を使わない
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
@@ -112,3 +117,7 @@ describe('PUT /settings/backend', () => {
     expect(written).toEqual([{ forgeUrl: 'http://gpu:7860' }]);
   });
 });
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
+}

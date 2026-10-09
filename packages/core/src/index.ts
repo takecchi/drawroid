@@ -155,4 +155,7 @@ export {
   type DistillOperation,
   type DistillOutput,
 } from './memory/distill/schema.js';
+export * from './intervention/integrate.js';
+export * from './intervention/intervention.js';
+export * from './intervention/plan.js';
 export * from './loop/stop-parse.js';

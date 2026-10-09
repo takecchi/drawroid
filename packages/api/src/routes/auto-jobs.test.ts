@@ -32,6 +32,8 @@ beforeEach(async () => {
     autoQueue: {
       kick: () => void kicks++,
       stop: async (jobId) => void stops.push(jobId),
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
@@ -178,3 +180,7 @@ describe('POST /jobs/auto/:jobId/stop', () => {
     expect(stops).toEqual([]);
   });
 });
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
+}
