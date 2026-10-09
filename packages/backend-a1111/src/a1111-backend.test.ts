@@ -81,6 +81,16 @@ describe('A1111Backend', () => {
     expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
   });
 
+  it('refuses a sampler or a scheduler that A1111 does not have, naming A1111', async () => {
+    await expect(generate({ sampler: 'No Such Sampler' })).rejects.toThrow(
+      'サンプラ No Such Sampler が A1111 に無い',
+    );
+    await expect(generate({ scheduler: 'no-such-scheduler' })).rejects.toThrow(
+      'スケジューラ no-such-scheduler が A1111 に無い',
+    );
+    expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
+  });
+
   it('picks a checkpoint in a subfolder by its title or its model name', async () => {
     await generate({ checkpoint: 'real_juggernaut-xl' });
     expect(sent('/sdapi/v1/txt2img').override_settings).toEqual({
