@@ -4,8 +4,11 @@ import { join, relative } from 'node:path';
 
 import {
   interventionRecordSchema,
+  isReferenceImageRef,
   jobSpecSchema,
   jobStateSchema,
+  referenceRecordSchema,
+  type AnyImageRef,
   type GeneratedImage,
   type ImageRef,
   type InterventionRecord,
@@ -15,7 +18,10 @@ import {
   type LlmCallRecord,
   type NewIntervention,
   type NewJobSpec,
+  type NewReference,
   type PreviewImage,
+  type ReferenceImageRef,
+  type ReferenceRecord,
   type StageName,
 } from '@drawroid/core';
 import sharp from 'sharp';
@@ -84,6 +90,16 @@ async function listNames(dir: string): Promise<string[]> {
     if (isNotFound(error)) return [];
     throw error;
   }
+}
+
+const EXTENSIONS: Record<ReferenceRecord['mediaType'], string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
+
+function extensionOf(mediaType: ReferenceRecord['mediaType']): string {
+  return EXTENSIONS[mediaType];
 }
 
 // UTC で書く: 地方時だと夏時間の切り替えで、名前の順と作成の順が食い違うため
@@ -222,39 +238,103 @@ export class FsJobStore implements JobStore {
     }
   }
 
-  async loadPreview(image: ImageRef, longEdge: number): Promise<PreviewImage> {
-    const files = this.paths.jobFiles(image.jobId).iteration(image.iteration);
-    const previewPath = files.preview(image.index, longEdge);
+  async loadPreview(image: AnyImageRef, longEdge: number): Promise<PreviewImage> {
+    const { source, preview, sentInCall } = isReferenceImageRef(image)
+      ? await this.referenceImageFiles(image, longEdge)
+      : await this.generatedImageFiles(image, longEdge);
     let data: Uint8Array;
     try {
-      data = await readFile(previewPath);
+      data = await readFile(preview);
     } catch (error) {
       if (!isNotFound(error)) throw error;
-      data = await sharp(await readFile(files.image(image.index)))
+      data = await sharp(await readFile(source))
         .resize({ width: longEdge, height: longEdge, fit: 'inside', withoutEnlargement: true })
         .webp()
         .toBuffer();
-      await writeFileAtomic(previewPath, data);
+      await writeFileAtomic(preview, data);
     }
     const { width = 0, height = 0 } = await sharp(data).metadata();
-    const sent = (await readJsonIfExists(files.sent(image.index))) as
-      { callId: string } | undefined;
     return {
       key: this.imageKey(image),
       data,
       mediaType: 'image/webp',
       longEdge: Math.max(width, height),
-      ...(sent === undefined ? {} : { sentInCall: sent.callId }),
+      ...(sentInCall === undefined ? {} : { sentInCall }),
     };
   }
 
-  async markSent(image: ImageRef, callId: string, now: Date): Promise<void> {
+  async markSent(image: AnyImageRef, callId: string, now: Date): Promise<void> {
+    if (isReferenceImageRef(image)) {
+      const path = this.paths.jobFiles(image.jobId).refMeta(image.refId);
+      const record = await readValid(path, referenceRecordSchema);
+      if (record.sentInCall !== undefined) {
+        throw new ImageAlreadySentError(this.imageKey(image), record.sentInCall);
+      }
+      await writeJsonAtomic(path, { ...record, sentInCall: callId, sentAt: now.toISOString() });
+      return;
+    }
     const path = this.paths.jobFiles(image.jobId).iteration(image.iteration).sent(image.index);
     const previous = (await readJsonIfExists(path)) as { callId: string } | undefined;
     // 上書きしない: 1枚を2回渡したことが、印を書き換えることで見えなくなるため
     if (previous !== undefined)
       throw new ImageAlreadySentError(this.imageKey(image), previous.callId);
     await writeJsonAtomic(path, { callId, sentAt: now.toISOString() });
+  }
+
+  async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {
+    const files = this.paths.jobFiles(jobId);
+    await mkdir(files.refs, { recursive: true });
+    for (;;) {
+      const refId = formatJobId(now, this.randomSuffix());
+      if (await exists(files.refMeta(refId))) continue;
+      const record = referenceRecordSchema.parse({
+        refId,
+        receivedAt: now.toISOString(),
+        mediaType: reference.mediaType,
+        ...(reference.note === undefined ? {} : { note: reference.note }),
+      });
+      // 画像を先に、refs/<refId>.json を後に置く: 一覧は .json だけを数えるので、途中で落ちても画像の無い参照が見えないため
+      await writeFileAtomic(files.ref(refId, extensionOf(record.mediaType)), reference.data);
+      await writeJsonAtomic(files.refMeta(refId), record);
+      return record;
+    }
+  }
+
+  async listReferences(jobId: string): Promise<ReferenceRecord[]> {
+    const files = this.paths.jobFiles(jobId);
+    const names = (await listNames(files.refs)).filter((name) => name.endsWith('.json'));
+    const records: ReferenceRecord[] = [];
+    for (const name of names) {
+      records.push(await readValid(join(files.refs, name), referenceRecordSchema));
+    }
+    return records;
+  }
+
+  async writeReferenceGist(jobId: string, refId: string, gist: string): Promise<void> {
+    const path = this.paths.jobFiles(jobId).refMeta(refId);
+    const record = await readValid(path, referenceRecordSchema);
+    await writeJsonAtomic(path, referenceRecordSchema.parse({ ...record, gist }));
+  }
+
+  private async generatedImageFiles(image: ImageRef, longEdge: number) {
+    const files = this.paths.jobFiles(image.jobId).iteration(image.iteration);
+    const sent = (await readJsonIfExists(files.sent(image.index))) as
+      { callId: string } | undefined;
+    return {
+      source: files.image(image.index),
+      preview: files.preview(image.index, longEdge),
+      sentInCall: sent?.callId,
+    };
+  }
+
+  private async referenceImageFiles(image: ReferenceImageRef, longEdge: number) {
+    const files = this.paths.jobFiles(image.jobId);
+    const record = await readValid(files.refMeta(image.refId), referenceRecordSchema);
+    return {
+      source: files.ref(image.refId, extensionOf(record.mediaType)),
+      preview: files.refPreview(image.refId, longEdge),
+      sentInCall: record.sentInCall,
+    };
   }
 
   async writeLlmCall(record: LlmCallRecord): Promise<void> {
@@ -277,8 +357,11 @@ export class FsJobStore implements JobStore {
   }
 
   /** データディレクトリからの相対で、拡張子の無い形（記録と UI で画像を指す） */
-  private imageKey(image: ImageRef): string {
-    const dir = this.paths.jobFiles(image.jobId).iteration(image.iteration).images;
-    return `${relative(this.paths.root, dir).split('\\').join('/')}/${image.index}`;
+  private imageKey(image: AnyImageRef): string {
+    const files = this.paths.jobFiles(image.jobId);
+    const [dir, name] = isReferenceImageRef(image)
+      ? [files.refs, image.refId]
+      : [files.iteration(image.iteration).images, String(image.index)];
+    return `${relative(this.paths.root, dir).split('\\').join('/')}/${name}`;
   }
 }

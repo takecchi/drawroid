@@ -1,7 +1,7 @@
 import type { ZodType } from 'zod';
 
 import { generationRequestSchema, type GenerationRequest, type ImageBackend } from '../backend.js';
-import type { ImageRef, JobStore } from '../job/store.js';
+import type { AnyImageRef, ImageRef, JobStore, ReferenceImageRef } from '../job/store.js';
 import {
   stopConditionsChangeSchema,
   type AutoJobSpec,
@@ -25,9 +25,16 @@ import {
   type InterventionLimits,
 } from '../intervention/intervention.js';
 import { planInterventions } from '../intervention/plan.js';
+import {
+  buildRefGistOutputSchema,
+  carriedReferences,
+  DEFAULT_REFERENCE_LIMITS,
+  referencesWithoutGist,
+  type ReferenceLimits,
+} from '../reference/reference.js';
 import type { Budget } from './budget.js';
 import { advanceCarry, type Carry } from './carry.js';
-import { buildJudgeInput, buildThinkInput } from './inputs.js';
+import { buildJudgeInput, buildRefGistInput, buildThinkInput } from './inputs.js';
 import {
   buildJudgeOutputSchema,
   buildThinkOutputSchema,
@@ -56,6 +63,8 @@ export type JobRunnerDeps = {
   defaults: GenerationDefaults;
   /** 1回の「考える」に載せる人間の指示の上限。省けば既定値 */
   interventionLimits?: InterventionLimits;
+  /** 持ち回す参照画像の要点の上限。省けば既定値 */
+  referenceLimits?: ReferenceLimits;
   now?: () => Date;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
@@ -227,9 +236,11 @@ export class JobRunner {
       if (stop !== undefined) throw new StopJob(stop);
 
       const iteration = state.carry.completedIterations + 1;
-      const think = await this.think(spec, conditions, state.carry, iteration, signal);
+      // 走っている段には触れず、境目で要点にする: 回の途中で届いた参照画像は、次の回の「考える」から効く（Issue #5 の I）
+      const withReferences = await this.takeInReferences(spec, state.carry, iteration, signal);
+      const think = await this.think(spec, conditions, withReferences, iteration, signal);
       // think.json から求め直す: 考えたあと state.json を書く前に落ちても、再開で同じ要点になるように
-      const carry = applyIntegratedIntent(state.carry, think, this.deps.budget);
+      const carry = applyIntegratedIntent(withReferences, think, this.deps.budget);
       const imageCount = await this.generate(spec, iteration, think, signal);
       const judge = await this.judge(spec, carry, iteration, imageCount, signal);
 
@@ -240,6 +251,46 @@ export class JobRunner {
       };
       await store.writeState(spec.jobId, state);
     }
+  }
+
+  /**
+   * 要点の無い参照画像を、見る役に1度だけ見せて要点にし、carry の要点の欄を refs/ から作り直す。
+   */
+  private async takeInReferences(
+    spec: AutoJobSpec,
+    carry: Carry,
+    iteration: number,
+    signal: AbortSignal,
+  ): Promise<Carry> {
+    const { store, llm, budget } = this.deps;
+    const limits = this.deps.referenceLimits ?? DEFAULT_REFERENCE_LIMITS;
+    for (const reference of referencesWithoutGist(await store.listReferences(spec.jobId))) {
+      const ref: ReferenceImageRef = { jobId: spec.jobId, refId: reference.refId };
+      const messages = buildRefGistInput({
+        carry,
+        image: await store.loadPreview(ref, budget.imageLongEdge),
+        ...(reference.note === undefined ? {} : { note: reference.note }),
+        budget,
+        limits,
+        window: llm.describe('judge').window,
+      });
+      const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'ref-gist', messages, {
+        schema: buildRefGistOutputSchema(limits),
+        signal,
+        sentImages: [ref],
+        // 要点を印より先に書く: 印だけ残って落ちると、再開で「渡し済み」の画像を渡せず、要点も作れなくなるため。
+        // 要点だけ残って落ちたときは、要点があるので2度は渡さない
+        keepBeforeMarking: async (result) => {
+          if (result.ok)
+            await store.writeReferenceGist(spec.jobId, reference.refId, result.value.gist);
+        },
+      });
+      if (!outcome.ok) {
+        throw new StopJob({ kind: 'error', detail: `参照画像の要点: ${outcome.reason}` });
+      }
+    }
+    const references = carriedReferences(await store.listReferences(spec.jobId), limits);
+    return references.length === 0 ? carry : { ...carry, references };
   }
 
   private async checkBoundary(
@@ -396,7 +447,13 @@ export class JobRunner {
     role: LlmRole,
     purpose: LlmPurpose,
     messages: BudgetedMessages,
-    options: { schema: ZodType<T>; signal: AbortSignal; sentImages?: ImageRef[] },
+    options: {
+      schema: ZodType<T>;
+      signal: AbortSignal;
+      sentImages?: AnyImageRef[];
+      /** 記録を置いたあと、印を付ける前に、結果をファイルに残す */
+      keepBeforeMarking?: (outcome: LlmCallOutcome<T>) => Promise<void>;
+    },
   ): Promise<LlmCallOutcome<T>> {
     const startedAt = this.now();
     const outcome = await this.deps.llm.generateStructured({
@@ -422,6 +479,7 @@ export class JobRunner {
         outcome,
       }),
     );
+    await options.keepBeforeMarking?.(outcome);
     for (const ref of options.sentImages ?? [])
       await this.deps.store.markSent(ref, callId, this.now());
     return outcome;

@@ -2,7 +2,8 @@ import type { ZodType } from 'zod';
 import type { ModelWindow } from '../loop/budget.js';
 
 export type LlmRole = 'think' | 'judge';
-export type LlmPurpose = 'think' | 'judge';
+/** ref-gist は見る役が参照画像を1度だけ見て要点を書く呼び出し */
+export type LlmPurpose = 'think' | 'judge' | 'ref-gist';
 
 export type TextPart = { type: 'text'; text: string };
 export type ImagePart = {
