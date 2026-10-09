@@ -16,6 +16,7 @@ import type {
   LlmCallsResponse,
   MemoryItemDetail,
   MemoryList,
+  ReferencesResponse,
   SelectionsResponse,
   StopConditionsResponse,
 } from './types.js';
@@ -74,6 +75,18 @@ export function useInterventions(jobId: string | undefined, { live }: { live: bo
     () =>
       unwrap<InterventionsResponse>(() =>
         client.jobs.auto[':jobId'].interventions.$get({ param: { jobId: jobId ?? '' } }),
+      ),
+    { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
+  );
+}
+
+// 走っている間は取り直す: 見る役が要点を作ると、要点と渡した印が後から付くため
+export function useReferences(jobId: string | undefined, { live }: { live: boolean }) {
+  return useSWR<ReferencesResponse, ApiError>(
+    jobId === undefined ? null : keys.references(jobId),
+    () =>
+      unwrap<ReferencesResponse>(() =>
+        client.jobs.auto[':jobId'].references.$get({ param: { jobId: jobId ?? '' } }),
       ),
     { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
   );
