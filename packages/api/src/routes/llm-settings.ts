@@ -1,4 +1,4 @@
-import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
+import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
@@ -32,6 +32,13 @@ export function llmSettingsRoutes(deps: ApiDeps) {
       const parsed = llmConfigSchema.safeParse(await c.req.json().catch(() => undefined));
       if (!parsed.success) {
         return c.json(errorBody('invalid_request', describeIssues(parsed.error)), 400);
+      }
+      // 組み立てられない設定は保存しない: 保存した設定と実際に使う設定がずれ、走っているジョブが次の呼び出しで止まるため
+      try {
+        createLlm(parsed.data, { env: deps.env });
+      } catch (error) {
+        const reason = error instanceof LlmConfigError ? error.message : 'LLM を組み立てられない';
+        return c.json(errorBody('invalid_request', reason), 400);
       }
       await deps.llmSettings.write(parsed.data);
       return c.json(view(parsed.data), 200);

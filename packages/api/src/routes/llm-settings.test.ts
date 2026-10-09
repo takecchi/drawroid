@@ -71,20 +71,37 @@ describe('PUT /settings/llm', () => {
     expect(written).toHaveLength(1);
   });
 
-  it('reports an empty env var as not set', async () => {
-    const res = await put(makeApp({ TEST_KEY: '' }), config);
-    expect(((await res.json()) as { apiKeyEnv: unknown }).apiKeyEnv).toEqual({
-      cloud: { name: 'TEST_KEY', set: false },
+  it.each([
+    ['empty', ''],
+    ['missing', undefined],
+  ])(
+    'rejects a config whose API key env var is %s, names the variable, and stores nothing',
+    async (_, value) => {
+      const res = await put(makeApp({ TEST_KEY: value }), config);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { kind: 'invalid_request', message: expect.stringContaining('TEST_KEY') },
+      });
+      expect(written).toEqual([]);
+    },
+  );
+
+  it('rejects a cloud provider that does not name its API key env var, and stores nothing', async () => {
+    const res = await put(makeApp({ TEST_KEY: SECRET }), {
+      ...config,
+      providers: { cloud: { type: 'anthropic' } },
     });
+    expect(res.status).toBe(400);
+    expect(written).toEqual([]);
   });
 
   it('reads back what was stored', async () => {
-    const app = makeApp({});
+    const app = makeApp({ TEST_KEY: SECRET });
     await put(app, config);
     const res = await app.request('/settings/llm');
     expect(await res.json()).toMatchObject({
       config: { roles: { think: { provider: 'cloud' } } },
-      apiKeyEnv: { cloud: { name: 'TEST_KEY', set: false } },
+      apiKeyEnv: { cloud: { name: 'TEST_KEY', set: true } },
     });
   });
 
