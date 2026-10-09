@@ -3,6 +3,7 @@ import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
 import type { SelectionRecord } from '../selection/selection.js';
 import type {
+  AdoptedRecord,
   InterventionRecord,
   JobSpec,
   JobState,
@@ -81,6 +82,10 @@ export interface JobStore {
   /** 段の出力が無ければ undefined */
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown>;
   writeStage(jobId: string, iteration: number, stage: StageName, value: unknown): Promise<void>;
+
+  /** その回の評価を人間の選択で打ち切った記録。無ければ undefined。置いたことが、その回の見る段が済んだことを表す */
+  readAdopted(jobId: string, iteration: number): Promise<AdoptedRecord | undefined>;
+  writeAdopted(jobId: string, iteration: number, record: AdoptedRecord): Promise<void>;
 
   /** 回の画像への人間の最終選択を置く（selections/<imageKey>.json）。同じ画像には上書きする */
   writeSelection(jobId: string, selection: SelectionRecord): Promise<void>;

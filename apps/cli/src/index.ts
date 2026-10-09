@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   bridgeJobEvents,
+  relayJobReasoning,
   ConversationHubs,
   createDrawingTools,
   createGenerationProgress,
@@ -121,6 +122,8 @@ async function main() {
           `drawroid: 生成の進み具合を読めなかった（生成は続ける）: ${error instanceof Error ? error.message : String(error)}`,
         ),
     }),
+    // 会話に属するジョブの、考える役・見る役の思考の増分を、その会話へ流す
+    onReasoning: relayJobReasoning({ store, hubs: conversationHubs }),
     log,
   });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため

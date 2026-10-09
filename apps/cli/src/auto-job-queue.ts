@@ -2,6 +2,7 @@ import type { AutoJobQueue as AutoJobQueuePort } from '@drawroid/api';
 import {
   basicPermissions,
   JobRunner,
+  type JobRunnerDeps,
   mergePermissions,
   type Budget,
   type CandidateNotes,
@@ -46,6 +47,8 @@ export type AutoJobQueueOptions = {
   /** 会話に属するジョブの生成の進み具合の流し先。省けば流さない */
   generationProgress?: GenerationProgressPort;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
+  /** 考える役・見る役の思考の増分を受ける（会話へ流すため） */
+  onReasoning?: JobRunnerDeps['onReasoning'];
   log: (line: string) => void;
 };
 
@@ -76,6 +79,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
       ...(options.generationProgress !== undefined && {
         generationProgress: options.generationProgress,
       }),
+      ...(options.onReasoning !== undefined && { onReasoning: options.onReasoning }),
       log: options.log,
     });
   }

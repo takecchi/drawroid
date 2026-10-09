@@ -3,6 +3,7 @@ import { access, mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 import {
+  adoptedRecordSchema,
   generationRequestSchema,
   interventionRecordSchema,
   isReferenceImageRef,
@@ -11,6 +12,7 @@ import {
   parseImageKey,
   referenceRecordSchema,
   selectionRecordSchema,
+  type AdoptedRecord,
   type AnyImageRef,
   type GenerationRequest,
   type GenerationResult,
@@ -405,6 +407,21 @@ export class FsJobStore implements JobStore {
     const files = this.jobFiles(jobId).iteration(iteration);
     await mkdir(files.dir, { recursive: true });
     await writeJsonAtomic(files[stage], value);
+  }
+
+  async readAdopted(jobId: string, iteration: number): Promise<AdoptedRecord | undefined> {
+    const path = this.jobFiles(jobId).iteration(iteration).adopted;
+    const raw = await readJsonIfExists(path);
+    if (raw === undefined) return undefined;
+    const parsed = adoptedRecordSchema.safeParse(raw);
+    if (!parsed.success) throw new StoredFileError(path, parsed.error);
+    return parsed.data;
+  }
+
+  async writeAdopted(jobId: string, iteration: number, record: AdoptedRecord): Promise<void> {
+    const files = this.jobFiles(jobId).iteration(iteration);
+    await mkdir(files.dir, { recursive: true });
+    await writeJsonAtomic(files.adopted, adoptedRecordSchema.parse(record));
   }
 
   async loadPreview(image: AnyImageRef, longEdge: number): Promise<PreviewImage> {
