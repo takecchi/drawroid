@@ -9,7 +9,7 @@ import { STATUS_TEXT, type ChatStatus } from './cards';
  * 短い会話では飛ばさない: 飛ばすと、画面に入るたびに行を描き起こすぶん、速いスクロールが重くなる（CPU 4x の 200 行で、
  * フレームの p95 が 16.8 → 33.4 ms）。描き直しの得がそれを上回るのは、長い会話だけだったため（#222 の続きで測った）
  */
-export const SKIP_OFFSCREEN_AFTER_ROWS = 0;
+export const SKIP_OFFSCREEN_AFTER_ROWS = 1_000_000_000;
 
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
