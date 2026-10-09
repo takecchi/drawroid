@@ -16,6 +16,7 @@ import type {
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
   ReferenceUpload,
+  ReferenceWireBody,
   SetSelectionResponse,
   StopConditionsDraftResponse,
 } from './types.js';
@@ -55,7 +56,12 @@ export async function createAutoJob(input: {
   references?: ReferenceUpload[];
 }): Promise<CreateAutoJobResponse> {
   const created = await unwrap<CreateAutoJobResponse>(() =>
-    client.jobs.auto.$post({ json: input }),
+    client.jobs.auto.$post({
+      json: {
+        ...input,
+        references: input.references as unknown as ReferenceWireBody[] | undefined,
+      },
+    }),
   );
   await mutate(keys.jobs);
   return created;
@@ -87,7 +93,7 @@ export async function addReference(
   const added = await unwrap<AddReferenceResponse>(() =>
     client.jobs.auto[':jobId'].interventions.$post({
       param: { jobId },
-      json: { kind: 'reference', image },
+      json: { kind: 'reference', image: image as unknown as ReferenceWireBody },
     }),
   );
   await refreshJob(jobId);
