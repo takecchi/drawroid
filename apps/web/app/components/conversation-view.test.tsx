@@ -177,7 +177,7 @@ describe('ConversationView', () => {
         canStop: false,
       }),
     );
-    stream.emit({ type: 'status', status: 'job.paused' });
+    stream.emit({ type: 'job.held', jobId: JOB, held: true });
 
     expect(screen.getByText('海を描いて')).toBeTruthy();
     expect(screen.getByText('ジョブを作った')).toBeTruthy();

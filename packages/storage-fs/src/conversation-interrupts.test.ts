@@ -357,7 +357,7 @@ describe('a human message while the job of the conversation is running', () => {
     expect(await stoppedReason(jobs, jobId)).toBe('limit:iterations');
   });
 
-  it('streams job.paused while the job waits, and never writes it to the files', async () => {
+  it('streams job.held while the job waits and when it is released, and never writes it to the files', async () => {
     const judging = blocking(judge, (n) => n === 0);
     const { say, talk, conversationId, jobRunner, submit, received } = await setup({
       judge: judging.script,
@@ -368,22 +368,21 @@ describe('a human message while the job of the conversation is running', () => {
     await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
 
     await say('待って');
-    await vi.waitFor(() =>
-      expect(
-        received.some(
-          (m) => m.kind === 'live' && m.event.type === 'status' && m.event.status === 'job.paused',
-        ),
-      ).toBe(true),
-    );
+    const heldFlags = () =>
+      received.flatMap((m) =>
+        m.kind === 'live' && m.event.type === 'job.held' ? [m.event.held] : [],
+      );
+    await vi.waitFor(() => expect(heldFlags()).toEqual([true]));
     await talk.interrupt(conversationId, 'turn');
     await within(talk.idle(conversationId));
     await within(jobRunner.idle());
+    expect(heldFlags()).toEqual([true, false]);
 
     const dir = join(root, 'conversations', conversationId, 'events');
     const files = await readdir(dir);
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      expect(await readFile(join(dir, file), 'utf8')).not.toContain('job.paused');
+      expect(await readFile(join(dir, file), 'utf8')).not.toContain('job.held');
     }
     expect(
       received.some((m) => m.kind === 'confirmed' && m.event.type === ('status' as never)),

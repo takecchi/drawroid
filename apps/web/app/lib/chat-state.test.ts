@@ -292,6 +292,46 @@ describe('streaming parts', () => {
   });
 });
 
+describe('held jobs', () => {
+  const heldOn = (state: ChatState, jobId = JOB) =>
+    live(state, { type: 'job.held', jobId, held: true });
+  const heldOff = (state: ChatState, jobId = JOB) =>
+    live(state, { type: 'job.held', jobId, held: false });
+
+  it('keeps the wait through waiting-llm, text deltas and the turn ending', () => {
+    let state = heldOn(EMPTY_CHAT_STATE);
+    expect(kinds(state)).toEqual(['held']);
+
+    state = live(state, { type: 'status', status: 'waiting-llm' });
+    expect(kinds(state)).toEqual(['status', 'held']);
+
+    state = live(state, { type: 'delta.text', partId: 'm1', turn: 1, text: 'は' });
+    expect(kinds(state)).toEqual(['assistant', 'held']);
+
+    state = confirmAll([{ type: 'turn.ended', turn: 1, outcome: 'done' }], state);
+    expect(kinds(state)).toEqual(['held']);
+  });
+
+  it('clears when held: false arrives', () => {
+    expect(kinds(heldOff(heldOn(EMPTY_CHAT_STATE)))).toEqual([]);
+  });
+
+  it('clears when that job stops', () => {
+    const state = confirmAll(
+      [{ type: 'job.stopped', jobId: JOB, reason: { kind: 'human', detail: '' } }],
+      heldOn(EMPTY_CHAT_STATE),
+    );
+    expect(kinds(state)).toEqual(['job-stopped']);
+    expect(chatItems(state).some((item) => item.kind === 'held')).toBe(false);
+  });
+
+  it('stays while another job is still held', () => {
+    const state = heldOff(heldOn(heldOn(EMPTY_CHAT_STATE), 'other'));
+    expect(kinds(state)).toEqual(['held']);
+    expect(kinds(heldOff(state, 'other'))).toEqual([]);
+  });
+});
+
 describe('isRunning', () => {
   it('is running while a turn is open or a job has not stopped', () => {
     const turn = confirmAll([{ type: 'turn.started', turn: 1, messageSeqs: [] }]);

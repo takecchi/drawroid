@@ -230,28 +230,32 @@ export function relayJobReasoning(deps: {
 
 /**
  * ジョブの実行器の onLlmStagesHeld に渡す。会話に属するジョブの LLM の段が待たされ始めたら、その会話へ
- * 確定しない status: job.paused を流す（ファイルには書かない。話す役のターンが終わると、ハブがこの写しを捨てる）。
+ * 確定しない job.held（held: true）を流し、解けたら held: false を流す（ファイルには書かない。ハブは待っている間だけ写しに残す）。
  */
 export function relayJobHeld(deps: {
   store: JobStore;
   hubs: ConversationHubs;
   onError?: (error: unknown) => void;
 }): (jobId: string, held: boolean) => void {
-  const holding = new Set<string>();
-  return (jobId, held) => {
-    if (!held) {
-      holding.delete(jobId);
-      return;
+  const conversations = new Map<string, Promise<string | undefined>>();
+  const conversationOf = (jobId: string) => {
+    let found = conversations.get(jobId);
+    if (found === undefined) {
+      found = deps.store
+        .readJob(jobId)
+        .then((spec) => (spec.kind === 'auto' ? spec.conversationId : undefined));
+      conversations.set(jobId, found);
     }
-    holding.add(jobId);
-    deps.store
-      .readJob(jobId)
-      .then((spec) => {
-        // 引いている間に解けていたら流さない: 古い job.paused を残さないため
-        if (!holding.has(jobId)) return;
-        if (spec.kind === 'auto' && spec.conversationId !== undefined) {
-          deps.hubs.get(spec.conversationId).live({ type: 'status', status: 'job.paused' });
-        }
+    return found;
+  };
+  // 届いた順に流す: 会話を引く間に解けても、held: true のあとに held: false が届くように
+  let chain: Promise<void> = Promise.resolve();
+  return (jobId, held) => {
+    chain = chain
+      .then(async () => {
+        const conversationId = await conversationOf(jobId);
+        if (conversationId === undefined) return;
+        deps.hubs.get(conversationId).live({ type: 'job.held', jobId, held });
       })
       .catch((error: unknown) => deps.onError?.(error));
   };

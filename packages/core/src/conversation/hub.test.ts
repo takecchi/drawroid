@@ -266,3 +266,51 @@ describe('the copy given to a new subscriber', () => {
     ]);
   });
 });
+
+describe('ConversationHub job.held', () => {
+  const held = (jobId: string, value: boolean): LiveEvent => ({
+    type: 'job.held',
+    jobId,
+    held: value,
+  });
+  const heldMessages = (received: HubMessage[]) =>
+    received.flatMap((m) => (m.kind === 'live' && m.event.type === 'job.held' ? [m.event] : []));
+
+  it('hands the wait to a subscriber who joins while the job is held, per job', async () => {
+    const { hub } = await setup();
+    hub.live(held('a', true));
+    hub.live(held('b', true));
+
+    const late = collector();
+    await hub.subscribe(0, late.send);
+
+    expect(heldMessages(late.received)).toEqual([held('a', true), held('b', true)]);
+  });
+
+  it('drops the wait from the copy when released, and still tells the open screens', async () => {
+    const { hub } = await setup();
+    const open = collector();
+    await hub.subscribe(0, open.send);
+    hub.live(held('a', true));
+    hub.live(held('a', false));
+
+    expect(heldMessages(open.received)).toEqual([held('a', true), held('a', false)]);
+    const late = collector();
+    await hub.subscribe(0, late.send);
+    expect(heldMessages(late.received)).toEqual([]);
+  });
+
+  it('keeps the wait through the turn ending and drops it when the job stops', async () => {
+    const { hub } = await setup();
+    hub.live(held('a', true));
+    await hub.confirm({ type: 'turn.ended', turn: 1, outcome: 'done' });
+    const afterTurn = collector();
+    await hub.subscribe(0, afterTurn.send);
+    expect(heldMessages(afterTurn.received)).toEqual([held('a', true)]);
+
+    await hub.confirm({ type: 'job.stopped', jobId: 'a', reason: { kind: 'human', detail: '' } });
+    const afterStop = collector();
+    await hub.subscribe(0, afterStop.send);
+    expect(heldMessages(afterStop.received)).toEqual([]);
+  });
+});

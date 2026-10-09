@@ -79,7 +79,9 @@ export type ChatItem =
       steps?: number;
       etaMs?: number;
     }
-  | { kind: 'status'; key: string; status: ChatStatus };
+  | { kind: 'status'; key: string; status: ChatStatus }
+  /** 人間の発言を聞くあいだ、ジョブを待たせている（status と寿命が違うので別の行にする） */
+  | { kind: 'held'; key: string };
 
 type ItemOf<K extends ChatItem['kind']> = Extract<ChatItem, { kind: K }>;
 
@@ -96,6 +98,8 @@ export interface ChatState {
   live: Map<string, LivePart>;
   progress: Map<string, ProgressEvent>;
   status: ChatStatus | undefined;
+  /** 待たされているジョブ。空でない間は「話を聞いています」を出す */
+  held: Set<string>;
 }
 
 export const EMPTY_CHAT_STATE: ChatState = {
@@ -103,6 +107,7 @@ export const EMPTY_CHAT_STATE: ChatState = {
   live: new Map(),
   progress: new Map(),
   status: undefined,
+  held: new Set(),
 };
 
 export function lastSeq(state: ChatState): number {
@@ -126,6 +131,7 @@ export function applyConfirmed(state: ChatState, event: ConversationEvent): Chat
   const confirmed = [...state.confirmed, event].sort((a, b) => a.seq - b.seq);
   const live = new Map(state.live);
   const progress = new Map(state.progress);
+  const held = new Set(state.held);
   let status = state.status;
 
   switch (event.type) {
@@ -163,6 +169,7 @@ export function applyConfirmed(state: ChatState, event: ConversationEvent): Chat
     }
     case 'job.stopped':
       progress.delete(event.jobId);
+      held.delete(event.jobId);
       for (const [partId, part] of live) {
         if (
           part.source !== undefined &&
@@ -176,7 +183,7 @@ export function applyConfirmed(state: ChatState, event: ConversationEvent): Chat
     default:
       break;
   }
-  return { confirmed, live, progress, status };
+  return { confirmed, live, progress, status, held };
 }
 
 /** 確定しない増分を1件取り込む。本文と思考は継ぎ足す（増分で届くため） */
@@ -209,6 +216,12 @@ export function applyLive(state: ChatState, event: LiveEvent): ChatState {
     }
     case 'status':
       return { ...state, status: event.status };
+    case 'job.held': {
+      const held = new Set(state.held);
+      if (event.held) held.add(event.jobId);
+      else held.delete(event.jobId);
+      return { ...state, held };
+    }
   }
 }
 
@@ -424,6 +437,7 @@ export function chatItems(state: ChatState): ChatItem[] {
   }
   if (state.status !== undefined)
     items.push({ kind: 'status', key: 'status', status: state.status });
+  if (state.held.size > 0) items.push({ kind: 'held', key: 'held' });
   return items;
 }
 
@@ -437,5 +451,11 @@ export function isRunning(state: ChatState): boolean {
     if (event.type === 'job.started') jobs.add(event.jobId);
     if (event.type === 'job.stopped') jobs.delete(event.jobId);
   }
-  return turnOpen || jobs.size > 0 || state.live.size > 0 || state.status !== undefined;
+  return (
+    turnOpen ||
+    jobs.size > 0 ||
+    state.live.size > 0 ||
+    state.status !== undefined ||
+    state.held.size > 0
+  );
 }
