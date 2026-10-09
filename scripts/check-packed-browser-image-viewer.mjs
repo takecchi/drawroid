@@ -5,6 +5,8 @@
 // 4. 狭い画面（390×844）でも、窓と画像が画面の中に収まり、横にはみ出さない。横へなぞると次の画像へ送る
 // 5. ジョブの詳細の画像も、同じ窓で大きく見られる
 // 6. 窓の中で、見る役の点と言葉が読め、お気に入り・却下と「この画像で決める」が使える（画像の枡と同じ口）
+// 7. 人が会話で添えた画像は、発言の行に縮小版で並び（読み上げではどの発言のものか分かる名前）、狭い画面でも横にはみ出さず、
+//    押すと同じ窓で大きく見られ、閉じると焦点がその縮小版へ戻る
 // 会話は、組み立てた @drawroid/storage-fs で置き場所へ直に書いてから起動する（画像を生成せずに画像の行を作るため）。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -110,6 +112,46 @@ async function seed(root) {
   return { conversationId, jobId: job.jobId };
 }
 
+/**
+ * 人が画像を2枚添えた発言だけの会話を、置き場所へ直に書く（大きさの違う画像で、縮小版の枡に収まるかも見る）
+ * @param {string} root データディレクトリ
+ * @returns {Promise<string>} 会話 ID
+ */
+async function seedAttached(root) {
+  const storage = await import(join(repoRoot, 'packages/storage-fs/dist/index.js'));
+  const sharp = createRequire(join(repoRoot, 'packages/storage-fs/package.json'))('sharp');
+  const conversations = new storage.FsConversationStore(root);
+  const { conversationId } = await conversations.createConversation(new Date());
+  const uploadIds = [];
+  for (const [width, height] of [
+    [1200, 400],
+    [300, 900],
+  ]) {
+    const png = await sharp({
+      create: { width, height, channels: 3, background: { r: 200, g: 120, b: 60 } },
+    })
+      .png()
+      .toBuffer();
+    uploadIds.push(
+      await conversations.addUpload(
+        conversationId,
+        { data: new Uint8Array(png), mediaType: 'image/png' },
+        new Date(),
+      ),
+    );
+  }
+  await conversations.appendEvent(
+    conversationId,
+    {
+      type: 'user.message',
+      text: 'この2枚の雰囲気で描いて',
+      attachments: uploadIds.map((uploadId) => ({ uploadId })),
+    },
+    new Date(),
+  );
+  return conversationId;
+}
+
 const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-packed-viewer-'));
 /** @type {import('node:child_process').ChildProcess | undefined} */
 let child;
@@ -121,6 +163,7 @@ try {
   const bin = await packAndInstall(work);
   const dataDir = join(work, 'data');
   const { conversationId, jobId } = await seed(dataDir);
+  const attachedId = await seedAttached(dataDir);
   // 偽の Forge に繋ぐ: 画面はバックエンドの状態を読むので、繋がらない先だと 502 がコンソールに出るため
   forge = await startFakeForge({ fixturesDir: FIXTURES, genMs: 0 });
   const port = await freePort();
@@ -223,6 +266,58 @@ try {
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     expect(true, `${label}: ジョブの詳細の画像も、同じ窓で大きく見られる`);
+
+    // 人が会話で添えた画像は、発言の行に縮小版で並ぶ
+    await page.goto(`${base}/conversations/${attachedId}`);
+    const attached = page.getByRole('list', { name: '添えた画像（2 枚）' });
+    await attached.waitFor();
+    const second = page.getByRole('button', {
+      name: '大きく見る: 添えた画像 2 枚目（「この2枚の雰囲気で描いて」）',
+    });
+    await page
+      .getByRole('button', {
+        name: '大きく見る: 添えた画像 1 枚目（「この2枚の雰囲気で描いて」）',
+      })
+      .waitFor();
+    await second.waitFor();
+    expect(true, `${label}: 添えた画像は、どの発言のものか分かる名前の縮小版で並ぶ`);
+    // 縮小版が読み込まれ、決まった枡に収まり、画面から横にはみ出さない
+    await page.waitForFunction(`(() => {
+      const images = [...document.querySelectorAll('[aria-label="添えた画像（2 枚）"] img')];
+      return images.length === 2 && images.every((img) => img.complete && img.naturalWidth > 0);
+    })()`);
+    const thumbnails = await page.evaluate(`(() => {
+      const images = [...document.querySelectorAll('[aria-label="添えた画像（2 枚）"] img')];
+      return JSON.stringify({
+        sizes: images.map((img) => { const r = img.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }),
+        inside: images.every((img) => { const r = img.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }),
+        noScroll: document.documentElement.scrollWidth <= innerWidth,
+      });
+    })()`);
+    const { sizes, inside, noScroll } = JSON.parse(String(thumbnails));
+    expect(
+      sizes.every(/** @param {number[]} s */ (s) => s[0] === 64 && s[1] === 64) &&
+        inside &&
+        noScroll,
+      `${label}: 添えた画像の縮小版は、縦長も横長も同じ枡に収まり、横にはみ出さない（${String(thumbnails)}）`,
+    );
+    await second.click();
+    await page.getByRole('dialog', { name: /添えた画像 2 枚目/ }).waitFor();
+    expect(true, `${label}: 添えた画像も、押すと同じ窓で大きく見られる`);
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({ state: 'detached' });
+    await page
+      .waitForFunction(
+        `document.activeElement?.getAttribute("aria-label")?.startsWith("大きく見る: 添えた画像 2 枚目")`,
+        null,
+        { timeout: 5_000 },
+      )
+      .catch(() => undefined);
+    const backTo = await page.evaluate('document.activeElement?.getAttribute("aria-label")');
+    expect(
+      String(backTo).startsWith('大きく見る: 添えた画像 2 枚目'),
+      `${label}: 閉じると、焦点は添えた画像の縮小版へ戻る（${String(backTo)}）`,
+    );
 
     expect(
       problems.length === 0,
