@@ -48,7 +48,15 @@ export function json(status: number, body: unknown): MockHandler {
 }
 
 // txt2img の応答の形は api.py の text2imgapi と processing.py の Processed.js に合わせた。画像は中身の無い PNG を枚数ぶん返す
-export const fakeTxt2img: MockHandler = (req, res) => {
+export const fakeTxt2img: MockHandler = (req, res) => fakeGeneration()(req, res);
+
+// 生成の応答を作る。imageOf を渡すと、n 番目（0 始まり）の生成が返す画像をそれで決める。渡さなければ全部 STUB_PNG
+function fakeGeneration(imageOf?: (n: number) => Uint8Array): MockHandler {
+  let n = 0;
+  return (req, res) => respondWithImage(req, res, imageOf === undefined ? STUB_PNG : imageOf(n++));
+}
+
+function respondWithImage(req: RecordedRequest, res: ServerResponse, image: Uint8Array): void {
   const body = JSON.parse(req.body) as { batch_size?: number; seed?: number };
   const batchSize = body.batch_size ?? 1;
   const firstSeed = body.seed === undefined || body.seed === -1 ? 123456 : body.seed;
@@ -60,20 +68,24 @@ export const fakeTxt2img: MockHandler = (req, res) => {
     index_of_first_image: 0,
   };
   json(200, {
-    images: allSeeds.map(() => Buffer.from(STUB_PNG).toString('base64')),
+    images: allSeeds.map(() => Buffer.from(image).toString('base64')),
     parameters: body,
     info: JSON.stringify(info),
   })(req, res);
-};
+}
 
 // 試験のための偽の Forge。雛形（fixtures/）の応答を返し、受けた要求を記録する
-export async function startMockForge(): Promise<MockForge> {
+// generatedImage を渡すと、txt2img と img2img を通した n 番目（0 始まり）の生成が、その画像を返す
+export async function startMockForge({
+  generatedImage,
+}: { generatedImage?: (n: number) => Uint8Array } = {}): Promise<MockForge> {
   const routes = new Map<string, MockHandler>(
     Object.entries(FIXTURE_ROUTES).map(([key, file]) => [key, json(200, fixture(file))]),
   );
-  routes.set('POST /sdapi/v1/txt2img', fakeTxt2img);
+  const generation = generatedImage === undefined ? fakeTxt2img : fakeGeneration(generatedImage);
+  routes.set('POST /sdapi/v1/txt2img', generation);
   // img2img の応答は txt2img と同じ形（modules/api/models.py の ImageToImageResponse）
-  routes.set('POST /sdapi/v1/img2img', fakeTxt2img);
+  routes.set('POST /sdapi/v1/img2img', generation);
   routes.set('POST /sdapi/v1/interrupt', json(200, {}));
   const requests: RecordedRequest[] = [];
   const server = createServer((req, res) => {
