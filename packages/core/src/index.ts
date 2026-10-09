@@ -155,3 +155,4 @@ export {
   type DistillOperation,
   type DistillOutput,
 } from './memory/distill/schema.js';
+export * from './loop/stop-parse.js';
