@@ -1,5 +1,6 @@
 import { formatImageKey, LLM_NOT_CONFIGURED_REASON, type SelectionVerdict } from '@drawroid/core';
 import {
+  conversationUploadUrl,
   isApiError,
   jobImageUrls,
   setSelection,
@@ -264,7 +265,8 @@ function ConversationImageViewer({
   stoppedJobs,
   chosenImages,
 }: {
-  images: readonly (ViewerImage & { source: ViewerSource })[];
+  /** source が無いのは、人が会話で添えた画像（塗ることも選ぶこともできない） */
+  images: readonly (ViewerImage & { source?: ViewerSource })[];
   viewing: string | null;
   onViewingChange: (key: string | null) => void;
   stoppedJobs: ReadonlySet<string>;
@@ -275,7 +277,10 @@ function ConversationImageViewer({
   const painted =
     paintingKey === null || paintingKey !== viewing
       ? undefined
-      : images.find((image) => image.key === paintingKey);
+      : images.find(
+          (image): image is ViewerImage & { source: ViewerSource } =>
+            image.key === paintingKey && image.source !== undefined,
+        );
   const painting = useMaskPainting(
     painted === undefined
       ? undefined
@@ -610,31 +615,59 @@ const viewerKeyOf = (jobId: string, imageKey: string) => `${jobId}:${imageKey}`;
 
 type ViewerSource = { jobId: string; iteration: number; image: ChatImage };
 
+/** 人の発言に添えた画像を、大きく見る窓の1枚にする（窓の中に評価や選ぶボタンは出さない） */
+function attachedViewerImage(
+  conversationId: string,
+  message: Extract<ChatItem, { kind: 'user' }>,
+  uploadId: string,
+  index: number,
+): ViewerImage {
+  const url = conversationUploadUrl(conversationId, uploadId);
+  // 発言の頭を添える: 読み上げで、どの発言に添えた画像かを、ほかの発言のものと聞き分けられるように
+  const said = message.text.length > 12 ? `${message.text.slice(0, 12)}…` : message.text;
+  const title = `添えた画像 ${index + 1} 枚目`;
+  return {
+    key: `upload:${uploadId}`,
+    src: url,
+    fullSrc: url,
+    title,
+    alt: said === '' ? title : `${title}（「${said}」）`,
+  };
+}
+
 /** 会話に出た画像を、出た順（回の順・番の順）に並べる。大きく見る窓の送りはこの順に進む */
-function viewerImagesOf(items: readonly ChatItem[]): (ViewerImage & { source: ViewerSource })[] {
+function viewerImagesOf(
+  items: readonly ChatItem[],
+  conversationId: string,
+): (ViewerImage & { source?: ViewerSource })[] {
   return items.flatMap((item) =>
-    item.kind !== 'images'
-      ? []
-      : item.images.map((image) => {
-          const urls = jobImageUrls(item.jobId, item.iteration, image.index);
-          const title = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
-          return {
-            key: viewerKeyOf(
-              item.jobId,
-              formatImageKey({ iteration: item.iteration, index: image.index }),
-            ),
-            src: urls.url,
-            fullSrc: urls.url,
-            title,
-            alt: `${title}（seed ${image.seed ?? '不明'}）`,
-            source: { jobId: item.jobId, iteration: item.iteration, image },
-          };
-        }),
+    item.kind === 'user'
+      ? item.attachments.map((uploadId, index) =>
+          attachedViewerImage(conversationId, item, uploadId, index),
+        )
+      : item.kind !== 'images'
+        ? []
+        : item.images.map((image) => {
+            const urls = jobImageUrls(item.jobId, item.iteration, image.index);
+            const title = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
+            return {
+              key: viewerKeyOf(
+                item.jobId,
+                formatImageKey({ iteration: item.iteration, index: image.index }),
+              ),
+              src: urls.url,
+              fullSrc: urls.url,
+              title,
+              alt: `${title}（seed ${image.seed ?? '不明'}）`,
+              source: { jobId: item.jobId, iteration: item.iteration, image },
+            };
+          }),
   );
 }
 
 function renderItem(
   item: ChatItem,
+  conversationId: string,
   resend: { onResend: (text: string) => void; disabled: boolean },
   /** 止まったジョブ。その画像は「採る」を押せない */
   stoppedJobs: ReadonlySet<string>,
@@ -669,14 +702,33 @@ function renderItem(
             )
           }
         >
-          {item.attachments === 0 ? (
+          {item.attachments.length === 0 ? (
             item.text
           ) : (
             <>
               {item.text}
-              <span className="mt-1 block text-xs opacity-80">
-                画像を {item.attachments} 枚添えた
-              </span>
+              <ul
+                aria-label={`添えた画像（${item.attachments.length} 枚）`}
+                className="mt-2 flex flex-wrap gap-2"
+              >
+                {item.attachments.map((uploadId, index) => {
+                  const image = attachedViewerImage(conversationId, item, uploadId, index);
+                  return (
+                    <li key={uploadId}>
+                      {/* 縮小版は決まった大きさの枡に収める: 読み込む前から背を取り、上の行の読み込みで下が押し下げられないように */}
+                      <button
+                        type="button"
+                        data-viewer-key={image.key}
+                        aria-label={`大きく見る: ${image.alt}`}
+                        onClick={() => open(image.key)}
+                        className="block size-16 cursor-zoom-in overflow-hidden rounded-md bg-muted"
+                      >
+                        <img src={image.src} alt={image.alt} className="size-full object-cover" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </>
           )}
         </MessageRow>
@@ -914,6 +966,7 @@ export function ConversationView({
           <LogRow key={item.key} {...rowEstimate(item)}>
             {renderItem(
               item,
+              conversationId,
               { onResend: resend, disabled: sending },
               stoppedJobs,
               chosenImages,
@@ -924,10 +977,13 @@ export function ConversationView({
         rowCache.current.set(item, { sending, row });
         return row;
       }),
-    [items, resend, sending, stoppedJobs, chosenImages],
+    [items, conversationId, resend, sending, stoppedJobs, chosenImages],
   );
 
-  const viewerImages = useMemo(() => viewerImagesOf(items), [items]);
+  const viewerImages = useMemo(
+    () => viewerImagesOf(items, conversationId),
+    [items, conversationId],
+  );
   const last = items.at(-1);
   return (
     <>
