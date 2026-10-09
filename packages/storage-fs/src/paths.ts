@@ -54,10 +54,14 @@ function jobFiles(dir: string) {
   const llmCalls = join(dir, 'llm-calls');
   const interventions = join(dir, 'interventions');
   const refs = join(dir, 'refs');
+  const selections = join(dir, 'selections');
   return {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
+    selections,
+    /** 回の画像1枚への人間の最終選択（お気に入り・却下） */
+    selection: (imageKey: string) => join(selections, `${imageKey}.json`),
     refs,
     /** 人間が添えた参照画像（原寸） */
     ref: (refId: string, ext: string) => join(refs, `${refId}.${ext}`),
