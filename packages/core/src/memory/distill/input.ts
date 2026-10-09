@@ -29,6 +29,8 @@ export type StoppedJobMaterial = {
   stopReason: { kind: string; detail: string };
   interventions: readonly InterventionMaterial[];
   selections: readonly SelectionMaterial[];
+  /** ジョブを作った会話での、そのジョブに関わる人間の発言（古い順）。会話に属さないジョブには無い */
+  conversation?: readonly InterventionMaterial[];
 };
 
 /** 止まった後に選択が変わったときの、小さな蒸留の材料 */
@@ -130,6 +132,38 @@ function interventionSections(
     .map((i) => ({ name: `intervention[${i.id}]`, text: `口出し: ${i.text}` }));
 }
 
+// 会話での発言は、口出しと同じく新しいものから予算に入れる: 会話は長くなりうるので、件数と文字数で締める
+function conversationSections(
+  w: SectionWriter,
+  messages: readonly InterventionMaterial[],
+  budget: DistillBudget,
+): Section[] {
+  const clipped = messages.map((message, index) => ({
+    id: message.id,
+    index,
+    text: w.clip(`message[${message.id}]`, message.text, budget.messageChars),
+  }));
+  const packed = packWithinBudget(clipped, {
+    size: (m) => [...m.text].length,
+    compare: (a, b) => b.index - a.index,
+    limits: budget.messages,
+  });
+  for (const { item, reason } of packed.dropped) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `message[${item.id}]`,
+      reason:
+        reason === 'count'
+          ? '会話での発言の件数の予算に入らない'
+          : '会話での発言の文字数の予算に入らない',
+    });
+  }
+  const kept = new Set(packed.included);
+  return clipped
+    .filter((m) => kept.has(m))
+    .map((m) => ({ name: `message[${m.id}]`, text: `会話での人間の発言: ${m.text}` }));
+}
+
 function memorySection(item: MemoryItem): Section {
   const tags = item.tags.length === 0 ? '' : `・${item.tags.join(', ')}`;
   return {
@@ -212,6 +246,7 @@ export function buildStoppedJobDistillInput(args: {
   recordMemoryDrops(w, selected.droppedByBudget, budget.memory);
   const optional = [
     ...interventionSections(w, material.interventions, budget),
+    ...conversationSections(w, material.conversation ?? [], budget),
     ...selectionSections(w, material.selections, budget),
     // 既存の項目を最後に置く: 入力の上限で削るときは、学ぶ材料より先に削る
     ...selected.selected.map(memorySection),

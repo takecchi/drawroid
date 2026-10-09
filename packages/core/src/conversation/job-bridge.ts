@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { GenerationRequest, GenerationResult } from '../backend.js';
 import type { JobStore, NewJobSpec, StageName } from '../job/store.js';
-import type { JobState } from '../job/types.js';
+import type { AutoJobSpec, JobState, StopReason } from '../job/types.js';
 import { iterationPlanSchema } from '../think/excluded.js';
 import type { NewConversationEvent } from './events.js';
 import type { ConversationHubs } from './hub.js';
@@ -20,6 +20,69 @@ const judgeStageSchema = z.object({
   canStop: z.boolean(),
   reasoning: z.string().optional(),
 });
+
+/**
+ * ジョブの段の中身から、会話のイベントを組む。橋渡しと起動時の書き足しで、同じ形のイベントにするため
+ */
+export const jobEvents = {
+  started(spec: AutoJobSpec): NewConversationEvent {
+    return {
+      type: 'job.started',
+      jobId: spec.jobId,
+      request: spec.request,
+      stopConditions: spec.stopConditions,
+      ...(spec.permissions !== undefined && { permissions: spec.permissions }),
+    };
+  },
+  think(jobId: string, iteration: number, value: unknown, plan: unknown): NewConversationEvent {
+    const think = thinkStageSchema.parse(value);
+    const parsedPlan = iterationPlanSchema.safeParse(plan);
+    return {
+      type: 'job.think',
+      jobId,
+      iteration,
+      rationale: think.rationale,
+      params: think.params,
+      excluded: parsedPlan.success ? parsedPlan.data.excluded : [],
+      ...(think.reasoning === undefined ? {} : { reasoning: think.reasoning }),
+    };
+  },
+  images(
+    jobId: string,
+    iteration: number,
+    images: readonly { seed: number | null }[],
+  ): NewConversationEvent {
+    return {
+      type: 'job.images',
+      jobId,
+      iteration,
+      images: images.map((image, index) => ({ index, seed: image.seed })),
+    };
+  },
+  judge(jobId: string, iteration: number, value: unknown): NewConversationEvent {
+    const judge = judgeStageSchema.parse(value);
+    return {
+      type: 'job.judge',
+      jobId,
+      iteration,
+      images: judge.images.map((image, index) => ({ index, ...image })),
+      nextChange: judge.nextChange,
+      canStop: judge.canStop,
+      ...(judge.reasoning === undefined ? {} : { reasoning: judge.reasoning }),
+    };
+  },
+  intervention(
+    jobId: string,
+    interventionId: string,
+    kind: string,
+    iteration: number,
+  ): NewConversationEvent {
+    return { type: 'job.intervention', jobId, interventionId, kind, iteration };
+  },
+  stopped(jobId: string, reason: StopReason): NewConversationEvent {
+    return { type: 'job.stopped', jobId, reason };
+  },
+};
 
 /**
  * ジョブの置き場所を包み、会話に属するジョブの段が書けたら、その会話のイベント（job.*）を確定する。
@@ -59,13 +122,7 @@ export function bridgeJobEvents(
       const created = await inner.createJob(spec, state, now, references);
       if (created.kind === 'auto') {
         conversations.set(created.jobId, created.conversationId ?? null);
-        await emit(created.jobId, async () => ({
-          type: 'job.started',
-          jobId: created.jobId,
-          request: created.request,
-          stopConditions: created.stopConditions,
-          ...(created.permissions !== undefined && { permissions: created.permissions }),
-        }));
+        await emit(created.jobId, async () => jobEvents.started(created));
       }
       return created;
     },
@@ -73,35 +130,12 @@ export function bridgeJobEvents(
     async writeStage(jobId: string, iteration: number, stage: StageName, value: unknown) {
       await inner.writeStage(jobId, iteration, stage, value);
       if (stage === 'think') {
-        await emit(jobId, async () => {
-          const think = thinkStageSchema.parse(value);
-          const plan = iterationPlanSchema.safeParse(
-            await inner.readStage(jobId, iteration, 'plan'),
-          );
-          return {
-            type: 'job.think',
-            jobId,
-            iteration,
-            rationale: think.rationale,
-            params: think.params,
-            excluded: plan.success ? plan.data.excluded : [],
-            ...(think.reasoning === undefined ? {} : { reasoning: think.reasoning }),
-          };
-        });
+        await emit(jobId, async () =>
+          jobEvents.think(jobId, iteration, value, await inner.readStage(jobId, iteration, 'plan')),
+        );
       }
       if (stage === 'judge') {
-        await emit(jobId, async () => {
-          const judge = judgeStageSchema.parse(value);
-          return {
-            type: 'job.judge',
-            jobId,
-            iteration,
-            images: judge.images.map((image, index) => ({ index, ...image })),
-            nextChange: judge.nextChange,
-            canStop: judge.canStop,
-            ...(judge.reasoning === undefined ? {} : { reasoning: judge.reasoning }),
-          };
-        });
+        await emit(jobId, async () => jobEvents.judge(jobId, iteration, value));
       }
     },
 
@@ -112,12 +146,7 @@ export function bridgeJobEvents(
       result: GenerationResult,
     ) {
       await inner.writeGeneration(jobId, iteration, request, result);
-      await emit(jobId, async () => ({
-        type: 'job.images',
-        jobId,
-        iteration,
-        images: result.images.map((image, index) => ({ index, seed: image.seed })),
-      }));
+      await emit(jobId, async () => jobEvents.images(jobId, iteration, result.images));
     },
 
     async markInterventionApplied(jobId: string, interventionId: string, iteration: number) {
@@ -127,20 +156,14 @@ export function bridgeJobEvents(
           (intervention) => intervention.interventionId === interventionId,
         );
         if (taken === undefined) return undefined;
-        return {
-          type: 'job.intervention',
-          jobId,
-          interventionId,
-          kind: taken.kind,
-          iteration,
-        };
+        return jobEvents.intervention(jobId, interventionId, taken.kind, iteration);
       });
     },
 
     async writeState(jobId: string, state: JobState) {
       await inner.writeState(jobId, state);
       if (state.status === 'stopped') {
-        await emit(jobId, async () => ({ type: 'job.stopped', jobId, reason: state.reason }));
+        await emit(jobId, async () => jobEvents.stopped(jobId, state.reason));
       }
     },
   };
