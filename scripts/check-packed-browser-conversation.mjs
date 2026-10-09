@@ -382,6 +382,8 @@ try {
     .count();
   const stoppedBefore = await log.getByText('人が画像を選んだ').count();
   const cutBefore = relay.stats.judgeCut;
+  // 6. で選んだジョブの行にも「選んだ」が出ているので、数で見る（文言だけで1つに絞ると、6. の行と取り違える）
+  const chosenBefore = await page.getByText('この画像で決めた（選んだ）').count();
   relay.holdJudge();
   await say('夕焼けの犬を描いて');
   await until(() => relay?.stats.judgeHeld === 2, '見る役の返事を止める');
@@ -390,7 +392,7 @@ try {
     .last();
   await adoptButton.click();
   await page.getByRole('button', { name: '決める: 1 回目の画像 1 番', exact: true }).click();
-  await page.getByText('この画像で決めた（選んだ）').waitFor();
+  await page.getByText('この画像で決めた（選んだ）').nth(chosenBefore).waitFor();
   await log
     .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
     .nth(adoptedBefore)

@@ -9,6 +9,7 @@ import {
   GenerationProgress,
   ImageRow,
   JobStartCard,
+  ImageViewer,
   JudgeNote,
   LogRow,
   MessageRow,
@@ -18,6 +19,7 @@ import {
   StopNotice,
   ThinkNote,
   ToolCallCard,
+  type ViewerImage,
 } from '@drawroid/ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
@@ -131,12 +133,15 @@ function ImagesItem({
   item,
   stopped,
   chosenImages,
+  open,
 }: {
   item: Extract<ChatItem, { kind: 'images' }>;
   /** ジョブが止まった。採る（この画像で決める）は押せない */
   stopped: boolean;
   /** 人が選んだ画像（<jobId>:<回>-<画像>） */
   chosenImages: ReadonlySet<string>;
+  /** 画像を大きく見る窓で開く（窓の画像の key） */
+  open: (viewerKey: string) => void;
 }) {
   // 選択は今の API（selections）から読む: 会話のイベントには選択を写さないため
   const { data } = useSelections(item.jobId);
@@ -155,11 +160,14 @@ function ImagesItem({
         const verdict = verdicts.get(imageKey) ?? null;
         // 1 から数える: 人が選んだ回の表示（「N 回目の画像 M 番」）と同じ呼び方にするため
         const imageLabel = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
+        const viewerKey = viewerKeyOf(item.jobId, imageKey);
         return {
           key: imageKey,
           href: urls.url,
           src: urls.previewUrl,
           alt: `${imageLabel}（seed ${image.seed ?? '不明'}）`,
+          viewerKey,
+          onOpen: () => open(viewerKey),
           score: image.score === undefined ? undefined : formatScore(image.score),
           issues: image.issues,
           verdict,
@@ -239,6 +247,31 @@ function rowEstimate(item: ChatItem): { estimate: number; wideEstimate: number }
   }
 }
 
+/** 会話の中で画像を見分ける key（ジョブが違えば同じ回・番でも別の画像） */
+const viewerKeyOf = (jobId: string, imageKey: string) => `${jobId}:${imageKey}`;
+
+/** 会話に出た画像を、出た順（回の順・番の順）に並べる。大きく見る窓の送りはこの順に進む */
+function viewerImagesOf(items: readonly ChatItem[]): ViewerImage[] {
+  return items.flatMap((item) =>
+    item.kind !== 'images'
+      ? []
+      : item.images.map((image) => {
+          const urls = jobImageUrls(item.jobId, item.iteration, image.index);
+          const title = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
+          return {
+            key: viewerKeyOf(
+              item.jobId,
+              formatImageKey({ iteration: item.iteration, index: image.index }),
+            ),
+            src: urls.url,
+            fullSrc: urls.url,
+            title,
+            alt: `${title}（seed ${image.seed ?? '不明'}）`,
+          };
+        }),
+  );
+}
+
 function renderItem(
   item: ChatItem,
   resend: { onResend: (text: string) => void; disabled: boolean },
@@ -246,6 +279,8 @@ function renderItem(
   stoppedJobs: ReadonlySet<string>,
   /** 人が選んだ画像（<jobId>:<回>-<画像>） */
   chosenImages: ReadonlySet<string>,
+  /** 画像を大きく見る窓で開く */
+  open: (viewerKey: string) => void,
 ): ReactNode {
   switch (item.kind) {
     case 'user':
@@ -339,6 +374,7 @@ function renderItem(
           item={item}
           stopped={stoppedJobs.has(item.jobId)}
           chosenImages={chosenImages}
+          open={open}
         />
       );
     case 'judge':
@@ -471,6 +507,8 @@ export function ConversationView({
   // 行が変わらなければ、前に作った行の要素をそのまま渡す: 同じ要素なら React はその行を描き直さない。
   // 書きかけの増分のたびに、確定した数千行まで描き直すと、長い会話で増分1回が重くなるため（確定した行は chatItems が同じオブジェクトで返す）。
   // ジョブが止まった・画像が選ばれたは確定したイベントで届き、そのとき確定した行は作り直される（使い回されない）ので、ここでは見なくてよい
+  // 大きく見ている画像（窓の画像の key）。setViewing は変わらない関数なので、行の使い回しを崩さない
+  const [viewing, setViewing] = useState<string | null>(null);
   const rowCache = useRef(new WeakMap<ChatItem, { sending: boolean; row: ReactNode }>());
   const rows = useMemo(
     () =>
@@ -479,7 +517,13 @@ export function ConversationView({
         if (cached !== undefined && cached.sending === sending) return cached.row;
         const row = (
           <LogRow key={item.key} {...rowEstimate(item)}>
-            {renderItem(item, { onResend: resend, disabled: sending }, stoppedJobs, chosenImages)}
+            {renderItem(
+              item,
+              { onResend: resend, disabled: sending },
+              stoppedJobs,
+              chosenImages,
+              setViewing,
+            )}
           </LogRow>
         );
         rowCache.current.set(item, { sending, row });
@@ -488,39 +532,43 @@ export function ConversationView({
     [items, resend, sending, stoppedJobs, chosenImages],
   );
 
+  const viewerImages = useMemo(() => viewerImagesOf(items), [items]);
   const last = items.at(-1);
   return (
-    <ChatLayout
-      header={title}
-      status={currentStatus(chat)}
-      log={
-        <ChatLog
-          rowCount={items.length}
-          followKey={`${items.length}:${last?.kind === 'assistant' || last?.kind === 'reasoning' ? last.text.length : ''}`}
-        >
-          <SetupNotice />
-          {error !== undefined && <ErrorNote>会話を読めない: {error}</ErrorNote>}
-          {loaded && items.length === 0 && (
-            <Muted className="py-12 text-center">
-              描いてほしいものや、聞きたいことを書いてください。
-            </Muted>
-          )}
-          {rows}
-        </ChatLog>
-      }
-      composer={
-        <ChatComposer
-          value={draft}
-          onChange={setDraft}
-          onSend={() => void send(draft)}
-          onStop={() => void stop()}
-          running={running}
-          sending={sending}
-          notice={
-            sendError === undefined ? undefined : <ErrorNote>送れない: {sendError}</ErrorNote>
-          }
-        />
-      }
-    />
+    <>
+      <ImageViewer images={viewerImages} openKey={viewing} onOpenKeyChange={setViewing} />
+      <ChatLayout
+        header={title}
+        status={currentStatus(chat)}
+        log={
+          <ChatLog
+            rowCount={items.length}
+            followKey={`${items.length}:${last?.kind === 'assistant' || last?.kind === 'reasoning' ? last.text.length : ''}`}
+          >
+            <SetupNotice />
+            {error !== undefined && <ErrorNote>会話を読めない: {error}</ErrorNote>}
+            {loaded && items.length === 0 && (
+              <Muted className="py-12 text-center">
+                描いてほしいものや、聞きたいことを書いてください。
+              </Muted>
+            )}
+            {rows}
+          </ChatLog>
+        }
+        composer={
+          <ChatComposer
+            value={draft}
+            onChange={setDraft}
+            onSend={() => void send(draft)}
+            onStop={() => void stop()}
+            running={running}
+            sending={sending}
+            notice={
+              sendError === undefined ? undefined : <ErrorNote>送れない: {sendError}</ErrorNote>
+            }
+          />
+        }
+      />
+    </>
   );
 }

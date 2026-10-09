@@ -69,11 +69,17 @@ export function ImageCard({
   alt,
   verdict,
   caption,
+  onOpen,
+  viewerKey,
   children,
 }: {
   href: string;
   src: string;
   alt: string;
+  /** 渡すと、画像は「大きく見る」ボタンになる（画面の中の窓で開く）。渡さなければ原寸への link */
+  onOpen?: () => void;
+  /** 大きく見る窓を閉じたとき、焦点を戻す先の目印（ImageViewer の key と同じ値） */
+  viewerKey?: string;
   verdict?: ImageVerdict | null;
   caption?: ReactNode;
   children?: ReactNode;
@@ -86,12 +92,25 @@ export function ImageCard({
         verdict === 'favorite' && 'border-ok ring-1 ring-ok',
         verdict === 'rejected' && 'opacity-60',
         // 塗る間は上の縮小版を隠す: 塗る所に同じ画像が大きく出ており、2枚並ぶと縦に長くなるだけのため
-        'has-[canvas]:col-span-full [&:has(canvas)>a]:hidden',
+        'has-[canvas]:col-span-full [&:has(canvas)>a]:hidden [&:has(canvas)>button]:hidden',
       )}
     >
-      <a href={href} className="block">
-        <img src={src} alt={alt} className="block h-auto w-full rounded-md bg-muted" />
-      </a>
+      {onOpen === undefined ? (
+        <a href={href} className="block">
+          <img src={src} alt={alt} className="block h-auto w-full rounded-md bg-muted" />
+        </a>
+      ) : (
+        <button
+          type="button"
+          data-viewer-key={viewerKey}
+          aria-label={`大きく見る: ${alt}`}
+          onClick={onOpen}
+          className="block w-full cursor-zoom-in rounded-md"
+        >
+          {/* 画像の alt は残す: ボタンの名前は aria-label が決めるので二重には読まれず、画像そのものの説明として残すため */}
+          <img src={src} alt={alt} className="block h-auto w-full rounded-md bg-muted" />
+        </button>
+      )}
       {caption !== undefined && (
         <figcaption className="space-y-1 text-xs text-muted-foreground">{caption}</figcaption>
       )}

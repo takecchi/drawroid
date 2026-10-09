@@ -8,5 +8,6 @@ export * from './components/app-shell';
 export * from './components/features/record';
 export * from './components/features/status-badge';
 export * from './components/features/empty-state';
+export * from './components/features/image-viewer';
 export * from './components/features/chat';
 export { cn } from './lib/utils';
