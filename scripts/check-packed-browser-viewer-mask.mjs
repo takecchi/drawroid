@@ -6,6 +6,8 @@
 // 5. 閉じるボタンは、塗りかけを捨てて閉じる。開き直すと、塗る前の窓に戻る
 // 6. 狭い画面（390×844）でも広い画面でも、塗る面と送るボタンが画面の中に収まり、はみ出さない
 // 7. ジョブの詳細の人間の指示にも、塗ったマスクが、画像を 1 から数えた名前で出る
+// 8. 会話のログは、末尾にいる間は「新しい行」の印を出さない。上を読んでいる間に行が増えたら、ログの見えている下端に印を出す。
+//    印はログの背を変えず、印の帯の後ろの行は押せる。印を押すと末尾へ戻る
 // 偽の LLM と偽の Forge は check-packed-conversation の部品（scripts/packed-conversation/）を使う。ジョブは回を重ね続けるようにして、塗る間も止めない。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -267,8 +269,41 @@ try {
       `${label}: 末尾にいる間は、行が増えても「新しい行」の印を出さず、末尾を追う`,
     );
     await page.mouse.wheel(0, -3_000);
+    // 見えるまで待つだけにしない: playwright の visible は大きさがあれば通り、画面の外に置かれた印でも通るため
     await marker.waitFor();
-    expect(true, `${label}: 上を読んでいる間に行が増えたら、「新しい行」の印を出す`);
+    const placed =
+      /** @type {{ marker: { top: number; bottom: number }; log: { top: number; bottom: number }; extra: number; behind: boolean }} */ (
+        await page.evaluate(`(() => {
+        const log = document.querySelector('[role="log"]');
+        const content = log.firstElementChild;
+        const button = log.querySelector('[aria-label="新しい行へ"]');
+        const marker = button.getBoundingClientRect();
+        // 背に足された分: 中身より背が高ければ、印がログの背を変えている（人がスクロールしたかの判定が狂う）
+        const contentTop =
+          content.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
+        const extra = log.scrollHeight - (contentTop + content.offsetHeight);
+        // 印と同じ高さで、ボタンの外（中身の左端の近く）を押したときに当たる要素。印の帯ではなく、後ろの行に当たる
+        const hit = document.elementFromPoint(
+          content.getBoundingClientRect().left + 8,
+          marker.top + marker.height / 2,
+        );
+        return {
+          marker: marker.toJSON(),
+          log: log.getBoundingClientRect().toJSON(),
+          extra,
+          behind: hit !== null && content.contains(hit),
+        };
+      })()`)
+      );
+    expect(
+      placed.marker.top >= placed.log.top && placed.marker.bottom <= placed.log.bottom,
+      `${label}: 上を読んでいる間に行が増えたら、「新しい行」の印を、ログの見えている下端に出す（印 ${Math.round(placed.marker.top)}〜${Math.round(placed.marker.bottom)}・ログ ${Math.round(placed.log.top)}〜${Math.round(placed.log.bottom)}）`,
+    );
+    expect(
+      Math.abs(placed.extra) <= 1,
+      `${label}: 「新しい行」の印は、ログの背を変えない（中身より ${placed.extra}px）`,
+    );
+    expect(placed.behind, `${label}: 「新しい行」の印の帯の、ボタンの外は、後ろの行を押せる`);
     await marker.click();
     await page.waitForFunction(`(() => { const b = document.querySelector('[role="log"]');
       return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`);
