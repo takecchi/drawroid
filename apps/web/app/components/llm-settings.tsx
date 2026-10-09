@@ -71,7 +71,7 @@ function RoleFields({
             aria-label={`${label}の provider`}
             className="w-56"
           >
-            {provider === '' && (
+            {true && (
               <option value="" disabled>
                 {providerNames.length === 0 ? '先に provider を定義する' : '選ぶ'}
               </option>
