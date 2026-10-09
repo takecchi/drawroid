@@ -12,6 +12,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@drawroid/ui/shadcn';
 import { useState } from 'react';
 
+import { formatDuration } from '../lib/format';
+
 export type LlmCallSummary = LlmCallsResponse['calls'][number];
 export type LlmUsageRow = LlmCallsResponse['byIteration'][number];
 
@@ -76,7 +78,7 @@ export function LlmCallList({ jobId, calls }: { jobId: string; calls: LlmCallSum
         {calls.map((call) => (
           <Item key={call.callId} className="block">
             {call.purpose} / {call.model} / 入力 {tokens(call.usage.inputTokens)} トークン / 出力{' '}
-            {tokens(call.usage.outputTokens)} トークン / {call.durationMs} ms /{' '}
+            {tokens(call.usage.outputTokens)} トークン / {formatDuration(call.durationMs)} /{' '}
             {call.ok ? '成功' : '失敗'} / {call.attempts} 回試行
             <CallDetails jobId={jobId} callId={call.callId} />
           </Item>
@@ -91,7 +93,7 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
     <Section title="LLM の合計">
       <p className="text-sm">
         {total.calls} 回 / 入力 {tokens(total.inputTokens)} トークン / 出力{' '}
-        {tokens(total.outputTokens)} トークン / {total.durationMs} ms
+        {tokens(total.outputTokens)} トークン / {formatDuration(total.durationMs)}
       </p>
       <Table>
         <TableHeader>
@@ -100,7 +102,7 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
             <TableHead>呼び出し</TableHead>
             <TableHead>入力トークン</TableHead>
             <TableHead>出力トークン</TableHead>
-            <TableHead>時間 (ms)</TableHead>
+            <TableHead>時間</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -112,7 +114,7 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
               <TableCell>{row.calls}</TableCell>
               <TableCell>{tokens(row.inputTokens)}</TableCell>
               <TableCell>{tokens(row.outputTokens)}</TableCell>
-              <TableCell>{row.durationMs}</TableCell>
+              <TableCell>{formatDuration(row.durationMs)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

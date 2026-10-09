@@ -1,4 +1,13 @@
-import { Button, ErrorNote, Field, FieldSet, Input, Item, ItemList } from '@drawroid/ui';
+import {
+  Button,
+  ErrorNote,
+  Field,
+  FieldSet,
+  FilePicker,
+  Input,
+  Item,
+  ItemList,
+} from '@drawroid/ui';
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 
 import {
@@ -52,12 +61,14 @@ export function ReferenceAttacher({
   return (
     <FieldSet legend={`参照画像（${MAX_REFERENCES_PER_REQUEST} 枚まで）`}>
       <Field label="参照画像を選ぶ">
-        <Input
-          type="file"
+        {/* 選んだ名前は添えた一覧から出す: 選び直すたびに input を空へ戻すので、input の側は最後の1回ぶんしか知らないため */}
+        <FilePicker
           multiple
           accept={REFERENCE_MEDIA_TYPES.join(',')}
           disabled={disabled}
           onChange={pick}
+          buttonLabel="画像を選ぶ"
+          selected={items.map((item) => item.file.name)}
         />
       </Field>
       {refusals.map((reason) => (

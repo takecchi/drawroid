@@ -12,6 +12,7 @@ import {
   Field,
   FieldRow,
   FieldSet,
+  FilePicker,
   Input,
   Item,
   ItemList,
@@ -87,6 +88,9 @@ export const Form: Story = {
             </Field>
           </FieldRow>
         </FieldSet>
+        <Field label="参照画像を選ぶ">
+          <FilePicker multiple accept="image/png,image/jpeg,image/webp" buttonLabel="画像を選ぶ" />
+        </Field>
         <Button type="submit" variant="primary">
           生成する
         </Button>
