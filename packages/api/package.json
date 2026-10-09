@@ -25,6 +25,7 @@
   "devDependencies": {
     "@drawroid/storage-fs": "workspace:*",
     "@types/node": "catalog:",
+    "sharp": "^0.35.5",
     "typescript": "catalog:",
     "vitest": "^5.0.0"
   }

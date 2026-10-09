@@ -1,0 +1,10 @@
+{
+  "txt2img": ["prompt matrix", "x/y/z plot", "controlnet", "lora", "never oom integrated"],
+  "img2img": [
+    "img2img alternative test",
+    "x/y/z plot",
+    "controlnet",
+    "lora",
+    "never oom integrated"
+  ]
+}

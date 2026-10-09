@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BACKEND_FEATURES,
+  CANDIDATE_KIND_FEATURE,
   CANDIDATE_KINDS,
   candidateSchema,
   generationRequestSchema,
@@ -17,7 +18,7 @@ export interface ContractBackend {
 }
 
 export interface ImageBackendContractTarget {
-  // 正常に繋がるバックエンド。候補は種類ごとに1件以上持たせること
+  // 正常に繋がるバックエンド。使える機能の候補は、種類ごとに1件以上持たせること
   connected(): Promise<ContractBackend>;
   // 繋がらないバックエンド（落ちている・ポートが違う）
   unreachable(): Promise<ContractBackend>;
@@ -61,13 +62,38 @@ export function describeImageBackendContract(
       });
     });
 
-    it('lists candidates of every kind', async () => {
+    it('reports limits as positive whole numbers when it reports them', async () => {
       await withBackend(target.connected, async (backend) => {
+        const { limits } = await backend.probe();
+        for (const value of Object.values(limits ?? {})) {
+          expect(Number.isInteger(value) && value > 0).toBe(true);
+        }
+      });
+    });
+
+    it('lists candidates of every kind whose feature is available', async () => {
+      await withBackend(target.connected, async (backend) => {
+        const unavailable = new Set((await backend.probe()).unavailable.map((u) => u.feature));
         for (const kind of CANDIDATE_KINDS) {
           const candidates = await backend.listCandidates(kind);
-          expect(candidates.length, kind).toBeGreaterThan(0);
+          const feature = CANDIDATE_KIND_FEATURE[kind];
+          if (feature === undefined || !unavailable.has(feature)) {
+            expect(candidates.length, kind).toBeGreaterThan(0);
+          }
           for (const candidate of candidates) candidateSchema.parse(candidate);
         }
+      });
+    });
+
+    it('refuses to generate when the content of a referenced image is not passed', async () => {
+      await withBackend(target.connected, async (backend) => {
+        const withSource = generationRequestSchema.parse({
+          ...request,
+          img2img: { image: 'iterations/0001/images/0.png', denoisingStrength: 0.5 },
+        });
+        await expect(
+          backend.generate(withSource, new AbortController().signal, new Map()),
+        ).rejects.toMatchObject({ name: 'BackendError', kind: 'failed' });
       });
     });
 

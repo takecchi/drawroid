@@ -492,6 +492,22 @@ describe('FsJobStore sent marks', () => {
   });
 });
 
+describe('FsJobStore iterations', () => {
+  it('lists iteration numbers in numeric order, past the tenth', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.listIterations(a.jobId)).toEqual([]);
+    for (const iteration of [10, 2, 1, 11]) {
+      await jobs.writeStage(a.jobId, iteration, 'think', {});
+    }
+    const iterations = dataPaths(root).jobFiles(a.jobId).iterations;
+    await writeFile(join(iterations, `${TEMP_FILE_PREFIX}9`), '');
+    await writeFile(join(iterations, 'notes'), '');
+
+    expect(await jobs.listIterations(a.jobId)).toEqual([1, 2, 10, 11]);
+  });
+});
+
 describe('FsJobStore LLM call records', () => {
   it('puts job calls under the job and other calls at the top level, listing them in order', async () => {
     const jobs = store();
@@ -504,6 +520,27 @@ describe('FsJobStore LLM call records', () => {
     expect((await jobs.listLlmCalls(null)).map((r) => r.callId)).toEqual(['0001-parse']);
     await stat(join(root, 'jobs', a.jobId, 'llm-calls', '0001.json'));
     await stat(join(root, 'llm-calls', '0001-parse.json'));
+  });
+
+  it('lists readable records and reports the broken ones with a reason', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
+    await jobs.writeLlmCall(record('0001', a.jobId));
+    const dir = dataPaths(root).jobFiles(a.jobId).llmCalls;
+    await writeFile(join(dir, '0002.json'), '{ not json');
+    await writeFile(join(dir, '0003.json'), JSON.stringify({ callId: '0003' }));
+    await jobs.writeLlmCall(record('0004', a.jobId));
+    // 合計に使う欄はそろっているが、一覧が読む outcome が無い
+    await writeFile(
+      join(dir, '0005.json'),
+      JSON.stringify({ ...record('0005', a.jobId), outcome: undefined }),
+    );
+
+    const { records, invalid } = await jobs.listLlmCallRecords(a.jobId);
+
+    expect(records.map((r) => r.callId)).toEqual(['0001', '0004']);
+    expect(invalid.map((i) => i.callId)).toEqual(['0002', '0003', '0005']);
+    expect(invalid.every((i) => i.reason.length > 0)).toBe(true);
   });
 
   it('returns no records for a job that has made no call', async () => {

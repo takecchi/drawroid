@@ -34,7 +34,6 @@ import {
   buildThinkOutputSchema,
   type JudgeOutput,
   type ThinkOutput,
-  type ThinkParamKey,
 } from './schemas.js';
 import {
   checkStopAtBoundary,
@@ -42,6 +41,16 @@ import {
   hasAnyStopCondition,
   readStopConditions,
 } from './stop.js';
+import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
+import type { Permissions } from '../permissions/permission.js';
+import { buildParamsSchema } from '../think/params-schema.js';
+
+// M2 の allowed を #15 の許可の形に直す。M4 の許可の設定を runner につなぐまでのつなぎ（4-7a で置き換える）
+function permissionsAllowing(allowed: readonly ParamKey[]): Permissions {
+  return Object.fromEntries(
+    PARAM_KEYS.map((key) => [key, allowed.includes(key) ? { mode: 'auto' } : { mode: 'off' }]),
+  ) as Permissions;
+}
 
 /** AI に任せていないパラメータの値（M2 では解像度など） */
 export type GenerationDefaults = {
@@ -58,7 +67,7 @@ export type JobRunnerDeps = {
   backend: ImageBackend;
   budget: Budget;
   /** 考える役が決めてよいパラメータ */
-  allowed: readonly ThinkParamKey[];
+  allowed: readonly ParamKey[];
   defaults: GenerationDefaults;
   /** 1回の「考える」に載せる人間の指示の上限。省けば既定値 */
   interventionLimits?: InterventionLimits;
@@ -312,9 +321,11 @@ export class JobRunner {
       interventions: plan,
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
-      schema: buildThinkOutputSchema(allowed, budget, {
-        withInterventions: plan.included.length > 0,
-      }),
+      schema: buildThinkOutputSchema(
+        buildParamsSchema(permissionsAllowing(allowed), { shown: {}, budget }),
+        budget,
+        { withInterventions: plan.included.length > 0 },
+      ),
       signal,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
@@ -368,7 +379,7 @@ export class JobRunner {
       prompt: p.prompt ?? '',
       negativePrompt: p.negativePrompt ?? defaults.negativePrompt,
       steps: p.steps ?? defaults.steps,
-      cfgScale: p.cfg ?? defaults.cfgScale,
+      cfgScale: p.cfgScale ?? defaults.cfgScale,
       ...(p.seed === undefined || p.seed < 0 ? {} : { seed: p.seed }),
       width: defaults.width,
       height: defaults.height,
