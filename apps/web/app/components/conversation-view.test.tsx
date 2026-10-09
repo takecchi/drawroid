@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
-import { addMask, recheckBackendStatus, setSelection, useJob, useSelections } from '@drawroid/swr';
+import {
+  addMask,
+  adoptImage,
+  recheckBackendStatus,
+  setSelection,
+  useJob,
+  useSelections,
+} from '@drawroid/swr';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -13,6 +20,7 @@ import { ConversationView, type ConversationActions } from './conversation-view'
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   addMask: vi.fn(),
+  adoptImage: vi.fn(),
   recheckBackendStatus: vi.fn(),
   setSelection: vi.fn(),
   useJob: vi.fn(),
@@ -294,12 +302,15 @@ describe('ConversationView', () => {
         reason: { kind: 'human', detail: '人が止めた' },
       }),
     );
+    // 止まると、選んでいない画像の行は採る口から「この画像に決める（お気に入りにする）」に変わる
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^この画像で決める/ })).toHaveProperty(
-        'disabled',
-        true,
-      ),
+      expect(
+        screen.getByRole('button', {
+          name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
+        }),
+      ).toBeTruthy(),
     );
+    expect(screen.queryAllByRole('button', { name: /^この画像で決める/ })).toHaveLength(0);
   });
 
   it('reads the backend again once when a job stops because the backend failed', async () => {
@@ -642,7 +653,7 @@ describe('ConversationView', () => {
     ).toBeTruthy();
   });
 
-  it('in the large view, does not let a stopped job be settled, and shows the chosen image as chosen', async () => {
+  it('in the large view, lets a stopped job be settled through the favorite only, and shows the chosen image as chosen', async () => {
     const { source, stream } = fakeSource([]);
     const { user } = renderView(source);
     await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
@@ -675,10 +686,18 @@ describe('ConversationView', () => {
 
     await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 2 番/ }));
     const second = within(screen.getByRole('dialog', { name: /2 回目の画像 2 番/ }));
+    // 止まったジョブは採る口を受けないので、止まりのカードと同じく「この画像に決める（お気に入りにする）」になる。押せない理由は出さない
     expect(
-      second.getByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
-    ).toHaveProperty('disabled', true);
-    expect(second.getByText('描くのはもう止まっているので、決められない')).toBeTruthy();
+      second.queryByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
+    ).toBeNull();
+    expect(second.queryByText(/決められない/)).toBeNull();
+    await user.click(
+      second.getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 2 回目の画像 2 番',
+      }),
+    );
+    expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
+    expect(adoptImage).not.toHaveBeenCalled();
 
     await user.click(second.getByRole('button', { name: '前の画像' }));
     const first = within(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ }));
