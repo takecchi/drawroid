@@ -2,6 +2,7 @@ import type { ZodType } from 'zod';
 
 import type { GenerationRequest, ImageBackend } from '../backend.js';
 import { BackendError } from '../backend-error.js';
+import type { GenerationProgressPort } from '../conversation/generation-progress.js';
 import type { AnyImageRef, ImageRef, JobStore, ReferenceImageRef } from '../job/store.js';
 import {
   stopConditionsChangeSchema,
@@ -144,6 +145,8 @@ export type JobRunnerDeps = {
   onLlmStagesHeld?: (jobId: string, held: boolean) => void;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
+  /** 省けば進み具合を流さない。会話に属するジョブの生成を待つ間だけ、会話へ流す */
+  generationProgress?: GenerationProgressPort;
   /**
    * 考える役・見る役が自分で出す思考の増分を受ける。画面に流すためで、次の入力には戻さない。
    * 確定した思考は、段の出力（think.json・judge.json）の reasoning に残す
@@ -944,6 +947,13 @@ export class JobRunner {
       throw new StopJob({ kind: 'error', detail: `生成の要求を組む段: ${messageOf(error)}` });
     }
     let result;
+    // 進み具合は「生成を待っている間」にしか取れない。JobStore を包む橋渡し（F）はファイルの書き込みの写しなので、ここは表せず、generate の前後に置く
+    const polling = await this.deps.generationProgress?.start({
+      jobId: spec.jobId,
+      conversationId: spec.conversationId,
+      iteration,
+      signal,
+    });
     try {
       result = await backend.generate(request, signal, images);
     } catch (error) {
@@ -953,6 +963,8 @@ export class JobRunner {
         detail: `生成の段: ${messageOf(error)}`,
         ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
       });
+    } finally {
+      await polling?.stop();
     }
     signal.throwIfAborted();
     await store.writeGeneration(

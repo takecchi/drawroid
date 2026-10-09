@@ -13,6 +13,7 @@ import {
   ConversationHubs,
   conversationMessagesFor,
   createDrawingTools,
+  createGenerationProgress,
   createMemoryTools,
   createReadOnlyTools,
   DEFAULT_BUDGET,
@@ -121,6 +122,8 @@ async function main() {
   const readPermissions = createPermissionReader(() => readPermissionSettings(configPath), log);
   // 起動のときに一度読む: 読めない行があれば、ジョブを待たずにログで知らせる
   await readPermissions();
+  const progressPreviews = new ProgressPreviews();
+  const generationProgressSettings = createGenerationProgressSettings(configPath);
   const autoQueue = new AutoJobQueue({
     store,
     backend,
@@ -134,6 +137,16 @@ async function main() {
       distillLog: createFsDistillLog(root),
       conversationMessages: conversationMessagesFor(conversationStore),
     },
+    generationProgress: createGenerationProgress({
+      backend,
+      hubs: conversationHubs,
+      previews: progressPreviews,
+      settings: () => generationProgressSettings.read(),
+      onError: (error) =>
+        log(
+          `drawroid: 生成の進み具合を読めなかった（生成は続ける）: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    }),
     // 会話に属するジョブの、考える役・見る役の思考の増分を、その会話へ流す
     onReasoning: relayJobReasoning({ store, hubs: conversationHubs }),
     // 話す役のターンがジョブの LLM の段を待たせている間、会話へ確定しない job.paused を流す
@@ -252,8 +265,8 @@ async function main() {
       autoQueue,
       reselection,
       budgetSettings,
-      progressPreviews: new ProgressPreviews(),
-      generationProgressSettings: createGenerationProgressSettings(configPath),
+      progressPreviews,
+      generationProgressSettings,
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,
