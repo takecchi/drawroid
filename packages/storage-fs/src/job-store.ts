@@ -8,7 +8,9 @@ import {
   isReferenceImageRef,
   jobSpecSchema,
   jobStateSchema,
+  parseImageKey,
   referenceRecordSchema,
+  selectionRecordSchema,
   type AnyImageRef,
   type GenerationRequest,
   type GenerationResult,
@@ -24,6 +26,7 @@ import {
   type PreviewImage,
   type ReferenceImageRef,
   type ReferenceRecord,
+  type SelectionRecord,
   type StageName,
   type StoredGeneration,
 } from '@drawroid/core';
@@ -401,6 +404,33 @@ export class FsJobStore implements JobStore {
     if (previous !== undefined)
       throw new ImageAlreadySentError(this.imageKey(image), previous.callId);
     await writeJsonAtomic(path, { callId, sentAt: now.toISOString() });
+  }
+
+  async writeSelection(jobId: string, selection: SelectionRecord): Promise<void> {
+    const parsed = selectionRecordSchema.parse(selection);
+    const files = this.jobFiles(jobId);
+    await mkdir(files.selections, { recursive: true });
+    await writeJsonAtomic(this.selectionPath(jobId, parsed.imageKey), parsed);
+  }
+
+  async readSelection(jobId: string, imageKey: string): Promise<SelectionRecord | undefined> {
+    const path = this.selectionPath(jobId, imageKey);
+    if (!(await exists(path))) return undefined;
+    return readValid(path, selectionRecordSchema);
+  }
+
+  async listSelections(jobId: string): Promise<SelectionRecord[]> {
+    const dir = this.jobFiles(jobId).selections;
+    const names = (await listNames(dir)).filter((name) => name.endsWith('.json'));
+    const records: SelectionRecord[] = [];
+    for (const name of names) records.push(await readValid(join(dir, name), selectionRecordSchema));
+    return records;
+  }
+
+  // 画像キーの形かを確かめてからパスを組む: 外から来たキーでジョブのディレクトリの外を指させないため
+  private selectionPath(jobId: string, imageKey: string): string {
+    if (parseImageKey(imageKey) === undefined) throw new Error(`画像キーの形ではない: ${imageKey}`);
+    return this.jobFiles(jobId).selection(imageKey);
   }
 
   async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {

@@ -160,3 +160,4 @@ export * from './intervention/intervention.js';
 export * from './intervention/plan.js';
 export * from './loop/stop-parse.js';
 export * from './reference/reference.js';
+export * from './selection/selection.js';

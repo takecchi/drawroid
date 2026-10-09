@@ -14,6 +14,7 @@ import { llmSettingsRoutes } from './routes/llm-settings.js';
 import { llmCallsRoutes } from './routes/llm-calls.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
 import { memoryRoutes } from './routes/memory.js';
+import { selectionsRoutes } from './routes/selections.js';
 import { stopConditionsRoutes } from './routes/stop-conditions.js';
 
 export {
@@ -43,6 +44,7 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs/auto', stopConditionsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))
     .route('/memory', memoryRoutes(deps))
+    .route('/jobs', selectionsRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps))
     .onError(handleUncaught);
