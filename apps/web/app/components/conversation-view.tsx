@@ -136,7 +136,10 @@ function describeParams(params: Record<string, unknown>): string[] {
   );
 }
 
-function renderItem(item: ChatItem, onResend: (text: string) => void): ReactNode {
+function renderItem(
+  item: ChatItem,
+  resend: { onResend: (text: string) => void; disabled: boolean },
+): ReactNode {
   switch (item.kind) {
     case 'user':
       return (
@@ -152,8 +155,12 @@ function renderItem(item: ChatItem, onResend: (text: string) => void): ReactNode
               : item.turnInterrupted
           }
           action={
-            item.turnInterrupted === undefined ? undefined : (
-              <Button className="h-6 px-2 text-xs" onClick={() => onResend(item.text)}>
+            item.turnInterrupted === undefined || item.resent === true ? undefined : (
+              <Button
+                className="h-6 px-2 text-xs"
+                disabled={resend.disabled}
+                onClick={() => resend.onResend(item.text)}
+              >
                 送り直す
               </Button>
             )
@@ -316,7 +323,9 @@ export function ConversationView({
               描いてほしいものや、聞きたいことを書いてください。
             </Muted>
           )}
-          {items.map((item) => renderItem(item, (text) => void send(text)))}
+          {items.map((item) =>
+            renderItem(item, { onResend: (text) => void send(text), disabled: sending }),
+          )}
         </ChatLog>
       }
       composer={

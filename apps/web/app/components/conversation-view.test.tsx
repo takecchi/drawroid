@@ -319,6 +319,40 @@ describe('ConversationView', () => {
     expect(given.send).toHaveBeenCalledWith('続きを描いて', expect.any(String));
   });
 
+  it('lets a cut-off message be resent only once', async () => {
+    const events = [
+      confirmed({ type: 'user.message', text: '続きを描いて', attachments: [] }),
+      confirmed({ type: 'turn.started', turn: 1, messageSeqs: [1] }),
+      confirmed({
+        type: 'turn.ended',
+        turn: 1,
+        outcome: 'interrupted',
+        reason: 'プロセスの再起動',
+      }),
+    ];
+    const { source, stream } = fakeSource([{ events, last: 3, more: false }]);
+    let finishSending = () => {};
+    const given = actions();
+    given.send.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishSending = resolve;
+      }),
+    );
+    const { user } = renderView(source, given);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    await user.click(await screen.findByRole('button', { name: '送り直す' }));
+    expect((screen.getByRole('button', { name: '送り直す' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    await act(async () => finishSending());
+    stream.emit(confirmed({ type: 'user.message', text: '続きを描いて', attachments: [] }));
+
+    expect(screen.queryByRole('button', { name: '送り直す' })).toBeNull();
+    expect(screen.getByText('プロセスの再起動')).toBeTruthy();
+    expect(given.send).toHaveBeenCalledTimes(1);
+  });
+
   it('closes the subscription when the screen goes away', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);
