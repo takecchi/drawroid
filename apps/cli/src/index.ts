@@ -4,9 +4,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  activeJobOfConversation,
   backfillJobEvents,
   bridgeJobEvents,
   closeInterruptedTurns,
+  relayJobHeld,
   relayJobReasoning,
   ConversationHubs,
   conversationMessagesFor,
@@ -134,6 +136,15 @@ async function main() {
     },
     // 会話に属するジョブの、考える役・見る役の思考の増分を、その会話へ流す
     onReasoning: relayJobReasoning({ store, hubs: conversationHubs }),
+    // 話す役のターンがジョブの LLM の段を待たせている間、会話へ確定しない job.paused を流す
+    onLlmStagesHeld: relayJobHeld({
+      store,
+      hubs: conversationHubs,
+      onError: (error) =>
+        log(
+          `drawroid: job.paused を会話へ流せなかった: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    }),
     log,
   });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
@@ -215,6 +226,12 @@ async function main() {
       }),
       ...createMemoryTools({ memory: memoryStore, now: () => new Date() }),
     ],
+    // 会話のジョブ: 発言のあいだ LLM の段を待たせる・人間の中断（all）で止める
+    jobs: {
+      active: (conversationId) => activeJobOfConversation(store, conversationId),
+      hold: (jobId) => autoQueue.holdLlmStages(jobId),
+      stop: (jobId) => autoQueue.stop(jobId),
+    },
     jobSummary: jobSummaryFor({
       jobs: store,
       chars: async () => (await budgetSettings.read()).effective.talk.jobChars,

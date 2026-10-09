@@ -23,6 +23,7 @@ let hubs: ConversationHubs;
 let beats: (() => void)[];
 /** 話す役の実行器へ知らせた会話 */
 let kicks: string[];
+let interrupts: [string, string][];
 let app: ReturnType<typeof createApi>;
 
 beforeEach(() => {
@@ -30,6 +31,7 @@ beforeEach(() => {
   hubs = new ConversationHubs({ store });
   beats = [];
   kicks = [];
+  interrupts = [];
   const notUsed = () => Promise.reject(new Error('この試験では使わない'));
   app = createApi({
     // 会話の口はジョブとバックエンドを使わない
@@ -55,7 +57,13 @@ beforeEach(() => {
     conversations: {
       store,
       hubs,
-      turns: { kick: (id) => void kicks.push(id) },
+      turns: {
+        kick: (id) => void kicks.push(id),
+        interrupt: async (id, scope) => {
+          interrupts.push([id, scope]);
+          return { turn: true, job: scope === 'all' ? 'job-1' : undefined };
+        },
+      },
       heartbeat: (beat) => {
         beats.push(beat);
         return () => undefined;
@@ -359,15 +367,19 @@ describe('conversations', () => {
     expect(page).toMatchObject({ last: 2, more: true });
   });
 
-  it('accepts an interrupt for the turn or for everything, and refuses any other scope', async () => {
+  it('passes an interrupt for the turn or for everything to the runner, and refuses any other scope', async () => {
     const id = await newConversation();
 
-    expect((await json('POST', `/conversations/${id}/interrupt`, { scope: 'turn' })).status).toBe(
-      202,
-    );
-    expect((await json('POST', `/conversations/${id}/interrupt`, { scope: 'all' })).status).toBe(
-      202,
-    );
+    const turn = await json('POST', `/conversations/${id}/interrupt`, { scope: 'turn' });
+    expect(turn.status).toBe(202);
+    expect(await turn.json()).toEqual({ scope: 'turn', interruptedTurn: true, stoppedJob: null });
+    const all = await json('POST', `/conversations/${id}/interrupt`, { scope: 'all' });
+    expect(all.status).toBe(202);
+    expect(await all.json()).toEqual({ scope: 'all', interruptedTurn: true, stoppedJob: 'job-1' });
+    expect(interrupts).toEqual([
+      [id, 'turn'],
+      [id, 'all'],
+    ]);
     expect((await json('POST', `/conversations/${id}/interrupt`, { scope: 'job' })).status).toBe(
       400,
     );

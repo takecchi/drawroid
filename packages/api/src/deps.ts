@@ -78,7 +78,14 @@ export type ConversationsPort = {
   /** beat を一定の間隔で呼び、止める関数を返す。省けば15秒ごと */
   heartbeat?: (beat: () => void) => () => void;
   /** 発言を受けたことを話す役の実行器へ知らせる。省けば発言を置くだけで、ターンは始めない */
-  turns?: { kick(conversationId: string): void };
+  turns?: {
+    kick(conversationId: string): void;
+    /** 走っているターンを打ち切る。scope が all ならジョブも止める。走っているものが無ければ何もしない */
+    interrupt(
+      conversationId: string,
+      scope: 'turn' | 'all',
+    ): Promise<{ turn: boolean; job: string | undefined }>;
+  };
 };
 
 export type ApiDeps = {

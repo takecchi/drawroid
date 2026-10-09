@@ -75,6 +75,26 @@ describe('buildTalkInput', () => {
     );
   });
 
+  it('puts the text of an interrupted turn into the input, marked as cut off', () => {
+    const cut: ConversationEvent = {
+      ...assistant(1, '考え中です、まず'),
+      interrupted: true,
+    } as ConversationEvent;
+    const messages = buildTalkInput({
+      events: [user('夕焼けを描いて'), cut, user('やっぱり朝焼けで')],
+      messageSeqs: [seq],
+      steps: [],
+      final: false,
+      limits: DEFAULT_TALK_LIMITS,
+      window: DEFAULT_MODEL_WINDOW,
+    });
+
+    const text = textOf(messages);
+    expect(text).toContain('夕焼けを描いて');
+    expect(text).toContain('話す役（途中で打ち切られた）: 考え中です、まず');
+    expect(text).toContain('やっぱり朝焼けで');
+  });
+
   it('never puts the thinking into the input', () => {
     seq = 0;
     const events = [

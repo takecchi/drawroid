@@ -17,6 +17,17 @@ export type TalkRunnerDeps = {
   limits: () => Promise<TalkLimits>;
   /** 会話のジョブの状態の短い文。ジョブが無ければ undefined */
   jobSummary?: (events: readonly ConversationEvent[]) => Promise<string | undefined>;
+  /**
+   * 会話のジョブへの口。省けばジョブには触れない。
+   * - active: 会話の走っている（止まっていない）ジョブ。無ければ undefined
+   * - hold: そのジョブの LLM の段を待たせる。戻り値で解く
+   * - stop: そのジョブを止める（人間の停止）
+   */
+  jobs?: {
+    active(conversationId: string): Promise<string | undefined>;
+    hold(jobId: string): () => void;
+    stop(jobId: string): Promise<void>;
+  };
   now?: () => Date;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
@@ -26,13 +37,35 @@ export type TalkRunnerDeps = {
 /** 話す役の1ステップの結果（記録に残す値） */
 type StepValue = { text: string; toolCalls: { name: string; input: unknown }[] };
 
+/** 走っているターン1つの状態。人間の割り込みの置き場 */
+type ActiveTurn = {
+  /** ターンが始まって、読んだ発言が決まるまでは undefined */
+  readSeqs: Set<number> | undefined;
+  /** 打ち切りが求められた。LLM の出力を待っていれば即座に、ツールの実行中ならツールが終わってから打ち切る */
+  interrupting: boolean;
+  /** いま LLM の出力を待っているなら、その呼び出しの controller */
+  llm: AbortController | undefined;
+  phase: 'llm' | 'tool' | 'other';
+  finished: boolean;
+  done: Promise<void>;
+  finish(): void;
+};
+
+const INTERRUPTED_REASON = '人間の割り込みで打ち切った';
+
 /**
  * 会話の実行器。人間の発言を受けてターンを始め、話す役のステップを、ツールを実行しながら繰り返す。
- * ターンは会話ごとに直列で、走っている間に来た発言は、次のターンでまとめて読む。
+ * ターンは会話ごとに直列。ターンの最中に新しい発言が来たら、LLM の出力を待っていればその呼び出しを打ち切り、
+ * ツールの実行中ならツールが終わってから打ち切って、次のターンで読む。
+ * 会話にジョブが走っていれば、発言を受けてから会話のターンが全部終わるまで、ジョブの LLM の段を待たせる。
  */
 export class TalkRunner {
   private readonly chains = new Map<string, Promise<void>>();
   private readonly running = new Set<string>();
+  private readonly active = new Map<string, ActiveTurn>();
+  /** 会話ごとに待たせているジョブ。ターンが全部終わったら必ず解く */
+  private readonly holds = new Map<string, { jobId: string; release: () => void }>();
+  private readonly holdOps = new Map<string, Promise<void>>();
   private readonly now: () => Date;
   private readonly newCallId: (now: Date) => string;
   private seq = 0;
@@ -49,6 +82,7 @@ export class TalkRunner {
   kick(conversationId: string): void {
     if (this.running.has(conversationId)) {
       this.deps.hubs.get(conversationId).live({ type: 'status', status: 'queued' });
+      void this.noticeNewMessage(conversationId);
     }
     const previous = this.chains.get(conversationId) ?? Promise.resolve();
     const run = previous.then(() => this.drain(conversationId));
@@ -60,6 +94,78 @@ export class TalkRunner {
         );
       }),
     );
+  }
+
+  /**
+   * 人間の中断。走っているターンを打ち切る（LLM の出力を待っていればその呼び出しを abort、ツールの実行中ならツールが終わってから）。
+   * scope が all なら、会話のジョブも止める。走っているものが無ければ何もしない。
+   */
+  async interrupt(
+    conversationId: string,
+    scope: 'turn' | 'all',
+  ): Promise<{ turn: boolean; job: string | undefined }> {
+    const turn = this.active.get(conversationId);
+    if (turn !== undefined) this.requestInterrupt(turn);
+    if (scope === 'turn') return { turn: turn !== undefined, job: undefined };
+    // ツールの実行中なら、ツールが作るジョブも止めるため、ターンが終わってから探す
+    if (turn?.phase === 'tool') await turn.done;
+    const jobs = this.deps.jobs;
+    const job = await jobs?.active(conversationId);
+    if (job !== undefined) await jobs?.stop(job);
+    return { turn: turn !== undefined, job };
+  }
+
+  private requestInterrupt(turn: ActiveTurn): void {
+    turn.interrupting = true;
+    turn.llm?.abort();
+  }
+
+  /** 走っているターンがまだ読んでいない発言が来ていたら、そのターンを打ち切り、ジョブの LLM の段を待たせる */
+  private async noticeNewMessage(conversationId: string): Promise<void> {
+    try {
+      const turn = this.active.get(conversationId);
+      if (turn?.readSeqs === undefined) return;
+      const events = await readAll(this.deps.store, conversationId);
+      const read = new Set(events.flatMap((e) => (e.type === 'turn.started' ? e.messageSeqs : [])));
+      const fresh = events.some((e) => e.type === 'user.message' && !read.has(e.seq));
+      // 読んでいる間にターンが替わっていたら、新しいターンが読むので何もしない
+      if (!fresh || turn.finished || this.active.get(conversationId) !== turn) return;
+      this.requestInterrupt(turn);
+      await this.ensureHold(conversationId);
+    } catch (error) {
+      this.deps.log?.(
+        `drawroid: 会話 ${conversationId} の発言を割り込みにできなかった: ${String(error)}`,
+      );
+    }
+  }
+
+  /** 会話のジョブの LLM の段を、ターンが終わるまで待たせる。同じジョブには重ねない */
+  private ensureHold(conversationId: string): Promise<void> {
+    const jobs = this.deps.jobs;
+    if (jobs === undefined) return Promise.resolve();
+    const op = (this.holdOps.get(conversationId) ?? Promise.resolve()).then(async () => {
+      const jobId = await jobs.active(conversationId);
+      const held = this.holds.get(conversationId);
+      if (jobId === held?.jobId) return;
+      // 新しく待たせてから古いほうを解く: 解けた瞬間に段が動き出さないように
+      const next = jobId === undefined ? undefined : { jobId, release: jobs.hold(jobId) };
+      held?.release();
+      if (next === undefined) this.holds.delete(conversationId);
+      else this.holds.set(conversationId, next);
+    });
+    const safe = op.catch((error: unknown) => {
+      this.deps.log?.(
+        `drawroid: 会話 ${conversationId} のジョブを待たせられなかった: ${String(error)}`,
+      );
+    });
+    this.holdOps.set(conversationId, safe);
+    return safe;
+  }
+
+  private async releaseHold(conversationId: string): Promise<void> {
+    await this.holdOps.get(conversationId);
+    this.holds.get(conversationId)?.release();
+    this.holds.delete(conversationId);
   }
 
   /** 会話のターンが走り終えるまで待つ（試験のため） */
@@ -78,12 +184,38 @@ export class TalkRunner {
         // 走っている間に来た発言を、続けて次のターンで読む
       }
     } finally {
+      // 成功・失敗・打ち切りのどれでも解く
+      await this.releaseHold(conversationId);
       this.running.delete(conversationId);
     }
   }
 
   /** 未読の発言があればターンを1つ回す。回したら true */
   private async runTurn(conversationId: string): Promise<boolean> {
+    let finish = () => {};
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const state: ActiveTurn = {
+      readSeqs: undefined,
+      interrupting: false,
+      llm: undefined,
+      phase: 'other',
+      finished: false,
+      done,
+      finish: () => {
+        state.finished = true;
+        finish();
+      },
+    };
+    this.active.set(conversationId, state);
+    try {
+      return await this.runTurnBody(conversationId, state);
+    } finally {
+      if (this.active.get(conversationId) === state) this.active.delete(conversationId);
+      state.finish();
+    }
+  }
+
+  private async runTurnBody(conversationId: string, state: ActiveTurn): Promise<boolean> {
     const hub = this.deps.hubs.get(conversationId);
     const events = await readAll(this.deps.store, conversationId);
     const read = new Set(events.flatMap((e) => (e.type === 'turn.started' ? e.messageSeqs : [])));
@@ -94,8 +226,13 @@ export class TalkRunner {
     const turn =
       Math.max(0, ...events.flatMap((e) => (e.type === 'turn.started' ? [e.turn] : []))) + 1;
     await hub.confirm({ type: 'turn.started', turn, messageSeqs: unread });
+    state.readSeqs = new Set(unread);
+    // 発言を受けたら、ターンが全部終わるまでジョブの LLM の段を待たせる
+    await this.ensureHold(conversationId);
+    // turn.started を確定する前に届いた発言も、打ち切りにする
+    void this.noticeNewMessage(conversationId);
 
-    const end = (outcome: 'done' | 'error', reason?: string) =>
+    const end = (outcome: 'done' | 'interrupted' | 'error', reason?: string) =>
       hub.confirm({
         type: 'turn.ended',
         turn,
@@ -111,7 +248,8 @@ export class TalkRunner {
     const limits = await this.deps.limits();
     const job = await this.deps.jobSummary?.(events);
     const info = llm.describe('talk');
-    const signal = new AbortController().signal;
+    // ツールには打ち切りを伝えない: 実行中のツールは最後まで走らせる（途中で止めると、ジョブが半分だけできる）
+    const toolSignal = new AbortController().signal;
     const steps: TalkStepRecord[] = [];
     try {
       for (let step = 0; step < limits.maxSteps; step += 1) {
@@ -132,55 +270,72 @@ export class TalkRunner {
         const toolCalls: { callId: string; name: string; input: unknown }[] = [];
         let attempts: LlmAttempt[] = [];
         let failure: string | undefined;
+        if (state.interrupting) {
+          await end('interrupted', INTERRUPTED_REASON);
+          return true;
+        }
         const startedAt = this.now();
         hub.live({ type: 'status', status: 'waiting-llm' });
-        for await (const part of llm.streamStep({
-          role: 'talk',
-          messages,
-          tools: final ? [] : this.deps.tools,
-          signal,
-        })) {
-          switch (part.type) {
-            case 'text-delta':
-              text += part.text;
-              hub.live({ type: 'delta.text', partId: textPart, turn, text: part.text });
-              break;
-            case 'reasoning-delta':
-              reasoning += part.text;
-              hub.live({
-                type: 'delta.reasoning',
-                partId: reasoningPart,
-                source: { role: 'talk', turn },
-                text: part.text,
-              });
-              break;
-            case 'tool-call':
-              toolCalls.push({ callId: part.callId, name: part.name, input: part.input });
-              break;
-            case 'retry':
-              // 出し直す前の応答の増分は捨てる: 画面の写しも空にする
-              text = '';
-              reasoning = '';
-              toolCalls.length = 0;
-              hub.live({ type: 'delta.text', partId: textPart, turn, text: '', replace: true });
-              hub.live({
-                type: 'delta.reasoning',
-                partId: reasoningPart,
-                source: { role: 'talk', turn },
-                text: '',
-                replace: true,
-              });
-              break;
-            case 'finish':
-              attempts = part.attempts;
-              failure = part.failure;
-              break;
+        const controller = new AbortController();
+        state.llm = controller;
+        state.phase = 'llm';
+        try {
+          for await (const part of llm.streamStep({
+            role: 'talk',
+            messages,
+            tools: final ? [] : this.deps.tools,
+            signal: controller.signal,
+          })) {
+            switch (part.type) {
+              case 'text-delta':
+                text += part.text;
+                hub.live({ type: 'delta.text', partId: textPart, turn, text: part.text });
+                break;
+              case 'reasoning-delta':
+                reasoning += part.text;
+                hub.live({
+                  type: 'delta.reasoning',
+                  partId: reasoningPart,
+                  source: { role: 'talk', turn },
+                  text: part.text,
+                });
+                break;
+              case 'tool-call':
+                toolCalls.push({ callId: part.callId, name: part.name, input: part.input });
+                break;
+              case 'retry':
+                // 出し直す前の応答の増分は捨てる: 画面の写しも空にする
+                text = '';
+                reasoning = '';
+                toolCalls.length = 0;
+                hub.live({ type: 'delta.text', partId: textPart, turn, text: '', replace: true });
+                hub.live({
+                  type: 'delta.reasoning',
+                  partId: reasoningPart,
+                  source: { role: 'talk', turn },
+                  text: '',
+                  replace: true,
+                });
+                break;
+              case 'finish':
+                attempts = part.attempts;
+                failure = part.failure;
+                break;
+            }
           }
+        } catch (error) {
+          // 打ち切りのための abort でなければ、ターンの失敗として投げる
+          if (!controller.signal.aborted) throw error;
+        } finally {
+          state.llm = undefined;
+          state.phase = 'other';
         }
+        const aborted = controller.signal.aborted;
         const value: StepValue = {
           text,
           toolCalls: toolCalls.map(({ name, input }) => ({ name, input })),
         };
+        if (aborted) failure ??= INTERRUPTED_REASON;
         const outcome: LlmCallOutcome<StepValue> =
           failure === undefined
             ? { ok: true, value, attempts }
@@ -210,7 +365,18 @@ export class TalkRunner {
           });
         }
         if (text !== '') {
-          await hub.confirm({ type: 'assistant.message', turn, partId: textPart, text });
+          // 打ち切ったときは、流れていた本文を、途中で止まった印つきで確定する
+          await hub.confirm({
+            type: 'assistant.message',
+            turn,
+            partId: textPart,
+            text,
+            ...(aborted && { interrupted: true }),
+          });
+        }
+        if (aborted) {
+          await end('interrupted', INTERRUPTED_REASON);
+          return true;
         }
         if (failure !== undefined) {
           await end('error', failure);
@@ -234,13 +400,21 @@ export class TalkRunner {
           });
           const tool = this.deps.tools.find((t) => t.name === call.name);
           let result: { ok: boolean; result: string; summary: string };
+          state.phase = 'tool';
           try {
             if (tool === undefined) throw new Error(`知らないツール ${call.name}`);
-            result = await tool.run(call.input, { conversationId, turn, events, limits, signal });
+            result = await tool.run(call.input, {
+              conversationId,
+              turn,
+              events,
+              limits,
+              signal: toolSignal,
+            });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             result = { ok: false, result: `失敗した: ${message}`, summary: `失敗した: ${message}` };
           }
+          state.phase = 'other';
           await hub.confirm({
             type: 'tool.result',
             turn,
@@ -248,6 +422,11 @@ export class TalkRunner {
             ok: result.ok,
             summary: result.summary,
           });
+          // ツールが終わって結果が確定してから打ち切る。残りのツールは呼ばない
+          if (state.interrupting) {
+            await end('interrupted', INTERRUPTED_REASON);
+            return true;
+          }
           // 前置きの本文は、同じステップの最初のツールにだけ付ける
           steps.push({
             text: i === 0 ? text : '',

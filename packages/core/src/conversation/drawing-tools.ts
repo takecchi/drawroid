@@ -15,6 +15,7 @@ import { createCarry } from '../loop/carry.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
+import { ImageNotFoundError, formatImageKey, selectImage } from '../selection/selection.js';
 import { narrowPermissions } from './drawing.js';
 import type { ConversationStore } from './store.js';
 import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js';
@@ -25,7 +26,23 @@ export type DrawingRunner = {
   stop(jobId: string): Promise<void>;
   addInstruction(jobId: string, text: string): Promise<InterventionRecord>;
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
+  /** 人間が選んだ画像を、走っているジョブに置く（お気に入りへの記録はしない） */
+  adopt(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord>;
 };
+
+/** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
+export async function activeJobOfConversation(
+  jobs: Pick<JobStore, 'listJobIds' | 'readJob' | 'readState'>,
+  conversationId: string,
+): Promise<string | undefined> {
+  for (const jobId of await jobs.listJobIds()) {
+    const spec = await jobs.readJob(jobId);
+    if (spec.kind !== 'auto' || spec.conversationId !== conversationId) continue;
+    const state = await jobs.readState(jobId);
+    if (state.status !== 'stopped') return jobId;
+  }
+  return undefined;
+}
 
 /**
  * 描くツールが使うもの。cli で描くツールを作るときに閉じ込めて渡す（副作用の無いツールの createReadOnlyTools と同じ形）。
@@ -79,6 +96,11 @@ const startInputSchema = z.object({
     .describe('人間がこの会話で添えた画像を、参照画像として使うとき'),
 });
 
+const adoptInputSchema = z.object({
+  iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
+  index: z.number().int().nonnegative().optional().describe('その回の何枚目か（0 から）。省けば 0'),
+});
+
 const reviseInputSchema = z
   .object({
     instruction: z.string().trim().min(1).max(MAX_INSTRUCTION_CHARS).optional(),
@@ -108,16 +130,8 @@ export function describeStopConditions(conditions: StopConditions): string {
 
 /** 描くツール（副作用のあるもの）。会話の実行器に、副作用の無いツール（createReadOnlyTools）と並べて渡す */
 export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
-  /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
-  async function activeJobOf(context: TalkToolContext): Promise<string | undefined> {
-    for (const jobId of await deps.jobs.listJobIds()) {
-      const spec = await deps.jobs.readJob(jobId);
-      if (spec.kind !== 'auto' || spec.conversationId !== context.conversationId) continue;
-      const state = await deps.jobs.readState(jobId);
-      if (state.status !== 'stopped') return jobId;
-    }
-    return undefined;
-  }
+  const activeJobOf = (context: TalkToolContext) =>
+    activeJobOfConversation(deps.jobs, context.conversationId);
 
   const startDrawing: TalkTool = {
     name: 'start_drawing',
@@ -220,7 +234,38 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
     },
   };
 
-  return [startDrawing, reviseDrawing, stopDrawing];
+  const adoptImage: TalkTool = {
+    name: 'adopt_image',
+    description:
+      '人間が「これでいい」と選んだ画像を、お気に入りにして採る。描いている絵の画像だけ。続きの指示があれば、続けて revise_drawing を呼ぶ。無ければ、その画像で止まる',
+    inputSchema: adoptInputSchema,
+    async run(raw, context) {
+      const input = adoptInputSchema.parse(raw);
+      const jobId = await activeJobOf(context);
+      if (jobId === undefined) return outcome(false, '描いている絵が無い');
+      const generations = await deps.jobs.listGenerations(jobId);
+      const iteration = input.iteration ?? generations.at(-1)?.iteration;
+      if (iteration === undefined) return outcome(false, 'まだ画像が1枚もできていない');
+      const image = { iteration, index: input.index ?? 0 };
+      const key = formatImageKey(image);
+      try {
+        await selectImage({
+          store: deps.jobs,
+          jobId,
+          imageKey: key,
+          verdict: 'favorite',
+          now: deps.now(),
+        });
+        await deps.runner.adopt(jobId, image);
+      } catch (error) {
+        if (error instanceof ImageNotFoundError) return outcome(false, `画像 ${key} は無い`);
+        throw error;
+      }
+      return outcome(true, `画像 ${key} をお気に入りにして採った`);
+    },
+  };
+
+  return [startDrawing, reviseDrawing, stopDrawing, adoptImage];
 }
 
 /** 話す役が止める条件を省いたときの既定（設定に書かなければこれ） */
