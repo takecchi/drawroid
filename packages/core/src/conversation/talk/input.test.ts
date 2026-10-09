@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { estimateTextTokens } from '../../budget/estimate.js';
 import { DEFAULT_MODEL_WINDOW } from '../../loop/budget.js';
 import { InputOverBudgetError } from '../../loop/inputs.js';
 import type { ConversationEvent } from '../events.js';
-import { buildTalkInput } from './input.js';
+import { buildTalkInput, TALK_SYSTEM } from './input.js';
 import { DEFAULT_TALK_LIMITS } from './limits.js';
 
 const at = '2026-10-09T00:00:00.000Z';
@@ -255,7 +256,8 @@ describe('buildTalkInput', () => {
 
   it('drops the oldest messages first when the input limit is reached', () => {
     seq = 0;
-    // 上限は 1 件が約 100 トークンの発言が 3 件入る大きさ。直近の件数では落ちない
+    // 上限は、システムプロンプトのほかに 1 件が約 100 トークンの発言が 3 件入る大きさ。直近の件数では落ちない
+    const limit = estimateTextTokens(TALK_SYSTEM) + 400;
     const events = [1, 2, 3, 4, 5, 6].map((i) => user(`${i}番目${'あ'.repeat(100)}`));
     const messages = buildTalkInput({
       events: [...events, user('最後の発言')],
@@ -263,10 +265,10 @@ describe('buildTalkInput', () => {
       steps: [],
       final: false,
       limits: { ...DEFAULT_TALK_LIMITS, recentMessages: 20 },
-      window: { contextTokens: 400, maxOutputTokens: 0 },
+      window: { contextTokens: limit, maxOutputTokens: 0 },
     });
     const text = textOf(messages);
-    expect(messages.report.estimatedInputTokens).toBeLessThanOrEqual(400);
+    expect(messages.report.estimatedInputTokens).toBeLessThanOrEqual(limit);
     expect(text).toContain('6番目');
     expect(text).not.toContain('1番目');
     expect(text).toContain('最後の発言');
