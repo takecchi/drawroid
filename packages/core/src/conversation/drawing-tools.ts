@@ -18,8 +18,12 @@ import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
 import { adoptImage as adoptChosenImage } from '../selection/adopt.js';
-import { formatImageKey } from '../selection/selection.js';
-import { narrowPermissions } from './drawing.js';
+import {
+  indexOfTalkImageNumber,
+  narrowPermissions,
+  talkImageLabel,
+  talkImageNumberSchema,
+} from './drawing.js';
 import type { ConversationStore } from './store.js';
 import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js';
 
@@ -125,10 +129,13 @@ const startInputSchema = z.object({
   ),
 });
 
-const adoptInputSchema = z.object({
-  iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
-  index: z.number().int().nonnegative().optional().describe('その回の何枚目か（0 から）。省けば 0'),
-});
+// 知らない欄は断る: 前の 0 から数える欄（index）で渡されたとき、黙って省いた扱い（1枚目）にしないため
+const adoptInputSchema = z
+  .object({
+    iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
+    number: talkImageNumberSchema,
+  })
+  .strict();
 
 const reviseInputSchema = z
   .object({
@@ -323,15 +330,24 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       const generations = await deps.jobs.listGenerations(jobId);
       const iteration = input.iteration ?? generations.at(-1)?.iteration;
       if (iteration === undefined) return outcome(false, 'まだ画像が1枚もできていない');
-      const image = { iteration, index: input.index ?? 0 };
+      const image = { iteration, index: indexOfTalkImageNumber(input.number) };
+      const label = talkImageLabel(image);
       // 画面の「採る」ボタンと同じ口を通す
       const adopted = await adoptChosenImage(
         { jobs: deps.jobs, runner: deps.runner, now: deps.now },
         jobId,
         image,
       );
-      if (!adopted.ok) return outcome(false, adopted.message);
-      return outcome(true, `画像 ${formatImageKey(image)} をお気に入りにして採った`);
+      // 断りの文は話す役の数え方で書き直す: 共通の口の文は、置き場所のキー（0 から数える）を使うため
+      if (!adopted.ok) {
+        return outcome(
+          false,
+          adopted.reason === 'no-image'
+            ? `${label}の画像は無い`
+            : `絵がもう止まっていて、${label}を採れなかった`,
+        );
+      }
+      return outcome(true, `${label}をお気に入りにして採った`);
     },
   };
 

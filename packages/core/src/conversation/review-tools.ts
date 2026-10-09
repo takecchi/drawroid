@@ -10,9 +10,13 @@ import { buildJudgeInput } from '../loop/inputs.js';
 import { defaultCallId } from '../loop/runner.js';
 import { buildJudgeOutputSchema, type JudgeOutput } from '../loop/schemas.js';
 import type { MemoryStore } from '../memory/store.js';
-import { formatImageKey } from '../selection/selection.js';
 import { activeJobOfConversation } from './drawing-tools.js';
-import { describeJudgement } from './drawing.js';
+import {
+  describeJudgement,
+  indexOfTalkImageNumber,
+  talkImageLabel,
+  talkImageNumberSchema,
+} from './drawing.js';
 import type { TalkTool, TalkToolOutcome } from './talk/tools.js';
 
 /** 見る役に評価させるツールが使うもの。cli で閉じ込めて渡す（createDrawingTools と同じ形） */
@@ -42,15 +46,18 @@ export type ReviewToolDeps = {
   now?: () => Date;
 };
 
-const reviewInputSchema = z.object({
-  jobId: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('ジョブ。省けば、この会話で描いている（直近の）ジョブ'),
-  iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
-  index: z.number().int().nonnegative().optional().describe('その回の何枚目か（0 から）。省けば 0'),
-});
+// 知らない欄は断る: 前の 0 から数える欄（index）で渡されたとき、黙って省いた扱い（1枚目）にしないため
+const reviewInputSchema = z
+  .object({
+    jobId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('ジョブ。省けば、この会話で描いている（直近の）ジョブ'),
+    iteration: z.number().int().positive().optional().describe('回。省けば最新の回'),
+    number: talkImageNumberSchema,
+  })
+  .strict();
 
 function outcome(ok: boolean, text: string): TalkToolOutcome {
   return { ok, result: text, summary: text };
@@ -103,11 +110,11 @@ export function createReviewTools(deps: ReviewToolDeps): TalkTool[] {
       const generations = await deps.jobs.listGenerations(jobId);
       const iteration = input.iteration ?? generations.at(-1)?.iteration;
       if (iteration === undefined) return outcome(false, 'まだ画像が1枚もできていない');
-      const index = input.index ?? 0;
-      const key = formatImageKey({ iteration, index });
+      const index = indexOfTalkImageNumber(input.number);
+      const label = talkImageLabel({ iteration, index });
       const generation = await deps.jobs.readGeneration(jobId, iteration);
       if (generation === undefined || index >= generation.images.length) {
-        return outcome(false, `画像 ${key} は無い（ジョブ ${jobId}）`);
+        return outcome(false, `${label}の画像は無い（ジョブ ${jobId}）`);
       }
       const ref: ImageRef = { jobId, iteration, index };
 
@@ -121,7 +128,7 @@ export function createReviewTools(deps: ReviewToolDeps): TalkTool[] {
       // 評価がまだで、ループの見る役が受け持つ回は、二重に送らない
       const state = await deps.jobs.readState(jobId);
       if (state.status !== 'stopped' && !(await loopSkipsJudging(deps.jobs, jobId, iteration))) {
-        return outcome(false, `画像 ${key} はまだ評価中（ジョブ ${jobId} の見る役が見ている）`);
+        return outcome(false, `${label}はまだ評価中（ジョブ ${jobId} の見る役が見ている）`);
       }
       const carry = state.carry;
       if (carry === undefined) return outcome(false, `ジョブ ${jobId} には評価に使う要約が無い`);
@@ -218,16 +225,16 @@ async function earlierReview(
   imageKey: string,
   callId: string,
 ): Promise<[boolean, string]> {
-  const key = formatImageKey(ref);
+  const label = talkImageLabel(ref);
   const { records } = await jobs.listLlmCallRecords(ref.jobId);
   const call = records.find((record) => record.callId === callId);
   if (call === undefined) {
-    return [false, `画像 ${key} は呼び出し ${callId} で渡し済みだが、その記録が読めない`];
+    return [false, `${label}は呼び出し ${callId} で渡し済みだが、その記録が読めない`];
   }
   if (!call.outcome.ok) {
     return [
       false,
-      `画像 ${key} は呼び出し ${callId} で渡したが、評価を得られなかった: ${call.outcome.reason}`,
+      `${label}は呼び出し ${callId} で渡したが、評価を得られなかった: ${call.outcome.reason}`,
     ];
   }
   const sent = call.input.user.filter((part) => part.type === 'image');
@@ -235,7 +242,7 @@ async function earlierReview(
   const parsed = buildJudgeOutputSchema(sent.length).safeParse(call.outcome.value);
   const image = parsed.success ? parsed.data.images[position] : undefined;
   if (!parsed.success || image === undefined) {
-    return [false, `画像 ${key} は呼び出し ${callId} で渡したが、記録の評価が読めない`];
+    return [false, `${label}は呼び出し ${callId} で渡したが、記録の評価が読めない`];
   }
   return [true, describeFor(ref.iteration, ref.index, parsed.data, image)];
 }
