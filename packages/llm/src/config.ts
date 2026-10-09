@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** 役の呼び方。画面の設定の欄の名前にそろえる */
+export const ROLE_LABELS = { think: '考える役', judge: '見る役', talk: '話す役' } as const;
+
 // API キーの値を設定に置かせない（apiKey を書いたら strict で落とす）: 設定は API の応答と画面に出るため
 const apiKeyFields = {
   /** API キーを入れた環境変数の名前 */
@@ -73,13 +76,16 @@ export const llmConfigSchema = z
     networkRetries: z.number().int().min(0).default(2),
   })
   .superRefine((config, ctx) => {
+    const defined = Object.keys(config.providers);
     for (const role of ['think', 'judge', 'talk'] as const) {
       const provider = config.roles[role]?.provider;
       if (provider !== undefined && !(provider in config.providers)) {
         ctx.addIssue({
           code: 'custom',
           path: ['roles', role, 'provider'],
-          message: `provider「${provider}」が providers に無い`,
+          message: `${ROLE_LABELS[role]}の provider「${provider}」が、定義した provider（${
+            defined.length === 0 ? 'まだ無い' : defined.join('・')
+          }）に無い`,
         });
       }
     }

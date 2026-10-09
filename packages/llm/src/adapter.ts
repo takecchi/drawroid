@@ -26,7 +26,7 @@ import {
   type UserContent,
 } from 'ai';
 import { z, type ZodType } from 'zod';
-import type { ResolvedRoles, RoleConfig } from './config.js';
+import { ROLE_LABELS, type ResolvedRoles, type RoleConfig } from './config.js';
 
 const ERROR_SUMMARY_LIMIT = 300;
 
@@ -43,8 +43,6 @@ export type AdapterOptions = {
   /** 所要時間を測る時計（試験で差し替える） */
   now?: () => number;
 };
-
-const ROLE_LABELS: Record<LlmRole, string> = { think: '考える役', judge: '見る役', talk: '話す役' };
 
 // サーバが length を HTTP のエラーとして返すことがある（本文に finish_reason=length などと書く）。AI SDK の結果の
 // finishReason だけを見ると、その形を取りこぼす

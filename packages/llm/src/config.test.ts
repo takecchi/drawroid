@@ -58,6 +58,31 @@ describe('llmConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('names the role, the name it was given and the providers that exist when the name is wrong', () => {
+    const result = llmConfigSchema.safeParse({
+      ...base,
+      providers: {
+        ...base.providers,
+        cloud: { type: 'anthropic', apiKeyEnv: 'ANTHROPIC_API_KEY' },
+      },
+      roles: { think: { provider: 'local', model: 'x' }, judge: { provider: 'locl', model: 'x' } },
+    });
+    expect(result.error?.issues.map(({ path, message }) => ({ path, message }))).toEqual([
+      {
+        path: ['roles', 'judge', 'provider'],
+        message: '見る役の provider「locl」が、定義した provider（local・cloud）に無い',
+      },
+    ]);
+    expect(result.error?.issues[0]?.message).not.toContain('providers に無い');
+  });
+
+  it('says no provider is defined yet when the list is empty', () => {
+    const result = llmConfigSchema.safeParse({ providers: {}, roles: base.roles });
+    expect(result.error?.issues[0]?.message).toBe(
+      '考える役の provider「local」が、定義した provider（まだ無い）に無い',
+    );
+  });
+
   it('rejects a provider that carries an API key value instead of an env var name', () => {
     const result = llmConfigSchema.safeParse({
       ...base,
