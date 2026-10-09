@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { access, mkdir, readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import {
   conversationEventSchema,
@@ -17,7 +18,13 @@ import type { ZodType } from 'zod';
 
 import { createFileExclusive, createJsonExclusive, writeJsonAtomic } from './atomic.js';
 import { formatJobId, isJobId, StoredFileError } from './job-store.js';
-import { dataPaths, EVENT_SEQ_DIGITS, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
+import {
+  dataPaths,
+  EVENT_SEQ_DIGITS,
+  eventFileName,
+  TEMP_FILE_PREFIX,
+  type DataPaths,
+} from './paths.js';
 
 const UPLOAD_EXTENSIONS: Record<ConversationUpload['mediaType'], string> = {
   'image/png': 'png',
@@ -61,6 +68,11 @@ async function readValid<T>(path: string, schema: ZodType<T>): Promise<T> {
   return parsed.data;
 }
 
+/** from から to までの番号（to が from より小さければ空） */
+function range(from: number, to: number): number[] {
+  return Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
+}
+
 async function listNames(dir: string): Promise<string[]> {
   try {
     return (await readdir(dir)).filter((name) => !name.startsWith(TEMP_FILE_PREFIX)).sort();
@@ -81,6 +93,8 @@ export type FsConversationStoreOptions = {
 export class FsConversationStore implements ConversationStore {
   private readonly paths: DataPaths;
   private readonly randomSuffix: () => string;
+  /** 会話ごとに、1 から欠けずに並んでいると確かめた最後のイベントの番号（eventSeqs を見る） */
+  private readonly contiguous = new Map<string, number>();
 
   constructor(root: string, options: FsConversationStoreOptions = {}) {
     this.paths = dataPaths(root);
@@ -155,7 +169,7 @@ export class FsConversationStore implements ConversationStore {
     // 欠けの無い連番にする: 次の番号を取り、排他的に置けなかったら（同時に同じ番号を取りに来たら）取り直す。
     // 置く前に落ちても何も置かれないので、次の書き込みが同じ番号を取り、番号は欠けない
     for (;;) {
-      const seq = (await this.lastSeq(files.events)) + 1;
+      const seq = (await this.eventSeqs(conversationId, files.events)).last + 1;
       const confirmed = conversationEventSchema.parse({ ...parsed, seq, at: now.toISOString() });
       if (await createJsonExclusive(files.event(seq), confirmed)) return confirmed;
     }
@@ -172,9 +186,8 @@ export class FsConversationStore implements ConversationStore {
     { after = 0, limit = DEFAULT_EVENT_PAGE_SIZE }: { after?: number; limit?: number } = {},
   ): Promise<ConversationEventPage> {
     const files = this.files(conversationId);
-    const later = (await this.eventNames(files.events)).filter(
-      (name) => Number.parseInt(name, 10) > after,
-    );
+    const { last, listed } = await this.eventSeqs(conversationId, files.events);
+    const later = listed?.filter((seq) => seq > after) ?? range(after + 1, last);
     const events = await this.readEventFiles(files.events, later.slice(0, limit));
     return { events, last: events.at(-1)?.seq ?? after, more: later.length > limit };
   }
@@ -184,9 +197,10 @@ export class FsConversationStore implements ConversationStore {
     { before = Number.POSITIVE_INFINITY, limit }: { before?: number; limit: number },
   ): Promise<ConversationEvent[]> {
     const files = this.files(conversationId);
-    const earlier = (await this.eventNames(files.events)).filter(
-      (name) => Number.parseInt(name, 10) < before,
-    );
+    const { last, listed } = await this.eventSeqs(conversationId, files.events, before - 1);
+    const end = Math.min(last, before - 1);
+    const earlier =
+      listed?.filter((seq) => seq < before) ?? range(Math.max(1, end - limit + 1), end);
     return this.readEventFiles(files.events, earlier.slice(Math.max(0, earlier.length - limit)));
   }
 
@@ -223,17 +237,58 @@ export class FsConversationStore implements ConversationStore {
 
   /** イベントのファイルを読み、名前の順（seq の順）に返す。少しずつまとめて並べて読む */
   // 1つずつ待たない: 長い会話を開くとき、1ページ（最大 1000 件）を順に読むと、それだけで数百 ms かかるため
-  private async readEventFiles(dir: string, names: string[]): Promise<ConversationEvent[]> {
+  private async readEventFiles(dir: string, seqs: readonly number[]): Promise<ConversationEvent[]> {
     const events: ConversationEvent[] = [];
-    for (let i = 0; i < names.length; i += EVENT_READ_CONCURRENCY) {
-      const chunk = names.slice(i, i + EVENT_READ_CONCURRENCY);
+    for (let i = 0; i < seqs.length; i += EVENT_READ_CONCURRENCY) {
+      const chunk = seqs.slice(i, i + EVENT_READ_CONCURRENCY);
       events.push(
         ...(await Promise.all(
-          chunk.map((name) => readValid(`${dir}/${name}`, conversationEventSchema)),
+          chunk.map((seq) => readValid(join(dir, eventFileName(seq)), conversationEventSchema)),
         )),
       );
     }
     return events;
+  }
+
+  /**
+   * 会話のイベントの最後の番号を返す。欠けのある会話では、一覧した番号（小さい順）も返す。
+   * 欠けずに並んでいると一覧で確かめた会話は、覚えた最後の番号から先だけを、ファイルの有無で確かめる
+   * （一覧は会話の長さに比例して遅くなるため）。upTo を渡すと、それより先は確かめない（末尾から読む口のため）
+   */
+  // 覚えてよいのは「1 から n まで欠けずにある」ことだけ: 書き手は、排他的に置ける最後の番号 + 1 にしか置かず、
+  // 置くときは link で中身ごと一度に現れ、消さない。そのため n より前は変わらず、n より先は毎回ファイルの有無で
+  // 確かめれば、別のプロセスや再起動のあとに書かれたものも見落とさない。欠けのある会話・覚えた番号のファイルが
+  // 無くなった会話は覚えず、毎回一覧する
+  private async eventSeqs(
+    conversationId: string,
+    dir: string,
+    upTo = Number.POSITIVE_INFINITY,
+  ): Promise<{ last: number; listed?: number[] }> {
+    const known = this.contiguous.get(conversationId);
+    if (known !== undefined && (known === 0 || (await exists(join(dir, eventFileName(known)))))) {
+      let last = known;
+      if (last < upTo) {
+        // 倍々に広げてから二分で詰める: 先に書かれた数が多くても、確かめる回数を対数に抑える
+        let step = 1;
+        while (await exists(join(dir, eventFileName(last + step)))) {
+          last += step;
+          step *= 2;
+        }
+        let missing = last + step;
+        while (missing - last > 1) {
+          const mid = Math.floor((last + missing) / 2);
+          if (await exists(join(dir, eventFileName(mid)))) last = mid;
+          else missing = mid;
+        }
+        this.contiguous.set(conversationId, last);
+      }
+      return { last };
+    }
+    this.contiguous.delete(conversationId);
+    const seqs = (await this.eventNames(dir)).map((name) => Number.parseInt(name, 10));
+    const last = seqs.at(-1) ?? 0;
+    if (seqs.length === last) this.contiguous.set(conversationId, last);
+    return { last, listed: seqs };
   }
 
   /** イベントのファイルを、seq の順に返す */
@@ -241,10 +296,5 @@ export class FsConversationStore implements ConversationStore {
     return (await listNames(dir))
       .filter((name) => EVENT_FILE_PATTERN.test(name))
       .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
-  }
-
-  private async lastSeq(dir: string): Promise<number> {
-    const last = (await this.eventNames(dir)).at(-1);
-    return last === undefined ? 0 : Number.parseInt(last, 10);
   }
 }
