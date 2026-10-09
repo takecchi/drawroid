@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   DEFAULT_BUDGET,
+  generationRequestSchema,
   JobRunner,
   THINK_PARAM_KEYS,
   type AutoJobSpec,
@@ -243,7 +244,7 @@ describe('the loop picks which job to run', () => {
     const manual = await store.createJob(
       {
         kind: 'manual',
-        request: {
+        request: generationRequestSchema.parse({
           prompt: 'a cat',
           negativePrompt: '',
           loras: [],
@@ -252,7 +253,7 @@ describe('the loop picks which job to run', () => {
           width: 64,
           height: 64,
           batchSize: 1,
-        },
+        }),
       },
       { status: 'queued' },
       new Date('2026-10-09T00:00:00Z'),
