@@ -30,6 +30,7 @@ function nonEmpty(value: string | undefined): string | undefined {
 export function dataPaths(root: string) {
   const jobs = join(root, 'jobs');
   const llmCalls = join(root, 'llm-calls');
+  const conversations = join(root, 'conversations');
   return {
     root,
     config: join(root, 'config.json'),
@@ -41,6 +42,10 @@ export function dataPaths(root: string) {
     jobs,
     job: (jobId: string) => join(jobs, jobId),
     jobFiles: (jobId: string) => jobFiles(join(jobs, jobId)),
+    conversations,
+    conversation: (conversationId: string) => join(conversations, conversationId),
+    conversationFiles: (conversationId: string) =>
+      conversationFiles(join(conversations, conversationId)),
   };
 }
 
@@ -108,5 +113,34 @@ function iterationFiles(dir: string) {
 }
 
 export type JobFiles = ReturnType<typeof jobFiles>;
+
+/** イベントの seq の桁。0 で埋め、名前の順が起きた順になるようにする */
+export const EVENT_SEQ_DIGITS = 6;
+
+export function eventFileName(seq: number): string {
+  return `${String(seq).padStart(EVENT_SEQ_DIGITS, '0')}.json`;
+}
+
+function conversationFiles(dir: string) {
+  const events = join(dir, 'events');
+  const uploads = join(dir, 'uploads');
+  const llmCalls = join(dir, 'llm-calls');
+  return {
+    dir,
+    /** タイトル・作成時刻。これがあるディレクトリだけを会話として数える */
+    meta: join(dir, 'conversation.json'),
+    /** 確定したイベント（1件1ファイル） */
+    events,
+    event: (seq: number) => join(events, eventFileName(seq)),
+    /** 会話で人間が添えた画像 */
+    uploads,
+    upload: (uploadId: string, ext: string) => join(uploads, `${uploadId}.${ext}`),
+    /** 話す役の LLM 呼び出しの記録（ジョブに属さないもの） */
+    llmCalls,
+    llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
+  };
+}
+
+export type ConversationFiles = ReturnType<typeof conversationFiles>;
 
 export type DataPaths = ReturnType<typeof dataPaths>;
