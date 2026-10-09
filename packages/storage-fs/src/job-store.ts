@@ -3,13 +3,15 @@ import { access, mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 import {
+  generationRequestSchema,
   interventionRecordSchema,
   isReferenceImageRef,
   jobSpecSchema,
   jobStateSchema,
   referenceRecordSchema,
   type AnyImageRef,
-  type GeneratedImage,
+  type GenerationRequest,
+  type GenerationResult,
   type ImageRef,
   type InterventionRecord,
   type JobSpec,
@@ -23,9 +25,10 @@ import {
   type ReferenceImageRef,
   type ReferenceRecord,
   type StageName,
+  type StoredGeneration,
 } from '@drawroid/core';
 import sharp from 'sharp';
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 
 import { writeFileAtomic, writeJsonAtomic } from './atomic.js';
 import { dataPaths, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
@@ -45,6 +48,8 @@ export class StoredFileError extends Error {
     this.name = 'StoredFileError';
   }
 }
+
+const imageMetaSchema = z.object({ seed: z.number().nullable() });
 
 function isNotFound(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
@@ -108,6 +113,13 @@ export function formatJobId(now: Date, suffix: string): string {
   return `${iso.slice(0, 10).replaceAll('-', '')}-${iso.slice(11, 19).replaceAll(':', '')}-${suffix}`;
 }
 
+const JOB_ID_PATTERN = /^\d{8}-\d{6}-[0-9a-z]+$/;
+
+/** パスに使ってよい jobId の形か。外から来た文字列を、ディレクトリを抜ける形のままパスにしないための門 */
+export function isJobId(value: string): boolean {
+  return JOB_ID_PATTERN.test(value);
+}
+
 export type FsJobStoreOptions = {
   /** jobId の末尾に付ける短い乱数（試験で差し替える） */
   randomSuffix?: () => string;
@@ -122,11 +134,17 @@ export class FsJobStore implements JobStore {
     this.randomSuffix = options.randomSuffix ?? (() => randomBytes(3).toString('hex'));
   }
 
+  // 外から来た jobId でパスを組む口はすべてここを通す: 呼び手の検査に頼ると、1か所の漏れでデータディレクトリの外を読み書きできるため
+  private jobFiles(jobId: string) {
+    if (!isJobId(jobId)) throw new Error(`jobId の形ではない: ${jobId}`);
+    return this.paths.jobFiles(jobId);
+  }
+
   async createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec> {
     await mkdir(this.paths.jobs, { recursive: true });
     for (;;) {
       const jobId = formatJobId(now, this.randomSuffix());
-      const files = this.paths.jobFiles(jobId);
+      const files = this.jobFiles(jobId);
       try {
         await mkdir(files.dir);
       } catch (error) {
@@ -150,19 +168,80 @@ export class FsJobStore implements JobStore {
   }
 
   readJob(jobId: string): Promise<JobSpec> {
-    return readValid(this.paths.jobFiles(jobId).spec, jobSpecSchema);
+    return readValid(this.jobFiles(jobId).spec, jobSpecSchema);
   }
 
   async writeJob(spec: JobSpec): Promise<void> {
-    await writeJsonAtomic(this.paths.jobFiles(spec.jobId).spec, jobSpecSchema.parse(spec));
+    await writeJsonAtomic(this.jobFiles(spec.jobId).spec, jobSpecSchema.parse(spec));
   }
 
   readState(jobId: string): Promise<JobState> {
-    return readValid(this.paths.jobFiles(jobId).state, jobStateSchema);
+    return readValid(this.jobFiles(jobId).state, jobStateSchema);
   }
 
   async writeState(jobId: string, state: JobState): Promise<void> {
-    await writeJsonAtomic(this.paths.jobFiles(jobId).state, jobStateSchema.parse(state));
+    await writeJsonAtomic(this.jobFiles(jobId).state, jobStateSchema.parse(state));
+  }
+
+  async writeGeneration(
+    jobId: string,
+    iteration: number,
+    request: GenerationRequest,
+    result: GenerationResult,
+  ): Promise<void> {
+    const files = this.jobFiles(jobId).iteration(iteration);
+    await mkdir(files.images, { recursive: true });
+    for (const [index, image] of result.images.entries()) {
+      await writeFileAtomic(files.image(index), image.png);
+      await writeJsonAtomic(files.imageMeta(index), {
+        seed: image.seed,
+        metadata: image.metadata,
+        response: result.metadata,
+      });
+    }
+    // request.json を最後に置く: 一覧は request.json のある回だけを数えるので、途中で落ちても画像が欠けた回が見えないため
+    await writeJsonAtomic(files.request, request);
+  }
+
+  async listGenerations(jobId: string): Promise<StoredGeneration[]> {
+    const files = this.jobFiles(jobId);
+    const iterations = (await listNames(files.iterations))
+      .filter((name) => /^\d+$/.test(name))
+      .map(Number)
+      .sort((a, b) => a - b);
+    const generations: StoredGeneration[] = [];
+    for (const iteration of iterations) {
+      const generation = await this.readGeneration(jobId, iteration);
+      if (generation !== undefined) generations.push(generation);
+    }
+    return generations;
+  }
+
+  async readGeneration(jobId: string, iteration: number): Promise<StoredGeneration | undefined> {
+    const dir = this.jobFiles(jobId).iteration(iteration);
+    if (!(await exists(dir.request))) return undefined;
+    const images: StoredGeneration['images'] = [];
+    const indexes = (await listNames(dir.images))
+      .flatMap((name) => /^(\d+)\.png$/.exec(name)?.[1] ?? [])
+      .map(Number)
+      .sort((a, b) => a - b);
+    for (const index of indexes) {
+      const meta = await readValid(dir.imageMeta(index), imageMetaSchema);
+      images.push({ index, seed: meta.seed });
+    }
+    return { iteration, request: await readValid(dir.request, generationRequestSchema), images };
+  }
+
+  async readImage(image: ImageRef): Promise<Uint8Array | undefined> {
+    if (!isJobId(image.jobId)) return undefined;
+    try {
+      return await readFile(
+        this.jobFiles(image.jobId).iteration(image.iteration).image(image.index),
+      );
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw error;
+    }
   }
 
   async addIntervention(
@@ -170,7 +249,7 @@ export class FsJobStore implements JobStore {
     intervention: NewIntervention,
     now: Date,
   ): Promise<InterventionRecord> {
-    const files = this.paths.jobFiles(jobId);
+    const files = this.jobFiles(jobId);
     await mkdir(files.interventions, { recursive: true });
     for (;;) {
       // jobId と同じ形の名前にする: 名前の順がそのまま受けた順になり、連番を数える読み書きが要らないため
@@ -188,7 +267,7 @@ export class FsJobStore implements JobStore {
   }
 
   async listInterventions(jobId: string): Promise<InterventionRecord[]> {
-    const files = this.paths.jobFiles(jobId);
+    const files = this.jobFiles(jobId);
     const names = (await listNames(files.interventions)).filter((name) => name.endsWith('.json'));
     const records: InterventionRecord[] = [];
     for (const name of names) {
@@ -202,7 +281,9 @@ export class FsJobStore implements JobStore {
     interventionId: string,
     iteration: number,
   ): Promise<void> {
-    const path = this.paths.jobFiles(jobId).intervention(interventionId);
+    // interventionId も jobId と同じ形なので、同じ検査を通してからパスを組む
+    if (!isJobId(interventionId)) throw new Error(`interventionId の形ではない: ${interventionId}`);
+    const path = this.jobFiles(jobId).intervention(interventionId);
     const record = await readValid(path, interventionRecordSchema);
     if (record.kind !== 'instruction') {
       throw new StoredFileError(path, new Error('人間の指示ではないので、取り込んだ回を持たない'));
@@ -211,7 +292,7 @@ export class FsJobStore implements JobStore {
   }
 
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown> {
-    return readJsonIfExists(this.paths.jobFiles(jobId).iteration(iteration)[stage]);
+    return readJsonIfExists(this.jobFiles(jobId).iteration(iteration)[stage]);
   }
 
   async writeStage(
@@ -220,22 +301,9 @@ export class FsJobStore implements JobStore {
     stage: StageName,
     value: unknown,
   ): Promise<void> {
-    const files = this.paths.jobFiles(jobId).iteration(iteration);
+    const files = this.jobFiles(jobId).iteration(iteration);
     await mkdir(files.dir, { recursive: true });
     await writeJsonAtomic(files[stage], value);
-  }
-
-  async saveImages(
-    jobId: string,
-    iteration: number,
-    images: readonly GeneratedImage[],
-  ): Promise<void> {
-    const files = this.paths.jobFiles(jobId).iteration(iteration);
-    await mkdir(files.images, { recursive: true });
-    for (const [index, image] of images.entries()) {
-      await writeFileAtomic(files.image(index), image.png);
-      await writeJsonAtomic(files.imageMeta(index), { seed: image.seed, metadata: image.metadata });
-    }
   }
 
   async loadPreview(image: AnyImageRef, longEdge: number): Promise<PreviewImage> {
@@ -265,7 +333,7 @@ export class FsJobStore implements JobStore {
 
   async markSent(image: AnyImageRef, callId: string, now: Date): Promise<void> {
     if (isReferenceImageRef(image)) {
-      const path = this.paths.jobFiles(image.jobId).refMeta(image.refId);
+      const path = this.refFiles(image.jobId, image.refId).meta;
       const record = await readValid(path, referenceRecordSchema);
       if (record.sentInCall !== undefined) {
         throw new ImageAlreadySentError(this.imageKey(image), record.sentInCall);
@@ -273,7 +341,7 @@ export class FsJobStore implements JobStore {
       await writeJsonAtomic(path, { ...record, sentInCall: callId, sentAt: now.toISOString() });
       return;
     }
-    const path = this.paths.jobFiles(image.jobId).iteration(image.iteration).sent(image.index);
+    const path = this.jobFiles(image.jobId).iteration(image.iteration).sent(image.index);
     const previous = (await readJsonIfExists(path)) as { callId: string } | undefined;
     // 上書きしない: 1枚を2回渡したことが、印を書き換えることで見えなくなるため
     if (previous !== undefined)
@@ -282,7 +350,7 @@ export class FsJobStore implements JobStore {
   }
 
   async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {
-    const files = this.paths.jobFiles(jobId);
+    const files = this.jobFiles(jobId);
     await mkdir(files.refs, { recursive: true });
     for (;;) {
       const refId = formatJobId(now, this.randomSuffix());
@@ -301,7 +369,7 @@ export class FsJobStore implements JobStore {
   }
 
   async listReferences(jobId: string): Promise<ReferenceRecord[]> {
-    const files = this.paths.jobFiles(jobId);
+    const files = this.jobFiles(jobId);
     const names = (await listNames(files.refs)).filter((name) => name.endsWith('.json'));
     const records: ReferenceRecord[] = [];
     for (const name of names) {
@@ -311,13 +379,13 @@ export class FsJobStore implements JobStore {
   }
 
   async writeReferenceGist(jobId: string, refId: string, gist: string): Promise<void> {
-    const path = this.paths.jobFiles(jobId).refMeta(refId);
+    const path = this.refFiles(jobId, refId).meta;
     const record = await readValid(path, referenceRecordSchema);
     await writeJsonAtomic(path, referenceRecordSchema.parse({ ...record, gist }));
   }
 
   private async generatedImageFiles(image: ImageRef, longEdge: number) {
-    const files = this.paths.jobFiles(image.jobId).iteration(image.iteration);
+    const files = this.jobFiles(image.jobId).iteration(image.iteration);
     const sent = (await readJsonIfExists(files.sent(image.index))) as
       { callId: string } | undefined;
     return {
@@ -328,28 +396,27 @@ export class FsJobStore implements JobStore {
   }
 
   private async referenceImageFiles(image: ReferenceImageRef, longEdge: number) {
-    const files = this.paths.jobFiles(image.jobId);
-    const record = await readValid(files.refMeta(image.refId), referenceRecordSchema);
+    const files = this.refFiles(image.jobId, image.refId);
+    const record = await readValid(files.meta, referenceRecordSchema);
     return {
-      source: files.ref(image.refId, extensionOf(record.mediaType)),
-      preview: files.refPreview(image.refId, longEdge),
+      source: files.image(record.mediaType),
+      preview: files.preview(longEdge),
       sentInCall: record.sentInCall,
     };
   }
 
   async writeLlmCall(record: LlmCallRecord): Promise<void> {
-    const dir =
-      record.jobId === null ? this.paths.llmCalls : this.paths.jobFiles(record.jobId).llmCalls;
+    const dir = record.jobId === null ? this.paths.llmCalls : this.jobFiles(record.jobId).llmCalls;
     const path =
       record.jobId === null
         ? this.paths.llmCall(record.callId)
-        : this.paths.jobFiles(record.jobId).llmCall(record.callId);
+        : this.jobFiles(record.jobId).llmCall(record.callId);
     await mkdir(dir, { recursive: true });
     await writeJsonAtomic(path, record);
   }
 
   async listLlmCalls(jobId: string | null): Promise<LlmCallRecord[]> {
-    const dir = jobId === null ? this.paths.llmCalls : this.paths.jobFiles(jobId).llmCalls;
+    const dir = jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls;
     const names = (await listNames(dir)).filter((name) => name.endsWith('.json'));
     const records: LlmCallRecord[] = [];
     for (const name of names) records.push((await readJson(join(dir, name))) as LlmCallRecord);
@@ -358,10 +425,21 @@ export class FsJobStore implements JobStore {
 
   /** データディレクトリからの相対で、拡張子の無い形（記録と UI で画像を指す） */
   private imageKey(image: AnyImageRef): string {
-    const files = this.paths.jobFiles(image.jobId);
+    const files = this.jobFiles(image.jobId);
     const [dir, name] = isReferenceImageRef(image)
       ? [files.refs, image.refId]
       : [files.iteration(image.iteration).images, String(image.index)];
     return `${relative(this.paths.root, dir).split('\\').join('/')}/${name}`;
+  }
+
+  // refId も jobId と同じ形なので、同じ検査を通してからパスを組む: 外から来た refId でデータディレクトリの外を指させないため
+  private refFiles(jobId: string, refId: string) {
+    if (!isJobId(refId)) throw new Error(`refId の形ではない: ${refId}`);
+    const files = this.jobFiles(jobId);
+    return {
+      meta: files.refMeta(refId),
+      image: (mediaType: ReferenceRecord['mediaType']) => files.ref(refId, extensionOf(mediaType)),
+      preview: (longEdge: number) => files.refPreview(refId, longEdge),
+    };
   }
 }

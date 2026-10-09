@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_BUDGET,
   JobRunner,
-  StopConditionsNotChangeableError,
+  InterventionRejectedError,
   THINK_PARAM_KEYS,
   type AutoJobSpec,
   type GenerationRequest,
@@ -138,7 +138,7 @@ describe('the loop stops (:70)', () => {
 
     const state = await stoppedState(store, spec.jobId);
     expect(state.reason.kind).toBe('ai');
-    expect(state.carry.completedIterations).toBe(2);
+    expect(state.carry?.completedIterations).toBe(2);
     expect(state.imagesGenerated).toBe(4);
   });
 
@@ -232,7 +232,8 @@ describe('the input to the LLM stays within the budget (:71)', () => {
       const early = Math.max(...sizes.slice(0, 10));
       expect(Math.max(...sizes.slice(10))).toBeLessThanOrEqual(early + 8);
     }
-  });
+    // 既定の 5 秒にしない: 30 回ぶんの画像の縮小をファイルの上で実際に回すため、遅い機械では超える
+  }, 30_000);
 });
 
 describe('images are passed once, and only as previews (:72)', () => {
@@ -317,7 +318,7 @@ describe('a job resumes where it stopped (:74)', () => {
 
     const state = await stoppedState(second.store, spec.jobId);
     expect(state.reason.kind).toBe('limit:iterations');
-    expect(state.carry.completedIterations).toBe(3);
+    expect(state.carry?.completedIterations).toBe(3);
     // 2回目は「見る」からやり直し、3回目だけを新しく考えて生成した
     expect(second.llm.calls.map((c) => c.purpose)).toEqual(['judge', 'think', 'judge']);
     expect(second.backend.requests).toHaveLength(1);
@@ -360,7 +361,7 @@ describe('a job resumes after the process is killed (:74)', () => {
 
     const state = await stoppedState(store, spec.jobId);
     expect(state.reason.kind).toBe('limit:iterations');
-    expect(state.carry.completedIterations).toBe(3);
+    expect(state.carry?.completedIterations).toBe(3);
     // 2回目は考え直さずに生成からやり直し、3回目だけを新しく考えた
     expect(llm.calls.map((c) => c.purpose)).toEqual(['judge', 'think', 'judge']);
     expect(backend.requests).toHaveLength(2);
@@ -428,7 +429,7 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     runner.kick();
     await runner.idle();
 
-    expect((await stoppedState(store, spec.jobId)).carry.completedIterations).toBe(3);
+    expect((await stoppedState(store, spec.jobId)).carry?.completedIterations).toBe(3);
   });
 
   it('applies a change made while the job waits in the queue from its first boundary', async () => {
@@ -442,7 +443,7 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
 
     const state = await stoppedState(store, spec.jobId);
     expect(state.reason.kind).toBe('limit:iterations');
-    expect(state.carry.completedIterations).toBe(2);
+    expect(state.carry?.completedIterations).toBe(2);
   });
 
   it('leaves job.json as it was submitted', async () => {
@@ -472,7 +473,7 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     runner.kick();
     await runner.idle();
 
-    expect((await stoppedState(store, spec.jobId)).carry.completedIterations).toBe(2);
+    expect((await stoppedState(store, spec.jobId)).carry?.completedIterations).toBe(2);
   });
 
   it('refuses to change a job that has already stopped', async () => {
@@ -482,7 +483,10 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     await runner.idle();
 
     await expect(runner.changeStopConditions(spec.jobId, { maxIterations: 3 })).rejects.toThrow(
-      StopConditionsNotChangeableError,
+      InterventionRejectedError,
+    );
+    await expect(runner.addInstruction(spec.jobId, '逆光にして')).rejects.toThrow(
+      InterventionRejectedError,
     );
     expect(await store.listInterventions(spec.jobId)).toEqual([]);
   });
@@ -544,7 +548,7 @@ describe('a human instruction reaches the next think without stopping the image 
     expect(await set.store.listInterventions(spec.jobId)).toEqual([
       expect.objectContaining({ kind: 'instruction', text: '逆光にして', appliedInIteration: 2 }),
     ]);
-    expect((await stoppedState(set.store, spec.jobId)).carry.intent).toBe(INTEGRATED);
+    expect((await stoppedState(set.store, spec.jobId)).carry?.intent).toBe(INTEGRATED);
   });
 
   it('takes an instruction in again when the think that claimed it never finished', async () => {
@@ -563,7 +567,7 @@ describe('a human instruction reaches the next think without stopping the image 
     const firstThink = llm.calls.find((c) => c.purpose === 'think');
     const text = firstThink?.messages.user.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
     expect(text).toContain('逆光にして');
-    expect((await stoppedState(store, spec.jobId)).carry.intent).toBe(INTEGRATED);
+    expect((await stoppedState(store, spec.jobId)).carry?.intent).toBe(INTEGRATED);
   });
 });
 
@@ -627,7 +631,7 @@ describe('a reference image goes to the LLM once, shrunk, then travels as its gi
 
     const [stored] = await store.listReferences(spec.jobId);
     expect(stored).toMatchObject({ gist: GIST, sentInCall: expect.any(String) });
-    expect((await stoppedState(store, spec.jobId)).carry.references).toEqual([
+    expect((await stoppedState(store, spec.jobId)).carry?.references).toEqual([
       { refId: reference.refId, gist: GIST },
     ]);
   });

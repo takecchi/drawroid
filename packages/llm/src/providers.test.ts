@@ -162,3 +162,17 @@ describe('Anthropic provider', () => {
     expect(JSON.stringify(calls[0]?.body)).toContain('"media_type":"image/webp"');
   });
 });
+
+describe('API key environment variable', () => {
+  it.each(['openai', 'anthropic'] as const)(
+    'is required for the %s provider, so a missing key is found before any call',
+    (type) => {
+      expect(() =>
+        createLlm(
+          { providers: { cloud: { type } }, roles: { think: { provider: 'cloud', model: 'm' } } },
+          { env: { OPENAI_API_KEY: SECRET, ANTHROPIC_API_KEY: SECRET } },
+        ),
+      ).toThrow(/apiKeyEnv/);
+    },
+  );
+});
