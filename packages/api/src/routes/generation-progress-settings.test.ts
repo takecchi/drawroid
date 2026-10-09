@@ -36,6 +36,18 @@ describe('/settings/generation-progress', () => {
     expect(await res.json()).toEqual({ includePreview: true });
   });
 
+  it('keeps false when it is put back after true', async () => {
+    await send('PUT', '/settings/generation-progress', { includePreview: true });
+
+    // 送った値をそのまま返し、そのまま保存する（true に固定しない）
+    const put = await send('PUT', '/settings/generation-progress', { includePreview: false });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ includePreview: false });
+
+    const res = await send('GET', '/settings/generation-progress');
+    expect(await res.json()).toEqual({ includePreview: false });
+  });
+
   it.each([
     ['a non-boolean', { includePreview: 'yes' }],
     ['a missing field', {}],
