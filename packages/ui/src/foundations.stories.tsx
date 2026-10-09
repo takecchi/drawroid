@@ -24,6 +24,15 @@ const SWATCHES = [
   { token: 'ai', className: 'bg-ai', role: 'AI の判断' },
 ] as const;
 
+// 面の段差。地から順に1段ずつ持ち上がる（暗い側では明るく、明るい側では白く）
+const SURFACES = [
+  { token: 'background', className: 'bg-background' },
+  { token: 'card', className: 'bg-card' },
+  { token: 'popover', className: 'bg-popover' },
+  { token: 'muted', className: 'bg-muted' },
+  { token: 'accent', className: 'bg-accent' },
+] as const;
+
 const TEXT_SIZES = [
   { className: 'text-2xl', label: '見出し（text-2xl）' },
   { className: 'text-base', label: '本文（text-base）' },
@@ -58,9 +67,23 @@ function Colors() {
   );
 }
 
+function Surfaces() {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {SURFACES.map((surface) => (
+        <div key={surface.token} className="space-y-1">
+          <div className={cn('h-12 w-24 rounded-md border', surface.className)} />
+          <div className="font-mono text-xs text-muted-foreground">{surface.token}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Typography() {
   return (
     <div className="space-y-2">
+      <p className="font-display text-lg tracking-wide">drawroid</p>
       {TEXT_SIZES.map((size) => (
         <p key={size.className} className={size.className}>
           {size.label} 絵を描く・Draw a picture
@@ -86,6 +109,17 @@ function Radii() {
   );
 }
 
+// いま選ばれているものの印。光ってよいのはこれと焦点の輪だけ
+function LumenEdge() {
+  return (
+    <div className="flex w-56 flex-col gap-1 rounded-lg border bg-card p-2 text-sm">
+      <div className="rounded-md px-3 py-1.5 text-muted-foreground">会話</div>
+      <div className="lumen-edge rounded-md bg-accent px-3 py-1.5 text-foreground">ジョブ</div>
+      <div className="rounded-md px-3 py-1.5 text-muted-foreground">記憶</div>
+    </div>
+  );
+}
+
 function Overview() {
   return (
     <div className="min-h-dvh bg-background p-6 text-foreground sm:p-10">
@@ -94,11 +128,17 @@ function Overview() {
         <Section title="色">
           <Colors />
         </Section>
-        <Section title="文字の大きさ">
+        <Section title="面の段差">
+          <Surfaces />
+        </Section>
+        <Section title="文字（本文 IBM Plex Sans JP・ロゴ Michroma・等幅 IBM Plex Mono）">
           <Typography />
         </Section>
         <Section title="角丸">
           <Radii />
+        </Section>
+        <Section title="光の縁（lumen-edge）">
+          <LumenEdge />
         </Section>
       </div>
     </div>
