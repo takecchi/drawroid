@@ -1,20 +1,36 @@
 export {
   BACKEND_FEATURES,
+  CANDIDATE_KIND_FEATURE,
   CANDIDATE_KINDS,
   candidateKindSchema,
   candidateSchema,
+  CONTROL_MODES,
+  controlNetUnitSchema,
   generationRequestSchema,
   hiresFixSchema,
+  inputImageRefSchema,
+  inputImageRefsOf,
+  img2imgSchema,
+  INPAINT_FILLS,
+  inpaintSchema,
   loraSchema,
+  RESIZE_MODES,
+  resizeModeSchema,
   type BackendCapabilities,
   type BackendFeature,
+  type BackendLimits,
   type Candidate,
   type CandidateKind,
+  type ControlNetUnit,
   type GeneratedImage,
+  type GenerationImages,
   type GenerationRequest,
   type GenerationRequestInput,
   type GenerationResult,
   type ImageBackend,
+  type InputImage,
+  type InputImageRef,
+  type ResizeMode,
 } from './backend.js';
 export {
   BACKEND_ERROR_KINDS,
@@ -59,3 +75,8 @@ export {
   type MemoryScope,
 } from './memory/item.js';
 export { type MemorySelection, selectMemory } from './memory/select.js';
+export {
+  type CandidateSelection,
+  selectCandidates,
+  type ShownCandidate,
+} from './candidates/select.js';
