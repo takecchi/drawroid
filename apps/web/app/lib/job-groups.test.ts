@@ -50,6 +50,15 @@ describe('groupJobsByStatus', () => {
     expect(groupJobsByStatus([])).toEqual({ running: [], queued: [], stopped: [] });
   });
 
+  it('orders jobs created at the same instant by jobId, later id first', () => {
+    const groups = groupJobsByStatus([
+      job('a', '2026-10-09T00:00:00Z', stopped),
+      job('c', '2026-10-09T00:00:00Z', stopped),
+      job('b', '2026-10-09T00:00:00Z', stopped),
+    ]);
+    expect(groups.stopped.map((j) => j.jobId)).toEqual(['c', 'b', 'a']);
+  });
+
   it('does not reorder the input', () => {
     const input = [
       job('a', '2026-10-08T00:00:00Z', stopped),
