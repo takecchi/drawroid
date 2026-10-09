@@ -86,6 +86,12 @@ importers:
       '@drawroid/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@drawroid/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@drawroid/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@drawroid/storage-fs':
         specifier: workspace:*
         version: link:../../packages/storage-fs
