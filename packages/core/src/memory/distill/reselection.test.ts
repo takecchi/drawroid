@@ -96,6 +96,8 @@ function setup(
     state?: JobState;
     spec?: Partial<Extract<JobSpec, { kind: 'auto' }>>;
     llm?: ScriptedLlm | undefined;
+    /** 渡さなければ QUIET を渡す。default なら渡さず、本体の既定で動かす */
+    quiet?: 'default';
   } = {},
 ) {
   const store = new FakeJobStore();
@@ -129,7 +131,7 @@ function setup(
     memory: new FakeMemoryStore(),
     log,
     llm: () => llm,
-    quietMs: QUIET,
+    ...(options.quiet === 'default' ? {} : { quietMs: QUIET }),
     now: () => new Date(clock),
     newCallId: (now) => `call-${now.toISOString()}`,
     timers,
@@ -162,6 +164,9 @@ describe('distilling in the background after a stopped job is reselected', () =>
     await flush();
     expect(t.llm!.calls).toHaveLength(0);
     t.timers.advance(1);
+    // 期限が来た時点で、もう走っている（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(1);
     await t.distiller.idle();
 
     expect(t.llm!.calls).toHaveLength(1);
@@ -193,6 +198,9 @@ describe('distilling in the background after a stopped job is reselected', () =>
     await flush();
     expect(t.llm!.calls).toHaveLength(0);
     t.timers.advance(1);
+    // 期限が来た時点で、もう走っている（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(1);
     await t.distiller.idle();
 
     expect(t.llm!.calls).toHaveLength(1);
@@ -413,6 +421,26 @@ describe('distilling in the background after a stopped job is reselected', () =>
     t.select('2-0', 'favorite', '2026-10-09T10:10:00Z');
 
     t.distiller.notify(JOB);
+    await t.distiller.idle();
+
+    expect(t.llm!.calls).toHaveLength(1);
+  });
+});
+
+// 既定の待ちは 5 秒（#134 の約束）。試験が渡す値ではなく、本体の既定を時間そのもので見る
+describe('the default quiet time', () => {
+  it('runs 5 seconds after the last notice, not sooner', async () => {
+    const t = setup({ quiet: 'default' });
+    t.select('2-0', 'favorite', '2026-10-09T10:10:00Z');
+
+    t.distiller.notify(JOB);
+    t.timers.advance(4_999);
+    await flush();
+    expect(t.llm!.calls).toHaveLength(0);
+    t.timers.advance(1);
+    // 期限が来た時点で、もう走っている（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(1);
     await t.distiller.idle();
 
     expect(t.llm!.calls).toHaveLength(1);
