@@ -169,7 +169,7 @@ async function main() {
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
     log(
-      'drawroid: LLM が未設定。PUT /api/settings/llm で設定するまで、自動ジョブは待ち行列に留まる',
+      'drawroid: LLM が未設定。画面の「設定」の「LLM の設定」（/settings#llm）か PUT /api/settings/llm で設定するまで、自動ジョブは待ち行列に留まる',
     );
   } else {
     const parsed = llmConfigSchema.safeParse(stored);

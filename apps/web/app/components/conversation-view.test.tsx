@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ConversationEvent, LiveEvent } from '@drawroid/core';
+import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
 import { setSelection, useSelections } from '@drawroid/swr';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -598,5 +598,59 @@ describe('ConversationView', () => {
     cleanup();
 
     expect(stream.closed).toBe(true);
+  });
+
+  it('leads to the settings from a failure that settings can fix, and only from those', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(confirmed({ type: 'turn.started', turn: 1, messageSeqs: [] }));
+    stream.emit(
+      confirmed({
+        type: 'turn.ended',
+        turn: 1,
+        outcome: 'error',
+        reason: LLM_NOT_CONFIGURED_REASON,
+      }),
+    );
+    stream.emit(confirmed({ type: 'turn.started', turn: 2, messageSeqs: [] }));
+    stream.emit(
+      confirmed({
+        type: 'turn.ended',
+        turn: 2,
+        outcome: 'error',
+        reason: 'ターンが失敗した: 何か',
+      }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'error', detail: '繋がらない', backendErrorKind: 'unreachable' },
+      }),
+    );
+    stream.emit(
+      confirmed({ type: 'job.stopped', jobId: JOB, reason: { kind: 'human', detail: '止めた' } }),
+    );
+    // 設定では直らない失敗（バックエンドが処理に失敗した）には、設定への道を添えない
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'error', detail: 'メモリ不足', backendErrorKind: 'failed' },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('link', { name: 'LLM の設定へ' })).toHaveLength(1),
+    );
+    expect(screen.getByRole('link', { name: 'LLM の設定へ' }).getAttribute('href')).toBe(
+      '/settings#llm',
+    );
+    expect(screen.getAllByRole('link', { name: 'バックエンドの設定へ' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'バックエンドの設定へ' }).getAttribute('href')).toBe(
+      '/settings#backend',
+    );
   });
 });
