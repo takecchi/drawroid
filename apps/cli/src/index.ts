@@ -37,7 +37,6 @@ import {
   readPermissionSettings,
   resolveDataDir,
   writeCandidateNotes,
-  writeLlmSettings,
   writePermissionSettings,
 } from '@drawroid/storage-fs';
 
@@ -49,6 +48,7 @@ import { createBudgetSettings } from './budget-settings.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
+import { createLlmSettings } from './llm-settings.js';
 import { createPermissionReader } from './permission-reader.js';
 import { wireGenerationProgress } from './progress-wiring.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
@@ -192,14 +192,12 @@ async function main() {
         `drawroid: 選び直しの蒸留に失敗した: ${error instanceof Error ? error.message : String(error)}`,
       ),
   });
-  const llmSettings = {
-    read: () => readLlmSettings(configPath),
-    write: async (llm: LlmConfig) => {
-      await writeLlmSettings(configPath, llm);
-      await configureLlm(llm);
-      autoQueue.kick();
-    },
-  };
+  const llmSettings = createLlmSettings({
+    configPath,
+    configure: configureLlm,
+    kick: () => autoQueue.kick(),
+    log,
+  });
 
   const budgetSettings = createBudgetSettings(configPath);
   const readCandidates = () => readCandidateNotes(dataPaths(root).candidateNotes);
