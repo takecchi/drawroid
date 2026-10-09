@@ -1,6 +1,6 @@
 import { describeImageBackendContract, STUB_PNG } from '@drawroid/core/testing';
 import { BackendError, generationRequestSchema } from '@drawroid/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ForgeBackend } from './forge-backend.js';
 import {
@@ -144,5 +144,47 @@ describe('ForgeBackend', () => {
       expect(error).toBeInstanceOf(BackendError);
       expect((error as BackendError).kind).toBe('unreachable');
     });
+  });
+});
+
+// 既定の時間の上限は、ふつうの呼び出しが 30 秒、生成が 10 分（#13 の約束）。待つのではなく、上限として渡る値を絶対の数で見る
+describe('ForgeBackend default time limits', () => {
+  let forge: MockForge;
+  beforeEach(async () => {
+    forge = await startMockForge();
+  });
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await forge.close();
+  });
+
+  it('limits ordinary calls to 30 seconds and generation to 10 minutes', async () => {
+    const limits = vi.spyOn(AbortSignal, 'timeout');
+    const backend = new ForgeBackend({ baseUrl: forge.url });
+
+    await backend.probe();
+    expect(limits.mock.calls.map(([ms]) => ms)).toContain(30_000);
+    expect(limits.mock.calls.map(([ms]) => ms)).not.toContain(600_000);
+
+    limits.mockClear();
+    forge.route('POST /sdapi/v1/txt2img', () => undefined);
+    const stop = new AbortController();
+    const generating = backend.generate(
+      {
+        prompt: 'a',
+        negativePrompt: '',
+        loras: [],
+        steps: 1,
+        cfgScale: 1,
+        width: 8,
+        height: 8,
+        batchSize: 1,
+        controlnet: [],
+      },
+      stop.signal,
+    );
+    await vi.waitFor(() => expect(limits.mock.calls.map(([ms]) => ms)).toContain(600_000));
+    stop.abort();
+    await generating.catch(() => undefined);
   });
 });
