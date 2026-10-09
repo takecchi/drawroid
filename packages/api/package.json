@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@drawroid/core": "workspace:*",
+    "@drawroid/llm": "workspace:*",
     "hono": "catalog:",
     "zod": "catalog:"
   },

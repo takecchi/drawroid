@@ -17,6 +17,7 @@
     "@drawroid/api": "workspace:*",
     "@drawroid/backend-forge": "workspace:*",
     "@drawroid/core": "workspace:*",
+    "@drawroid/llm": "workspace:*",
     "@drawroid/storage-fs": "workspace:*",
     "@drawroid/web": "workspace:*",
     "@hono/node-server": "catalog:",

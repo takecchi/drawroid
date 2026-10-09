@@ -95,6 +95,9 @@ importers:
       '@drawroid/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@drawroid/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@drawroid/storage-fs':
         specifier: workspace:*
         version: link:../../packages/storage-fs
@@ -172,6 +175,9 @@ importers:
       '@drawroid/core':
         specifier: workspace:*
         version: link:../core
+      '@drawroid/llm':
+        specifier: workspace:*
+        version: link:../llm
       hono:
         specifier: 'catalog:'
         version: 4.13.13
