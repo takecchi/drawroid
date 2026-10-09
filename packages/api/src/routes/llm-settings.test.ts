@@ -60,6 +60,18 @@ describe('GET /settings/llm', () => {
     expect(await res.json()).toEqual({ config: null });
   });
 
+  it.each([
+    ['empty', ''],
+    ['missing', undefined],
+  ])('reports a stored config whose API key env var is %s as not set', async (_, value) => {
+    saved = config;
+    const res = await makeApp({ TEST_KEY: value }).request('/settings/llm');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      apiKeyEnv: { cloud: { name: 'TEST_KEY', set: false } },
+    });
+  });
+
   it('answers 500 invalid_config when the stored settings are broken', async () => {
     saved = { providers: {} };
     const res = await makeApp({}).request('/settings/llm');
