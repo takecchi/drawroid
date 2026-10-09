@@ -68,6 +68,13 @@ export type ChatItem =
       canStop: boolean;
       nextChange: string;
     }
+  | {
+      kind: 'adopted';
+      key: string;
+      jobId: string;
+      iteration: number;
+      image: { iteration: number; index: number };
+    }
   | { kind: 'job-stopped'; key: string; jobId: string; reason: StopReason }
   | {
       kind: 'progress';
@@ -398,6 +405,15 @@ export function chatItems(state: ChatState): ChatItem[] {
         });
         break;
       }
+      case 'job.adopted':
+        items.push({
+          kind: 'adopted',
+          key,
+          jobId: event.jobId,
+          iteration: event.iteration,
+          image: event.image,
+        });
+        break;
       case 'job.stopped':
         items.push({ kind: 'job-stopped', key, jobId: event.jobId, reason: event.reason });
         break;

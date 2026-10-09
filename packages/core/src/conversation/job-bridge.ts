@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { GenerationRequest, GenerationResult } from '../backend.js';
 import type { JobStore, NewJobSpec, StageName } from '../job/store.js';
-import type { AutoJobSpec, JobState, StopReason } from '../job/types.js';
+import type { AdoptedRecord, AutoJobSpec, JobState, StopReason } from '../job/types.js';
 import { iterationPlanSchema } from '../think/excluded.js';
 import type { NewConversationEvent } from './events.js';
 import type { ConversationHubs } from './hub.js';
@@ -71,6 +71,9 @@ export const jobEvents = {
       ...(judge.reasoning === undefined ? {} : { reasoning: judge.reasoning }),
     };
   },
+  adopted(jobId: string, iteration: number, record: AdoptedRecord): NewConversationEvent {
+    return { type: 'job.adopted', jobId, iteration, image: record.image };
+  },
   intervention(
     jobId: string,
     interventionId: string,
@@ -137,6 +140,11 @@ export function bridgeJobEvents(
       if (stage === 'judge') {
         await emit(jobId, async () => jobEvents.judge(jobId, iteration, value));
       }
+    },
+
+    async writeAdopted(jobId: string, iteration: number, record: AdoptedRecord) {
+      await inner.writeAdopted(jobId, iteration, record);
+      await emit(jobId, async () => jobEvents.adopted(jobId, iteration, record));
     },
 
     async writeGeneration(

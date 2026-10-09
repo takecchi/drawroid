@@ -199,6 +199,23 @@ describe('ConversationView', () => {
     expect(screen.getByText(/描くのを止めた/)).toBeTruthy();
   });
 
+  it('says which image a human chose when the iteration was settled by the choice', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: JOB,
+        iteration: 2,
+        image: { iteration: 2, index: 0 },
+      }),
+    );
+
+    expect(screen.getByText('人が選んだ: 2 回目の画像 1 番')).toBeTruthy();
+  });
+
   it('keeps the reasoning open while it streams and folds it once confirmed', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);

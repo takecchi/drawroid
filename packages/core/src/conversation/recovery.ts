@@ -61,6 +61,7 @@ function keyOf(event: ConversationEvent | NewConversationEvent): string | undefi
     case 'job.think':
     case 'job.images':
     case 'job.judge':
+    case 'job.adopted':
       return `${event.type}:${event.iteration}`;
     case 'job.intervention':
       return `${event.type}:${event.interventionId}`;
@@ -94,6 +95,8 @@ async function expectedEvents(jobs: JobStore, spec: AutoJobSpec): Promise<NewCon
       events.push(jobEvents.images(jobId, iteration, generation.images));
     const judge = await jobs.readStage(jobId, iteration, 'judge');
     if (judge !== undefined) events.push(jobEvents.judge(jobId, iteration, judge));
+    const adopted = await jobs.readAdopted(jobId, iteration);
+    if (adopted !== undefined) events.push(jobEvents.adopted(jobId, iteration, adopted));
   }
   const state = await jobs.readState(jobId);
   if (state.status === 'stopped') events.push(jobEvents.stopped(jobId, state.reason));

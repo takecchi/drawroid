@@ -252,6 +252,12 @@ describe('a human message while the job of the conversation is running', () => {
       score: 1,
     });
     expect(await jobs.readSelection(jobId, '1-1')).toMatchObject({ verdict: 'favorite' });
+    // 会話には、評価の代わりに「人が選んだ」が確定する（job.judge は出ない）
+    const iteration1 = (await events()).filter(
+      (e) => 'iteration' in e && e.iteration === 1 && e.type.startsWith('job.'),
+    );
+    expect(iteration1.map((e) => e.type)).toEqual(['job.think', 'job.images', 'job.adopted']);
+    expect(iteration1.at(-1)).toMatchObject({ jobId, image: { iteration: 1, index: 1 } });
     expect((await jobs.readState(jobId)).carry?.best).toMatchObject({
       iteration: 1,
       imageIndex: 1,
