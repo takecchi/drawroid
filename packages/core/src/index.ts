@@ -181,3 +181,4 @@ export * from './conversation/store.js';
 export * from './conversation/hub.js';
 export * from './conversation/job-bridge.js';
 export * from './conversation/drawing.js';
+export * from './conversation/drawing-tools.js';

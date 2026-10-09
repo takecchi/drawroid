@@ -9,13 +9,20 @@ import {
   type ConversationEvent,
   type ConversationEventPage,
   type ConversationStore,
+  type ConversationUpload,
   type NewConversationEvent,
 } from '@drawroid/core';
 import type { ZodType } from 'zod';
 
-import { createJsonExclusive, writeJsonAtomic } from './atomic.js';
+import { createFileExclusive, createJsonExclusive, writeJsonAtomic } from './atomic.js';
 import { formatJobId, isJobId, StoredFileError } from './job-store.js';
 import { dataPaths, EVENT_SEQ_DIGITS, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
+
+const UPLOAD_EXTENSIONS: Record<ConversationUpload['mediaType'], string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
 
 /** 1ページの既定の件数。画面は more を見て続きを読む */
 export const DEFAULT_EVENT_PAGE_SIZE = 200;
@@ -164,6 +171,37 @@ export class FsConversationStore implements ConversationStore {
       events.push(await readValid(`${files.events}/${name}`, conversationEventSchema));
     }
     return { events, last: events.at(-1)?.seq ?? after, more: later.length > limit };
+  }
+
+  async addUpload(conversationId: string, upload: ConversationUpload, now: Date): Promise<string> {
+    const files = this.files(conversationId);
+    await mkdir(files.uploads, { recursive: true });
+    for (;;) {
+      const uploadId = formatJobId(now, this.randomSuffix());
+      const placed = await createFileExclusive(
+        files.upload(uploadId, UPLOAD_EXTENSIONS[upload.mediaType]),
+        upload.data,
+      );
+      if (placed) return uploadId;
+    }
+  }
+
+  async readUpload(
+    conversationId: string,
+    uploadId: string,
+  ): Promise<ConversationUpload | undefined> {
+    const files = this.files(conversationId);
+    // 外から来た ID の形を確かめてからパスにする: 会話の外を読ませないため
+    if (!isJobId(uploadId)) return undefined;
+    for (const [mediaType, ext] of Object.entries(UPLOAD_EXTENSIONS)) {
+      try {
+        const data = new Uint8Array(await readFile(files.upload(uploadId, ext)));
+        return { data, mediaType: mediaType as ConversationUpload['mediaType'] };
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+    }
+    return undefined;
   }
 
   /** イベントのファイルを、seq の順に返す */

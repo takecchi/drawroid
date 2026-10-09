@@ -3,7 +3,12 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ConversationHubs, DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import {
+  bridgeJobEvents,
+  ConversationHubs,
+  DEFAULT_BUDGET,
+  ManualGenerationRunner,
+} from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   createFsDistillLog,
@@ -66,11 +71,20 @@ async function main() {
     createBackend,
     initial: { kind, url, source, config },
   });
-  const store = new FsJobStore(root);
+  const log = (line: string) => process.stdout.write(`${line}\n`);
+  const conversationStore = new FsConversationStore(root);
+  const conversationHubs = new ConversationHubs({ store: conversationStore });
+  // ジョブの置き場所を橋渡しで包む: 会話から作ったジョブの段が、会話のログに出るように
+  const store = bridgeJobEvents(new FsJobStore(root), {
+    hubs: conversationHubs,
+    onError: (error) =>
+      log(
+        `drawroid: ジョブの段を会話に書けなかった（ジョブは続ける）: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
   const manualRunner = new ManualGenerationRunner({ backend, store });
   process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
 
-  const log = (line: string) => process.stdout.write(`${line}\n`);
   const memoryStore = createFsMemoryStore(dataPaths(root).memory);
   const readPermissions = createPermissionReader(() => readPermissionSettings(configPath), log);
   // 起動のときに一度読む: 読めない行があれば、ジョブを待たずにログで知らせる
@@ -120,7 +134,6 @@ async function main() {
     },
   };
 
-  const conversationStore = new FsConversationStore(root);
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),
@@ -144,7 +157,7 @@ async function main() {
       },
       conversations: {
         store: conversationStore,
-        hubs: new ConversationHubs({ store: conversationStore }),
+        hubs: conversationHubs,
       },
       candidateNotes: {
         read: () => readCandidateNotes(dataPaths(root).candidateNotes),

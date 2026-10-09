@@ -9,6 +9,7 @@ import {
   type Conversation,
   type ConversationEventPage,
   type ConversationStore,
+  type ConversationUpload,
 } from '../conversation/store.js';
 
 /**
@@ -17,7 +18,22 @@ import {
 export class MemoryConversationStore implements ConversationStore {
   private readonly conversations = new Map<string, Conversation>();
   private readonly events = new Map<string, ConversationEvent[]>();
+  private readonly uploads = new Map<string, ConversationUpload>();
   private nextId = 1;
+
+  async addUpload(conversationId: string, upload: ConversationUpload, _now: Date): Promise<string> {
+    this.listOf(conversationId);
+    const uploadId = `u${this.uploads.size + 1}`;
+    this.uploads.set(`${conversationId}/${uploadId}`, upload);
+    return uploadId;
+  }
+
+  async readUpload(
+    conversationId: string,
+    uploadId: string,
+  ): Promise<ConversationUpload | undefined> {
+    return this.uploads.get(`${conversationId}/${uploadId}`);
+  }
 
   async createConversation(now: Date): Promise<Conversation> {
     const conversationId = `20261009-000000-c${this.nextId++}`;

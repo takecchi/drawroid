@@ -331,3 +331,33 @@ describe('conversations', () => {
     expect((await json('PATCH', `/conversations/${missing}`, { title: 'x' })).status).toBe(404);
   });
 });
+
+describe('images attached in a conversation', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString(
+    'base64',
+  );
+
+  it('keeps an attached image and answers its upload ID', async () => {
+    const id = await newConversation();
+
+    const res = await json('POST', `/conversations/${id}/uploads`, {
+      mediaType: 'image/png',
+      data: png,
+    });
+
+    expect(res.status).toBe(201);
+    const { uploadId } = (await res.json()) as { uploadId: string };
+    expect(uploadId).not.toBe('');
+  });
+
+  it('refuses something that is not an image of the type it says', async () => {
+    const id = await newConversation();
+
+    const res = await json('POST', `/conversations/${id}/uploads`, {
+      mediaType: 'image/jpeg',
+      data: png,
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
