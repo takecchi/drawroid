@@ -92,11 +92,9 @@ describe('ForgeClient errors', () => {
   it('reports a caller abort as aborted, not as a timeout', async () => {
     forge.route('GET /sdapi/v1/cmd-flags', () => undefined);
     const controller = new AbortController();
-    const pending = clientFor(forge.url).getJson(
-      '/sdapi/v1/cmd-flags',
-      anything,
-      controller.signal,
-    );
+    const pending = clientFor(forge.url).getJson('/sdapi/v1/cmd-flags', anything, {
+      signal: controller.signal,
+    });
     controller.abort();
     await expect(pending).rejects.toMatchObject({ kind: 'aborted' });
   });
