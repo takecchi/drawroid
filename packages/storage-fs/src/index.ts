@@ -2,6 +2,7 @@ export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 export {
   formatJobId,
   FsJobStore,
+  ImageAlreadySentError,
   isJobId,
   StoredFileError,
   type FsJobStoreOptions,

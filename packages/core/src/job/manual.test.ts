@@ -55,6 +55,17 @@ class MemoryJobStore implements JobStore {
   async readImage() {
     return undefined;
   }
+  // 以下は自動ジョブ（M2）の口。手動の生成は使わない
+  readStage = notUsed;
+  writeStage = notUsed;
+  loadPreview = notUsed;
+  markSent = notUsed;
+  writeLlmCall = notUsed;
+  listLlmCalls = notUsed;
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('手動の生成では使わない口');
 }
 
 const params = { prompt: 'a cat', steps: 4, cfgScale: 7, width: 64, height: 64, batchSize: 2 };
