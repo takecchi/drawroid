@@ -71,6 +71,33 @@ try {
   await page.getByLabel('発言').waitFor();
   expect(true, '会話を開くと、ログと発言の入力欄が出る');
 
+  // JS が届かないとき（遅い・止まった・失敗した）にも、本文が空のまま（真っ白）にならない。読み込み中と出し、
+  // 時間が経ったら次にすることを出す。JS を止めた別の画面で見る（CSS は届く）
+  const blocked = await browser.newPage();
+  await blocked.route('**/*.js', (route) => route.abort());
+  await blocked.goto(`${base}/`);
+  await blocked.getByText('読み込んでいます…').waitFor();
+  expect(true, 'JS が届かなくても、本文に「読み込んでいます…」が出る');
+  // 案内は透明のまま置いてあり、時間が経つと見えるようになる（透明でも Playwright は「見える」と数えるので、不透明さを待つ）
+  await blocked
+    .getByText('読み込みに時間がかかっている', { exact: false })
+    .waitFor({ state: 'attached' });
+  expect(
+    String(
+      await blocked.evaluate(
+        'getComputedStyle(document.querySelector(".hydrate-slow-hint")).opacity',
+      ),
+    ) === '0',
+    '読み込みの直後は、時間の案内はまだ見えない',
+  );
+  await blocked.waitForFunction(
+    'getComputedStyle(document.querySelector(".hydrate-slow-hint")).opacity === "1"',
+    undefined,
+    { timeout: 15_000 },
+  );
+  expect(true, '時間が経つと、再読み込みとターミナルの確かめを促す案内が出る');
+  await blocked.close();
+
   // はじめの一歩: LLM もバックエンドも未設定から、案内をたどって LLM を設定し、話す役と1往復する。
   // バックエンドは立てない（初めて開いた人と同じ）。LLM は check-packed-conversation の偽物を、ローカルの OpenAI 互換の LLM の代わりに使う
   llm = await startFakeLlm({ stopAfterIterations: 1 });
