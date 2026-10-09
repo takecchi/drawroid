@@ -361,6 +361,24 @@ describe('adopting an image the human chose', () => {
     expect(llm.calls.filter((c) => c.purpose === 'judge')).toHaveLength(2);
   });
 
+  it('leaves the call in flight alone for a new choice in an iteration a human already chose', async () => {
+    const judging = blocking(judge, (n) => n <= 1);
+    const { store, runner, llm } = setup({ judge: judging.script });
+    const jobId = await submit(store, { aiJudgement: false, maxIterations: 2 }, 2);
+    runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await runner.addInstruction(jobId, 'もっと夕焼けを赤く');
+    await runner.adopt(jobId, { iteration: 1, index: 0 });
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+
+    await runner.adopt(jobId, { iteration: 1, index: 1 });
+    judging.answer(1);
+    await runner.idle();
+
+    expect(judging.signals[1]!.aborted).toBe(false);
+    expect(llm.calls.filter((c) => c.purpose === 'judge')).toHaveLength(2);
+  });
+
   it('refuses an image that does not exist, and writes nothing', async () => {
     const judging = blocking(judge, (n) => n === 0);
     const { store, runner } = setup({ judge: judging.script });
