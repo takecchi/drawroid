@@ -1,4 +1,3 @@
-import type { StopConditions } from '@drawroid/core';
 import {
   addInstruction,
   addReference,
@@ -24,6 +23,7 @@ import { buildReferenceUpload, type AttachedReference } from '../lib/reference-u
 import {
   buildStopConditionsChange,
   changedConditions,
+  describeStopConditions,
   stopConditionsToForm,
   type StopConditionsFormValues,
 } from '../lib/stop-conditions-form';
@@ -149,17 +149,6 @@ function ReferenceForm({ jobId }: { jobId: string }) {
   );
 }
 
-function describeConditions(conditions: StopConditions): string[] {
-  return [
-    ...(conditions.aiJudgement ? ['AI が意図どおりと判断したら'] : []),
-    ...(conditions.maxIterations === undefined ? [] : [`${conditions.maxIterations} 回まで`]),
-    ...(conditions.maxImages === undefined ? [] : [`${conditions.maxImages} 枚まで`]),
-    ...(conditions.maxDurationMs === undefined
-      ? []
-      : [`${conditions.maxDurationMs / 60_000} 分まで`]),
-  ];
-}
-
 function StopConditionsChanger({ jobId }: { jobId: string }) {
   // 走行中の画面にだけ出すので live 固定: 別の口出し（別タブ・API）で変わった条件も、取り直して見せるため
   const { data, error: loadError } = useStopConditions(jobId, { live: true });
@@ -209,7 +198,7 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
       <div className="space-y-1">
         <p className="text-sm">いまの条件（次の回の境目から効く）</p>
         <BulletList>
-          {describeConditions(current).map((line) => (
+          {describeStopConditions(current).map((line) => (
             <li key={line}>{line}</li>
           ))}
         </BulletList>
