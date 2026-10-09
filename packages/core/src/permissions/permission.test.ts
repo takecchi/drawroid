@@ -150,8 +150,9 @@ describe('permissions for the fields a generation cannot do without', () => {
 describe('the shape of the permissions', () => {
   it('refuses the global permissions when any one field is missing', () => {
     for (const key of PARAM_KEYS) {
-      const { [key]: _, ...rest } = allAuto();
-      expect(permissionsSchema.safeParse(rest).success, key).toBe(false);
+      const missing: Partial<Permissions> = allAuto();
+      delete missing[key];
+      expect(permissionsSchema.safeParse(missing).success, key).toBe(false);
     }
   });
 

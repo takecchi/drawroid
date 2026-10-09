@@ -52,6 +52,16 @@ describe('readConfig', () => {
     await expect(readConfig(path)).rejects.toThrow(/config\.json.*url と forgeUrl/s);
   });
 
+  it('reads the global permissions, and names the file when they have the wrong shape', async () => {
+    const path = join(dir, 'config.json');
+    const permissions = { steps: { mode: 'fixed', value: 30 }, sampler: { mode: 'off' } };
+    await writeFile(path, JSON.stringify({ permissions }));
+    expect(await readConfig(path)).toEqual({ permissions });
+
+    await writeFile(path, JSON.stringify({ permissions: { prompt: { mode: 'off' } } }));
+    await expect(readConfig(path)).rejects.toThrow(/config\.json/);
+  });
+
   it('names the file when it is not JSON', async () => {
     const path = join(dir, 'config.json');
     await writeFile(path, '{ broken');
