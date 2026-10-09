@@ -33,6 +33,8 @@ export interface JobStore {
   ): Promise<InterventionRecord>;
   /** 受けた順 */
   listInterventions(jobId: string): Promise<InterventionRecord[]>;
+  /** 人間の指示を「考える」に取り込んだ回を書き戻す。原文には触れない */
+  markInterventionApplied(jobId: string, interventionId: string, iteration: number): Promise<void>;
 
   /** 段の出力が無ければ undefined */
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown>;

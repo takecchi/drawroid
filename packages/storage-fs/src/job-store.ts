@@ -181,6 +181,19 @@ export class FsJobStore implements JobStore {
     return records;
   }
 
+  async markInterventionApplied(
+    jobId: string,
+    interventionId: string,
+    iteration: number,
+  ): Promise<void> {
+    const path = this.paths.jobFiles(jobId).intervention(interventionId);
+    const record = await readValid(path, interventionRecordSchema);
+    if (record.kind !== 'instruction') {
+      throw new StoredFileError(path, new Error('人間の指示ではないので、取り込んだ回を持たない'));
+    }
+    await writeJsonAtomic(path, { ...record, appliedInIteration: iteration });
+  }
+
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown> {
     return readJsonIfExists(this.paths.jobFiles(jobId).iteration(iteration)[stage]);
   }

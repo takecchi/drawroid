@@ -462,7 +462,7 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
   });
 
   it('is not moved by a human instruction, which only goes to the think', async () => {
-    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const { store, runner } = setup({ scripts: { think: thinkIntegrating, judge: judge() } });
     const spec = await submit(store, { aiJudgement: false, maxIterations: 2 });
     await store.addIntervention(
       spec.jobId,
@@ -498,5 +498,71 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     expect(
       await runner.changeStopConditions(spec.jobId, { maxIterations: null, maxImages: 8 }),
     ).toEqual({ aiJudgement: false, maxImages: 8 });
+  });
+});
+
+const INTEGRATED = '逆光で夕暮れの海辺に立つ白いワンピースの少女、アニメ調';
+
+/** 求められたときは統合した要点も返す考える役（求められなければスキーマが落とす） */
+const thinkIntegrating: Script = (call, n) => ({
+  ...(think(call, n) as object),
+  intent: INTEGRATED,
+});
+
+function recordedText(record: { input: { user: { type: string; text?: string }[] } }): string {
+  return record.input.user.map((part) => part.text ?? '').join('\n');
+}
+
+describe('a human instruction reaches the next think without stopping the image (M3:99)', () => {
+  it('lets the image being generated finish, and takes the instruction into the next think', async () => {
+    const job = { jobId: '' };
+    const backend = new BackendWithHook(async (n) => {
+      if (n === 1) {
+        await set.store.addIntervention(
+          job.jobId,
+          { kind: 'instruction', text: '逆光にして' },
+          new Date(),
+        );
+      }
+    });
+    const set = setup({ scripts: { think: thinkIntegrating, judge: judge() }, backend });
+    const spec = await submit(set.store, { aiJudgement: false, maxIterations: 3 });
+    job.jobId = spec.jobId;
+    set.runner.kick();
+    await set.runner.idle();
+
+    expect(backend.interruptCount).toBe(0);
+    expect(backend.requests).toHaveLength(3);
+
+    const thinks = (await set.store.listLlmCalls(spec.jobId)).filter((r) => r.role === 'think');
+    expect(thinks.map((r) => r.iteration)).toEqual([1, 2, 3]);
+    expect(recordedText(thinks[0]!)).not.toContain('逆光にして');
+    expect(recordedText(thinks[1]!).split('人間の指示:')[1]).toContain('逆光にして');
+    expect(recordedText(thinks[2]!)).not.toContain('人間の指示');
+    expect(recordedText(thinks[2]!)).toContain(INTEGRATED);
+
+    expect(await set.store.listInterventions(spec.jobId)).toEqual([
+      expect.objectContaining({ kind: 'instruction', text: '逆光にして', appliedInIteration: 2 }),
+    ]);
+    expect((await stoppedState(set.store, spec.jobId)).carry.intent).toBe(INTEGRATED);
+  });
+
+  it('takes an instruction in again when the think that claimed it never finished', async () => {
+    const { store, runner, llm } = setup({ scripts: { think: thinkIntegrating, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 1 });
+    const said = await store.addIntervention(
+      spec.jobId,
+      { kind: 'instruction', text: '逆光にして' },
+      new Date(),
+    );
+    // 1回目の「考える」が取り込んだ回を書き、think.json を置く前に落ちた跡
+    await store.markInterventionApplied(spec.jobId, said.interventionId, 1);
+    runner.kick();
+    await runner.idle();
+
+    const firstThink = llm.calls.find((c) => c.purpose === 'think');
+    const text = firstThink?.messages.user.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
+    expect(text).toContain('逆光にして');
+    expect((await stoppedState(store, spec.jobId)).carry.intent).toBe(INTEGRATED);
   });
 });

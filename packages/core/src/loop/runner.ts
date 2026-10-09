@@ -5,6 +5,7 @@ import type { ImageRef, JobStore } from '../job/store.js';
 import {
   stopConditionsChangeSchema,
   type AutoJobSpec,
+  type InterventionRecord,
   type JobState,
   type StopConditions,
   type StopConditionsChange,
@@ -18,6 +19,12 @@ import type {
   LlmRole,
 } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
+import { applyIntegratedIntent } from '../intervention/integrate.js';
+import {
+  DEFAULT_INTERVENTION_LIMITS,
+  type InterventionLimits,
+} from '../intervention/intervention.js';
+import { planInterventions } from '../intervention/plan.js';
 import type { Budget } from './budget.js';
 import { advanceCarry, type Carry } from './carry.js';
 import { buildJudgeInput, buildThinkInput } from './inputs.js';
@@ -47,6 +54,8 @@ export type JobRunnerDeps = {
   /** 考える役が決めてよいパラメータ */
   allowed: readonly ThinkParamKey[];
   defaults: GenerationDefaults;
+  /** 1回の「考える」に載せる人間の指示の上限。省けば既定値 */
+  interventionLimits?: InterventionLimits;
   now?: () => Date;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
@@ -219,12 +228,14 @@ export class JobRunner {
 
       const iteration = state.carry.completedIterations + 1;
       const think = await this.think(spec, conditions, state.carry, iteration, signal);
+      // think.json から求め直す: 考えたあと state.json を書く前に落ちても、再開で同じ要点になるように
+      const carry = applyIntegratedIntent(state.carry, think, this.deps.budget);
       const imageCount = await this.generate(spec, iteration, think, signal);
-      const judge = await this.judge(spec, state.carry, iteration, imageCount, signal);
+      const judge = await this.judge(spec, carry, iteration, imageCount, signal);
 
       state = {
         ...state,
-        carry: advanceCarry(state.carry, iteration, think.params, judge),
+        carry: advanceCarry(carry, iteration, think.params, judge),
         imagesGenerated: state.imagesGenerated + imageCount,
       };
       await store.writeState(spec.jobId, state);
@@ -261,6 +272,10 @@ export class JobRunner {
     const done = await store.readStage(spec.jobId, iteration, 'think');
     if (done !== undefined) return done as ThinkOutput;
 
+    const plan = planInterventions(
+      reopenClaimedBy(iteration, await store.listInterventions(spec.jobId)),
+      this.deps.interventionLimits ?? DEFAULT_INTERVENTION_LIMITS,
+    );
     const max = conditions.maxIterations;
     const messages = buildThinkInput({
       carry,
@@ -271,12 +286,21 @@ export class JobRunner {
       allowed,
       budget,
       window: llm.describe('think').window,
+      interventions: plan,
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
-      schema: buildThinkOutputSchema(allowed, budget),
+      schema: buildThinkOutputSchema(allowed, budget, {
+        withInterventions: plan.included.length > 0,
+      }),
       signal,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
+    // 取り込んだ回を think.json より先に書く: think.json を「この回の考えるが済んだ」印にしているので、
+    // 後に書くと、その間に落ちたとき取り込んだ指示が未反映のまま残り、次の回にもう一度載るため。
+    // 先に書いて落ちた分は、再開でこの回を考え直すときに reopenClaimedBy が載せ直す
+    for (const planned of plan.included) {
+      await store.markInterventionApplied(spec.jobId, planned.interventionId, iteration);
+    }
     await store.writeStage(spec.jobId, iteration, 'think', outcome.value);
     return outcome.value;
   }
@@ -413,6 +437,20 @@ export class JobRunner {
       reason,
     };
   }
+}
+
+/** この回の「考える」が取り込みかけて、think.json を置く前に落ちた指示を、未反映に戻す */
+function reopenClaimedBy(
+  iteration: number,
+  interventions: readonly InterventionRecord[],
+): InterventionRecord[] {
+  return interventions.map((intervention) => {
+    if (intervention.kind !== 'instruction' || intervention.appliedInIteration !== iteration) {
+      return intervention;
+    }
+    const { kind, interventionId, receivedAt, text } = intervention;
+    return { kind, interventionId, receivedAt, text };
+  });
 }
 
 function messageOf(error: unknown): string {

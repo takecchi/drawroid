@@ -182,6 +182,31 @@ describe('FsJobStore interventions', () => {
       jobs.addIntervention(a.jobId, { kind: 'instruction', text: '' }, new Date()),
     ).rejects.toThrow();
   });
+
+  it('writes back which think took an instruction in, keeping its original text', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const said = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'instruction', text: '逆光にして' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.markInterventionApplied(a.jobId, said.interventionId, 4);
+    expect(await jobs.listInterventions(a.jobId)).toEqual([{ ...said, appliedInIteration: 4 }]);
+  });
+
+  it('refuses to mark a stop condition change as taken into a think', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const change = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'stopConditions', stopConditions: { maxIterations: 3 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await expect(jobs.markInterventionApplied(a.jobId, change.interventionId, 1)).rejects.toThrow(
+      StoredFileError,
+    );
+  });
 });
 
 describe('FsJobStore stages', () => {

@@ -12,6 +12,12 @@ export class InterventionNotIntegratedError extends Error {
   }
 }
 
+/** 考える役が統合した依頼の要点を返していれば、carry の要点をそれに置き換える */
+export function applyIntegratedIntent(carry: Carry, output: ThinkOutput, budget: Budget): Carry {
+  if (output.intent === undefined) return carry;
+  return { ...carry, intent: clipText(output.intent, budget.text.intent).text };
+}
+
 /**
  * 「考える」の結果を受けて、載せた口出しを依頼の要点へ統合し、取り込んだ回を書き戻す。
  * 持ち越した口出しは未反映のまま残す。
@@ -31,7 +37,7 @@ export function integrateInterventions(args: {
 
   const applied = new Set(plan.included.map((planned) => planned.interventionId));
   return {
-    carry: { ...carry, intent: clipText(output.intent, budget.text.intent).text },
+    carry: applyIntegratedIntent(carry, output, budget),
     interventions: interventions.map((intervention) =>
       intervention.kind === 'instruction' && applied.has(intervention.interventionId)
         ? { ...intervention, appliedInIteration: iteration }
