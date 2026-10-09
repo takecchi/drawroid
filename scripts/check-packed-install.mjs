@@ -136,9 +136,12 @@ try {
       '鍵は、環境変数の名前と入っているかだけを出し、値は出さない',
       output,
     );
+    // 見る役だけは、話す役と同じ割り当てでも画像を渡して別に確かめる（話す役の確かめは画像を渡さないため）
     expect(
-      roundTripLines(output).length === 1 && output.includes('話す役・考える役・見る役（'),
-      '全部の役が同じ割り当てなら、1往復の確かめは1回で済ませる',
+      roundTripLines(output).length === 2 &&
+        output.includes('話す役・考える役（') &&
+        output.includes('見る役（local の talk-model'),
+      '全部の役が同じ割り当てなら、話す役の確かめを1回と、見る役の画像の確かめを1回する',
       output,
     );
   }
