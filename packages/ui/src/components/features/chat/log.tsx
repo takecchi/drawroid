@@ -1,6 +1,9 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { ArrowDown } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
+
+import { Button } from '../../common';
 
 import { STATUS_TEXT, type ChatStatus } from './cards';
 
@@ -67,6 +70,8 @@ export function LogRow({
 /**
  * 会話のログ。末尾を見ている間だけ、行が増えたら末尾へ追従する。人間が上へ戻って読んでいる間は追従しない。
  * `followKey` が変わったら追従を見直す（行の数と、流れている本文の長さなどを渡す）。
+ * 追従していない間に `followKey` が変わったら、下端に「新しい行」の印を出し、押すと末尾へ戻る。末尾へ戻れば（印でもスクロールでも）消す:
+ * 上を読んでいる間に、止めた・描き終えたなどの行が下に増えても、気づけないため
  */
 export function ChatLog({
   followKey,
@@ -94,13 +99,24 @@ export function ChatLog({
   const lastHeight = useRef(0);
   // 人がログを動かそうとした（ホイール・なぞる・スクロールのキー・スクロールバー）最後の時刻
   const lastTouched = useRef(Number.NEGATIVE_INFINITY);
+  // 追従していない間に増えた行があるか（「新しい行」の印を出すか）
+  const [unseen, setUnseen] = useState(false);
   const touched = () => {
     lastTouched.current = performance.now();
   };
   useEffect(() => {
     const element = ref.current;
-    if (element !== null && following.current) element.scrollTop = element.scrollHeight;
+    if (element === null) return;
+    if (following.current) element.scrollTop = element.scrollHeight;
+    else setUnseen(true);
   }, [followKey]);
+  const jumpToEnd = () => {
+    const element = ref.current;
+    if (element === null) return;
+    following.current = true;
+    element.scrollTop = element.scrollHeight;
+    setUnseen(false);
+  };
   // 行が増えなくても背は伸びる（画像があとから読み込まれる・カードが開く）。伸びたときも末尾を追う
   useEffect(() => {
     const element = ref.current;
@@ -150,6 +166,7 @@ export function ChatLog({
           following.current = false;
         lastTop.current = element.scrollTop;
         lastHeight.current = element.scrollHeight;
+        if (following.current && unseen) setUnseen(false);
       }}
       onWheel={touched}
       onTouchMove={touched}
@@ -170,6 +187,24 @@ export function ChatLog({
       >
         {children}
       </div>
+      {unseen && (
+        // 高さ 0 の入れ物を下端に貼り付け、ボタンはその上に重ねる: 背（scrollHeight）を変えると、人がスクロールしたかの判定が狂うため
+        <div className="pointer-events-none sticky bottom-0 h-0">
+          <div className="absolute inset-x-0 bottom-3 flex justify-center">
+            {/* 目立つ形にする: 画像の上に重なっても見分けられるように */}
+            <Button
+              size="sm"
+              variant="primary"
+              aria-label="新しい行へ"
+              onClick={jumpToEnd}
+              className="pointer-events-auto shadow-md"
+            >
+              新しい行
+              <ArrowDown aria-hidden />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

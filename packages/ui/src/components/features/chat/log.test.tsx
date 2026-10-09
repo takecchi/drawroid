@@ -213,3 +213,74 @@ describe('ChatLog in a long conversation', () => {
     expect(skipping()).toBe(true);
   });
 });
+
+// 上を読んでいる間に行が増えたら、下端に「新しい行」の印を出す。末尾にいる間は出さない
+describe('ChatLog and the marker for new rows', () => {
+  function renderWithKey() {
+    const view = (key: number) => (
+      <ChatLog followKey={key}>
+        <p>行</p>
+      </ChatLog>
+    );
+    const { rerender } = render(view(1));
+    const log = screen.getByRole('log');
+    const size = { scrollHeight: 1000, clientHeight: 400 };
+    sizeOf(log, size);
+    return { log, size, rowsArrive: (key: number) => rerender(view(key)) };
+  }
+  const marker = () => screen.queryByRole('button', { name: '新しい行へ' });
+
+  it('shows no marker while following the end, however many rows arrive', () => {
+    const { log, size, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    size.scrollHeight = 1200;
+    rowsArrive(2);
+    size.scrollHeight = 1400;
+    rowsArrive(3);
+
+    expect(marker()).toBeNull();
+    expect(log.scrollTop).toBe(1400);
+  });
+
+  it('shows the marker when rows arrive while a person reads above, and goes to the end when pressed', () => {
+    const { log, size, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    expect(marker()).toBeNull();
+
+    size.scrollHeight = 1200;
+    rowsArrive(2);
+    expect(log.scrollTop).toBe(100);
+    const button = marker();
+    expect(button).not.toBeNull();
+
+    fireEvent.click(button!);
+    fireEvent.scroll(log);
+    expect(log.scrollTop).toBe(1200);
+    expect(marker()).toBeNull();
+    // 戻ったあとは、また末尾を追う
+    size.scrollHeight = 1500;
+    grow();
+    expect(log.scrollTop).toBe(1500);
+  });
+
+  it('takes the marker away once a person scrolls back down to the end', () => {
+    const { log, size, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1200;
+    rowsArrive(2);
+    expect(marker()).not.toBeNull();
+
+    log.scrollTop = 800;
+    fireEvent.scroll(log);
+
+    expect(marker()).toBeNull();
+  });
+});
