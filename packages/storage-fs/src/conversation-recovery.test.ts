@@ -113,17 +113,18 @@ describe('closing the turns a restart cut off', () => {
     const hubs = new ConversationHubs({ store });
     const { conversationId } = await store.createConversation(new Date());
     const hub = hubs.get(conversationId);
-    // 本物のファイルに書くので、件数は試験の時間に収まる程度にする（頭から読めば 440 件ほど）
-    for (let turn = 1; turn <= 120; turn++) {
+    // 本物のファイルに書くので、件数は試験の時間に収まる程度にする（頭から読めば 262 件。下の 200 件の上限より多く、
+    // 末尾から読む分（50 件ずつ 2 回）より十分に多い）。CI が混んだときに 5 秒を超えないよう、書く数を絞っている
+    for (let turn = 1; turn <= 60; turn++) {
       const { seq } = await hub.confirm({ type: 'user.message', text: `${turn}` });
       await hub.confirm({ type: 'turn.started', turn, messageSeqs: [seq] });
       await hub.confirm({ type: 'turn.ended', turn, outcome: 'done' });
     }
     const { seq } = await hub.confirm({ type: 'user.message', text: '描いて' });
-    await hub.confirm({ type: 'turn.started', turn: 121, messageSeqs: [seq] });
+    await hub.confirm({ type: 'turn.started', turn: 61, messageSeqs: [seq] });
     // 開いたターンのあとに、ターンの記録でないイベントが1回ぶんの読みより多く続いても見つける
     for (let i = 0; i < 80; i++) {
-      await hub.confirm({ type: 'tool.call', turn: 121, callId: `c${i}`, name: 'x', input: {} });
+      await hub.confirm({ type: 'tool.call', turn: 61, callId: `c${i}`, name: 'x', input: {} });
     }
     let fromStart = 0;
     let readFromTail = 0;
@@ -146,7 +147,7 @@ describe('closing the turns a restart cut off', () => {
     expect(readFromTail).toBeLessThan(200);
     const last = await store.readEventsBefore(conversationId, { limit: 1 });
     expect(last).toEqual([
-      expect.objectContaining({ type: 'turn.ended', turn: 121, outcome: 'interrupted' }),
+      expect.objectContaining({ type: 'turn.ended', turn: 61, outcome: 'interrupted' }),
     ]);
   });
 });
