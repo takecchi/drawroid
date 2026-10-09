@@ -10,8 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FsConversationStore } from './conversation-store.js';
 import { dataPaths, eventFileName } from './paths.js';
 
-// イベントのディレクトリを一覧した回数を数える
-const listed = { events: 0 };
+// イベントのディレクトリを一覧した回数と、イベントのファイルがあるかを確かめた回数を数える
+const listed = { events: 0, probes: 0 };
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
@@ -20,6 +20,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       if (String(path).endsWith('events')) listed.events += 1;
       return (actual.readdir as (...args: unknown[]) => Promise<string[]>)(path, ...rest);
     }) as typeof actual.readdir,
+    access: (async (path: string, ...rest: unknown[]) => {
+      if (/[\\/]events[\\/][^\\/]+\.json$/.test(String(path))) listed.probes += 1;
+      return (actual.access as (...args: unknown[]) => Promise<void>)(path, ...rest);
+    }) as typeof actual.access,
   };
 });
 
@@ -27,6 +31,7 @@ let root: string;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-conversation-listing-'));
   listed.events = 0;
+  listed.probes = 0;
 });
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
@@ -135,5 +140,57 @@ describe('reading and writing the events of a conversation without listing them 
     expect(await store.readEventsBefore(conversationId, { limit: 3 })).toEqual([]);
     expect(listed.events).toBe(1);
     expect((await store.appendEvent(conversationId, said('1'), at)).seq).toBe(1);
+  });
+
+  it('pages around a gap without returning the event it pages from', async () => {
+    const { conversationId } = await conversationWith(10);
+    const events = dataPaths(root).conversationFiles(conversationId).events;
+    await rename(join(events, eventFileName(4)), join(root, 'moved.json'));
+    const store = new FsConversationStore(root);
+
+    // 末尾から読む口は before より前だけ、頭から読む口は after より後だけを返す。欠けを飛ばしても同じ
+    expect(texts(await store.readEventsBefore(conversationId, { before: 6, limit: 2 }))).toEqual([
+      '3',
+      '5',
+    ]);
+    const page = await store.readEvents(conversationId, { after: 5, limit: 2 });
+    expect(texts(page.events)).toEqual(['6', '7']);
+    expect(page.more).toBe(true);
+    const rest = await store.readEvents(conversationId, { after: page.last, limit: 3 });
+    expect(texts(rest.events)).toEqual(['8', '9', '10']);
+    expect(rest.more).toBe(false);
+  });
+
+  it('says no more remain when the page ends exactly at the last event', async () => {
+    const { store, conversationId } = await conversationWith(6);
+
+    const page = await store.readEvents(conversationId, { after: 2, limit: 4 });
+    expect(texts(page.events)).toEqual(['3', '4', '5', '6']);
+    expect(page.more).toBe(false);
+  });
+
+  it('lists an empty conversation once, and then reads and writes without listing', async () => {
+    const store = new FsConversationStore(root);
+    const { conversationId } = await store.createConversation(at);
+
+    expect(await store.readEventsBefore(conversationId, { limit: 3 })).toEqual([]);
+    expect(await store.readEventsBefore(conversationId, { limit: 3 })).toEqual([]);
+    expect((await store.readEvents(conversationId)).events).toEqual([]);
+    expect((await store.appendEvent(conversationId, said('1'), at)).seq).toBe(1);
+    expect(listed.events).toBe(1);
+  });
+
+  it('does not look past before when it already knows the events up to there', async () => {
+    const { store, conversationId } = await conversationWith(20);
+    await store.readEventsBefore(conversationId, { limit: 1 });
+    listed.probes = 0;
+
+    expect(texts(await store.readEventsBefore(conversationId, { before: 6, limit: 3 }))).toEqual([
+      '3',
+      '4',
+      '5',
+    ]);
+    // 覚えた最後の番号のファイルがまだあるかだけを見て、その先（21 以降）は確かめない
+    expect(listed.probes).toBe(1);
   });
 });
