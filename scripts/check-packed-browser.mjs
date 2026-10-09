@@ -126,10 +126,15 @@ try {
   await page.goto(`${base}/conversations/${conversation.conversationId}`);
   await composer.fill('海辺の少女を描いて');
   await composer.press('Enter');
-  await log.getByText('描き始めました。少しお待ちください。').waitFor();
+  // バックエンドは立てていないので、話す役は描き始めずに、繋がらないことと次にすることを返す（初めて開いた人と同じ）
+  await log
+    .getByText(/描き始められない: 画像のバックエンド（Forge \/ A1111）に繋がらない/)
+    .first()
+    .waitFor();
   expect(
-    (await notice.getByRole('link', { name: 'LLM を設定する' }).count()) === 0,
-    '設定したあとは案内から LLM が消え、話す役が返事をする（未設定から設定して1往復）',
+    (await notice.getByRole('link', { name: 'LLM を設定する' }).count()) === 0 &&
+      (await notice.getByRole('link', { name: 'バックエンドを確かめる' }).count()) === 1,
+    '設定したあとは案内から LLM が消え、話す役が返事をする（未設定から設定して1往復）。バックエンドが無いことも伝わる',
   );
 
   expect(

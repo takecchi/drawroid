@@ -224,6 +224,10 @@ async function main() {
         // 読めなければ候補が無いとして扱う: 広げる側には倒れない（候補の外の値で固定する引数は断られる）
         candidateNames: async (kind) =>
           (await backend.listCandidates(kind).catch(() => [])).map((candidate) => candidate.name),
+        // 描き始める前に、軽い問い合わせ1回（checkpoint の一覧）で繋がるかを確かめる
+        checkBackend: async (signal) => {
+          await backend.listCandidates('checkpoint', signal);
+        },
         defaultStopConditions: async () => {
           const read = readDrawingStopConditions(await readConversationSettings(configPath));
           if (read.problem !== undefined) log(`drawroid: ${read.problem}。既定の止める条件を使う`);
