@@ -1,8 +1,8 @@
+import type { ResolvedImages } from '@drawroid/backend-sdapi';
 import { BackendError, type ControlNetUnit, type ResizeMode } from '@drawroid/core';
 
 import { listControlNetModels, listControlNetModules } from './candidates.js';
 import type { ForgeClient } from './client.js';
-import type { ResolvedImages } from './images.js';
 import { countControlNetUnits, FORGE_CONTROLNET_SCRIPT, hasControlNet } from './probe.js';
 
 // 文字列で渡す: Forge の ControlNet は control_mode を文字列で比べており、数を渡すと黙って Balanced になるため
