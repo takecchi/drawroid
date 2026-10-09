@@ -93,8 +93,12 @@ export class ReselectionDistiller {
       } catch (error) {
         this.deps.onError?.(error);
       }
-    } while (slot.again);
+    } while (false);
     slot.running = undefined;
+    if (slot.again) {
+      slot.again = false;
+      slot.timer = this.timers.setTimeout(() => this.start(jobId, slot), this.quietMs);
+    }
     if (slot.timer === undefined) this.slots.delete(jobId);
   }
 
