@@ -47,6 +47,7 @@ const stored: LlmSettingsResponse = {
     networkRetries: 2,
   },
   apiKeyEnv: { cloud: { name: 'ANTHROPIC_API_KEY', set: false } },
+  outputLimitWarnings: [],
 };
 
 beforeEach(() => {
@@ -120,6 +121,30 @@ describe('LlmSettings', () => {
       'provider「cloud」の API キーの環境変数が入っていない',
     );
     expect(input('見る役のモデル').value).toBe('claude-sonnet-5-5');
+  });
+
+  it('warns about a stored output limit that is likely too small, without changing the value', () => {
+    const message =
+      '考える役の出力の上限（llm.roles.think.maxOutputTokens = 1024）は、出力の見積もり（約 1139 トークン）より小さく、出力が切れて止まる見込みがある。考える役の「出力の上限（トークン）」を 2048 以上に上げる（値は自動では書き換えない）。';
+    mocks.useLlmSettings.mockReturnValue({
+      data: {
+        ...stored,
+        outputLimitWarnings: [
+          {
+            role: 'think',
+            configKey: 'think',
+            maxOutputTokens: 1024,
+            estimatedOutputTokens: 1139,
+            message,
+          },
+        ],
+      },
+      error: undefined,
+    });
+    render(<LlmSettings />);
+
+    expect(screen.getByRole('status').textContent).toBe(`警告: ${message}`);
+    expect(input('考える役の出力の上限').value).toBe('1024');
   });
 
   it('starts an empty form for the first setup when nothing is set', () => {

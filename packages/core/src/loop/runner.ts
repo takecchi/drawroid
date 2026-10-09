@@ -22,6 +22,14 @@ import type {
   LlmRole,
 } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
+import type { MemoryItem } from '../memory/item.js';
+import { DEFAULT_MEMORY_LIMITS, type MemoryLimits } from '../memory/limits.js';
+import type { DistillBudget } from '../memory/distill/budget.js';
+import type { StoppedJobMaterial } from '../memory/distill/input.js';
+import type { DistillLog } from '../memory/distill/log.js';
+import { distillStoppedJob } from '../memory/distill/run.js';
+import type { MemoryStore } from '../memory/store.js';
+import { summarizeSelections } from '../selection/selection.js';
 import { applyIntegratedIntent } from '../intervention/integrate.js';
 import {
   DEFAULT_INTERVENTION_LIMITS,
@@ -37,7 +45,7 @@ import {
 } from '../reference/reference.js';
 import type { Budget } from './budget.js';
 import { advanceCarry, createCarry, type Carry } from './carry.js';
-import { buildJudgeInput, buildRefGistInput, buildThinkInput } from './inputs.js';
+import { buildJudgeInput, buildRefGistInput, buildThinkInput, type MemoryInput } from './inputs.js';
 import {
   buildJudgeOutputSchema,
   buildThinkOutputSchema,
@@ -55,10 +63,12 @@ import type { PackLimits } from '../budget/pack.js';
 import type { ParamKey } from '../params/param-key.js';
 import { toGenerationRequest } from '../permissions/generation-request.js';
 import {
+  type EffectivePermissions,
   effectivePermissions,
   mergePermissions,
   type Permissions,
 } from '../permissions/permission.js';
+import { excludedOf } from '../think/excluded.js';
 import { buildParamsSchema, type ParamsSchema } from '../think/params-schema.js';
 import type { ShownCandidates } from './inputs.js';
 import type { InputImageRef } from '../backend.js';
@@ -79,6 +89,16 @@ import {
   shownCandidatesFor,
 } from './iteration-permissions.js';
 
+/** 記憶の置き場所と、止まったジョブから好みを学んだ記録の置き場所 */
+export type JobMemory = {
+  /** 回の境目ごとに読み直す。人間が直したら次の回から効く */
+  store: MemoryStore;
+  distillLog: DistillLog;
+  /** 役ごとの記憶の予算。省けば既定値 */
+  limits?: MemoryLimits;
+  distillBudget?: DistillBudget;
+};
+
 export type JobRunnerDeps = {
   store: JobStore;
   llm: LlmPort;
@@ -97,6 +117,10 @@ export type JobRunnerDeps = {
   interventionLimits?: InterventionLimits;
   /** 持ち回す参照画像の要点の上限。省けば既定値 */
   referenceLimits?: ReferenceLimits;
+  /** 省けば、記憶を渡さず、止まったときの蒸留もしない */
+  memory?: JobMemory;
+  /** 蒸留が投げて失敗したときの理由の行き先。ジョブの止まった状態には触れない */
+  log?: (line: string) => void;
   now?: () => Date;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
@@ -110,6 +134,9 @@ type BackendView = {
 };
 type ParamsPlan = {
   permissions: Permissions;
+  /** 使えないものを落とす前の許可（人間が決めたもの） */
+  merged: Permissions;
+  disabled: EffectivePermissions['disabled'];
   candidates: ShownCandidates;
   /** 元画像に選べる画像（img2img を AI に任せる回だけ） */
   sources: { key: ImageSourceKey; ref: InputImageRef }[];
@@ -188,7 +215,9 @@ export class JobRunner {
     }
     const state = await this.deps.store.readState(jobId);
     if (state.status === 'stopped') return;
-    await this.deps.store.writeState(jobId, this.stopped(state, HUMAN_STOP));
+    const stopped = this.stopped(state, HUMAN_STOP);
+    await this.deps.store.writeState(jobId, stopped);
+    await this.distillAfterStop(jobId, stopped, HUMAN_STOP);
   }
 
   /**
@@ -269,6 +298,7 @@ export class JobRunner {
     this.running = { jobId, controller };
     const { store } = this.deps;
     let state = await store.readState(jobId);
+    let justStopped: { state: JobState; reason: StopReason } | undefined;
     try {
       const spec = await store.readJob(jobId);
       if (spec.kind !== 'auto' || state.status === 'stopped') return;
@@ -297,10 +327,98 @@ export class JobRunner {
         : error instanceof StopJob
           ? error.reason
           : { kind: 'error' as const, detail: `予期しない失敗: ${messageOf(error)}` };
-      await store.writeState(jobId, this.stopped(current, reason));
+      const stopped = this.stopped(current, reason);
+      await store.writeState(jobId, stopped);
+      justStopped = { state: stopped, reason };
     } finally {
       this.running = undefined;
     }
+    // 止まった状態を書いて、走行中の印を外したあとに行う: 人間の停止で中断した合図を蒸留に引きずらず、蒸留の失敗が止まった理由を変えないため
+    if (justStopped !== undefined) {
+      await this.distillAfterStop(jobId, justStopped.state, justStopped.reason);
+    }
+  }
+
+  /**
+   * 止まったジョブの口出し・選択から好みを学び、記憶に書く。止まった理由は書き換えず、失敗は log に残す。
+   */
+  // 学ぶ材料（口出しも選択も）が無ければ呼ばない: 学べないのに、ジョブごとに LLM 呼び出しの分のトークンを払うことになるため
+  private async distillAfterStop(
+    jobId: string,
+    stopped: JobState,
+    reason: StopReason,
+  ): Promise<void> {
+    const { memory, store } = this.deps;
+    if (memory === undefined) return;
+    try {
+      const spec = await store.readJob(jobId);
+      if (spec.kind !== 'auto') return;
+      const material: StoppedJobMaterial = {
+        jobId,
+        intent: stopped.carry?.intent ?? createCarry(spec.request, this.deps.budget).carry.intent,
+        stopReason: { kind: reason.kind, detail: reason.detail },
+        interventions: (await store.listInterventions(jobId))
+          .flatMap((i) => (i.kind === 'instruction' ? [i] : []))
+          .sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))
+          .map((i) => ({ id: i.interventionId, text: i.text })),
+        selections: await summarizeSelections(store, jobId),
+      };
+      const startedAt = this.now();
+      const callId = this.newCallId(startedAt);
+      const result = await distillStoppedJob(
+        {
+          llm: this.deps.llm,
+          memory: memory.store,
+          log: memory.distillLog,
+          window: this.deps.llm.describe('think').window,
+          ...(memory.distillBudget === undefined ? {} : { budget: memory.distillBudget }),
+          now: this.now,
+          callId,
+        },
+        material,
+      );
+      if (result.call === undefined) return;
+      const { provider, model } = this.deps.llm.describe('think');
+      await store.writeLlmCall(
+        toLlmCallRecord({
+          callId,
+          jobId,
+          iteration: null,
+          role: 'think',
+          purpose: 'distill',
+          provider,
+          model,
+          startedAt,
+          messages: result.call.messages,
+          outcome: result.call.outcome,
+        }),
+      );
+    } catch (error) {
+      this.deps.log?.(`drawroid: ジョブ ${jobId} の蒸留に失敗した: ${messageOf(error)}`);
+    }
+  }
+
+  /**
+   * 役ごとの記憶の入力。回の境目ごとに読み直す。
+   */
+  // 読めないときは止める: 人間が直したはずの記憶が効かないまま、気づかずに回り続けるため（許可の読み直しと同じ扱い）
+  private async readMemory(): Promise<readonly MemoryItem[] | undefined> {
+    const { memory } = this.deps;
+    if (memory === undefined) return undefined;
+    try {
+      return (await memory.store.list()).items;
+    } catch (error) {
+      throw new StopJob({ kind: 'error', detail: `記憶を読む段: ${messageOf(error)}` });
+    }
+  }
+
+  private memoryInput(
+    items: readonly MemoryItem[] | undefined,
+    role: 'think' | 'judge',
+  ): { memory: MemoryInput } | Record<string, never> {
+    if (items === undefined) return {};
+    const limits = this.deps.memory?.limits ?? DEFAULT_MEMORY_LIMITS;
+    return { memory: { items, limits: limits[role] } };
   }
 
   /**
@@ -331,7 +449,7 @@ export class JobRunner {
     defaults: Permissions,
     signal: AbortSignal,
   ): Promise<void> {
-    const permissions = this.jobPermissions(spec, defaults, view.capabilities, false);
+    const { permissions } = this.jobPermissions(spec, defaults, view.capabilities, false);
     try {
       for (const kind of candidateKindsToList(permissions)) {
         view.lists[kind] ??= await this.deps.backend.listCandidates(kind, signal);
@@ -384,10 +502,10 @@ export class JobRunner {
     defaults: Permissions,
     capabilities: BackendCapabilities,
     hasMask: boolean,
-  ): Permissions {
+  ): EffectivePermissions & { merged: Permissions } {
     // ジョブの上書きを後に重ねる: 全体の既定が走行中に変わっても、ジョブで決めた許可は変えないため
     const merged = mergePermissions(defaults, spec.permissions ?? {});
-    return effectivePermissions(merged, { capabilities, hasMask }).permissions;
+    return { merged, ...effectivePermissions(merged, { capabilities, hasMask }) };
   }
 
   /** その回の許可・見せる候補・元画像の候補・マスク・考える役の出力スキーマのパラメータの部分 */
@@ -399,7 +517,12 @@ export class JobRunner {
     mask: MaskIntervention | undefined,
   ): ParamsPlan {
     // マスクが無ければ inpaint は「使わない」になり、出力スキーマに現れない。ループはマスクを待たずに進む（M4:121）
-    const permissions = this.jobPermissions(spec, defaults, view.capabilities, mask !== undefined);
+    const { permissions, merged, disabled } = this.jobPermissions(
+      spec,
+      defaults,
+      view.capabilities,
+      mask !== undefined,
+    );
     const candidates = shownCandidatesFor({
       permissions,
       lists: view.lists,
@@ -407,9 +530,11 @@ export class JobRunner {
       requestGist: carry.intent,
       limits: this.deps.candidateLimits ?? DEFAULT_CANDIDATE_LIMITS,
     });
-    const sources = permissions.img2img.mode === 'auto' ? imageSourcesOf(carry) : [];
+    const choosesImage =
+      permissions.img2img.mode === 'auto' || permissions.controlnet.mode === 'auto';
+    const sources = choosesImage ? imageSourcesOf(carry) : [];
     const params = this.paramsSchema(permissions, candidates, sources);
-    return { permissions, candidates, sources, mask, params };
+    return { permissions, merged, disabled, candidates, sources, mask, params };
   }
 
   private paramsSchema(
@@ -456,18 +581,21 @@ export class JobRunner {
       const defaults = await this.defaultPermissions();
       await this.ensureCandidateLists(spec, backendView, defaults, signal);
       const paramsPlan = this.planParams(spec, backendView, defaults, withReferences, mask);
+      // 回の始めに1回読み、考える役と見る役で同じ版を使う: 回の途中で人間が直した分は、次の回から効く
+      const memoryItems = await this.readMemory();
       const think = await this.think(
         spec,
         conditions,
         withReferences,
         iteration,
         paramsPlan,
+        memoryItems,
         signal,
       );
       // think.json から求め直す: 考えたあと state.json を書く前に落ちても、再開で同じ要点になるように
       const carry = applyIntegratedIntent(withReferences, think, this.deps.budget);
       const imageCount = await this.generate(spec, iteration, think, paramsPlan, signal);
-      const judge = await this.judge(spec, carry, iteration, imageCount, signal);
+      const judge = await this.judge(spec, carry, iteration, imageCount, memoryItems, signal);
 
       state = {
         ...state,
@@ -543,6 +671,7 @@ export class JobRunner {
     carry: Carry,
     iteration: number,
     paramsPlan: ParamsPlan,
+    memoryItems: readonly MemoryItem[] | undefined,
     signal: AbortSignal,
   ): Promise<ThinkOutput> {
     const { store, llm, budget } = this.deps;
@@ -566,8 +695,13 @@ export class JobRunner {
       interventions: plan,
       candidates: paramsPlan.candidates,
       withImageSourceKeys: paramsPlan.sources.length > 0,
+      ...this.memoryInput(memoryItems, 'think'),
     });
     const params = this.paramsShownIn(messages, paramsPlan);
+    // LLM を呼ぶ前に書く: 考える役に見せた形を残し、呼び出しの途中で落ちても何を外したかが残るようにするため
+    await store.writeStage(spec.jobId, iteration, 'plan', {
+      excluded: excludedOf(paramsPlan.merged, paramsPlan.disabled, params.omitted),
+    });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
       schema: buildThinkOutputSchema(params, budget, {
         withInterventions: plan.included.length > 0,
@@ -610,6 +744,21 @@ export class JobRunner {
         throw new StopJob({ kind: 'error', detail: `元画像のキー ${img2img.image} の画像が無い` });
       }
       decided.img2img = { ...img2img, image: source.ref };
+    }
+    // 考える役の出力（モデル名・前処理名・画像のキー）を生成の要求の ControlNetUnit に写すのはここ。
+    // バックエンド固有の形（Forge の args など）はアダプタが作るので、ここでは持たない。null は使わない
+    const controlnet = think.params.controlnet as
+      { model: string; module?: string; image: string } | null | undefined;
+    if (controlnet === null) delete decided.controlnet;
+    else if (controlnet !== undefined) {
+      const source = paramsPlan.sources.find((s) => s.key === controlnet.image);
+      if (source === undefined) {
+        throw new StopJob({
+          kind: 'error',
+          detail: `ControlNet の入力画像のキー ${controlnet.image} の画像が無い`,
+        });
+      }
+      decided.controlnet = [{ ...controlnet, image: source.ref }];
     }
     if (think.params.inpaint !== undefined) {
       const { mask } = paramsPlan;
@@ -698,6 +847,7 @@ export class JobRunner {
     carry: Carry,
     iteration: number,
     imageCount: number,
+    memoryItems: readonly MemoryItem[] | undefined,
     signal: AbortSignal,
   ): Promise<JudgeOutput> {
     const { store, llm, budget } = this.deps;
@@ -716,6 +866,7 @@ export class JobRunner {
       images: previews,
       budget,
       window: llm.describe('judge').window,
+      ...this.memoryInput(memoryItems, 'judge'),
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'judge', messages, {
       schema: buildJudgeOutputSchema(imageCount, budget),

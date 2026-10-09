@@ -2,10 +2,12 @@
 export const keys = {
   backend: '/api/backend',
   candidates: (kind: string) => `/api/backend/candidates/${kind}`,
+  candidateNotes: '/api/backend/candidate-notes',
   backendSettings: '/api/settings/backend',
   memory: '/api/memory',
   memoryItem: (id: string) => `/api/memory/${id}`,
   llmSettings: '/api/settings/llm',
+  permissionSettings: '/api/settings/permissions',
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
   iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,

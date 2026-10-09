@@ -1,7 +1,7 @@
 // ループ（core の JobRunner）を、本物のファイルの置き場所（FsJobStore）の上で回す試験。
 // LLM は台本どおりに返すスタブ、バックエンドは M1 のスタブ。M2 の受け入れ基準 :70〜:74 を見る
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -890,5 +890,138 @@ describe('a reference image goes to the LLM once, shrunk, then travels as its gi
     const { reason, carry } = await stoppedState(second.store, spec.jobId);
     expect(reason.kind).toBe('limit:iterations');
     expect(carry?.references).toEqual([expect.objectContaining({ gist: GIST })]);
+  });
+});
+
+describe('plan.json records what was left out of the AI choices', () => {
+  async function runOne(
+    permissions: NonNullable<AutoJobSpec['permissions']>,
+    backend: StubBackend,
+  ): Promise<{ store: FsJobStore; jobId: string }> {
+    const { store, runner } = setup({ scripts: { think, judge: judge() }, backend });
+    const request = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調';
+    const spec = await store.createJob(
+      {
+        kind: 'auto',
+        request,
+        stopConditions: { aiJudgement: false, maxIterations: 1 },
+        batchSize: 1,
+        permissions,
+      },
+      { status: 'queued', carry: { intent: request, completedIterations: 0 } },
+      new Date(),
+    );
+    runner.kick();
+    await runner.idle();
+    return { store, jobId: spec.jobId };
+  }
+
+  it('keeps loras that were left to the AI but had no candidate to show', async () => {
+    const { store, jobId } = await runOne(
+      { loras: { mode: 'auto' } },
+      new StubBackend({ candidates: { lora: [] } }),
+    );
+
+    expect(await store.readStage(jobId, 1, 'plan')).toEqual({
+      excluded: [{ param: 'loras', wanted: 'auto', reason: { kind: 'no-candidates-shown' } }],
+    });
+  });
+
+  it('keeps inpaint that was left to the AI when there is no mask, and still goes on', async () => {
+    const { store, jobId } = await runOne({ inpaint: { mode: 'auto' } }, new StubBackend());
+
+    expect(await store.readStage(jobId, 1, 'plan')).toEqual({
+      excluded: [{ param: 'inpaint', wanted: 'auto', reason: { kind: 'no-mask' } }],
+    });
+    expect((await stoppedState(store, jobId)).carry?.completedIterations).toBe(1);
+  });
+
+  it.each([
+    ['auto', { mode: 'auto' }],
+    // 固定の値は、要求の controlnet の欄と同じ形（ユニットの配列）にする
+    ['fixed', { mode: 'fixed', value: [{ image: 'refs/r1.png', model: 'canny' }] }],
+  ] as const)(
+    'keeps controlnet the backend cannot do, with what the human wanted (%s)',
+    async (wanted, permission) => {
+      const { store, jobId } = await runOne(
+        { controlnet: permission },
+        new StubBackend({
+          capabilities: {
+            unavailable: [{ feature: 'controlnet', reason: 'ControlNet の拡張が無い' }],
+          },
+        }),
+      );
+
+      expect(await store.readStage(jobId, 1, 'plan')).toEqual({
+        excluded: [
+          {
+            param: 'controlnet',
+            wanted,
+            reason: { kind: 'backend', detail: 'ControlNet の拡張が無い' },
+          },
+        ],
+      });
+    },
+  );
+
+  it('does not list what the human turned off, even if the backend cannot do it', async () => {
+    const { store, jobId } = await runOne(
+      { loras: { mode: 'off' }, controlnet: { mode: 'off' }, inpaint: { mode: 'off' } },
+      new StubBackend({
+        candidates: { lora: [] },
+        capabilities: { unavailable: [{ feature: 'controlnet', reason: '拡張が無い' }] },
+      }),
+    );
+
+    expect(await store.readStage(jobId, 1, 'plan')).toEqual({ excluded: [] });
+  });
+
+  it('does not write it again for an iteration whose think.json already exists', async () => {
+    let hung: () => void = () => undefined;
+    const reached = new Promise<void>((resolve) => (hung = resolve));
+    class CrashBeforeAdvanceStore extends FsJobStore {
+      override writeState(jobId: string, state: JobState): Promise<void> {
+        if (state.status === 'running' && state.carry?.completedIterations === 1) {
+          hung();
+          return new Promise(() => undefined);
+        }
+        return super.writeState(jobId, state);
+      }
+    }
+    const first = setup({
+      scripts: { think, judge: judge() },
+      store: new CrashBeforeAdvanceStore(root),
+      backend: new StubBackend({ candidates: { lora: [] } }),
+    });
+    const spec = await first.store.createJob(
+      {
+        kind: 'auto',
+        request: 'r',
+        stopConditions: { aiJudgement: false, maxIterations: 2 },
+        batchSize: 1,
+        permissions: { loras: { mode: 'auto' } },
+      },
+      { status: 'queued', carry: { intent: 'r', completedIterations: 0 } },
+      new Date(),
+    );
+    first.runner.kick();
+    await reached;
+    const planFile = dataPaths(root).jobFiles(spec.jobId).iteration(1).plan;
+    const before = {
+      text: await readFile(planFile, 'utf8'),
+      mtimeMs: (await stat(planFile)).mtimeMs,
+    };
+    await new Promise((r) => setTimeout(r, 20));
+
+    // 再開では lora の候補が見える: 書き直せば中身が変わる
+    const second = setup({
+      scripts: { think: (c, n) => think(c, n + 1), judge: judge() },
+    });
+    second.runner.kick();
+    await second.runner.idle();
+
+    expect(await readFile(planFile, 'utf8')).toBe(before.text);
+    expect((await stat(planFile)).mtimeMs).toBe(before.mtimeMs);
+    expect(await second.store.readStage(spec.jobId, 2, 'plan')).toEqual({ excluded: [] });
   });
 });

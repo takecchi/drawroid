@@ -91,6 +91,8 @@ function iterationFiles(dir: string) {
   return {
     dir,
     think: join(dir, 'think.json'),
+    /** その回に AI の選択肢から外したものの記録。think.json とは別: think.json はモデルの出力そのもので、段が済んだ印も兼ねるため */
+    plan: join(dir, 'plan.json'),
     request: join(dir, 'request.json'),
     judge: join(dir, 'judge.json'),
     images,

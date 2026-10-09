@@ -1,3 +1,4 @@
+import type { Permissions } from '@drawroid/core';
 import type { ReferenceUploadInput } from '@drawroid/api';
 import type { InferRequestType, InferResponseType } from 'hono/client';
 
@@ -10,6 +11,15 @@ export type CandidatesResponse = InferResponseType<
 >;
 export type JobsResponse = InferResponseType<typeof client.jobs.$get, 200>;
 export type JobDetail = InferResponseType<(typeof client.jobs)[':jobId']['$get'], 200>;
+/** notes は候補の名前 → 説明。problem は、説明のファイルが読めなかったときの理由（そのとき notes は空） */
+export type CandidateNotesResponse = InferResponseType<
+  (typeof client.backend)['candidate-notes']['$get'],
+  200
+>;
+/** 保存するときに送る、候補の名前 → 説明の全部 */
+export type CandidateNotesInput = InferRequestType<
+  (typeof client.backend)['candidate-notes']['$put']
+>['json'];
 export type BackendSettingsResponse = InferResponseType<typeof client.settings.backend.$get, 200>;
 export type MemoryList = InferResponseType<typeof client.memory.$get, 200>;
 export type MemoryItemDetail = InferResponseType<(typeof client.memory)[':id']['$get'], 200>;
@@ -19,6 +29,16 @@ export type SavedMemoryItem = InferResponseType<(typeof client.memory)[':id']['$
 export type LlmSettingsResponse = InferResponseType<typeof client.settings.llm.$get, 200>;
 /** 保存するときに送る LLM の設定（既定値のある欄は省ける） */
 export type LlmSettingsInput = InferRequestType<typeof client.settings.llm.$put>['json'];
+/** overrides は書いた欄、permissions は土台に重ねた実際の許可 */
+export type PermissionSettingsResponse = InferResponseType<
+  typeof client.settings.permissions.$get,
+  200
+>;
+/**
+ * 保存するときに送る、全体の既定の許可の上書き（書いた欄だけ）。
+ * core の型を使う: api の validator の schema は型を Permissions へ明示しているので、hono/client から引くと unknown になるため
+ */
+export type PermissionOverridesInput = Partial<Permissions>;
 export type IterationsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['iterations']['$get'],
   200

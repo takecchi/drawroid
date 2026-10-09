@@ -1,0 +1,179 @@
+@import 'tailwindcss';
+/*
+ * shadcn の部品が前提にしているもの。**どちらも色を1つも持たない**
+ * （中身は custom variant / @property / @utility だけ）。
+ *
+ * - `shadcn/tailwind.css`: `data-open:` / `data-closed:` などの custom variant
+ * - `tw-animate-css`: `animate-in` / `slide-in-from-left-*`（出入りの動き）
+ */
+@import 'shadcn/tailwind.css';
+@import 'tw-animate-css';
+
+/*
+ * **このパッケージ自身の class を、Tailwind を回す側（apps/web・Storybook）のビルドにも拾わせる。**
+ *
+ * apps/web の Vite の自動検出は apps/web の下しか見ない。`packages/ui` は兄弟の
+ * ディレクトリなので、この1行が無いと部品の中でしか使っていない class
+ * （`h-9` / `data-open:` など）が生成物の CSS に1つも出ない。パスはこのファイルからの
+ * 相対で、`packages/ui/src` を指す。
+ */
+@source './';
+/*
+ * **見本（`*.stories.tsx`）は拾わない。** 見本だけが使う class を画面の生成物の CSS へ
+ * 載せないため。見本帳（Storybook）は `.storybook/preview.css` で拾わせ直している。
+ */
+@source not './**/*.stories.tsx';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * **色の名前は shadcn の既定のまま。** `shadcn add` が吐く部品は、この名前
+ * （`bg-muted` / `text-muted-foreground` / `bg-primary` …）を書き換えずにそのまま使える。
+ *
+ * shadcn に無いものだけを足してある（値は仮）:
+ * - `ok` / `warn` —— 状態の色（成功・注意）
+ * - `human` / `ai` —— 人間の操作と AI の判断を見分ける色
+ */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-ok: var(--ok);
+  --color-ok-foreground: var(--ok-foreground);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-human: var(--human);
+  --color-human-foreground: var(--human-foreground);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --font-sans:
+    system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', 'Noto Sans CJK JP', 'Segoe UI',
+    Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  /* 以下は shadcn に無い色。値は仮 */
+  --ok: oklch(0.527 0.154 150.069);
+  --ok-foreground: oklch(0.985 0 0);
+  --warn: oklch(0.666 0.179 58.318);
+  --warn-foreground: oklch(0.145 0 0);
+  /* #d97706 相当 */
+  --human: oklch(0.646 0.176 58.7);
+  --human-foreground: oklch(0.145 0 0);
+  /* #2563eb 相当 */
+  --ai: oklch(0.546 0.215 262.9);
+  --ai-foreground: oklch(0.985 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --ok: oklch(0.723 0.219 149.579);
+  --ok-foreground: oklch(0.145 0 0);
+  --warn: oklch(0.769 0.188 70.08);
+  --warn-foreground: oklch(0.145 0 0);
+  --human: oklch(0.769 0.188 70.08);
+  --human-foreground: oklch(0.145 0 0);
+  --ai: oklch(0.707 0.165 254.624);
+  --ai-foreground: oklch(0.145 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground;
+  }
+
+  /* class の無い link だけを link らしく塗る: 帯やボタンとして class を持つ link の見た目を、土台が上書きしないため */
+  a:not([class]) {
+    @apply text-primary underline-offset-4 hover:underline;
+  }
+
+  code {
+    @apply font-mono text-[0.9em] break-all;
+  }
+}

@@ -57,6 +57,7 @@ export type {
 } from './llm/port.js';
 export * from './llm/record.js';
 export * from './loop/budget.js';
+export * from './loop/output-estimate.js';
 export * from './loop/carry.js';
 // 名前を挙げて出す: inputs.js の区画の部品（seal・SectionWriter・Section）は蒸留と共有する内部の部品で、
 // 公開すると後から外しにくくなるため
@@ -110,6 +111,12 @@ export {
   requiredPermissionSchema,
   type Permissions,
 } from './permissions/permission.js';
+export {
+  type ExcludedParam,
+  type ExcludedReason,
+  excludedOf,
+  iterationPlanSchema,
+} from './think/excluded.js';
 export {
   buildParamsSchema,
   type OmittedReason,

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { BACKEND_FEATURES, type BackendCapabilities } from '../backend.js';
+import { BACKEND_FEATURES, generationRequestSchema, type BackendCapabilities } from '../backend.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 
 // AI に任せる。choices があれば、その候補の中からだけ選ばせる
@@ -37,8 +37,25 @@ function isRequiredParamKey(key: ParamKey): key is RequiredParamKey {
   return (REQUIRED_PARAM_KEYS as readonly ParamKey[]).includes(key);
 }
 
+/**
+ * そのパラメータの固定の値。生成の要求の該当する欄と同じ形であること。
+ */
+// 固定の値を要求の欄で検証する: 形の違う値を受けると、保存も投入も通ってから、生成の直前に初めて落ちるため
+function fixedSchemaFor(key: ParamKey) {
+  const field = generationRequestSchema.shape[key];
+  return z.object({
+    mode: z.literal('fixed'),
+    // any から始める: unknown から pipe すると、欄ごとに違う schema の和を型の上で渡せないため（検証の中身は欄の schema のまま）。
+    // value の鍵そのものは省けないので、値の無い固定は欄が省ける欄でも通らない
+    value: z.any().pipe(field),
+  });
+}
+
 function schemaFor(key: ParamKey) {
-  return isRequiredParamKey(key) ? requiredPermissionSchema : permissionSchema;
+  const fixed = fixedSchemaFor(key);
+  return isRequiredParamKey(key)
+    ? z.discriminatedUnion('mode', [autoSchema, fixed])
+    : z.discriminatedUnion('mode', [autoSchema, fixed, offSchema]);
 }
 
 // 欄の集まりを PARAM_KEYS から作るので zod が型を推論できず、型は Permissions として宣言する
