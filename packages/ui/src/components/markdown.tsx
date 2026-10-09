@@ -8,23 +8,83 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { newlineToBreak } from 'mdast-util-newline-to-break';
 import { gfm } from 'micromark-extension-gfm';
-import { type ComponentProps, type ReactNode, useId, useMemo } from 'react';
+import { type ComponentProps, Fragment, type ReactNode, useId, useMemo, useRef } from 'react';
 
-import { type Components, type MdastOptions, mdastToReact } from './markdown-mdast';
+import { type Components, type MdastOptions, mdastToReact, settledVerdict } from './markdown-mdast';
 
 // remark-gfm を使わず gfmFromMarkdown() だけを呼ぶ: remark-gfm は書き戻し側（gfmToMarkdown）も無条件に呼び、tree-shaking で削れず ~13KB 乗るため
+function parse(markdown: string) {
+  const mdast = fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  });
+  newlineToBreak(mdast);
+  return mdast;
+}
+
 export function toReact(
   markdown: string,
   components: Components = markdownComponents,
   idPrefix = '',
   options: MdastOptions = {},
 ): ReactNode {
-  const mdast = fromMarkdown(markdown, {
-    extensions: [gfm()],
-    mdastExtensions: [gfmFromMarkdown()],
+  return mdastToReact(parse(markdown), components, idPrefix, options);
+}
+
+/** 伸びていく返答のうち、描き方が決まった頭の部分（`settled`）と、その描いた結果 */
+type Settled = {
+  /** 解析の条件（見出しのずらし・id の頭・外の画像）。変わったら作り直す */
+  options: string;
+  settled: string;
+  parts: ReactNode[];
+  /** 最後に切ろうとした位置。同じ位置で解析し直さない */
+  tried: number;
+  /** 頭の部分に使い回せないまとまりがあり、これより先は使い回さない */
+  stopped: boolean;
+};
+
+/**
+ * 返答を、空行で切った頭の部分（描き方が決まったもの。使い回す）と、残り（毎回解析する）に分けて描く。
+ * 頭の部分は、文字が後ろに伸びるだけの間だけ使い回す。伸びるのではなく変わったら、頭から作り直す。
+ * 一度に描いたものと同じになるように、トップの塊のつなぎ（`\n`）を間に入れる（`wrap` と同じ）。
+ */
+function drawGrowing(
+  text: string,
+  previous: Settled | null,
+  options: string,
+  draw: (root: ReturnType<typeof parse>) => ReactNode,
+): { settled: Settled; content: ReactNode } {
+  let state =
+    previous !== null && previous.options === options && text.startsWith(previous.settled)
+      ? previous
+      : { options, settled: '', parts: [], tried: -1, stopped: false };
+  // 切るのは「空行の直後」だけ: 空行の無い所で切ると、段落・表・見出し（setext）が後ろの行で変わりうるため
+  const blank = text.lastIndexOf('\n\n');
+  const boundary = blank < 0 ? -1 : blank + 2;
+  if (!state.stopped && boundary > state.settled.length && boundary !== state.tried) {
+    const root = parse(text.slice(state.settled.length, boundary));
+    const verdict = settledVerdict(root);
+    if (verdict === 'never') state = { ...state, tried: boundary, stopped: true };
+    else if (verdict === 'wait') state = { ...state, tried: boundary };
+    else
+      state = {
+        ...state,
+        tried: boundary,
+        settled: text.slice(0, boundary),
+        parts: [...state.parts, draw(root)],
+      };
+  }
+  const tail = parse(text.slice(state.settled.length));
+  const pieces: ReactNode[] = [];
+  state.parts.forEach((part, index) => {
+    if (index > 0) pieces.push('\n');
+    pieces.push(<Fragment key={`settled-${index}`}>{part}</Fragment>);
   });
-  newlineToBreak(mdast);
-  return mdastToReact(mdast, components, idPrefix, options);
+  if (tail.children.length > 0) {
+    if (state.parts.length > 0) pieces.push('\n');
+    pieces.push(<Fragment key="tail">{draw(tail)}</Fragment>);
+  }
+  return { settled: state, content: pieces };
 }
 
 // 中身に改行が在ればコードブロックとする: 言語無しのフェンスには className が付かず、行内コードスパンには改行を書けないため
@@ -202,13 +262,19 @@ export function Markdown({
   const reactId = useId();
   const prefix = idPrefix ?? 'md' + reactId.replace(/[^A-Za-z0-9_-]/g, '') + '-';
   // 文字が同じ間は解析の結果を使い回す: 会話の画面は増分のたびに全部の行を作り直すので、使い回さないと
-  // 確定した返答まで増分のたびに解析し直し、描き直し1回が返答の数に比例して重くなるため
-  const content = useMemo(
-    () =>
-      toReact(children, offsetHeadings(markdownComponents, headingOffset), prefix, {
-        remoteImages,
-      }),
-    [children, headingOffset, prefix, remoteImages],
-  );
+  // 確定した返答まで増分のたびに解析し直し、描き直し1回が返答の数に比例して重くなるため。
+  // 文字が後ろに伸びる間は、描き方の決まった頭の段落も使い回す: 長い返答では、全体の解析が描き直し1回の大半を占めるため
+  const settled = useRef<Settled | null>(null);
+  const content = useMemo(() => {
+    const components = offsetHeadings(markdownComponents, headingOffset);
+    const drawn = drawGrowing(
+      children,
+      settled.current,
+      `${headingOffset ?? ''}|${prefix}|${remoteImages}`,
+      (root) => mdastToReact(root, components, prefix, { remoteImages }),
+    );
+    settled.current = drawn.settled;
+    return drawn.content;
+  }, [children, headingOffset, prefix, remoteImages]);
   return <div className="min-w-0 text-sm break-words">{content}</div>;
 }
