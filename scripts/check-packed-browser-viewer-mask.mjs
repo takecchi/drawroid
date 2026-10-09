@@ -195,11 +195,20 @@ try {
         `${label}: 窓の中で送ったマスクが、その画像（1 回目の 1 番）のマスクとしてジョブに入る`,
       );
       // 送ったら見る形に戻る: 塗る面は消え、「マスクを塗る」に戻り、前後へ送れる
+      // 送った知らせは塗る道具の中にも同じ文で出るので、文が出ただけでは見る形に戻ったとは言えない。塗る面が消えるのを待つ
+      await dialog.getByLabel('マスクを塗る所').waitFor({ state: 'detached' });
+      const returned = {
+        sentNote: await dialog.getByText('マスクを送った。次の回で描き直す。').count(),
+        paintButton: await dialog.getByRole('button', { name: 'マスクを塗る' }).count(),
+        lockNote: await dialog.getByText(/塗っている間は前後へ送れない/).count(),
+        nextEnabled: await dialog.getByRole('button', { name: '次の画像' }).isEnabled(),
+      };
       expect(
-        (await dialog.getByLabel('マスクを塗る所').count()) === 0 &&
-          (await dialog.getByText(/塗っている間は前後へ送れない/).count()) === 0 &&
-          (await dialog.getByRole('button', { name: '次の画像' }).isEnabled()),
-        `${label}: マスクを送ると見る形に戻り、送ったことが短く出て、前後へ送れる`,
+        returned.sentNote === 1 &&
+          returned.paintButton === 1 &&
+          returned.lockNote === 0 &&
+          returned.nextEnabled,
+        `${label}: マスクを送ると見る形に戻り、送ったことが短く出て、前後へ送れる（${JSON.stringify(returned)}）`,
       );
       // もう一度塗っておく（閉じるボタンが塗りかけを捨てるかを見るため）
       await dialog.getByRole('button', { name: 'マスクを塗る' }).click();
