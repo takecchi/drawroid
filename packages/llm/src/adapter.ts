@@ -64,10 +64,29 @@ function toUsage(usage: LanguageModelUsage | undefined): LlmUsage {
   };
 }
 
-/** コードブロックや前後の文に包まれた JSON も取り出す（text の出し方のため） */
+const THINK_BLOCK = /<think>[\s\S]*?<\/think>/gi;
+const THINK_OPEN = '<think>';
+const THINK_CLOSE = '</think>';
+
+/**
+ * 本文に混ざった思考（<think>…</think>）を外す。思考の中の { やコードブロックを、答えの JSON として読まないため。
+ * 閉じタグだけが来る（開きタグはチャットのテンプレートが入れる）モデルでは、最後の閉じタグより前を思考とみなす。
+ * 閉じないまま終わった思考（出力の上限で切れたなど）は、開きタグから後を外す。
+ */
+function stripThinking(text: string): string {
+  let body = text.replace(THINK_BLOCK, '');
+  const close = body.toLowerCase().lastIndexOf(THINK_CLOSE);
+  if (close !== -1) body = body.slice(close + THINK_CLOSE.length);
+  const open = body.toLowerCase().indexOf(THINK_OPEN);
+  if (open !== -1) body = body.slice(0, open);
+  return body;
+}
+
+/** コードブロックや前後の文に包まれた JSON も取り出す（text の出し方のため）。本文に混ざった思考は読まない */
 export function extractJson(text: string): unknown {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-  const body = fenced?.[1] ?? text;
+  const answer = stripThinking(text);
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(answer);
+  const body = fenced?.[1] ?? answer;
   const start = body.indexOf('{');
   const end = body.lastIndexOf('}');
   if (start === -1 || end < start) throw new SyntaxError('JSON のオブジェクトが見つからない');
