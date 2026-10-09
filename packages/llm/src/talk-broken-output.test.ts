@@ -405,6 +405,21 @@ describe('a reply written without its kind (json)', () => {
     expect(searches).toBe(0);
     expect(ended(events)).toMatchObject({ type: 'turn.ended', outcome: 'error' });
   });
+
+  // name でなくても、text のほかに欄があれば、何を求めたのかが分からない。text が文字列でなければ、返答の言葉が無い
+  it.each([
+    ['another field besides text', { text: REPLY, note: '補足' }],
+    ['text that is not a string', { text: 42 }],
+  ])('does not read it as the reply when it has %s', async (_, written) => {
+    const { events } = await talk('json', [
+      textStream(JSON.stringify(written)),
+      textStream(JSON.stringify(written)),
+      textStream(JSON.stringify(written)),
+    ]);
+
+    expect(messages(events)).not.toContain(REPLY);
+    expect(ended(events)).toMatchObject({ type: 'turn.ended', outcome: 'error' });
+  });
 });
 
 describe('thinking tags and empty text', () => {
