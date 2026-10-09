@@ -1,5 +1,6 @@
 // 偽の Forge。雛形は repo の packages/backend-forge の fixtures を実行時に読む（形が変われば fixtures と一緒に追従するため、ここへ写さない）。
 // 生成に genMs かけ、その間 /sdapi/v1/progress が進む。
+// holdGeneration() で、次の生成を releaseGeneration()（か /sdapi/v1/interrupt）まで止められる。待ちは合図で決まり、時間では決めない。
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
@@ -80,7 +81,7 @@ export function makePng(n, size = 64) {
 
 /**
  * @param {{ fixturesDir: string, genMs: number }} options
- * @returns {Promise<{ url: string, close: () => Promise<void> }>}
+ * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { txt2img: number, heldGenerations: number, interrupts: number }, holdGeneration: () => void, releaseGeneration: () => void }>}
  */
 export async function startFakeForge({ fixturesDir, genMs }) {
   /** @param {string} name */
@@ -88,6 +89,11 @@ export async function startFakeForge({ fixturesDir, genMs }) {
   let genCount = 0;
   /** @type {number | null} */
   let genStart = null;
+  // 次の生成を止めるか、いま止まっている生成を解く
+  const stats = { txt2img: 0, heldGenerations: 0, interrupts: 0 };
+  let holdNext = false;
+  /** @type {(() => void) | null} */
+  let releaseHeld = null;
   /**
    * @param {import('node:http').ServerResponse} res
    * @param {number} status
@@ -105,7 +111,11 @@ export async function startFakeForge({ fixturesDir, genMs }) {
       const key = `${req.method} ${path}`;
       const route = ROUTES[key];
       if (route !== undefined) return send(res, 200, fixture(route));
-      if (key === 'POST /sdapi/v1/interrupt') return send(res, 200, {});
+      if (key === 'POST /sdapi/v1/interrupt') {
+        stats.interrupts++;
+        releaseHeld?.();
+        return send(res, 200, {});
+      }
       if (key === 'GET /sdapi/v1/progress') {
         if (genStart === null) return send(res, 200, fixture('progress-idle.json'));
         const f = Math.min(0.99, (Date.now() - genStart) / genMs);
@@ -130,9 +140,21 @@ export async function startFakeForge({ fixturesDir, genMs }) {
       if (key === 'POST /sdapi/v1/txt2img') {
         const params = JSON.parse(body || '{}');
         const n = genCount++;
+        stats.txt2img++;
         genStart = Date.now();
-        await new Promise((resolve) => setTimeout(resolve, genMs));
+        if (holdNext) {
+          holdNext = false;
+          stats.heldGenerations++;
+          await new Promise((resolve) => {
+            releaseHeld = () => resolve(undefined);
+            res.on('close', () => resolve(undefined));
+          });
+          releaseHeld = null;
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, genMs));
+        }
         genStart = null;
+        if (res.destroyed) return;
         const batchSize = params.batch_size ?? 1;
         const seed = params.seed === undefined || params.seed === -1 ? 123456 : params.seed;
         const seeds = Array.from({ length: batchSize }, (_, i) => seed + i);
@@ -155,6 +177,11 @@ export async function startFakeForge({ fixturesDir, genMs }) {
   if (address === null || typeof address === 'string')
     throw new Error('偽の Forge のポートを取れなかった');
   return {
+    stats,
+    holdGeneration: () => {
+      holdNext = true;
+    },
+    releaseGeneration: () => releaseHeld?.(),
     url: `http://127.0.0.1:${address.port}`,
     close: () =>
       new Promise((resolve) => {

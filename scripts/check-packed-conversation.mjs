@@ -116,7 +116,7 @@ const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-c
 let child;
 /** @type {(() => string) | undefined} */
 let drawroidOutput;
-/** @type {{ url: string, close: () => Promise<void> } | undefined} */
+/** @type {Awaited<ReturnType<typeof startFakeForge>> | undefined} */
 let forge;
 /** @type {Awaited<ReturnType<typeof startFakeLlm>> | undefined} */
 let llm;
@@ -415,6 +415,198 @@ try {
     restored.status === 200,
     '台本の LLM の設定に戻せる',
     `${restored.status} ${restored.text}`,
+  );
+
+  // 中断。ターンの途中（話す役の LLM の応答待ち）と、ジョブの生成の途中を、偽の LLM・Forge を合図まで待たせて作る。
+  // 1 つ目の発言でジョブを始め、Forge の生成で止める。ターンが終わったあとの 2 つ目の発言を、話す役の応答待ちで止める。
+  /** @param {string} text @param {string} clientMessageId @returns {Promise<{ stream: Sse, id: string, say: () => Promise<void> }>} */
+  const startConversation = async (text, clientMessageId) => {
+    const created = await api(base, 'POST', '/api/conversations', {});
+    const id = String(created.json?.conversation?.conversationId);
+    const stream = await openSse(base, id, {});
+    streams.push(stream);
+    const say = async () => {
+      const sent = await api(base, 'POST', `/api/conversations/${id}/messages`, {
+        text,
+        clientMessageId,
+      });
+      assert(
+        sent.status === 202,
+        `発言（${clientMessageId}）が 202`,
+        `${sent.status} ${sent.text}`,
+      );
+    };
+    return { stream, id, say };
+  };
+  const count = (/** @type {Sse} */ s, /** @type {string} */ type) =>
+    s.frames.filter((f) => f.event === type && f.id !== undefined).length;
+  /** ジョブが Forge の生成で止まり、1 つ目のターンが終わり、2 つ目の発言の話す役の応答待ちで止まるところまで進める */
+  const reachMidTurn = async (
+    /** @type {Sse} */ stream,
+    /** @type {() => Promise<void>} */ say1,
+    /** @type {() => Promise<void>} */ say2,
+    /** @type {string} */ label,
+  ) => {
+    forge?.holdGeneration();
+    const heldBefore = forge?.stats.heldGenerations ?? 0;
+    await say1();
+    await waitFor(
+      () =>
+        ((forge?.stats.heldGenerations ?? 0) > heldBefore && count(stream, 'turn.ended') >= 1) ||
+        (count(stream, 'turn.ended') >= 1 && !has(stream, 'job.started')),
+      `${label}: Forge の生成待ちと 1 つ目の turn.ended`,
+    );
+    const talkHeldBefore = llm?.stats.heldTalkCalls ?? 0;
+    llm?.holdTalk();
+    await say2();
+    await waitFor(
+      () => (llm?.stats.heldTalkCalls ?? 0) > talkHeldBefore || count(stream, 'turn.ended') >= 2,
+      `${label}: 2 つ目のターンの話す役の応答待ち`,
+    );
+  };
+  const endedTurns = (/** @type {Sse} */ s) =>
+    s.frames.filter((f) => f.event === 'turn.ended' && f.id !== undefined);
+
+  // scope: turn。ターンだけ打ち切り、描いているジョブは止まらず続く
+  llm.restartJudge(1);
+  const turnConv = await startConversation('夕焼けの海辺の少女を描いて', 't1');
+  await reachMidTurn(
+    turnConv.stream,
+    turnConv.say,
+    async () => {
+      const sent = await api(base, 'POST', `/api/conversations/${turnConv.id}/messages`, {
+        text: '空をもう少し赤く',
+        clientMessageId: 't2',
+      });
+      assert(sent.status === 202, '中断する前の 2 つ目の発言（turn）が 202', `${sent.status}`);
+    },
+    'turn',
+  );
+  assert(
+    has(turnConv.stream, 'job.started') && !has(turnConv.stream, 'job.images'),
+    'turn: 中断の時点で、ジョブは Forge の生成の途中',
+    JSON.stringify(turnConv.stream.frames.map((f) => f.event)),
+  );
+  const turnInterrupt = await api(base, 'POST', `/api/conversations/${turnConv.id}/interrupt`, {
+    scope: 'turn',
+  });
+  const turnJobId = String(
+    turnConv.stream.frames.find((f) => f.event === 'job.started')?.data?.jobId,
+  );
+  assert(
+    turnInterrupt.status === 202,
+    'interrupt（turn）が 202',
+    `${turnInterrupt.status} ${turnInterrupt.text}`,
+  );
+  assert(
+    turnInterrupt.json?.scope === 'turn' &&
+      turnInterrupt.json?.interruptedTurn === true &&
+      turnInterrupt.json?.stoppedJob === null,
+    'interrupt（turn）の応答が scope: turn・interruptedTurn: true・stoppedJob: null',
+    turnInterrupt.text,
+  );
+  await waitFor(() => endedTurns(turnConv.stream).length >= 2, 'turn: 2 つ目の turn.ended');
+  const turnEnded = endedTurns(turnConv.stream)[1];
+  assert(
+    turnEnded?.data?.outcome === 'interrupted',
+    'interrupt（turn）で、話す役のターンが outcome interrupted で終わる',
+    JSON.stringify(turnEnded?.data),
+  );
+  assert(
+    (llm?.stats.abortedTalkCalls ?? 0) >= 1,
+    'interrupt（turn）で、話す役の LLM の呼び出しが切られる',
+    JSON.stringify(llm?.stats),
+  );
+  assert(
+    (forge?.stats.interrupts ?? 0) === 0 && !has(turnConv.stream, 'job.stopped'),
+    'interrupt（turn）では、ジョブを止めない（Forge に interrupt が行かず、job.stopped も出ない）',
+    `interrupts=${forge?.stats.interrupts} ${JSON.stringify(turnConv.stream.frames.map((f) => f.event))}`,
+  );
+  // 生成を解くと、ターンが終わったあともジョブが回り続け、自分で（ai の判断で）終わる
+  forge.releaseGeneration();
+  await waitFor(() => stopped(turnConv.stream), 'turn: job.stopped');
+  const turnConfirmed = turnConv.stream.frames.filter((f) => f.id !== undefined);
+  const turnEndedAt = turnConfirmed.indexOf(/** @type {Frame} */ (turnEnded));
+  const turnStoppedAt = turnConfirmed.findIndex((f) => f.event === 'job.stopped');
+  assert(
+    turnConfirmed.some((f, i) => i > turnEndedAt && f.event === 'job.images') &&
+      turnConfirmed.some((f, i) => i > turnEndedAt && f.event === 'job.judge'),
+    'interrupt（turn）のあとも、ジョブの job.images・job.judge が続けて確定する',
+    JSON.stringify(turnConfirmed.map((f) => f.event)),
+  );
+  assert(
+    turnConfirmed[turnStoppedAt]?.data?.jobId === turnJobId &&
+      turnConfirmed[turnStoppedAt]?.data?.reason?.kind === 'ai',
+    'interrupt（turn）のあと、ジョブは human ではなく自分の判断（ai）で止まる',
+    JSON.stringify(turnConfirmed[turnStoppedAt]?.data),
+  );
+
+  // scope: all。ターンもジョブも止める
+  llm.restartJudge(3);
+  const allConv = await startConversation('夕焼けの海辺の少女を描いて', 'a1');
+  await reachMidTurn(
+    allConv.stream,
+    allConv.say,
+    async () => {
+      const sent = await api(base, 'POST', `/api/conversations/${allConv.id}/messages`, {
+        text: '空をもう少し赤く',
+        clientMessageId: 'a2',
+      });
+      assert(sent.status === 202, '中断する前の 2 つ目の発言（all）が 202', `${sent.status}`);
+    },
+    'all',
+  );
+  const allJobId = String(
+    allConv.stream.frames.find((f) => f.event === 'job.started')?.data?.jobId,
+  );
+  const allInterrupt = await api(base, 'POST', `/api/conversations/${allConv.id}/interrupt`, {
+    scope: 'all',
+  });
+  assert(
+    allInterrupt.status === 202,
+    'interrupt（all）が 202',
+    `${allInterrupt.status} ${allInterrupt.text}`,
+  );
+  assert(
+    allInterrupt.json?.scope === 'all' &&
+      allInterrupt.json?.interruptedTurn === true &&
+      allInterrupt.json?.stoppedJob === allJobId,
+    'interrupt（all）の応答が scope: all・interruptedTurn: true・stoppedJob: 描いていたジョブの id',
+    `${allInterrupt.text} / jobId ${allJobId}`,
+  );
+  await waitFor(
+    () => endedTurns(allConv.stream).length >= 2 && stopped(allConv.stream),
+    'all: 2 つ目の turn.ended と job.stopped',
+  );
+  const allEnded = endedTurns(allConv.stream)[1];
+  assert(
+    allEnded?.data?.outcome === 'interrupted',
+    'interrupt（all）で、話す役のターンが outcome interrupted で終わる',
+    JSON.stringify(allEnded?.data),
+  );
+  const allStopped = allConv.stream.frames.filter(
+    (f) => f.event === 'job.stopped' && f.id !== undefined,
+  );
+  assert(
+    allStopped.length === 1 &&
+      allStopped[0]?.data?.jobId === allJobId &&
+      allStopped[0]?.data?.reason?.kind === 'human',
+    'interrupt（all）で、ジョブが 1 回だけ、reason human で止まる（job.stopped）',
+    JSON.stringify(allStopped.map((f) => f.data)),
+  );
+  assert(
+    (forge?.stats.interrupts ?? 0) >= 1 && !has(allConv.stream, 'job.judge'),
+    'interrupt（all）で、Forge の生成が止められ、評価（job.judge）まで進まない',
+    `interrupts=${forge?.stats.interrupts}`,
+  );
+  // 走っているものが無いときは、何もせず 202
+  const idle = await api(base, 'POST', `/api/conversations/${allConv.id}/interrupt`, {
+    scope: 'all',
+  });
+  assert(
+    idle.status === 202 && idle.json?.interruptedTurn === false && idle.json?.stoppedJob === null,
+    '走っているものが無いときの interrupt は 202 で、interruptedTurn: false・stoppedJob: null',
+    `${idle.status} ${idle.text}`,
   );
 
   // 起動時に「LLM が未設定」と出したあと、設定を保存したことが端末から分かる
