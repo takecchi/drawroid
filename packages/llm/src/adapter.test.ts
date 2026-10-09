@@ -83,8 +83,12 @@ const role = (overrides: Partial<RoleConfig> = {}): RoleConfig =>
 function adapter(model: MockLanguageModelV4, config: RoleConfig = role(), validationRetries = 2) {
   let clock = 0;
   return new AiSdkLlm(
-    { think: config, judge: config },
-    { think: { providerName: 'local', model }, judge: { providerName: 'local', model } },
+    { think: config, judge: config, talk: config },
+    {
+      think: { providerName: 'local', model },
+      judge: { providerName: 'local', model },
+      talk: { providerName: 'local', model },
+    },
     { validationRetries, networkRetries: 0, now: () => (clock += 10) },
   );
 }
@@ -196,9 +200,17 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
     const model = new MockLanguageModelV4({ doStream: [cutAtLimit(half)] });
     const config = role({ maxOutputTokens: 1024 });
     const llm = new AiSdkLlm(
-      { think: config, judge: config },
-      { think: { providerName: 'local', model }, judge: { providerName: 'local', model } },
-      { validationRetries: 2, networkRetries: 0, configKeys: { think: 'think', judge: 'think' } },
+      { think: config, judge: config, talk: config },
+      {
+        think: { providerName: 'local', model },
+        judge: { providerName: 'local', model },
+        talk: { providerName: 'local', model },
+      },
+      {
+        validationRetries: 2,
+        networkRetries: 0,
+        configKeys: { think: 'think', judge: 'think', talk: 'think' },
+      },
     );
     const outcome = await llm.generateStructured(call({ role: 'judge' }));
 
@@ -610,5 +622,98 @@ describe('AiSdkLlm.streamStep', () => {
     const finish = parts.at(-1);
     expect(model.doStreamCalls).toHaveLength(1);
     expect(finish?.type === 'finish' && finish.failure).toContain('maxOutputTokens = 1024');
+  });
+});
+
+/** 本文を何回かに分けて流す応答（部分的な JSON から本文を取り出すかを見るため） */
+function streamInPieces(pieces: string[]): StreamResult {
+  const chunks: StreamPart[] = [
+    { type: 'stream-start', warnings: [] },
+    { type: 'text-start', id: 't' },
+    ...pieces.map((delta): StreamPart => ({ type: 'text-delta', id: 't', delta })),
+    { type: 'text-end', id: 't' },
+    {
+      type: 'finish',
+      finishReason: { unified: 'stop', raw: 'stop' },
+      usage: {
+        inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 20, text: 20, reasoning: undefined },
+      },
+    },
+  ];
+  return { stream: convertArrayToReadableStream(chunks) };
+}
+
+describe('AiSdkLlm.streamStep with toolCalling: json', () => {
+  const jsonRole = (structuredOutput: 'native' | 'json' | 'text') =>
+    role({ toolCalling: 'json', structuredOutput });
+
+  it('reads a tool call out of the structured output, without passing tools to the model', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        streamOf({
+          text: 'はい。```json\n{"kind":"tool","name":"search_candidates","input":{"kind":"lora","query":"miku"}}\n```',
+        }),
+      ],
+    });
+    const parts = await partsOf(adapter(model, jsonRole('text')).streamStep(stepCall()));
+
+    expect(parts.filter((p) => p.type !== 'finish')).toEqual([
+      {
+        type: 'tool-call',
+        callId: 'json-0',
+        name: 'search_candidates',
+        input: { kind: 'lora', query: 'miku' },
+      },
+    ]);
+    expect(model.doStreamCalls[0]?.tools).toBeUndefined();
+    // text の出し方では、ツールの説明ごとスキーマを指示文に載せる
+    const system = model.doStreamCalls[0]?.prompt.find((m) => m.role === 'system');
+    expect(String(system?.content)).toContain('候補を調べる。描かない');
+  });
+
+  it('streams the reply text out of the partial JSON, not the JSON itself', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        streamInPieces(['{"kind":"reply","te', 'xt":"描け', 'ます。LoRA', 'もあります"}']),
+      ],
+    });
+    const parts = await partsOf(adapter(model, jsonRole('json')).streamStep(stepCall()));
+
+    const texts = parts.flatMap((p) => (p.type === 'text-delta' ? [p.text] : []));
+    expect(texts.length).toBeGreaterThan(1);
+    expect(texts.join('')).toBe('描けます。LoRAもあります');
+    expect(texts.join('')).not.toContain('kind');
+    expect(parts.at(-1)).toMatchObject({ type: 'finish' });
+    expect(parts.at(-1)?.type === 'finish' && parts.at(-1)).not.toHaveProperty('failure');
+  });
+
+  it('sends the step schema in native structured output mode', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [streamOf({ text: '{"kind":"reply","text":"はい"}' })],
+    });
+    await partsOf(adapter(model, jsonRole('native')).streamStep(stepCall()));
+    const format = model.doStreamCalls[0]?.responseFormat;
+    expect(format?.type).toBe('json');
+    expect(JSON.stringify(format && 'schema' in format ? format.schema : {})).toContain(
+      'search_candidates',
+    );
+  });
+
+  it('asks again with only a summary, then gives the raw text and fails when the output keeps breaking', async () => {
+    const broken = () =>
+      streamOf({ text: '{"kind":"tool","name":"search_candidates","input":{"kind":"vae"}}' });
+    const model = new MockLanguageModelV4({
+      doStream: [broken(), broken(), streamOf({ text: '描けると思います' })],
+    });
+    const parts = await partsOf(adapter(model, jsonRole('text'), 2).streamStep(stepCall()));
+
+    expect(parts.map((p) => p.type)).toEqual(['retry', 'retry', 'retry', 'text-delta', 'finish']);
+    // 失敗した出力の全文は積まず、要約だけを足す
+    expect(userTexts(model, 1).some((t) => t.includes('"kind":"vae"'))).toBe(false);
+    expect(parts[3]).toEqual({ type: 'text-delta', text: '描けると思います' });
+    const finish = parts.at(-1);
+    expect(finish?.type === 'finish' && finish.failure).toMatch(/ツールを呼べなかった/);
+    expect(parts.some((p) => p.type === 'tool-call')).toBe(false);
   });
 });

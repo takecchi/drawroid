@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { NewConversationEvent } from '@drawroid/core';
+import type { LlmCallRecord, NewConversationEvent } from '@drawroid/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FsConversationStore } from './conversation-store.js';
@@ -150,6 +150,33 @@ describe('FsConversationStore', () => {
     expect(await store.readConversation(conversation.conversationId)).toMatchObject({
       title: '海辺の少女',
     });
+  });
+
+  it('writes the talking role LLM calls under the conversation, not under the root', async () => {
+    const store = new FsConversationStore(root);
+    const { conversationId } = await store.createConversation(at);
+    const record: LlmCallRecord = {
+      callId: '20261009T063012000Z-0001',
+      jobId: null,
+      iteration: null,
+      role: 'talk',
+      purpose: 'talk',
+      provider: 'local',
+      model: 'qwen',
+      startedAt: at.toISOString(),
+      durationMs: 5,
+      input: { system: '話す役', user: [{ type: 'text', text: '描けますか' }] },
+      budget: { estimatedInputTokens: 10, inputTokenLimit: 100, notes: [] },
+      attempts: [],
+      usage: { inputTokens: 10, outputTokens: 2 },
+      outcome: { ok: true, value: { text: '描けます', toolCalls: [] } },
+    };
+
+    await store.writeLlmCall(conversationId, record);
+
+    const files = dataPaths(root).conversationFiles(conversationId);
+    expect(JSON.parse(await readFile(files.llmCall(record.callId), 'utf8'))).toEqual(record);
+    expect(await readdir(dataPaths(root).llmCalls).catch(() => [])).toEqual([]);
   });
 
   it('refuses a conversation ID that would point outside the conversations directory', async () => {

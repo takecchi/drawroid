@@ -214,6 +214,14 @@ export class JobRunner {
     if (state.status === 'stopped') return;
     const stopped = this.stopped(state, HUMAN_STOP);
     await this.deps.store.writeState(jobId, stopped);
+    // 書いたあとにもう一度見る: 読んでから書くまでの間にランナーがこのジョブを拾っていたら、拾った側は「待っている」と
+    // 読んで走り出しており、ここで書いた「止まった」を次の書き込みで上書きして回り続けるため。拾った側は最初の await
+    // より前に running を立てるので、ここで見えなければ、拾った側の最初の読み出しは「止まった」を読んで返る
+    if (this.running?.jobId === jobId) {
+      this.running.controller.abort();
+      await this.deps.backend.interrupt();
+      return;
+    }
     await this.distillAfterStop(jobId, stopped, HUMAN_STOP);
   }
 
@@ -306,6 +314,8 @@ export class JobRunner {
       references: this.deps.referenceLimits ?? DEFAULT_BUDGETS.references,
       memory: memory?.limits ?? DEFAULT_BUDGETS.memory,
       distill: memory?.distillBudget ?? DEFAULT_DISTILL_BUDGET,
+      // ジョブは話す役の予算を使わない。Budgets の形をそろえるためだけに既定を置く
+      talk: DEFAULT_BUDGETS.talk,
     };
   }
 

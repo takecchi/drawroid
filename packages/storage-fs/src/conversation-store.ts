@@ -9,6 +9,7 @@ import {
   type ConversationEvent,
   type ConversationEventPage,
   type ConversationStore,
+  type LlmCallRecord,
   type ConversationUpload,
   type NewConversationEvent,
 } from '@drawroid/core';
@@ -156,6 +157,12 @@ export class FsConversationStore implements ConversationStore {
       const confirmed = conversationEventSchema.parse({ ...parsed, seq, at: now.toISOString() });
       if (await createJsonExclusive(files.event(seq), confirmed)) return confirmed;
     }
+  }
+
+  async writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void> {
+    const files = this.files(conversationId);
+    await mkdir(files.llmCalls, { recursive: true });
+    await writeJsonAtomic(files.llmCall(record.callId), record);
   }
 
   async readEvents(

@@ -22,6 +22,7 @@ import {
   noCandidateNotes,
   noPermissionSettings,
   memoryBudgetSettings,
+  memoryProgressDeps,
   memoryConversations,
 } from '../test-support.js';
 
@@ -62,6 +63,7 @@ beforeEach(async () => {
       addMask: (jobId, mask) => runner.addMask(jobId, mask),
     },
     budgetSettings: memoryBudgetSettings(),
+    ...memoryProgressDeps(),
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     permissionSettings: noPermissionSettings,

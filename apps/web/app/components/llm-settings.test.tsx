@@ -33,6 +33,7 @@ const stored: LlmSettingsResponse = {
         maxOutputTokens: 1024,
         structuredOutput: 'native',
         reasoning: 'think-tag',
+        toolCalling: 'native',
         imageInput: false,
       },
       judge: {
@@ -42,6 +43,7 @@ const stored: LlmSettingsResponse = {
         maxOutputTokens: 1024,
         structuredOutput: 'native',
         reasoning: 'native',
+        toolCalling: 'native',
         imageInput: true,
       },
     },
@@ -111,6 +113,40 @@ describe('LlmSettings', () => {
       roles: {
         think: stored.config!.roles.think,
         judge: { ...stored.config!.roles.judge, reasoning: 'none' },
+      },
+    });
+  });
+
+  it('saves a separate model for the talking role when it does not use the thinking role', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.click(screen.getByLabelText('話す役（会話）も考える役と同じモデルを使う'));
+    await user.clear(input('話す役のモデル'));
+    await user.type(input('話す役のモデル'), 'qwen3-talk');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(mocks.saveLlmSettings).toHaveBeenCalledWith({
+      ...stored.config,
+      roles: {
+        ...stored.config!.roles,
+        talk: { ...stored.config!.roles.think, model: 'qwen3-talk' },
+      },
+    });
+  });
+
+  it('saves json tool calling for a model that is weak at calling tools', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.selectOptions(screen.getByLabelText('考える役のツールの呼び出し方'), 'json');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(mocks.saveLlmSettings).toHaveBeenCalledWith({
+      ...stored.config,
+      roles: {
+        ...stored.config!.roles,
+        think: { ...stored.config!.roles.think, toolCalling: 'json' },
       },
     });
   });

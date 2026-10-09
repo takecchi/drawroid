@@ -7,10 +7,10 @@ import { BudgetSettings } from '../components/budget-settings';
 import { GenerationForm } from '../components/generation-form';
 import { LlmSettings } from '../components/llm-settings';
 
-export default function Home() {
+export default function Generate() {
   const navigate = useNavigate();
   return (
-    <Page title="drawroid">
+    <Page title="生成と設定">
       <BackendStatus />
       <BackendUrlSettings />
       <LlmSettings />

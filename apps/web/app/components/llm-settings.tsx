@@ -19,6 +19,7 @@ import {
   emptyProviderRow,
   PROVIDER_TYPES,
   REASONING_MODES,
+  TOOL_CALLING_MODES,
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
   type LlmSettingsFormValues,
@@ -26,6 +27,7 @@ import {
   type ProviderType,
   type RoleValues,
   type ReasoningMode,
+  type ToolCallingMode,
   type StructuredOutputMode,
 } from '../lib/llm-settings-form';
 
@@ -36,7 +38,7 @@ const API_KEY_ENV_PLACEHOLDERS: Record<ProviderType, string> = {
   'openai-compatible': '鍵が要らなければ空',
 };
 
-const ROLE_LABELS = { think: '考える役', judge: '見る役' } as const;
+const ROLE_LABELS = { think: '考える役', judge: '見る役', talk: '話す役' } as const;
 
 function providerName(row: ProviderRow, index: number): string {
   return row.key.trim() === '' ? `${index + 1}番目` : row.key.trim();
@@ -110,6 +112,22 @@ function RoleFields({
             className="w-40"
           >
             {STRUCTURED_OUTPUT_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {mode}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="ツールの呼び出し方">
+          <Select
+            value={values.toolCalling}
+            onChange={(event) =>
+              onChange({ ...values, toolCalling: event.target.value as ToolCallingMode })
+            }
+            aria-label={`${label}のツールの呼び出し方`}
+            className="w-40"
+          >
+            {TOOL_CALLING_MODES.map((mode) => (
               <option key={mode} value={mode}>
                 {mode}
               </option>
@@ -301,6 +319,14 @@ export function LlmSettings() {
                 values={values.judge}
                 onChange={(judge) => change({ judge })}
               />
+            )}
+            <CheckboxField
+              label="話す役（会話）も考える役と同じモデルを使う"
+              checked={values.talkSameAsThink}
+              onChange={(event) => change({ talkSameAsThink: event.target.checked })}
+            />
+            {!values.talkSameAsThink && (
+              <RoleFields role="talk" values={values.talk} onChange={(talk) => change({ talk })} />
             )}
           </SubSection>
           <Button type="submit" variant="primary" disabled={saving}>

@@ -6,8 +6,15 @@ import { fileURLToPath } from 'node:url';
 import {
   bridgeJobEvents,
   ConversationHubs,
+  createDrawingTools,
+  createReadOnlyTools,
   DEFAULT_BUDGET,
+  jobSummaryFor,
   ManualGenerationRunner,
+  mergePermissions,
+  readDrawingStopConditions,
+  ProgressPreviews,
+  TalkRunner,
 } from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
@@ -18,6 +25,7 @@ import {
   FsJobStore,
   initDataDir,
   readCandidateNotes,
+  readConversationSettings,
   readLlmSettings,
   readPermissionSettings,
   resolveDataDir,
@@ -31,6 +39,7 @@ import { AutoJobQueue, BASE_PERMISSIONS } from './auto-job-queue.js';
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions, createBackendSettings } from './backend-settings.js';
 import { createBudgetSettings } from './budget-settings.js';
+import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { createPermissionReader } from './permission-reader.js';
@@ -134,6 +143,48 @@ async function main() {
     },
   };
 
+  const budgetSettings = createBudgetSettings(configPath);
+  const readCandidates = () => readCandidateNotes(dataPaths(root).candidateNotes);
+  const humanPermissions = async () => mergePermissions(BASE_PERMISSIONS, await readPermissions());
+  // 話す役。LLM は自動ジョブと同じ設定（役 talk、省けば考える役）を使う
+  const talkRunner = new TalkRunner({
+    store: conversationStore,
+    hubs: conversationHubs,
+    llm: () => autoQueue.currentLlm(),
+    tools: [
+      ...createReadOnlyTools({
+        backend,
+        permissions: humanPermissions,
+        candidateNotes: async () => (await readCandidates()).notes,
+        memory: memoryStore,
+        jobs: store,
+      }),
+      ...createDrawingTools({
+        jobs: store,
+        runner: autoQueue,
+        conversations: conversationStore,
+        humanPermissions,
+        // 読めなければ候補が無いとして扱う: 広げる側には倒れない（候補の外の値で固定する引数は断られる）
+        candidateNames: async (kind) =>
+          (await backend.listCandidates(kind).catch(() => [])).map((candidate) => candidate.name),
+        defaultStopConditions: async () => {
+          const read = readDrawingStopConditions(await readConversationSettings(configPath));
+          if (read.problem !== undefined) log(`drawroid: ${read.problem}。既定の止める条件を使う`);
+          return read.conditions;
+        },
+        // 投入の口と同じく、作るときに1度だけ読んでジョブへ写す
+        budgets: async () => (await budgetSettings.read()).effective,
+        now: () => new Date(),
+      }),
+    ],
+    jobSummary: jobSummaryFor({
+      jobs: store,
+      chars: async () => (await budgetSettings.read()).effective.talk.jobChars,
+    }),
+    // ターンの始めに読み直す: 画面で直した予算を、再起動せずに次のターンから効かせるため
+    limits: async () => (await budgetSettings.read()).effective.talk,
+    log,
+  });
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),
@@ -144,7 +195,9 @@ async function main() {
       backendSettings,
       memoryStore,
       autoQueue,
-      budgetSettings: createBudgetSettings(configPath),
+      budgetSettings,
+      progressPreviews: new ProgressPreviews(),
+      generationProgressSettings: createGenerationProgressSettings(configPath),
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,
@@ -158,6 +211,7 @@ async function main() {
       conversations: {
         store: conversationStore,
         hubs: conversationHubs,
+        turns: talkRunner,
       },
       candidateNotes: {
         read: () => readCandidateNotes(dataPaths(root).candidateNotes),

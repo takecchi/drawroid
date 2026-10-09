@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { LlmCallRecord } from '../llm/record.js';
 import type { REFERENCE_MEDIA_TYPES } from '../job/types.js';
 import type { ConversationEvent, NewConversationEvent } from './events.js';
 
@@ -67,6 +68,8 @@ export interface ConversationStore {
     conversationId: string,
     options?: { after?: number; limit?: number },
   ): Promise<ConversationEventPage>;
+  /** 話す役の LLM 呼び出しの記録を置く（conversations/<id>/llm-calls/<callId>.json）。ジョブには属さない */
+  writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void>;
   /** 会話で人間が添えた画像を置く（uploads/）。描き始めるときに、ジョブの参照画像（refs/）へ写す */
   addUpload(conversationId: string, upload: ConversationUpload, now: Date): Promise<string>;
   /** 添えた画像を読む。無ければ undefined */

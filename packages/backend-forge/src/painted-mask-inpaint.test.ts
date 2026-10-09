@@ -10,8 +10,10 @@ import {
   basicPermissions,
   ConversationHubs,
   DEFAULT_BUDGET,
+  DEFAULT_GENERATION_PROGRESS_SETTINGS,
   JobRunner,
   ManualGenerationRunner,
+  ProgressPreviews,
   resolveBudgets,
   type LlmCall,
 } from '@drawroid/core';
@@ -92,6 +94,11 @@ beforeEach(async () => {
     autoQueue: runner,
     budgetSettings: {
       read: async () => ({ overrides: {}, effective: resolveBudgets({}) }),
+      write: notUsed,
+    },
+    progressPreviews: new ProgressPreviews(),
+    generationProgressSettings: {
+      read: async () => DEFAULT_GENERATION_PROGRESS_SETTINGS,
       write: notUsed,
     },
     stopConditionParser: { parse: notUsed },

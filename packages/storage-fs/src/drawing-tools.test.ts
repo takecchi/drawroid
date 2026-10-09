@@ -10,12 +10,15 @@ import {
   bridgeJobEvents,
   ConversationHubs,
   DEFAULT_BUDGET,
+  createDrawingTools,
   DEFAULT_BUDGETS,
-  DRAWING_TOOLS,
+  DEFAULT_TALK_LIMITS,
   JobRunner,
   mergePermissions,
-  type DrawingToolContext,
+  type DrawingToolDeps,
   type JobStore,
+  type TalkTool,
+  type TalkToolContext,
 } from '@drawroid/core';
 import {
   MemoryConversationStore,
@@ -66,9 +69,7 @@ async function setup() {
     permissions: human,
   });
   const { conversationId } = await conversations.createConversation(new Date());
-  const context: DrawingToolContext = {
-    conversationId,
-    turn: 1,
+  const tools = createDrawingTools({
     jobs,
     runner,
     conversations,
@@ -78,32 +79,42 @@ async function setup() {
     defaultStopConditions: async () => ({ aiJudgement: true, maxIterations: 3 }),
     budgets: async () => DEFAULT_BUDGETS,
     now: () => new Date('2026-10-09T06:30:12.000Z'),
+  });
+  // 会話の実行器が呼ぶたびに渡すもの（ターンの番号を含む）
+  const talk: TalkToolContext = {
+    conversationId,
+    turn: 1,
+    events: [],
+    limits: DEFAULT_TALK_LIMITS,
+    signal: new AbortController().signal,
   };
+  const context: Context = { tools, talk };
   return { conversations, jobs, runner, context, conversationId };
 }
 
 /** 試験の間に回り終わらない止める条件: 止める・直すを、走っているジョブに確かめるため */
 const LONG = { aiJudgement: false, maxIterations: 1000 };
 
-const tool = (name: string) => {
-  const found = DRAWING_TOOLS.find((t) => t.name === name);
+type Context = { tools: TalkTool[]; talk: TalkToolContext };
+
+const toolIn = (tools: readonly TalkTool[], name: string) => {
+  const found = tools.find((t) => t.name === name);
   if (found === undefined) throw new Error(`ツール ${name} が無い`);
   return found;
 };
-const startDrawing = tool('start_drawing');
-const reviseDrawing = tool('revise_drawing');
-const stopDrawing = tool('stop_drawing');
+// 説明だけを見るので、依存は空で作る
+const described = createDrawingTools({} as DrawingToolDeps);
+const startDrawing = toolIn(described, 'start_drawing');
+const reviseDrawing = toolIn(described, 'revise_drawing');
+const stopDrawing = toolIn(described, 'stop_drawing');
 
 /** 引数はツールのスキーマで検証してから渡す（LLM のポートが検証済みの引数を返すのと同じ） */
-const run = (name: string, input: unknown, context: DrawingToolContext) => {
-  const found = tool(name);
-  return found.run(found.inputSchema.parse(input), context);
+const run = (name: string, input: unknown, context: Context) => {
+  const found = toolIn(context.tools, name);
+  return found.run(found.inputSchema.parse(input), context.talk);
 };
 
-/**
- * ジョブが走り始めるまで待つ。拾われてから走り始めるまでの間に止めると、ランナーが止めた状態を上書きして回り続けるので
- * （JobRunner の既存の振る舞い）、止める試験は走り始めてから止める
- */
+/** ジョブが走り始めるまで待つ。止める・直す試験は、走っているジョブに対して確かめる */
 async function untilRunning(jobs: JobStore, jobId: string): Promise<void> {
   const deadline = Date.now() + 3000;
   while ((await jobs.readState(jobId)).status !== 'running') {

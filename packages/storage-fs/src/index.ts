@@ -18,6 +18,10 @@ export {
 } from './job-store.js';
 export { readBackendSettings, writeBackendSettings } from './backend-settings.js';
 export { readBudgetSettings, writeBudgetSettings } from './budget-settings.js';
+export {
+  readGenerationProgressSettings,
+  writeGenerationProgressSettings,
+} from './generation-progress-settings.js';
 export { initDataDir, type InitializedDataDir } from './init.js';
 export { readConfigObject, updateConfigObject } from './config-file.js';
 export { readLlmSettings, writeLlmSettings } from './llm-settings.js';

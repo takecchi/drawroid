@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import type { JobState } from '../job/types.js';
 import { mergePermissions } from '../permissions/permission.js';
 import { basicPermissions } from '../loop/iteration-permissions.js';
-import { describeJudgement, narrowPermissions, summarizeJobForTalk } from './drawing.js';
+import {
+  describeJudgement,
+  jobSummaryFor,
+  narrowPermissions,
+  summarizeJobForTalk,
+} from './drawing.js';
 
 const human = mergePermissions(basicPermissions({ width: 512, height: 512 }), {
   checkpoint: { mode: 'auto', choices: ['anime.safetensors', 'real.safetensors'] },
@@ -156,5 +161,46 @@ describe('summarizeJobForTalk', () => {
     expect(summarizeJobForTalk('job-1', stopped, { chars: 600 })).toContain(
       '止まった（limit:iterations: 2 回に達した）',
     );
+  });
+});
+
+describe('jobSummaryFor', () => {
+  const at = '2026-10-09T00:00:00.000Z';
+  const started = (seq: number, jobId: string) =>
+    ({
+      type: 'job.started',
+      seq,
+      at,
+      jobId,
+      request: '海辺',
+      stopConditions: { aiJudgement: true },
+    }) as const;
+
+  it('tells the state of the newest job of the conversation, within the chars', async () => {
+    const read: string[] = [];
+    const summary = jobSummaryFor({
+      jobs: {
+        readState: async (jobId) => {
+          read.push(jobId);
+          return { status: 'queued', carry: { intent: '海辺の少女', completedIterations: 0 } };
+        },
+      },
+      chars: async () => 40,
+    });
+
+    const text = await summary([started(1, 'old-job'), started(5, 'new-job')]);
+
+    expect(read).toEqual(['new-job']);
+    expect(text).toContain('new-job');
+    expect(text!.length).toBeLessThanOrEqual(40);
+  });
+
+  it('says nothing when the conversation has no job', async () => {
+    const summary = jobSummaryFor({
+      jobs: { readState: () => Promise.reject(new Error('読まない')) },
+      chars: async () => 600,
+    });
+
+    expect(await summary([])).toBeUndefined();
   });
 });
