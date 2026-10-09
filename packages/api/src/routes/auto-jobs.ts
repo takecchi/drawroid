@@ -1,6 +1,7 @@
 import {
   createCarry,
-  hasAnyStopCondition,
+  hasStopCondition,
+  permissionOverridesSchema,
   stopConditionsSchema,
   type JobStore,
   type StopConditions,
@@ -17,7 +18,7 @@ const DEFAULT_STOP_CONDITIONS: StopConditions = { aiJudgement: true, maxIteratio
 const DEFAULT_BATCH_SIZE = 1;
 
 // 止まらないジョブを作らせない: 人間が止めるまで回り続け、GPU と LLM を使い続けるため
-const stoppableConditionsSchema = stopConditionsSchema.refine(hasAnyStopCondition, {
+const stoppableConditionsSchema = stopConditionsSchema.refine(hasStopCondition, {
   message: '止める条件に、AI の判断か、回数・枚数・時間の上限を1つ以上入れる',
 });
 
@@ -27,6 +28,8 @@ const createBodySchema = z.object({
   batchSize: z.number().int().min(1).max(8).optional(),
   /** 依頼に添える参照画像。最初の回の境目で、見る役が1度だけ見て要点にする */
   references: referenceUploadsSchema.optional(),
+  // このジョブだけの許可の上書き。書いたパラメータだけを、全体の既定に重ねる
+  permissions: permissionOverridesSchema.optional(),
 });
 
 export async function isAutoJob(store: JobStore, jobId: string): Promise<boolean> {
@@ -43,7 +46,7 @@ export function autoJobsRoutes(deps: ApiDeps) {
     new Hono()
       // validator を通す: 送る本文の型（参照画像は base64 のまま）を、画面の側が hono/client から引けるようにするため
       .post('/', jsonBody(createBodySchema), async (c) => {
-        const { request, stopConditions, batchSize, references } = c.req.valid('json');
+        const { request, stopConditions, batchSize, references, permissions } = c.req.valid('json');
         const now = (deps.now ?? (() => new Date()))();
         const spec = await store.createJob(
           {
@@ -51,6 +54,7 @@ export function autoJobsRoutes(deps: ApiDeps) {
             request,
             stopConditions: stopConditions ?? DEFAULT_STOP_CONDITIONS,
             batchSize: batchSize ?? DEFAULT_BATCH_SIZE,
+            ...(permissions !== undefined && { permissions }),
           },
           { status: 'queued', carry: createCarry(request, deps.budget).carry },
           now,

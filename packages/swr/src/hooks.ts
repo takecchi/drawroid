@@ -15,6 +15,8 @@ import type {
   LlmCallDetail,
   LlmCallsResponse,
   LlmSettingsResponse,
+  MemoryItemDetail,
+  MemoryList,
   ReferencesResponse,
   SelectionsResponse,
   StopConditionsResponse,
@@ -118,6 +120,18 @@ export function useLlmCall(jobId: string | undefined, callId: string | undefined
 export function useBackendSettings() {
   return useSWR<BackendSettingsResponse, ApiError>(keys.backendSettings, () =>
     unwrap<BackendSettingsResponse>(() => client.settings.backend.$get()),
+  );
+}
+
+export function useMemoryList() {
+  return useSWR<MemoryList, ApiError>(keys.memory, () =>
+    unwrap<MemoryList>(() => client.memory.$get()),
+  );
+}
+
+export function useMemoryItem(id: string | undefined) {
+  return useSWR<MemoryItemDetail, ApiError>(id === undefined ? null : keys.memoryItem(id), () =>
+    unwrap<MemoryItemDetail>(() => client.memory[':id'].$get({ param: { id: id ?? '' } })),
   );
 }
 

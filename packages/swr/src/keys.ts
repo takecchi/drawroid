@@ -3,6 +3,8 @@ export const keys = {
   backend: '/api/backend',
   candidates: (kind: string) => `/api/backend/candidates/${kind}`,
   backendSettings: '/api/settings/backend',
+  memory: '/api/memory',
+  memoryItem: (id: string) => `/api/memory/${id}`,
   llmSettings: '/api/settings/llm',
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,

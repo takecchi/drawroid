@@ -30,7 +30,7 @@ function rejected(c: Context, error: unknown) {
     case 'unstoppable':
       return invalidRequest(c, error.message);
     case 'stopped':
-      return conflict(c, error.message);
+      return conflict(c, 'conflict', error.message);
     case 'manual':
       return notFound(c, error.message);
   }

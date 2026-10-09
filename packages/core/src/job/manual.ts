@@ -1,7 +1,24 @@
-import { generationRequestSchema, type GenerationRequest, type ImageBackend } from '../backend.js';
+import {
+  generationRequestSchema,
+  type GenerationRequest,
+  type ImageBackend,
+  inputImageRefsOf,
+} from '../backend.js';
 import { isBackendError } from '../backend-error.js';
 import type { JobStore } from './store.js';
 import type { StopReason } from './types.js';
+
+/**
+ * 手動の生成で受け付ける要求。元画像・マスク・ControlNet の画像を指すものは断る。
+ */
+// 受け付けてから生成で失敗させない: 手動の生成には画像の参照を中身に変える仕組みがまだ無く、
+// 受け付けるとジョブを作ってから必ず失敗するため。入口で断れば、ジョブを作らずに 400 で返せる
+export const manualGenerationRequestSchema = generationRequestSchema.refine(
+  (req) => inputImageRefsOf(req).length === 0,
+  {
+    message: '手動の生成は、まだ img2img・inpaint・ControlNet（画像を指す欄）を受け付けない',
+  },
+);
 
 export interface ManualGenerationRunnerOptions {
   backend: ImageBackend;
@@ -24,7 +41,7 @@ export class ManualGenerationRunner {
 
   /** 検証に通らなければ ZodError を投げ、ジョブは作らない。生成は待たずに返る */
   async start(input: unknown): Promise<{ jobId: string }> {
-    const request = generationRequestSchema.parse(input);
+    const request = manualGenerationRequestSchema.parse(input);
     const spec = await this.store.createJob(
       { kind: 'manual', request },
       { status: 'queued' },

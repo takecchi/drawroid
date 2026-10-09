@@ -24,7 +24,13 @@ afterEach(async () => {
 });
 
 const think: Script = (_call, n) => ({
-  params: { prompt: `girl, take ${n + 1}`, negativePrompt: 'lowres', seed: -1, steps: 20, cfg: 7 },
+  params: {
+    prompt: `girl, take ${n + 1}`,
+    negativePrompt: 'lowres',
+    seed: 1,
+    steps: 20,
+    cfgScale: 7,
+  },
   rationale: 'next',
 });
 const judge: Script = (call) => ({
@@ -88,6 +94,22 @@ describe('AutoJobQueue', () => {
     const state = await stateOf(spec.jobId);
     expect(state).toMatchObject({ status: 'stopped', reason: { kind: 'limit:iterations' } });
     expect(backend.requests).toHaveLength(2);
+  });
+
+  it('goes back to unconfigured when a later configuration cannot be built, and keeps the job queued', async () => {
+    const backend = new StubBackend();
+    const env = { TEST_KEY: 'sk-should-not-leak' };
+    const { queue } = makeQueue({ backend, env });
+    queue.configure(config);
+    env.TEST_KEY = '';
+    queue.configure(config);
+    const spec = await submit();
+
+    queue.kick();
+    await queue.idle();
+
+    expect((await stateOf(spec.jobId)).status).toBe('queued');
+    expect(backend.requests).toEqual([]);
   });
 
   it('stops a waiting job as a human stop', async () => {

@@ -9,7 +9,7 @@ import {
   type GenerationResult,
 } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -28,6 +28,7 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
     backendSettings: {
       read: () => Promise.reject(new Error('この試験では使わない')),
