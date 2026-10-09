@@ -29,15 +29,59 @@ function nonEmpty(value: string | undefined): string | undefined {
 
 export function dataPaths(root: string) {
   const jobs = join(root, 'jobs');
+  const llmCalls = join(root, 'llm-calls');
   return {
     root,
     config: join(root, 'config.json'),
     candidateNotes: join(root, 'candidate-notes.json'),
     memory: join(root, 'memory'),
-    llmCalls: join(root, 'llm-calls'),
+    llmCalls,
+    /** ジョブに属さない LLM 呼び出しの記録 */
+    llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
     jobs,
     job: (jobId: string) => join(jobs, jobId),
+    jobFiles: (jobId: string) => jobFiles(join(jobs, jobId)),
   };
 }
+
+// 回のディレクトリ名を0埋めにする: 名前の順がそのまま回の順になり、readdir の並べ替えだけで済むため
+export function iterationDirName(iteration: number): string {
+  return String(iteration).padStart(4, '0');
+}
+
+function jobFiles(dir: string) {
+  const iterations = join(dir, 'iterations');
+  const llmCalls = join(dir, 'llm-calls');
+  return {
+    dir,
+    spec: join(dir, 'job.json'),
+    state: join(dir, 'state.json'),
+    llmCalls,
+    llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
+    iterations,
+    iteration: (iteration: number) => iterationFiles(join(iterations, iterationDirName(iteration))),
+  };
+}
+
+function iterationFiles(dir: string) {
+  const images = join(dir, 'images');
+  return {
+    dir,
+    think: join(dir, 'think.json'),
+    request: join(dir, 'request.json'),
+    judge: join(dir, 'judge.json'),
+    images,
+    /** 生成された画像（原寸） */
+    image: (index: number) => join(images, `${index}.png`),
+    /** バックエンドの応答のメタデータ */
+    imageMeta: (index: number) => join(images, `${index}.json`),
+    /** LLM に渡す縮小版。長辺を名前に入れ、設定を変えても古い縮小版と混ざらないようにする */
+    preview: (index: number, longEdge: number) => join(images, `${index}.preview-${longEdge}.webp`),
+    /** この画像を LLM に渡した呼び出しの ID（渡した印） */
+    sent: (index: number) => join(images, `${index}.sent.json`),
+  };
+}
+
+export type JobFiles = ReturnType<typeof jobFiles>;
 
 export type DataPaths = ReturnType<typeof dataPaths>;

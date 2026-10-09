@@ -1,5 +1,6 @@
 import type { AddressInfo } from 'node:net';
 
+import type { ApiDeps } from '@drawroid/api';
 import { serve, type ServerType } from '@hono/node-server';
 
 import { createApp } from './server.js';
@@ -14,10 +15,19 @@ export interface Listening {
   address: AddressInfo;
 }
 
-export function listen({ port, webRoot }: { port: number; webRoot: string }): Promise<Listening> {
+export function listen({
+  port,
+  webRoot,
+  deps,
+}: {
+  port: number;
+  webRoot: string;
+  deps: ApiDeps;
+}): Promise<Listening> {
   return new Promise((resolve, reject) => {
-    const server = serve({ fetch: createApp({ webRoot }).fetch, hostname: HOST, port }, (address) =>
-      resolve({ server, address }),
+    const server = serve(
+      { fetch: createApp({ webRoot, deps }).fetch, hostname: HOST, port },
+      (address) => resolve({ server, address }),
     );
     server.once('error', reject);
   });

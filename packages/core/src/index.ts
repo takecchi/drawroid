@@ -52,6 +52,9 @@ export {
   type PreviewImage,
   type Progress,
 } from './loop/inputs.js';
+export * from './job/manual.js';
+export * from './job/store.js';
+export * from './job/types.js';
 export * from './loop/schemas.js';
 export {
   MEMORY_SCOPES,
