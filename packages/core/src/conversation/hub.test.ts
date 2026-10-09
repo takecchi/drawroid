@@ -30,6 +30,35 @@ class GatedStore extends MemoryConversationStore {
   }
 }
 
+/** 書いたイベントは置き場所から読めるが、書く口が戻るのを試験が開けるまで待たせるストア */
+class SlowReturnStore extends MemoryConversationStore {
+  private gate: Promise<void> | undefined;
+  private open: (() => void) | undefined;
+  private wrote: (() => void) | undefined;
+  /** 待たせた書き込みが、置き場所に入ったら解ける */
+  written: Promise<void> = Promise.resolve();
+
+  holdReturn(): void {
+    this.gate = new Promise((resolve) => (this.open = resolve));
+    this.written = new Promise((resolve) => (this.wrote = resolve));
+  }
+
+  releaseReturn(): void {
+    this.open?.();
+    this.gate = undefined;
+  }
+
+  override async appendEvent(
+    ...args: Parameters<MemoryConversationStore['appendEvent']>
+  ): Promise<ConversationEvent> {
+    const event = await super.appendEvent(...args);
+    const gate = this.gate;
+    this.wrote?.();
+    await gate;
+    return event;
+  }
+}
+
 async function setup() {
   const store = new GatedStore();
   const { conversationId } = await store.createConversation(now());
@@ -113,6 +142,25 @@ describe('subscribing while increments are flowing', () => {
         .slice(confirmedAt + 1)
         .some((m) => m.kind === 'live' && m.event.type === 'delta.text'),
     ).toBe(false);
+  });
+
+  it('gives an event once when the subscription reads it from the store before the write returns', async () => {
+    // 置き場所に書けて読めるようになってから、書く口が戻るまでの間（本物のファイルでは link のあと）に購読が張られ、
+    // 読み終える形。置き場所から読んだ確定を、書き手からもう一度渡さない
+    const store = new SlowReturnStore();
+    const { conversationId } = await store.createConversation(now());
+    const hub = new ConversationHub({ store, conversationId, now });
+    store.holdReturn();
+    const confirming = hub.confirm({ type: 'user.message', text: 'こんにちは' });
+    await store.written;
+
+    const watcher = collector();
+    await hub.subscribe(0, watcher.send);
+    store.releaseReturn();
+    await confirming;
+    await hub.confirm({ type: 'user.message', text: '続けて' });
+
+    expect(watcher.confirmedSeqs()).toEqual([1, 2]);
   });
 
   it('starts from after the seq it was given', async () => {

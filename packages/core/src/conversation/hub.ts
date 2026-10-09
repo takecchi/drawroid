@@ -14,6 +14,8 @@ type Subscriber = {
   send: (message: HubMessage) => void;
   /** 確定したイベントを読み終えるまでは、届いたものを溜めておく */
   buffer: HubMessage[] | undefined;
+  /** 渡し終えた確定したイベントの最後の seq。これ以下は二度と渡さない */
+  delivered: number;
   closed: boolean;
 };
 
@@ -127,7 +129,7 @@ export class ConversationHub {
    * 4. 溜めたものを流す（2 で流した seq 以下は落とす。落とした確定より前の、その確定で終わった部品の増分も落とす）
    */
   async subscribe(after: number, send: (message: HubMessage) => void): Promise<HubSubscription> {
-    const subscriber: Subscriber = { send, buffer: [], closed: false };
+    const subscriber: Subscriber = { send, buffer: [], delivered: after, closed: false };
     this.subscribers.add(subscriber);
     const snapshot = [...this.copies.values()];
     const subscription: HubSubscription = {
@@ -193,6 +195,12 @@ export class ConversationHub {
   // 購読者の失敗はその購読者だけを外す: 1人の切れた接続で、ほかの購読者と書き手を止めないため
   private deliver(subscriber: Subscriber, message: HubMessage): void {
     if (subscriber.closed) return;
+    // 渡した確定は渡し直さない: 置き場所に書けてから書く口が戻るまでの間に購読が読み終えると、置き場所から読んだ確定が
+    // 書き手からもう一度届くため（溜めている間に届いたものは、subscribe が seq で落とす）
+    if (message.kind === 'confirmed') {
+      if (message.event.seq <= subscriber.delivered) return;
+      subscriber.delivered = message.event.seq;
+    }
     try {
       subscriber.send(message);
     } catch {
