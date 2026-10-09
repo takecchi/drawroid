@@ -1,0 +1,155 @@
+{
+  "spec": {
+    "jobId": "20260101-000000-000000",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "kind": "auto",
+    "request": "夕暮れの海辺に立つ白いワンピースの少女、アニメ調",
+    "stopConditions": { "aiJudgement": true, "maxIterations": 2 },
+    "batchSize": 2,
+    "budgets": {
+      "text": {
+        "intent": 600,
+        "prompt": 600,
+        "negativePrompt": 300,
+        "rationale": 200,
+        "issue": 80,
+        "nextChange": 200
+      },
+      "issuesPerImage": 3,
+      "imageLongEdge": 512,
+      "imagesPerJudge": 4,
+      "candidates": { "maxCount": 20, "maxSize": 600 },
+      "interventions": { "maxCount": 3, "maxSize": 400, "textEach": 200 },
+      "references": { "maxCount": 3, "gistChars": 200, "noteChars": 100 },
+      "memory": {
+        "think": { "maxCount": 8, "maxSize": 400, "always": { "maxCount": 5, "maxSize": 200 } },
+        "judge": { "maxCount": 5, "maxSize": 240, "always": { "maxCount": 4, "maxSize": 160 } }
+      },
+      "distill": {
+        "intentChars": 600,
+        "stopDetailChars": 120,
+        "interventions": { "maxCount": 8, "maxSize": 800 },
+        "interventionChars": 200,
+        "messages": { "maxCount": 8, "maxSize": 800 },
+        "messageChars": 200,
+        "selections": { "maxCount": 8 },
+        "issuesPerSelection": 3,
+        "issueChars": 80,
+        "memory": { "maxCount": 10, "maxSize": 500, "always": { "maxCount": 6, "maxSize": 300 } },
+        "output": { "operations": 5, "body": 80, "tags": 4, "tag": 20 }
+      },
+      "talk": {
+        "recentMessages": 12,
+        "messageChars": 600,
+        "jobChars": 600,
+        "maxSteps": 6,
+        "toolResultChars": 800,
+        "candidates": { "maxCount": 20, "maxSize": 600 },
+        "memory": { "maxCount": 8, "maxSize": 600 }
+      }
+    }
+  },
+  "state": {
+    "status": "stopped",
+    "carry": {
+      "intent": "夕暮れの海辺に立つ白いワンピースの少女、アニメ調",
+      "completedIterations": 2,
+      "best": {
+        "iteration": 2,
+        "imageIndex": 1,
+        "score": 0.7999999999999999,
+        "params": {
+          "prompt": "girl, beach, sunset, take 2",
+          "negativePrompt": "lowres",
+          "seed": 1,
+          "steps": 20,
+          "cfgScale": 7
+        },
+        "issues": [],
+        "nextChange": "十分"
+      },
+      "latest": {
+        "iteration": 2,
+        "imageIndex": 1,
+        "score": 0.7999999999999999,
+        "params": {
+          "prompt": "girl, beach, sunset, take 2",
+          "negativePrompt": "lowres",
+          "seed": 1,
+          "steps": 20,
+          "cfgScale": 7
+        },
+        "issues": [],
+        "nextChange": "十分"
+      },
+      "references": [{ "refId": "000001", "gist": "白いワンピースの裾が風になびく構図" }]
+    },
+    "startedAt": "2026-01-01T00:00:01.000Z",
+    "stoppedAt": "2026-01-01T00:00:18.000Z",
+    "imagesGenerated": 4,
+    "reason": { "kind": "ai", "detail": "見る役が意図どおりと判断した" }
+  },
+  "iterations": [
+    {
+      "iteration": 1,
+      "request": {
+        "prompt": "girl, beach, sunset, take 1",
+        "negativePrompt": "lowres",
+        "loras": [],
+        "steps": 20,
+        "cfgScale": 7,
+        "seed": 1,
+        "width": 64,
+        "height": 64,
+        "batchSize": 2,
+        "controlnet": []
+      },
+      "images": [
+        {
+          "index": 0,
+          "seed": 1,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/1/images/0.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/1/images/0.preview.webp"
+        },
+        {
+          "index": 1,
+          "seed": 2,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/1/images/1.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/1/images/1.preview.webp"
+        }
+      ],
+      "judge": { "canStop": false, "scores": [0.5, 0.6] }
+    },
+    {
+      "iteration": 2,
+      "request": {
+        "prompt": "girl, beach, sunset, take 2",
+        "negativePrompt": "lowres",
+        "loras": [],
+        "steps": 20,
+        "cfgScale": 7,
+        "seed": 1,
+        "width": 64,
+        "height": 64,
+        "batchSize": 2,
+        "controlnet": []
+      },
+      "images": [
+        {
+          "index": 0,
+          "seed": 1,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/2/images/0.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/2/images/0.preview.webp"
+        },
+        {
+          "index": 1,
+          "seed": 2,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/2/images/1.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/2/images/1.preview.webp"
+        }
+      ],
+      "judge": { "canStop": true, "scores": [0.7, 0.7999999999999999] }
+    }
+  ],
+  "invalid": []
+}

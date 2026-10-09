@@ -1,0 +1,104 @@
+{
+  "iterations": [
+    {
+      "iteration": 1,
+      "think": {
+        "params": {
+          "prompt": "girl, beach, sunset, take 1",
+          "negativePrompt": "lowres",
+          "steps": 20,
+          "cfgScale": 7,
+          "seed": 1
+        },
+        "rationale": "1 回目の案"
+      },
+      "excluded": [],
+      "request": {
+        "prompt": "girl, beach, sunset, take 1",
+        "negativePrompt": "lowres",
+        "loras": [],
+        "steps": 20,
+        "cfgScale": 7,
+        "seed": 1,
+        "width": 64,
+        "height": 64,
+        "batchSize": 2,
+        "controlnet": []
+      },
+      "judge": {
+        "images": [
+          { "score": 0.5, "issues": ["背景が暗い"] },
+          { "score": 0.6, "issues": ["背景が暗い"] }
+        ],
+        "nextChange": "もっと逆光にする",
+        "canStop": false
+      },
+      "adopted": null,
+      "images": [
+        {
+          "index": 0,
+          "seed": 1,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/1/images/0.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/1/images/0.preview.webp"
+        },
+        {
+          "index": 1,
+          "seed": 2,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/1/images/1.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/1/images/1.preview.webp"
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "think": {
+        "params": {
+          "prompt": "girl, beach, sunset, take 2",
+          "negativePrompt": "lowres",
+          "steps": 20,
+          "cfgScale": 7,
+          "seed": 1
+        },
+        "rationale": "2 回目の案",
+        "intent": "夕暮れの海辺に立つ白いワンピースの少女、アニメ調"
+      },
+      "excluded": [],
+      "request": {
+        "prompt": "girl, beach, sunset, take 2",
+        "negativePrompt": "lowres",
+        "loras": [],
+        "steps": 20,
+        "cfgScale": 7,
+        "seed": 1,
+        "width": 64,
+        "height": 64,
+        "batchSize": 2,
+        "controlnet": []
+      },
+      "judge": {
+        "images": [
+          { "score": 0.7, "issues": [] },
+          { "score": 0.7999999999999999, "issues": [] }
+        ],
+        "nextChange": "十分",
+        "canStop": true
+      },
+      "adopted": null,
+      "images": [
+        {
+          "index": 0,
+          "seed": 1,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/2/images/0.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/2/images/0.preview.webp"
+        },
+        {
+          "index": 1,
+          "seed": 2,
+          "url": "/api/files/jobs/20260101-000000-000000/iterations/2/images/1.png",
+          "previewUrl": "/api/files/jobs/20260101-000000-000000/iterations/2/images/1.preview.webp"
+        }
+      ]
+    }
+  ],
+  "invalid": []
+}
