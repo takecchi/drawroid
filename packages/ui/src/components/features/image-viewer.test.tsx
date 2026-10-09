@@ -205,7 +205,7 @@ describe('ImageViewer', () => {
           openKey={open}
           onOpenKeyChange={setOpen}
           stage={<div aria-label="塗る面" />}
-          navigationLock="塗っている間は前後へ送れません"
+          navigationLock="塗っている間は前後へ送れない"
           keepOpen={keepOpen}
         />
       );
@@ -217,7 +217,7 @@ describe('ImageViewer', () => {
       const dialog = screen.getByRole('dialog');
       expect(screen.getByLabelText('塗る面')).toBeTruthy();
       expect(dialog.querySelector('img')).toBeNull();
-      expect(screen.getByRole('status').textContent).toBe('塗っている間は前後へ送れません');
+      expect(screen.getByRole('status').textContent).toBe('塗っている間は前後へ送れない');
     });
 
     it('does not move with the arrow keys, a swipe, or the buttons', async () => {

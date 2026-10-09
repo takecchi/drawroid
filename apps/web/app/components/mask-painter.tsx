@@ -230,9 +230,9 @@ export function MaskTools({
         </Button>
       </div>
       <p className="text-xs">
-        白く塗った所を、次の回の inpaint で描き直す。マスクは1回使うか、新しいマスクを送ると切れる。
+        白く塗った所を、次の回で描き直す。マスクは1回使うか、新しいマスクを送ると切れる。
       </p>
-      {painting.sent && <OkNote>送った。次の回の境目から inpaint に使える。</OkNote>}
+      {painting.sent && <OkNote>マスクを送った。次の回で描き直す。</OkNote>}
       {painting.error !== undefined && <ErrorNote>送れない: {painting.error}</ErrorNote>}
     </>
   );
