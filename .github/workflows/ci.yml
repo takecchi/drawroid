@@ -41,6 +41,10 @@ jobs:
       - run: pnpm format:check
         if: ${{ !cancelled() }}
 
+      # build より前に置く: 鍵の重なった package.json は依存を黙って落とすので、その上での build・試験の結果は当てにならないため。
+      - run: pnpm check:duplicate-json-keys
+        if: ${{ !cancelled() }}
+
       - run: pnpm build
         id: build
         if: ${{ !cancelled() }}

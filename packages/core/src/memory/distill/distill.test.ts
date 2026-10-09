@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BudgetedMessages, LlmCall, LlmCallOutcome, LlmPort } from '../../llm/port.js';
+import type {
+  BudgetedMessages,
+  LlmCall,
+  LlmCallOutcome,
+  LlmPort,
+  LlmRole,
+  LlmRoleInfo,
+} from '../../llm/port.js';
 import { DEFAULT_MODEL_WINDOW } from '../../loop/budget.js';
 import type { MemoryItem } from '../item.js';
 import type { MemoryStore } from '../store.js';
@@ -15,6 +22,15 @@ class StubLlm implements LlmPort {
   readonly calls: LlmCall<unknown>[] = [];
 
   constructor(private readonly reply: (call: LlmCall<unknown>) => unknown | Promise<unknown>) {}
+
+  describe(role: LlmRole): LlmRoleInfo {
+    return {
+      provider: 'stub',
+      model: `stub-${role}`,
+      window: DEFAULT_MODEL_WINDOW,
+      imageInput: true,
+    };
+  }
 
   async generateStructured<T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>> {
     this.calls.push(call as LlmCall<unknown>);

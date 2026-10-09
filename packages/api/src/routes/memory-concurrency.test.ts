@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import {
   applyDistillOperations,
+  DEFAULT_BUDGET,
   ManualGenerationRunner,
   type MemoryItem,
   type MemoryStore,
@@ -54,6 +55,10 @@ beforeEach(async () => {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
+    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    budget: DEFAULT_BUDGET,
+    llmSettings: { read: async () => undefined, write: async () => undefined },
+    env: {},
   });
 });
 

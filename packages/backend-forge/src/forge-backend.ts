@@ -2,6 +2,7 @@ import type {
   BackendCapabilities,
   Candidate,
   CandidateKind,
+  GenerationImages,
   GenerationRequest,
   GenerationResult,
   ImageBackend,
@@ -10,8 +11,8 @@ import { z } from 'zod';
 
 import { listForgeCandidates } from './candidates.js';
 import { ForgeClient } from './client.js';
+import { generateWithForge } from './generate.js';
 import { probeForge } from './probe.js';
-import { generateWithForge } from './txt2img.js';
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 // 生成は同期の HTTP で、チェックポイントの切り替えを含むと数分かかりうる
@@ -47,8 +48,16 @@ export class ForgeBackend implements ImageBackend {
     return listForgeCandidates(this.client, kind, signal);
   }
 
-  generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
-    return generateWithForge(this.client, req, { signal, timeoutMs: this.generateTimeoutMs });
+  generate(
+    req: GenerationRequest,
+    signal: AbortSignal,
+    images?: GenerationImages,
+  ): Promise<GenerationResult> {
+    return generateWithForge(this.client, req, {
+      signal,
+      timeoutMs: this.generateTimeoutMs,
+      ...(images !== undefined && { images }),
+    });
   }
 
   async interrupt(): Promise<void> {
