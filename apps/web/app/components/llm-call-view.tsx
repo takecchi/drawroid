@@ -1,4 +1,15 @@
 import { useLlmCall, type LlmCallsResponse } from '@drawroid/swr';
+import {
+  CodeBlock,
+  Disclosure,
+  ErrorNote,
+  Item,
+  ItemList,
+  Muted,
+  Section,
+  SubSection,
+} from '@drawroid/ui';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@drawroid/ui/shadcn';
 import { useState } from 'react';
 
 export type LlmCallSummary = LlmCallsResponse['calls'][number];
@@ -11,17 +22,21 @@ function tokens(value: number | null): string {
 function CallBody({ jobId, callId }: { jobId: string; callId: string }) {
   const { data, error } = useLlmCall(jobId, callId);
   if (data === undefined) {
-    return error === undefined ? <p>読み込み中</p> : <p role="alert">読めない: {error.message}</p>;
+    return error === undefined ? (
+      <Muted>読み込み中</Muted>
+    ) : (
+      <ErrorNote>読めない: {error.message}</ErrorNote>
+    );
   }
   const { input, budget, outcome } = data;
   return (
     <>
-      <h5>system</h5>
-      <pre>{input.system}</pre>
-      <h5>user</h5>
+      <h5 className="text-xs font-semibold">system</h5>
+      <CodeBlock>{input.system}</CodeBlock>
+      <h5 className="text-xs font-semibold">user</h5>
       {input.user.map((part, i) =>
         part.type === 'text' ? (
-          <pre key={i}>{part.text}</pre>
+          <CodeBlock key={i}>{part.text}</CodeBlock>
         ) : (
           <p key={i}>
             画像: <code>{part.key}</code>
@@ -30,15 +45,15 @@ function CallBody({ jobId, callId }: { jobId: string; callId: string }) {
       )}
       {budget.notes.length > 0 && (
         <>
-          <h5>予算の注記</h5>
-          <pre>{JSON.stringify(budget.notes, null, 2)}</pre>
+          <h5 className="text-xs font-semibold">予算の注記</h5>
+          <CodeBlock>{JSON.stringify(budget.notes, null, 2)}</CodeBlock>
         </>
       )}
-      <h5>結果</h5>
+      <h5 className="text-xs font-semibold">結果</h5>
       {outcome.ok ? (
-        <pre>{JSON.stringify(outcome.value, null, 2)}</pre>
+        <CodeBlock>{JSON.stringify(outcome.value, null, 2)}</CodeBlock>
       ) : (
-        <p role="alert">失敗: {outcome.reason}</p>
+        <ErrorNote>失敗: {outcome.reason}</ErrorNote>
       )}
     </>
   );
@@ -48,61 +63,60 @@ function CallBody({ jobId, callId }: { jobId: string; callId: string }) {
 function CallDetails({ jobId, callId }: { jobId: string; callId: string }) {
   const [opened, setOpened] = useState(false);
   return (
-    <details onToggle={(event) => setOpened(event.currentTarget.open)}>
-      <summary>中身を見る</summary>
+    <Disclosure summary="中身を見る" onToggle={(event) => setOpened(event.currentTarget.open)}>
       {opened && <CallBody jobId={jobId} callId={callId} />}
-    </details>
+    </Disclosure>
   );
 }
 
 export function LlmCallList({ jobId, calls }: { jobId: string; calls: LlmCallSummary[] }) {
   return (
-    <section>
-      <h4>LLM 呼び出し</h4>
-      <ul>
+    <SubSection title="LLM 呼び出し" level={4}>
+      <ItemList>
         {calls.map((call) => (
-          <li key={call.callId}>
+          <Item key={call.callId} className="block">
             {call.purpose} / {call.model} / 入力 {tokens(call.usage.inputTokens)} トークン / 出力{' '}
             {tokens(call.usage.outputTokens)} トークン / {call.durationMs} ms /{' '}
             {call.ok ? '成功' : '失敗'} / {call.attempts} 回試行
             <CallDetails jobId={jobId} callId={call.callId} />
-          </li>
+          </Item>
         ))}
-      </ul>
-    </section>
+      </ItemList>
+    </SubSection>
   );
 }
 
 export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total' | 'byIteration'>) {
   return (
-    <section>
-      <h2>LLM の合計</h2>
-      <p>
+    <Section title="LLM の合計">
+      <p className="text-sm">
         {total.calls} 回 / 入力 {tokens(total.inputTokens)} トークン / 出力{' '}
         {tokens(total.outputTokens)} トークン / {total.durationMs} ms
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>回</th>
-            <th>呼び出し</th>
-            <th>入力トークン</th>
-            <th>出力トークン</th>
-            <th>時間 (ms)</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>回</TableHead>
+            <TableHead>呼び出し</TableHead>
+            <TableHead>入力トークン</TableHead>
+            <TableHead>出力トークン</TableHead>
+            <TableHead>時間 (ms)</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {byIteration.map((row) => (
-            <tr key={row.iteration ?? 'job'}>
-              <td>{row.iteration === null ? 'ジョブ単位' : `${row.iteration} 回目`}</td>
-              <td>{row.calls}</td>
-              <td>{tokens(row.inputTokens)}</td>
-              <td>{tokens(row.outputTokens)}</td>
-              <td>{row.durationMs}</td>
-            </tr>
+            <TableRow key={row.iteration ?? 'job'}>
+              <TableCell>
+                {row.iteration === null ? 'ジョブ単位' : `${row.iteration} 回目`}
+              </TableCell>
+              <TableCell>{row.calls}</TableCell>
+              <TableCell>{tokens(row.inputTokens)}</TableCell>
+              <TableCell>{tokens(row.outputTokens)}</TableCell>
+              <TableCell>{row.durationMs}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </section>
+        </TableBody>
+      </Table>
+    </Section>
   );
 }

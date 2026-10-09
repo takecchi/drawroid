@@ -42,8 +42,8 @@ function roleToValues(role: StoredRole | undefined): RoleValues {
   return {
     provider: role?.provider ?? '',
     model: role?.model ?? '',
-    contextTokens: role === undefined ? '' : String(role.contextTokens),
-    maxOutputTokens: role === undefined ? '' : String(role.maxOutputTokens),
+    contextTokens: role?.contextTokens === undefined ? '' : String(role.contextTokens),
+    maxOutputTokens: role?.maxOutputTokens === undefined ? '' : String(role.maxOutputTokens),
     structuredOutput: role?.structuredOutput ?? 'native',
     imageInput: role?.imageInput ?? true,
   };

@@ -121,6 +121,8 @@ export async function createAutoJob(input: {
   stopConditions: StopConditions;
   batchSize: number;
   references?: ReferenceUpload[];
+  /** このジョブだけの許可の上書き。書いた欄だけ。省けば全体の既定のまま */
+  permissions?: PermissionOverridesInput;
 }): Promise<CreateAutoJobResponse> {
   const created = await unwrap<CreateAutoJobResponse>(() =>
     client.jobs.auto.$post({ json: input }),

@@ -1,11 +1,4 @@
-import { estimateMaxOutputTokens } from '@drawroid/core';
-import {
-  createLlm,
-  LlmConfigError,
-  llmConfigSchema,
-  outputLimitWarnings,
-  type LlmConfig,
-} from '@drawroid/llm';
+import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
@@ -24,12 +17,7 @@ function apiKeyEnvStatus(config: LlmConfig, env: ApiDeps['env']) {
 }
 
 export function llmSettingsRoutes(deps: ApiDeps) {
-  const view = (config: LlmConfig) => ({
-    config,
-    apiKeyEnv: apiKeyEnvStatus(config, deps.env),
-    // 保存済みの値が小さいまま残っていても気づけるように、読むたびに見積もりと比べて返す
-    outputLimitWarnings: outputLimitWarnings(config, estimateMaxOutputTokens(deps.budget)),
-  });
+  const view = (config: LlmConfig) => ({ config, apiKeyEnv: apiKeyEnvStatus(config, deps.env) });
 
   return (
     new Hono()

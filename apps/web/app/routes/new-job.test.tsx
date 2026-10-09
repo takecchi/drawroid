@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { createAutoJob } from '@drawroid/swr';
+import {
+  createAutoJob,
+  useBackendStatus,
+  useCandidates,
+  usePermissionSettings,
+} from '@drawroid/swr';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NewJob from './new-job';
 
@@ -11,9 +16,20 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   createAutoJob: vi.fn(),
   parseStopConditionsText: vi.fn(),
+  // 投入のフォームのジョブの許可の欄が読む。この試験では中身を見ない
+  usePermissionSettings: vi.fn(),
+  useBackendStatus: vi.fn(),
+  useCandidates: vi.fn(),
 }));
 
 const create = vi.mocked(createAutoJob);
+
+beforeEach(() => {
+  const loaded = (data: unknown) => ({ data, error: undefined }) as never;
+  vi.mocked(usePermissionSettings).mockReturnValue(loaded({ overrides: {}, permissions: {} }));
+  vi.mocked(useBackendStatus).mockReturnValue(loaded({ capabilities: { unavailable: [] } }));
+  vi.mocked(useCandidates).mockReturnValue(loaded({ candidates: [] }));
+});
 
 afterEach(() => {
   cleanup();

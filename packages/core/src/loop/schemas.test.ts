@@ -25,33 +25,26 @@ function paramKeysOf(schema: ReturnType<typeof buildThinkOutputSchema>): string[
 
 describe('buildThinkOutputSchema', () => {
   it('contains only the allowed parameters', () => {
-    expect(paramKeysOf(buildThinkOutputSchema(paramsAllowing(['prompt', 'seed']), budget))).toEqual(
-      ['prompt', 'seed'],
-    );
+    expect(paramKeysOf(buildThinkOutputSchema(paramsAllowing(['prompt', 'seed'])))).toEqual([
+      'prompt',
+      'seed',
+    ]);
   });
 
   it('does not hand a disallowed parameter through even if the model returns it', () => {
-    const parsed = buildThinkOutputSchema(paramsAllowing(['prompt']), budget).parse({
+    const parsed = buildThinkOutputSchema(paramsAllowing(['prompt'])).parse({
       params: { prompt: 'girl, beach', cfgScale: 20 },
       rationale: '逆光にする',
     });
     expect(parsed.params).toEqual({ prompt: 'girl, beach' });
   });
 
-  it('rejects a prompt longer than the budget', () => {
-    const result = buildThinkOutputSchema(paramsAllowing(['prompt']), budget).safeParse({
+  it('accepts a prompt and a rationale longer than the input budget', () => {
+    const result = buildThinkOutputSchema(paramsAllowing(['prompt'])).safeParse({
       params: { prompt: 'a'.repeat(budget.text.prompt + 1) },
-      rationale: '',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects a long rationale so the model cannot stream its thoughts', () => {
-    const result = buildThinkOutputSchema(paramsAllowing(['prompt']), budget).safeParse({
-      params: { prompt: 'girl' },
       rationale: 'あ'.repeat(budget.text.rationale + 1),
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 });
 
@@ -63,25 +56,27 @@ describe('buildJudgeOutputSchema', () => {
   });
 
   it('requires exactly one evaluation per image', () => {
-    const schema = buildJudgeOutputSchema(2, budget);
+    const schema = buildJudgeOutputSchema(2);
     expect(schema.safeParse(valid(2)).success).toBe(true);
     expect(schema.safeParse(valid(1)).success).toBe(false);
     expect(schema.safeParse(valid(3)).success).toBe(false);
   });
 
-  it('rejects more issues per image than the budget allows', () => {
+  it('accepts more and longer issues than the input budget carries', () => {
     const output = valid(1);
     output.images[0] = {
       score: 0.5,
-      issues: Array.from({ length: budget.issuesPerImage + 1 }, () => 'x'),
+      issues: Array.from({ length: budget.issuesPerImage + 1 }, () =>
+        'x'.repeat(budget.text.issue + 1),
+      ),
     };
-    expect(buildJudgeOutputSchema(1, budget).safeParse(output).success).toBe(false);
+    expect(buildJudgeOutputSchema(1).safeParse(output).success).toBe(true);
   });
 
   it('rejects a score outside 0 to 1', () => {
     const output = valid(1);
     output.images[0] = { score: 1.5, issues: [] };
-    expect(buildJudgeOutputSchema(1, budget).safeParse(output).success).toBe(false);
+    expect(buildJudgeOutputSchema(1).safeParse(output).success).toBe(false);
   });
 });
 

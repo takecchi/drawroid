@@ -151,11 +151,9 @@ describe('taking interventions into the next think', () => {
     const output = { params: { prompt: 'girl' }, rationale: 'x' };
     const promptOnly = { schema: z.object({ prompt: z.string() }), omitted: {} };
     expect(() =>
-      buildThinkOutputSchema(promptOnly, budget, { withInterventions: true }).parse(output),
+      buildThinkOutputSchema(promptOnly, { withInterventions: true }).parse(output),
     ).toThrow();
-    expect(buildThinkOutputSchema(promptOnly, budget).parse({ ...output, intent: '要点' })).toEqual(
-      output,
-    );
+    expect(buildThinkOutputSchema(promptOnly).parse({ ...output, intent: '要点' })).toEqual(output);
   });
 
   it('refuses to mark interventions taken in when the think returned no integrated intent', () => {
