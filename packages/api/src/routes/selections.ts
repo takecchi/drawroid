@@ -9,7 +9,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { describeIssues, invalidRequest, notFound } from '../errors.js';
+import { invalidRequest, notFound } from '../errors.js';
+import { jsonBody } from '../validate.js';
 
 const bodySchema = z.object({
   /** null は選択を外す */
@@ -29,21 +30,19 @@ export function selectionsRoutes({ store, now }: ApiDeps) {
       if (!(await hasJob(jobId))) return notFound(c, `ジョブ ${jobId} は無い`);
       return c.json({ selections: await summarizeSelections(store, jobId) }, 200);
     })
-    .put('/:jobId/selections/:imageKey', async (c) => {
+    .put('/:jobId/selections/:imageKey', jsonBody(bodySchema), async (c) => {
       const jobId = c.req.param('jobId');
       const imageKey = c.req.param('imageKey');
       if (!(await hasJob(jobId))) return notFound(c, `ジョブ ${jobId} は無い`);
       if (parseImageKey(imageKey) === undefined) {
         return invalidRequest(c, `画像キーは <回>-<画像> の形で書く: ${imageKey}`);
       }
-      const body = bodySchema.safeParse(await c.req.json().catch(() => undefined));
-      if (!body.success) return invalidRequest(c, describeIssues(body.error));
       try {
         const selection = await selectImage({
           store,
           jobId,
           imageKey,
-          verdict: body.data.verdict,
+          verdict: c.req.valid('json').verdict,
           now: (now ?? (() => new Date()))(),
         });
         return c.json({ selection }, 200);
