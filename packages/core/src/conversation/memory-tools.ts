@@ -8,9 +8,18 @@ import type { TalkTool } from './talk/tools.js';
 const MAX_BODY_CHARS = 200;
 const MAX_TAGS = 6;
 
+const CONVERSATION_SOURCE_PREFIX = 'conversation:';
+
 /** 会話から学んだ記憶の sources に入れる印。ジョブ ID と同じ形なので、見分けられるように前に付ける */
 export function conversationSource(conversationId: string): string {
-  return `conversation:${conversationId}`;
+  return `${CONVERSATION_SOURCE_PREFIX}${conversationId}`;
+}
+
+/** sources の1つが会話から学んだ印なら、その会話 ID を返す。ジョブ ID なら undefined */
+export function conversationOfSource(source: string): string | undefined {
+  if (!source.startsWith(CONVERSATION_SOURCE_PREFIX)) return undefined;
+  const conversationId = source.slice(CONVERSATION_SOURCE_PREFIX.length);
+  return conversationId === '' ? undefined : conversationId;
 }
 
 const rememberInput = z
