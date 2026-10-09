@@ -12,6 +12,30 @@ describe('llmConfigSchema', () => {
     expect(roles.judge).toEqual(roles.think);
   });
 
+  it('uses the thinking model for the talking role by default, even when the judging role has its own', () => {
+    const config = llmConfigSchema.parse({
+      ...base,
+      providers: {
+        ...base.providers,
+        cloud: { type: 'anthropic', apiKeyEnv: 'ANTHROPIC_API_KEY' },
+      },
+      roles: { ...base.roles, judge: { provider: 'cloud', model: 'claude-haiku-5-5' } },
+    });
+    const roles = resolveRoles(config);
+    expect(roles.talk).toEqual(roles.think);
+  });
+
+  it('lets the talking role have its own model', () => {
+    const roles = resolveRoles(
+      llmConfigSchema.parse({
+        ...base,
+        roles: { ...base.roles, talk: { provider: 'local', model: 'qwen2.5:14b' } },
+      }),
+    );
+    expect(roles.talk).toMatchObject({ model: 'qwen2.5:14b' });
+    expect(roles.think).toMatchObject({ model: 'qwen2.5vl:7b' });
+  });
+
   it('lets each role have its own provider and model', () => {
     const config = llmConfigSchema.parse({
       ...base,
