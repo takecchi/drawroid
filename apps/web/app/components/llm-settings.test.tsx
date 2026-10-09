@@ -98,6 +98,30 @@ describe('LlmSettings', () => {
     });
   });
 
+  it('says it saved, until the person edits the settings again', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(
+      await screen.findByText('保存した。次に話しかけたときから、この設定を使う。'),
+    ).toBeTruthy();
+
+    await user.type(input('考える役のモデル'), '-next');
+    expect(screen.queryByText('保存した。次に話しかけたときから、この設定を使う。')).toBeNull();
+  });
+
+  it('does not say it saved when saving fails', async () => {
+    mocks.saveLlmSettings.mockRejectedValue(new ApiError('invalid_request', '形が合わない', 400));
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(await screen.findByText('保存できない: 形が合わない')).toBeTruthy();
+    expect(screen.queryByText('保存した。次に話しかけたときから、この設定を使う。')).toBeNull();
+  });
+
   it('saves how each role takes the thinking of the model', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);

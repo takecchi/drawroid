@@ -27,6 +27,11 @@ export type DistillDeps = {
   /** LLM 呼び出しの記録の ID。distill.json から記録を辿るために残す */
   callId?: string;
   signal?: AbortSignal;
+  /**
+   * distill.json に残す時刻（at）。省けば蒸留を始めた時刻。選び直しの蒸留は、選択を読む直前の時刻を渡す
+   * （次の選び直しの蒸留は、この時刻より後の選択だけを見るため）
+   */
+  startedAt?: Date;
 };
 
 export type DistillResult = {
@@ -68,7 +73,7 @@ async function distill(
 ): Promise<DistillResult> {
   const budget = deps.budget ?? DEFAULT_DISTILL_BUDGET;
   const now = deps.now ?? (() => new Date());
-  const startedAt = now();
+  const startedAt = deps.startedAt ?? now();
   const { items } = await deps.memory.list();
 
   let input: DistillInput;

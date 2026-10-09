@@ -232,6 +232,51 @@ describe('distilling in the background after a stopped job is reselected', () =>
     expect(t.log.entries.map((e) => e.shown.selections)).toEqual([['2-0'], ['2-1']]);
   });
 
+  it('distills, in the next run, a reselection made while this run was reading the selections', async () => {
+    const t = setup();
+    t.select('2-0', 'favorite', '2026-10-09T10:10:00Z');
+    // 選択を読み終えてから蒸留を始めるまでの間に、人間がもう1枚を選び直す（そのあと時計が進む）
+    const list = t.store.listSelections.bind(t.store);
+    let reads = 0;
+    t.store.listSelections = async () => {
+      const records = await list();
+      reads += 1;
+      if (reads === 1) {
+        t.select('2-1', 'rejected', '2026-10-09T10:30:00.500Z');
+        t.setClock('2026-10-09T10:30:01Z');
+      }
+      return records;
+    };
+
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+    // 選び直しの PUT が送る知らせ
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+
+    // 1回目は 2-0 だけを見た。2-1 は、次の蒸留で1度だけ見る（取りこぼさない）
+    expect(t.log.entries.map((e) => e.shown.selections)).toEqual([['2-0'], ['2-1']]);
+  });
+
+  it('does not show again a reselection made at the very time the last run read the selections', async () => {
+    const t = setup();
+    // 読んだ時刻（偽の時計の今）とちょうど同じ時刻の選択。1回目の蒸留が見る
+    t.select('2-0', 'favorite', '2026-10-09T10:30:00Z');
+
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+
+    // 同じ選び直しを二重に覚えない
+    expect(t.log.entries.map((e) => e.shown.selections)).toEqual([['2-0']]);
+    expect(t.llm!.calls).toHaveLength(1);
+  });
+
   it.each([
     ['running', { status: 'running', startedAt: STOPPED_AT, imagesGenerated: 0 }],
     ['queued', { status: 'queued' }],
@@ -322,6 +367,45 @@ describe('distilling in the background after a stopped job is reselected', () =>
 
     expect(llm.calls).toHaveLength(2);
     expect(t.log.entries).toHaveLength(1);
+  });
+
+  it('passes the same reselection again in the next run when the LLM failed to answer', async () => {
+    // 1回目はスキーマに合わない答えを返し続ける（構造化出力の失敗。何も覚えずに失敗が記録に残る）
+    const llm = new ScriptedLlm({
+      distill: (_call, n) => (n === 0 ? { operations: 'broken' } : { operations: [] }),
+    });
+    const t = setup({ llm });
+    t.select('2-0', 'favorite', '2026-10-09T10:10:00Z');
+
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+    t.setClock('2026-10-09T10:31:00Z');
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+
+    // 失敗の記録は残し、その回に渡した選び直しは次の蒸留でもう一度渡る
+    expect(t.log.entries.map((e) => [e.failure !== undefined, e.shown.selections])).toEqual([
+      [true, ['2-0']],
+      [false, ['2-0']],
+    ]);
+  });
+
+  it('does not pass the reselection again after a run that succeeded', async () => {
+    const t = setup();
+    t.select('2-0', 'favorite', '2026-10-09T10:10:00Z');
+
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+    t.setClock('2026-10-09T10:31:00Z');
+    t.distiller.notify(JOB);
+    t.timers.advance(QUIET);
+    await t.distiller.idle();
+
+    expect(t.log.entries.map((e) => e.shown.selections)).toEqual([['2-0']]);
+    expect(t.llm!.calls).toHaveLength(1);
   });
 
   it('runs a waiting notification when idle is awaited instead of dropping it', async () => {

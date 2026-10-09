@@ -96,6 +96,7 @@ jobs:
 
       # 固めたものを起動し、ヘッドレスの Chrome で `/` を開く（M0「ブラウザで Web UI が開ける」）。会話の一覧が描かれ、CSS が効き、
       # 会話を1つ開けて、コンソールのエラー・失敗した読み込みが無いことを見る。
+      # 続けて、はじめの一歩（未設定の案内から LLM を設定して、話す役と1往復する）をたどる。バックエンドは立てない。
       # ブラウザは取得しない: ubuntu-latest に入っている Chrome を使う（scripts/check-packed-browser.mjs）。
       - run: pnpm check:packed-browser
 

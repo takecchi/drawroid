@@ -26,22 +26,28 @@ export async function launchBrowser() {
  * ページのコンソールのエラー・例外・同じオリジンへの失敗した読み込みを集める。
  * @param {import('playwright-core').Page} page
  * @param {string} base
+ * @param {{ expected?: (url: string) => boolean }} [options] 想定どおりに失敗する読み込み（バックエンドを立てない確かめの /api/backend など）
  * @returns {string[]} 集めたもの（呼び手が見る間も増える）
  */
-export function collectProblems(page, base) {
+export function collectProblems(page, base, options = {}) {
+  const expected = options.expected ?? (() => false);
   /** @type {string[]} */
   const problems = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') problems.push(`コンソールのエラー: ${message.text()}`);
+    if (message.type() !== 'error' || expected(message.location().url)) return;
+    problems.push(`コンソールのエラー: ${message.text()}`);
   });
   page.on('pageerror', (error) => problems.push(`ページの例外: ${error.message}`));
   page.on('response', (response) => {
-    if (response.url().startsWith(base) && response.status() >= 400) {
+    if (response.url().startsWith(base) && response.status() >= 400 && !expected(response.url())) {
       problems.push(`${response.status()} ${response.url()}`);
     }
   });
   page.on('requestfailed', (request) => {
-    if (request.url().startsWith(base)) problems.push(`読めなかった: ${request.url()}`);
+    // 画面を移るときに切られた読み込み（会話の流れなど）は、失敗ではない
+    if (request.failure()?.errorText.includes('ERR_ABORTED')) return;
+    if (request.url().startsWith(base) && !expected(request.url()))
+      problems.push(`読めなかった: ${request.url()}`);
   });
   return problems;
 }

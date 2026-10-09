@@ -1,6 +1,8 @@
+import { XIcon } from 'lucide-react';
 import { useRef, type ReactNode } from 'react';
 
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetClose, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 // `aria-modal` を手で足さない: Radix はこの属性を出さず、面の外へ `aria-hidden` を配るため
 // 開くかどうかの判断を持たない: `md:hidden` で隠す形にすると、jsdom は CSS を評価せず試験で確かめられなくなるため
@@ -27,6 +29,8 @@ export function Drawer({
     >
       <SheetContent
         side="left"
+        // 閉じるボタンは自前で置く: shadcn の sheet の閉じるボタンは、読み上げで英語の「Close」と読まれるため
+        showCloseButton={false}
         onOpenAutoFocus={() => {
           returnFocusTo.current =
             document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -41,6 +45,12 @@ export function Drawer({
         {/* `aria-label` ではなく `Title` で名前を与える: Radix は `Title` が在るときだけ `aria-labelledby` を向けるため */}
         <SheetTitle className="sr-only">{label}</SheetTitle>
         {children}
+        <SheetClose asChild>
+          <Button variant="ghost" className="absolute top-3 right-3" size="icon-sm">
+            <XIcon aria-hidden />
+            <span className="sr-only">閉じる</span>
+          </Button>
+        </SheetClose>
       </SheetContent>
     </Sheet>
   );
