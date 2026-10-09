@@ -42,6 +42,9 @@ export * from './llm/record.js';
 export * from './loop/budget.js';
 export * from './loop/carry.js';
 export * from './loop/inputs.js';
+export * from './job/manual.js';
+export * from './job/store.js';
+export * from './job/types.js';
 export * from './loop/schemas.js';
 export {
   MEMORY_SCOPES,

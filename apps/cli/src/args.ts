@@ -5,15 +5,24 @@ import { DEFAULT_PORT } from './listen.js';
 export interface CliOptions {
   port: number;
   dataDir: string | undefined;
+  forgeUrl: string | undefined;
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
   const { values } = parseArgs({
     args: argv,
-    options: { port: { type: 'string' }, 'data-dir': { type: 'string' } },
+    options: {
+      port: { type: 'string' },
+      'data-dir': { type: 'string' },
+      'forge-url': { type: 'string' },
+    },
     strict: true,
   });
-  return { port: parsePort(values.port), dataDir: values['data-dir'] };
+  return {
+    port: parsePort(values.port),
+    dataDir: values['data-dir'],
+    forgeUrl: values['forge-url'],
+  };
 }
 
 function parsePort(raw: string | undefined): number {

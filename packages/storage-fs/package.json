@@ -16,12 +16,13 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@drawroid/core": "workspace:*",
-    "yaml": "catalog:"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@drawroid/core": "workspace:*",
+    "yaml": "catalog:",
+    "zod": "catalog:"
   }
 }
