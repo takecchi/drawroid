@@ -32,6 +32,7 @@ export {
   type UpdateBackendSettings,
 } from './backend-settings.js';
 export { LlmNotConfiguredError, type StopConditionParser } from './stop-condition-parse.js';
+export { imageUrls } from './iterations.js';
 export type { ReferenceUploadInput } from './references.js';
 export type {
   ApiDeps,
