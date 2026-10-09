@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  basicPermissions,
   DEFAULT_BUDGET,
   JobRunner,
   ManualGenerationRunner,
-  THINK_PARAM_KEYS,
   type AutoJobSpec,
   type JobState,
   type LlmCall,
@@ -65,8 +65,7 @@ function runnerFor(stopAt: number) {
     llm: new ScriptedLlm({ think, judge: judge(stopAt) }),
     backend,
     budget: DEFAULT_BUDGET,
-    allowed: THINK_PARAM_KEYS,
-    defaults: { width: 64, height: 64, steps: 20, cfgScale: 7, negativePrompt: '' },
+    permissions: basicPermissions({ width: 64, height: 64 }),
   });
 }
 
