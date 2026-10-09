@@ -9,6 +9,7 @@ import {
   readBudgetOverrides,
   readDrawingStopConditions,
   readPermissionOverrides,
+  resolveBudgets,
   sealMessages,
   generationProgressSettingsSchema,
   type BackendCapabilities,
@@ -62,7 +63,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const sections = [
     config.section,
     await checkBackend(options, config.backend),
-    await checkLlm(options, config.llm),
+    await checkLlm(options, config.llm, config.imageLongEdge ?? DEFAULT_BUDGET.imageLongEdge),
     checkWeb(options.webRoot),
   ];
   const secrets = apiKeyValues(config.llm, options.env);
@@ -107,6 +108,11 @@ interface ConfigCheck {
   // 読めなかった欄は undefined にして、既定で続ける（起動と同じ値で確かめるため）
   backend: Config['backend'];
   llm: LlmState;
+  /**
+   * 見る役に渡す縮小版の長辺（予算の imageLongEdge）。設定ファイルが読めたときだけ載せる。無ければ既定で動く（起動と同じ）。
+   * 読めない欄は readBudgetOverrides が外すので、そのときも既定になる
+   */
+  imageLongEdge?: number;
 }
 
 async function checkConfig(path: string): Promise<ConfigCheck> {
@@ -246,6 +252,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
     section: { title, items },
     backend: backend.success ? backend.data.backend : undefined,
     llm,
+    imageLongEdge: resolveBudgets(readBudgetOverrides(record.budgets).overrides).imageLongEdge,
   };
 }
 
@@ -485,7 +492,11 @@ const PING_SYSTEM =
   'これは drawroid の接続の確かめです。doctor_ping を引数なしで1回だけ呼んでください。文では返さないでください。';
 const PING_USER = '確かめのため、doctor_ping を呼んでください。';
 
-async function checkLlm(options: DoctorOptions, llm: LlmState): Promise<DoctorSection> {
+async function checkLlm(
+  options: DoctorOptions,
+  llm: LlmState,
+  imageLongEdge: number,
+): Promise<DoctorSection> {
   const section: DoctorSection = { title: 'LLM', items: [] };
   if (llm.state === 'unset') {
     section.items.push({
@@ -529,7 +540,7 @@ async function checkLlm(options: DoctorOptions, llm: LlmState): Promise<DoctorSe
       });
     }
   }
-  section.items.push(...(await roundTrips(options, config)));
+  section.items.push(...(await roundTrips(options, config, imageLongEdge)));
   return section;
 }
 
@@ -540,7 +551,11 @@ const ROLE_NAMES = { think: '考える役', judge: '見る役', talk: '話す役
  * 話す役はツールを1つ呼ばせ、考える役・見る役は構造化出力で1往復する。見る役には小さな画像を1枚渡す
  */
 // 見る役は、話す役と同じ割り当てでも別に確かめる: 話す役の確かめは画像を渡さないので、画像を読めないモデルを見逃すため
-async function roundTrips(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem[]> {
+async function roundTrips(
+  options: DoctorOptions,
+  config: LlmConfig,
+  imageLongEdge: number,
+): Promise<DoctorItem[]> {
   const roles = resolveRoles(config);
   const same = (a: LlmRole, b: LlmRole) =>
     roles[a].provider === roles[b].provider && roles[a].model === roles[b].model;
@@ -553,7 +568,7 @@ async function roundTrips(options: DoctorOptions, config: LlmConfig): Promise<Do
   ];
   // 考える役 → 見る役の順に出す。見る役と同じ割り当ての考える役は、見る役の確かめ（画像あり）に含める
   if (!same('think', 'talk') && !same('think', 'judge')) {
-    items.push(await structuredRoundTrip(options, config, ['think'], 'think'));
+    items.push(await structuredRoundTrip(options, config, ['think'], 'think', imageLongEdge));
   }
   items.push(
     await structuredRoundTrip(
@@ -563,6 +578,7 @@ async function roundTrips(options: DoctorOptions, config: LlmConfig): Promise<Do
         (role) => role === 'judge' || (same(role, 'judge') && !same(role, 'talk')),
       ),
       'judge',
+      imageLongEdge,
     ),
   );
   return items;
@@ -648,17 +664,26 @@ const JUDGE_PING_SCHEMA = z.object({ color: z.string().min(1) });
 const STRUCTURED_SYSTEM =
   'これは drawroid の接続の確かめです。指示どおりの JSON だけを返してください。';
 
-/** 画像を読めるかを確かめるための、赤一色の小さな画像。ジョブが見る役に渡す縮小版と同じ変換を通す */
-async function probeImage(): Promise<ImagePart> {
+/**
+ * 画像を読めるかを確かめるための、赤一色の画像。ジョブが見る役に渡す縮小版と同じ変換を通し、同じ大きさにする:
+ * 元は長辺ぶんの正方形で作る（縮小版は元より大きくしないので、小さく作ると、予算の長辺によらず小さいまま渡るため）。
+ * 大きな画像で落ちるサーバ（入力の上限が小さいなど）を、ジョブを走らせる前に見つけるため
+ */
+async function probeImage(longEdge: number): Promise<ImagePart> {
   const source = await sharp({
-    create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 40, b: 40 } },
+    create: {
+      width: longEdge,
+      height: longEdge,
+      channels: 3,
+      background: { r: 200, g: 40, b: 40 },
+    },
   })
     .png()
     .toBuffer();
   return {
     type: 'image',
     key: 'doctor-probe',
-    data: await makePreview(source, DEFAULT_BUDGET.imageLongEdge),
+    data: await makePreview(source, longEdge),
     mediaType: PREVIEW_MEDIA_TYPE,
   };
 }
@@ -717,6 +742,8 @@ async function structuredRoundTrip(
   config: LlmConfig,
   group: readonly LlmRole[],
   role: 'think' | 'judge',
+  /** 見る役に渡す縮小版の長辺（設定した予算）。本番と同じ大きさで確かめる */
+  imageLongEdge: number,
 ): Promise<DoctorItem> {
   const rc = resolveRoles(config)[role];
   const who = `${rolesLabel(group)}（${rc.provider} の ${rc.model}、structuredOutput: ${rc.structuredOutput}、reasoning: ${rc.reasoning}）`;
@@ -729,7 +756,7 @@ async function structuredRoundTrip(
         todo: '見る役に画像を読めるモデルを割り当て、LLM の設定で imageInput を有効にする',
       };
     }
-    const withImage = await structuredOnce(options, config, role, await probeImage());
+    const withImage = await structuredOnce(options, config, role, await probeImage(imageLongEdge));
     if (withImage.ok) {
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
       return { ok: true, what: `${who}と、画像を1枚渡して1往復できた（${seconds} 秒）` };

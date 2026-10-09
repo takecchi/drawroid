@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { formatDoctorReport, runDoctor, type DoctorOptions } from './doctor.js';
@@ -29,10 +30,11 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
 
 /**
  * 小さな偽の LLM（OpenAI 互換、ストリーム）。ツールを渡されたら doctor_ping を呼び、そうでなければ確かめの JSON を返す。
- * 渡された画像の形式を数え、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る
+ * 渡された画像の形式と中身を取っておき、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る
  */
 async function startLlm({ rejectWebp }: { rejectWebp: boolean }) {
   const imageTypes: string[] = [];
+  const images: Buffer[] = [];
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (chunk: Buffer) => (body += chunk.toString()));
@@ -42,6 +44,11 @@ async function startLlm({ rejectWebp }: { rejectWebp: boolean }) {
         response_format?: { json_schema?: { schema?: unknown } };
       };
       imageTypes.push(...[...body.matchAll(/data:(image\/[a-z]+);base64/g)].map((m) => m[1]!));
+      images.push(
+        ...[...body.matchAll(/data:image\/[a-z]+;base64,([A-Za-z0-9+/=]+)/g)].map((m) =>
+          Buffer.from(m[1]!, 'base64'),
+        ),
+      );
       if (rejectWebp && body.includes('data:image/webp')) {
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: 'Failed to load image or audio file' } }));
@@ -76,7 +83,11 @@ async function startLlm({ rejectWebp }: { rejectWebp: boolean }) {
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, imageTypes };
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+    imageTypes,
+    images,
+  };
 }
 
 const SDAPI_BASE = {
@@ -242,6 +253,28 @@ describe('runDoctor', () => {
     expect(text).toMatch(
       /足りない {2}見る役（a の m2、.*画像（image\/webp。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない/,
     );
+  });
+
+  // 本番と同じ大きさで確かめる: 見る役に渡る縮小版の長辺は、設定した予算（budgets.imageLongEdge）で決まる。
+  // 読めない値なら、起動と同じく既定（512）で動く
+  it.each([
+    ['no budget', undefined, 512],
+    ['a long edge of 256', { imageLongEdge: 256 }, 256],
+    ['a long edge of 1024', { imageLongEdge: 1024 }, 1024],
+    ['an unreadable long edge', { imageLongEdge: 5 }, 512],
+  ])('shows the judge an image as large as the budget says, with %s', async (_, budgets, edge) => {
+    const llm = await startLlm({ rejectWebp: false });
+    await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+        roles: { think: { provider: 'a', model: 'm' } },
+      },
+      ...(budgets !== undefined && { budgets }),
+    });
+
+    expect(llm.images).toHaveLength(1);
+    const { width, height } = await sharp(llm.images[0]).metadata();
+    expect(Math.max(width ?? 0, height ?? 0)).toBe(edge);
   });
 
   // 話す役の確かめはツールを1つ呼ばせるだけで、画像を渡さない。割り当てが同じでも、見る役が画像を読めるかは別に確かめる
