@@ -55,9 +55,27 @@ describe('InterventionList', () => {
     const items = screen
       .getAllByText('人間の指示')
       .map((label) => label.parentElement?.textContent);
-    expect(items[0]).toContain('2 回目の画像 1 にマスクを塗った');
+    // 画像は 1 から数える（index 1 は 2 番）: ほかの画面の呼び方にそろえる
+    expect(items[0]).toContain('2 回目の画像 2 番にマスクを塗った');
     expect(items[0]).toContain('まだ inpaint に使っていない');
     expect(items[1]).toContain('3 回目の inpaint に使った');
+  });
+
+  it('names the image a human chose, counting from 1', () => {
+    render(
+      <InterventionList
+        interventions={[
+          {
+            kind: 'adopt',
+            interventionId: 'a-1',
+            receivedAt: '2026-01-01T00:04:00.000Z',
+            image: { iteration: 3, index: 0 },
+          } as Intervention,
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('3 回目の画像 1 番を選んだ')).toBeTruthy();
   });
 
   it('lists instructions and stop condition changes in the order received', () => {

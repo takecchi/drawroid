@@ -62,7 +62,9 @@ export function InterventionItem({
       ) : intervention.kind === 'mask' ? (
         <>
           <p>
-            {intervention.image.iteration} 回目の画像 {intervention.image.index} にマスクを塗った
+            {/* 1 から数える: ほかの画面の呼び方（「N 回目の画像 M 番」）にそろえる */}
+            {intervention.image.iteration} 回目の画像 {intervention.image.index + 1}{' '}
+            番にマスクを塗った
           </p>
           {showStatus && (
             <p>
@@ -74,7 +76,7 @@ export function InterventionItem({
         </>
       ) : intervention.kind === 'adopt' ? (
         <p>
-          {intervention.image.iteration} 回目の画像 {intervention.image.index} を選んだ
+          {intervention.image.iteration} 回目の画像 {intervention.image.index + 1} 番を選んだ
         </p>
       ) : (
         <>
