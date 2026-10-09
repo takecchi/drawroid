@@ -11,6 +11,7 @@ import {
   ErrorNote,
   Field,
   FieldRow,
+  FieldSet,
   Input,
   Item,
   ItemList,
@@ -75,7 +76,17 @@ export const Form: Story = {
             <Input inputMode="numeric" className="w-36" />
           </Field>
         </FieldRow>
-        <CheckboxField label="AI が意図どおりと判断したら止める" defaultChecked />
+        <FieldSet legend="止める条件">
+          <CheckboxField label="AI が意図どおりと判断したら止める" defaultChecked />
+          <FieldRow>
+            <Field label="回数の上限">
+              <Input inputMode="numeric" defaultValue="10" className="w-24" />
+            </Field>
+            <Field label="時間の上限（分）">
+              <Input inputMode="numeric" placeholder="なし" className="w-24" />
+            </Field>
+          </FieldRow>
+        </FieldSet>
         <Button type="submit" variant="primary">
           生成する
         </Button>

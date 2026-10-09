@@ -20,6 +20,16 @@ describe('AuthorMark', () => {
     expect(authorOf('人間の指示')).toBe('human');
     expect(authorOf('AI（考える役）')).toBe('ai');
   });
+
+  it('keeps the label inside the record it names', () => {
+    render(
+      <AuthorMark author="human" label="人間の指示" meta="9:03">
+        <p>もっと青く</p>
+      </AuthorMark>,
+    );
+
+    expect(screen.getByText('人間の指示').parentElement?.textContent).toContain('もっと青く');
+  });
 });
 
 describe('ImageCard', () => {

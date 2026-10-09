@@ -3,6 +3,17 @@ import {
   parseStopConditionsText,
   type StopConditionsDraftResponse,
 } from '@drawroid/swr';
+import {
+  BulletList,
+  Button,
+  CheckboxField,
+  ErrorNote,
+  Field,
+  FieldRow,
+  FieldSet,
+  Input,
+  Textarea,
+} from '@drawroid/ui';
 import { useState } from 'react';
 
 import {
@@ -63,100 +74,81 @@ export function StopConditionsEditor({
   const blocker = stopConditionsBlocker(values);
 
   return (
-    <fieldset>
-      <legend>止める条件</legend>
-      <p>
-        <label>
-          文から案を作る
-          <br />
-          <textarea
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            rows={2}
-            cols={60}
-            placeholder="例: 10 回まで。AI が良いと思ったら途中で止めてよい"
-          />
-        </label>
-        <br />
-        <button
-          type="button"
-          disabled={parsing || text.trim() === ''}
-          onClick={() => void makeDraft()}
-        >
+    <FieldSet legend="止める条件">
+      <Field label="文から案を作る" wide>
+        <Textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={2}
+          placeholder="例: 10 回まで。AI が良いと思ったら途中で止めてよい"
+        />
+      </Field>
+      <div>
+        <Button disabled={parsing || text.trim() === ''} onClick={() => void makeDraft()}>
           案を作る
-        </button>
-      </p>
-      {parseError !== undefined && <p role="alert">{parseError}</p>}
+        </Button>
+      </div>
+      {parseError !== undefined && <ErrorNote>{parseError}</ErrorNote>}
       {notes?.clippedFrom !== undefined && (
-        <p>入力が長いので途中で切って読んだ（{notes.clippedFrom} 文字のうち先頭だけ）</p>
+        <p className="text-sm">
+          入力が長いので途中で切って読んだ（{notes.clippedFrom} 文字のうち先頭だけ）
+        </p>
       )}
       {notes !== undefined && notes.unparsed.length > 0 && (
-        <div>
-          <p>読み落とした言い回し（止める条件では表せない）</p>
-          <ul>
+        <div className="space-y-1">
+          <p className="text-sm">読み落とした言い回し（止める条件では表せない）</p>
+          <BulletList>
             {notes.unparsed.map((phrase, i) => (
               <li key={i}>{phrase}</li>
             ))}
-          </ul>
+          </BulletList>
         </div>
       )}
       {warnings.map((warning) => (
-        <p key={warning.kind} role="alert">
-          {warning.message}
-        </p>
+        <ErrorNote key={warning.kind}>{warning.message}</ErrorNote>
       ))}
-      <p>
-        <label>
-          <input
-            type="checkbox"
-            checked={values.aiJudgement}
-            onChange={(event) => edit({ aiJudgement: event.target.checked })}
-          />{' '}
-          AI が意図どおりと判断したら止める
-        </label>
-      </p>
-      <p>
-        <label>
-          回数の上限{' '}
-          <input
+      <CheckboxField
+        label="AI が意図どおりと判断したら止める"
+        checked={values.aiJudgement}
+        onChange={(event) => edit({ aiJudgement: event.target.checked })}
+      />
+      <FieldRow>
+        <Field label="回数の上限">
+          <Input
             value={values.maxIterations}
             onChange={(event) => edit({ maxIterations: event.target.value })}
             inputMode="numeric"
-            size={6}
             placeholder="なし"
+            className="w-28"
           />
-        </label>{' '}
-        <label>
-          枚数の上限{' '}
-          <input
+        </Field>
+        <Field label="枚数の上限">
+          <Input
             value={values.maxImages}
             onChange={(event) => edit({ maxImages: event.target.value })}
             inputMode="numeric"
-            size={6}
             placeholder="なし"
+            className="w-28"
           />
-        </label>{' '}
-        <label>
-          時間の上限（分）{' '}
-          <input
+        </Field>
+        <Field label="時間の上限（分）">
+          <Input
             value={values.maxDurationMinutes}
             onChange={(event) => edit({ maxDurationMinutes: event.target.value })}
             inputMode="decimal"
-            size={6}
             placeholder="なし"
+            className="w-28"
           />
-        </label>
-      </p>
-      {blocker !== undefined && <p role="alert">{blocker}</p>}
+        </Field>
+      </FieldRow>
+      {blocker !== undefined && <ErrorNote>{blocker}</ErrorNote>}
       {confirm !== undefined && (
-        <button
-          type="button"
-          disabled={blocker !== undefined || confirm.pending}
-          onClick={confirm.onConfirm}
-        >
-          {confirm.label}
-        </button>
+        <div>
+          <Button disabled={blocker !== undefined || confirm.pending} onClick={confirm.onConfirm}>
+            {confirm.label}
+          </Button>
+        </div>
       )}
-    </fieldset>
+    </FieldSet>
   );
 }

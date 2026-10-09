@@ -1,5 +1,6 @@
 import { isApiError, setSelection } from '@drawroid/swr';
 import type { SelectionVerdict } from '@drawroid/core';
+import { Button, ErrorNote } from '@drawroid/ui';
 import { useState } from 'react';
 
 const VERDICT_LABELS: Record<SelectionVerdict, string> = {
@@ -33,30 +34,32 @@ export function SelectionControls({
   }
 
   return (
-    <div>
-      <p>今の状態: {verdict === null ? '未選択' : VERDICT_LABELS[verdict]}</p>
-      <button
-        type="button"
-        disabled={pending || verdict === 'favorite'}
-        onClick={() => void choose('favorite')}
-      >
-        お気に入り
-      </button>{' '}
-      <button
-        type="button"
-        disabled={pending || verdict === 'rejected'}
-        onClick={() => void choose('rejected')}
-      >
-        却下
-      </button>{' '}
-      <button
-        type="button"
-        disabled={pending || verdict === null}
-        onClick={() => void choose(null)}
-      >
-        外す
-      </button>
-      {error !== undefined && <p role="alert">選べない: {error}</p>}
+    <div className="space-y-1">
+      <p className="text-xs">今の状態: {verdict === null ? '未選択' : VERDICT_LABELS[verdict]}</p>
+      <div className="flex flex-wrap gap-1">
+        <Button
+          className="h-7 px-2 text-xs"
+          disabled={pending || verdict === 'favorite'}
+          onClick={() => void choose('favorite')}
+        >
+          お気に入り
+        </Button>
+        <Button
+          className="h-7 px-2 text-xs"
+          disabled={pending || verdict === 'rejected'}
+          onClick={() => void choose('rejected')}
+        >
+          却下
+        </Button>
+        <Button
+          className="h-7 px-2 text-xs"
+          disabled={pending || verdict === null}
+          onClick={() => void choose(null)}
+        >
+          外す
+        </Button>
+      </div>
+      {error !== undefined && <ErrorNote>選べない: {error}</ErrorNote>}
     </div>
   );
 }
