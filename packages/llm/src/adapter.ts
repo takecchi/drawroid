@@ -379,7 +379,9 @@ export class AiSdkLlm implements LlmPort {
           break;
         case 'tool-call':
           streamed.toolCalls.push({
-            callId: part.toolCallId,
+            // サーバの ID に、呼び出しごとの接頭辞を付ける: ID は会話の中で tool.call と tool.result を組にする鍵だが、
+            // ローカルの LLM のサーバには、ステップごとに同じ ID（call_0 など）や空の ID を返すものがあるため
+            callId: `native-${globalThis.crypto.randomUUID()}-${part.toolCallId}`,
             name: part.toolName,
             input: part.input,
             invalid: part.dynamic === true && part.invalid === true,
