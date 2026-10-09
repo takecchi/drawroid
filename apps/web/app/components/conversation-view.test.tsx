@@ -2,6 +2,7 @@
 import {
   LLM_NOT_CONFIGURED_REASON,
   REPEATED_TOOL_CALL_REASON,
+  TOOL_THREW_PREFIX,
   type ConversationEvent,
   type LiveEvent,
 } from '@drawroid/core';
@@ -606,7 +607,8 @@ describe('ConversationView', () => {
         turn: 1,
         callId: 'c1',
         ok: false,
-        summary: REPEATED_TOOL_CALL_REASON,
+        // 実行器が残すとおりの形（投げた失敗には頭の言葉が付く）
+        summary: `${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`,
       }),
     );
 
@@ -618,7 +620,9 @@ describe('ConversationView', () => {
       .getByText(/stopConditions/)
       .closest('details');
     expect(raw?.open).toBe(false);
-    expect(within(card).getByText(REPEATED_TOOL_CALL_REASON).closest('details')).toBe(raw);
+    expect(
+      within(card).getByText(`${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`).closest('details'),
+    ).toBe(raw);
   });
 
   it('shows a row for each kind of streamed event', async () => {
