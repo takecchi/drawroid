@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { LlmCallRecord } from '../llm/record.js';
 import { ScriptedLlm } from '../testing/scripted-llm.js';
-import { parseStopConditions, STOP_TEXT_LIMIT, type StopParseOutput } from './stop-parse.js';
+import { InputOverBudgetError } from './inputs.js';
+import {
+  parseStopConditions,
+  STOP_TEXT_LIMIT,
+  stopParseOutputSchema,
+  type StopParseOutput,
+} from './stop-parse.js';
 
 const none: StopParseOutput = {
   aiJudgement: false,
@@ -113,5 +119,41 @@ describe('parseStopConditions', () => {
     expect(draft).toMatchObject({ ok: false });
     expect(llm.calls).toEqual([]);
     expect(records).toEqual([]);
+  });
+});
+
+describe('parseStopConditions with a small model window', () => {
+  it('refuses a sentence that does not fit the window without calling the model', async () => {
+    const llm = new ScriptedLlm(
+      { 'stop-parse': () => none },
+      { roles: { think: { window: { contextTokens: 200, maxOutputTokens: 100 } } } },
+    );
+    const records: LlmCallRecord[] = [];
+    await expect(
+      parseStopConditions({
+        llm,
+        text: 'あ'.repeat(STOP_TEXT_LIMIT),
+        signal: new AbortController().signal,
+        now: () => new Date('2026-10-09T00:00:00Z'),
+        newCallId: () => 'c1',
+        record: async (r) => {
+          records.push(r);
+        },
+      }),
+    ).rejects.toBeInstanceOf(InputOverBudgetError);
+    expect(llm.calls).toEqual([]);
+    expect(records).toEqual([]);
+  });
+});
+
+describe('stopParseOutputSchema', () => {
+  it('accepts three unparsed parts', () => {
+    const parsed = stopParseOutputSchema.safeParse({ ...none, unparsed: ['a', 'b', 'c'] });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects four unparsed parts', () => {
+    const parsed = stopParseOutputSchema.safeParse({ ...none, unparsed: ['a', 'b', 'c', 'd'] });
+    expect(parsed.success).toBe(false);
   });
 });
