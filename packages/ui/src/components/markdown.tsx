@@ -8,7 +8,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { newlineToBreak } from 'mdast-util-newline-to-break';
 import { gfm } from 'micromark-extension-gfm';
-import { type ComponentProps, type ReactNode, useId } from 'react';
+import { type ComponentProps, type ReactNode, useId, useMemo } from 'react';
 
 import { type Components, type MdastOptions, mdastToReact } from './markdown-mdast';
 
@@ -201,11 +201,14 @@ export function Markdown({
 }) {
   const reactId = useId();
   const prefix = idPrefix ?? 'md' + reactId.replace(/[^A-Za-z0-9_-]/g, '') + '-';
-  return (
-    <div className="min-w-0 text-sm break-words">
-      {toReact(children, offsetHeadings(markdownComponents, headingOffset), prefix, {
+  // 文字が同じ間は解析の結果を使い回す: 会話の画面は増分のたびに全部の行を作り直すので、使い回さないと
+  // 確定した返答まで増分のたびに解析し直し、描き直し1回が返答の数に比例して重くなるため
+  const content = useMemo(
+    () =>
+      toReact(children, offsetHeadings(markdownComponents, headingOffset), prefix, {
         remoteImages,
-      })}
-    </div>
+      }),
+    [children, headingOffset, prefix, remoteImages],
   );
+  return <div className="min-w-0 text-sm break-words">{content}</div>;
 }
