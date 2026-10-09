@@ -8,6 +8,12 @@ export function MemoryList() {
   const { data, error } = useMemoryList();
   return (
     <Section title="記憶">
+      {/* 何がいつここに入るのか: 空のままだと、覚える仕組みがあることも、いつ増えるのかも分からないため */}
+      <p className="text-sm text-muted-foreground">
+        {
+          '描いたジョブが止まったときと、止まったあとに選び直したときに、選んだ画像と人間の指示から好みを整理してここに覚える。次に描くとき、考える役・見る役・話す役がこれを読む。'
+        }
+      </p>
       {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
       {data?.items.length === 0 && <EmptyState title="まだ無い。" />}
       <ItemList>

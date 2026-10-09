@@ -150,6 +150,21 @@ try {
     (await page.locator('details#budgets').getAttribute('open')) === null,
     '予算は「詳しい設定」として畳んである',
   );
+  // バックエンドに繋がらないときは、何が起きたかとすることを出し、サーバの生の文（URL 入り）は「詳しく」に畳む（同じ文が2回並ばない）
+  const backendBox = page.locator('#backend');
+  await backendBox
+    .getByText(/に繋がらない。/)
+    .first()
+    .waitFor();
+  const folded = backendBox.locator('details', {
+    has: page.locator('summary', { hasText: '詳しく' }),
+  });
+  expect(
+    (await folded.count()) === 1 &&
+      (await folded.getAttribute('open')) === null &&
+      /127\.0\.0\.1/.test((await folded.textContent()) ?? ''),
+    'バックエンドの状態は、サーバの生の文（URL 入り）を「詳しく」に畳む',
+  );
   // 狭い画面（390 幅）でも、provider の欄（接続先など）が provider の枠からはみ出さない
   const wideViewport = page.viewportSize();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -223,6 +238,12 @@ try {
       (await notice.getByRole('link', { name: 'バックエンドを確かめる' }).count()) === 1,
     '設定したあとは案内から LLM が消え、話す役が返事をする（未設定から設定して1往復）。バックエンドが無いことも伝わる',
   );
+
+  // 記憶の画面は、まだ空でも、何がいつここに入るのかを一言で出す
+  await page.goto(`${base}/memory`);
+  await page.getByText('まだ無い。').waitFor();
+  await page.getByText(/描いたジョブが止まったときと、止まったあとに選び直したときに/).waitFor();
+  expect(true, '記憶の画面は、空でも何がいつ入るのかを出す');
 
   expect(
     problems.length === 0,

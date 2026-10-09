@@ -451,6 +451,23 @@ describe('images attached in a conversation', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(Buffer.from(await res.arrayBuffer()).toString('base64')).toBe(png);
+    // 置いたあと変わらない画像なので、長く持たせる
+    expect(res.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+  });
+
+  it('gives back an image of another type with that type', async () => {
+    const id = await newConversation();
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64');
+    const sent = await json('POST', `/conversations/${id}/uploads`, {
+      mediaType: 'image/jpeg',
+      data: jpeg,
+    });
+    const { uploadId } = (await sent.json()) as { uploadId: string };
+
+    const res = await app.request(`/conversations/${id}/uploads/${uploadId}`);
+
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+    expect(Buffer.from(await res.arrayBuffer()).toString('base64')).toBe(jpeg);
   });
 
   it('answers 404 for an image not attached in that conversation, or an ID of another shape', async () => {

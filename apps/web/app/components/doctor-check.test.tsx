@@ -2,9 +2,18 @@
 import { ApiError, runDoctor } from '@drawroid/swr';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DoctorCheck } from './doctor-check';
+
+// 画面では行き先（Router）の中で描かれる: 結果に会話への道（Link）を置くため
+const renderCheck = () =>
+  render(
+    <MemoryRouter>
+      <DoctorCheck />
+    </MemoryRouter>,
+  );
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
@@ -36,7 +45,7 @@ describe('DoctorCheck', () => {
         lacking: 1,
       },
     });
-    render(<DoctorCheck />);
+    renderCheck();
     const user = userEvent.setup();
     expect(runDoctor).not.toHaveBeenCalled();
 
@@ -61,18 +70,20 @@ describe('DoctorCheck', () => {
         lacking: 0,
       },
     });
-    render(<DoctorCheck />);
+    renderCheck();
 
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
     expect(await screen.findByText(/すべてよい/)).toBeTruthy();
+    // そのまま描き始められるように、会話への道がある
+    expect(screen.getByRole('link', { name: '会話へ' }).getAttribute('href')).toBe('/');
   });
 
   it('shows why the check could not run', async () => {
     vi.mocked(runDoctor).mockRejectedValue(
       new ApiError('unavailable', 'この起動では、画面から確かめられない', 409),
     );
-    render(<DoctorCheck />);
+    renderCheck();
 
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
