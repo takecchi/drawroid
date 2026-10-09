@@ -33,6 +33,7 @@ import type {
   SetSelectionResponse,
   AdoptImageResponse,
   DoctorResponse,
+  GenerationProgressSettingsResponse,
   StopConditionsDraftResponse,
 } from './types.js';
 
@@ -340,4 +341,16 @@ async function refreshJob(jobId: string): Promise<void> {
  */
 export async function runDoctor(): Promise<DoctorResponse> {
   return unwrap<DoctorResponse>(() => client.doctor.$post());
+}
+
+/** 生成の途中の画像を流すかを保存する。次に始まる生成から効く */
+export async function saveGenerationProgressSettings(
+  settings: GenerationProgressSettingsResponse,
+): Promise<GenerationProgressSettingsResponse> {
+  const saved = await unwrap<GenerationProgressSettingsResponse>(() =>
+    client.settings['generation-progress'].$put({ json: settings }),
+  );
+  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
+  await mutate(keys.generationProgressSettings, saved, { revalidate: false });
+  return saved;
 }

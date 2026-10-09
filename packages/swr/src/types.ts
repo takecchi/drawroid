@@ -53,6 +53,11 @@ export type PermissionSettingsResponse = InferResponseType<
 export type PermissionOverridesInput = Partial<Permissions>;
 /** overrides は書いた欄、effective は既定に重ねた実際の値、defaults は何も書かないときの値 */
 export type BudgetSettingsResponse = InferResponseType<typeof client.settings.budgets.$get, 200>;
+/** 生成の進み具合の設定。includePreview が真なら、生成の途中の画像を流す（既定は流さない） */
+export type GenerationProgressSettingsResponse = InferResponseType<
+  (typeof client.settings)['generation-progress']['$get'],
+  200
+>;
 /** 保存するときに送る、予算の上書き（書いた欄だけ）。api の schema は型を core へ明示しているので、core の型を使う */
 export type BudgetOverridesInput = BudgetOverrides;
 export type IterationsResponse = InferResponseType<
