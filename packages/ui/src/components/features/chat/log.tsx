@@ -15,6 +15,18 @@ export const SKIP_OFFSCREEN_AFTER_ROWS = 300;
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
 
+// 人がログを動かそうとしてから、これより短い間に起きた上への動きは、人が動かしたと見る（ms）
+const TOUCH_WINDOW_MS = 1000;
+const SCROLL_KEYS: ReadonlySet<string> = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+  ' ',
+]);
+
 /**
  * ログの1行の入れ物。会話が長い間（ChatLog の `rowCount` が SKIP_OFFSCREEN_AFTER_ROWS を超える間）は、画面の外にある間の配置と描画を飛ばす（content-visibility: auto）:
  * 長い会話では、増分のたびに数千行ぶんの配置と描画が走り、描き直し1回の大半を占めるため。
@@ -80,6 +92,11 @@ export function ChatLog({
   else if (following.current) skipping.current = true;
   const lastTop = useRef(0);
   const lastHeight = useRef(0);
+  // 人がログを動かそうとした（ホイール・なぞる・スクロールのキー・スクロールバー）最後の時刻
+  const lastTouched = useRef(Number.NEGATIVE_INFINITY);
+  const touched = () => {
+    lastTouched.current = performance.now();
+  };
   useEffect(() => {
     const element = ref.current;
     if (element !== null && following.current) element.scrollTop = element.scrollHeight;
@@ -109,10 +126,21 @@ export function ChatLog({
         // 見積もりの背より高く描かれると（長い会話で画面の外の描画を飛ばしているとき）、末尾まで戻したのに遠く見えるため
         const grown = element.scrollHeight - lastHeight.current;
         const movedDown = element.scrollTop > lastTop.current;
+        const movedUp = lastTop.current - element.scrollTop;
         if (distance < FOLLOW_THRESHOLD_PX) following.current = true;
         else if (movedDown && distance - grown < FOLLOW_THRESHOLD_PX) {
           following.current = true;
           // 伸びた知らせ（ResizeObserver）はこの出来事より先に来ていて、もう来ないことがあるので、ここで末尾まで寄せる
+          element.scrollTop = element.scrollHeight;
+        } else if (
+          following.current &&
+          movedUp > 0 &&
+          movedUp < element.clientHeight / 2 &&
+          performance.now() - lastTouched.current > TOUCH_WINDOW_MS
+        ) {
+          // 人が触れていないのに、末尾を追っている間に少しだけ上へ動いたのは、背の変化で引かれただけ: 行を入れ替える途中で背が
+          // 一瞬縮んで測られると、位置が新しい末尾へ引かれ、その知らせが届くまでに新しい行で背が伸びて、人が戻したのと同じに見えるため。
+          // 伸びた知らせはもう来たあとなので、ここで末尾まで寄せる。大きく跳んだ（ページの中の検索など）なら、人が動かしたと見る
           element.scrollTop = element.scrollHeight;
           // 上へ動いても、背が縮んだときは人が戻したとみなさない: 上の行が縮むと、位置もそのぶん上へ引かれるため
         } else if (
@@ -122,6 +150,15 @@ export function ChatLog({
           following.current = false;
         lastTop.current = element.scrollTop;
         lastHeight.current = element.scrollHeight;
+      }}
+      onWheel={touched}
+      onTouchMove={touched}
+      onKeyDown={(event) => {
+        if (SCROLL_KEYS.has(event.key)) touched();
+      }}
+      // スクロールバーを掴んだときだけ数える: 行の中のボタンを押しただけで、人が動かしたと見ないため
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) touched();
       }}
       // スクロールの錨止めを切る: 上の行の背が伸びるとブラウザが位置をずらし、その出来事を人が上へ戻ったと読んでしまうため
       className={cn('min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]', className)}
