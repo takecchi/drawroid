@@ -314,3 +314,55 @@ describe('ConversationHub job.held', () => {
     expect(heldMessages(afterStop.received)).toEqual([]);
   });
 });
+
+describe('the copy of the thinking of a job', () => {
+  const jobThinking = (jobId: string, iteration: number, role: 'think' | 'judge'): LiveEvent => ({
+    type: 'delta.reasoning',
+    partId: `job:${jobId}:${iteration}:${role}`,
+    source: { role, jobId, iteration },
+    text: `${role}の思考`,
+  });
+
+  it('lets go only the thinking of the stage that was confirmed, keeping the reply flowing and the other stages', async () => {
+    const { hub } = await setup();
+    hub.live(delta('p1', '描いています'));
+    hub.live(jobThinking('job1', 1, 'think'));
+    hub.live(jobThinking('job1', 2, 'think'));
+    hub.live(jobThinking('job2', 1, 'think'));
+
+    const think = await hub.confirm({
+      type: 'job.think',
+      jobId: 'job1',
+      iteration: 1,
+      rationale: '案',
+      params: {},
+      excluded: [],
+    });
+
+    const late = collector();
+    await hub.subscribe(think.seq, late.send);
+    const kept = late.received.flatMap((m) =>
+      m.kind === 'live' && 'partId' in m.event ? [m.event.partId] : [],
+    );
+    expect(kept.sort()).toEqual(['job:job1:2:think', 'job:job2:1:think', 'p1']);
+  });
+
+  it('lets go the thinking of a job that stopped in the middle of a stage', async () => {
+    const { hub } = await setup();
+    hub.live(jobThinking('job1', 3, 'judge'));
+    hub.live(jobThinking('job2', 1, 'think'));
+
+    const stopped = await hub.confirm({
+      type: 'job.stopped',
+      jobId: 'job1',
+      reason: { kind: 'human', detail: '止めた' },
+    });
+
+    const late = collector();
+    await hub.subscribe(stopped.seq, late.send);
+    const kept = late.received.flatMap((m) =>
+      m.kind === 'live' && 'partId' in m.event ? [m.event.partId] : [],
+    );
+    expect(kept).toEqual(['job:job2:1:think']);
+  });
+});

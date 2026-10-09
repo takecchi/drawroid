@@ -43,8 +43,13 @@ function endsCopy(event: ConversationEvent, key: string): boolean {
       return key === `part:job:${event.jobId}:${event.iteration}:think`;
     case 'job.judge':
       return key === `part:job:${event.jobId}:${event.iteration}:judge`;
+    // 段の途中で止まったジョブの思考は、job.think / job.judge が来ないまま古くなる
     case 'job.stopped':
-      return key.startsWith(`progress:${event.jobId}:`) || key === `held:${event.jobId}`;
+      return (
+        key.startsWith(`progress:${event.jobId}:`) ||
+        key.startsWith(`part:job:${event.jobId}:`) ||
+        key === `held:${event.jobId}`
+      );
     case 'turn.ended':
       return key === 'status';
     default:
