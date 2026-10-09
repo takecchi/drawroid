@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "format": "prettier --write .",
+    "storybook": "pnpm --filter @drawroid/ui storybook",
     "format:check": "prettier --check .",
     "check:no-attribution-trailers": "node ./scripts/check-no-attribution-trailers.mjs",
     "check:duplicate-json-keys": "node ./scripts/check-duplicate-json-keys.mjs",
