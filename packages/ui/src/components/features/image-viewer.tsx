@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { useRef, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type PointerEvent, type ReactNode } from 'react';
 
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
@@ -16,6 +16,14 @@ export interface ViewerImage {
   /** 読み上げと見出しに使う呼び方（「3 回目の画像 2 番」） */
   title: string;
   alt: string;
+}
+
+/** 文字を打つ所では、左右のキーは文字の間を動くためのもの */
+function isEditable(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+  );
 }
 
 // これより大きく横へ動かしたら、前後の画像へ送る（px）。縦の動きより横の動きが大きいときだけ
@@ -50,12 +58,23 @@ export function ImageViewer({
     const next = images[index + step];
     if (next !== undefined) onOpenKeyChange(next.key);
   };
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'ArrowLeft') go(-1);
-    else if (event.key === 'ArrowRight') go(1);
-    else return;
-    event.preventDefault();
-  };
+  // 左右のキーは窓の要素ではなく window で受ける: 窓の中のボタン（お気に入りなど）を押すと、送っている間ボタンが押せなくなって
+  // 焦点が窓の外（body）へ落ち、窓の要素で受けていると左右で送れなくなるため
+  const goRef = useRef(go);
+  goRef.current = go;
+  const open = image !== undefined;
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || isEditable(event.target)) return;
+      if (event.key === 'ArrowLeft') goRef.current(-1);
+      else if (event.key === 'ArrowRight') goRef.current(1);
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
   const onPointerDown = (event: PointerEvent) => {
     swipeStart.current = { x: event.clientX, y: event.clientY };
   };
@@ -76,7 +95,6 @@ export function ImageViewer({
           aria-describedby={undefined}
           // 閉じるボタンは自前で置く: 既定のボタンは英語の名前（Close）を持つため
           showCloseButton={false}
-          onKeyDown={onKeyDown}
           onCloseAutoFocus={(event) => {
             const key = lastKey.current;
             const thumbnail =
