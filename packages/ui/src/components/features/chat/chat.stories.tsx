@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../../common';
+import { SiteHeader, siteNavLinkClass } from '../../layout';
 import {
   ChatComposer,
   ChatLayout,
@@ -58,85 +59,106 @@ const jobLink = (
   </a>
 );
 
+function ConversationScreen() {
+  const [value, setValue] = useState('');
+  return (
+    <ChatLayout
+      header={<span className="font-medium">夕暮れの海辺の少女</span>}
+      log={
+        <ChatLog followKey={0}>
+          <MessageRow author="human" meta="15:30">
+            夕暮れの海辺に立つ少女、描けますか？
+          </MessageRow>
+          <ReasoningBlock>
+            質問なので、まだ描かない。使える checkpoint と LoRA を確かめてから答える。
+          </ReasoningBlock>
+          <ToolCallCard
+            name="list_capabilities"
+            args="kind: checkpoint, lora"
+            state="ok"
+            result="checkpoint 3件・LoRA 12件（風景・逆光の LoRA あり）"
+          />
+          <MessageRow author="ai">
+            描けます。風景向けの checkpoint と、逆光の LoRA が使えます。描きましょうか？
+          </MessageRow>
+          <MessageRow author="human" meta="15:31">
+            お願い。柔らかい光で
+          </MessageRow>
+          <ToolCallCard
+            name="start_drawing"
+            args="request: 夕暮れの海辺に立つ少女。柔らかい光で / 5 回まで"
+            state="ok"
+            result="ジョブ 20261009-153112-k3f9 を作った"
+          />
+          <MessageRow author="ai">描きます。</MessageRow>
+          <JobStartCard
+            request="夕暮れの海辺に立つ少女。柔らかい光で"
+            conditions={['AI が意図どおりと判断したら', '5 回まで']}
+            permissions="prompt・seed・steps を AI に任せる"
+            link={jobLink}
+          />
+          <ThinkNote
+            iteration={1}
+            rationale="逆光の LoRA を弱めに足し、夕焼けの色を prompt に入れる"
+            changes={['LoRA backlight 0.6', 'steps 28']}
+          />
+          <ImageRow
+            iteration={1}
+            link={jobLink}
+            images={IMAGES.map((src, index) => ({
+              key: String(index),
+              href: src,
+              src,
+              alt: `1 回目の画像 ${index}`,
+              score: ['0.62', '0.48', '0.55'][index],
+              issues: index === 1 ? ['手の形が崩れている'] : ['空の色が強すぎる'],
+              verdict: index === 0 ? 'favorite' : null,
+              actions: <SmallButtons />,
+            }))}
+          />
+          <JudgeNote iteration={1} canStop={false} nextChange="空の彩度を下げ、手を隠す構図に" />
+          <GenerationProgress iteration={2} progress={0.35} step={7} steps={20} etaMs={5200} />
+          <MessageRow author="human" meta="15:33">
+            あ、1枚目でいいから、次は髪をなびかせて
+          </MessageRow>
+          <StatusLine status="job.paused" />
+        </ChatLog>
+      }
+      composer={
+        <ChatComposer
+          value={value}
+          onChange={setValue}
+          onSend={() => setValue('')}
+          onStop={() => undefined}
+          running
+        />
+      }
+    />
+  );
+}
+
 /** オーナーの例: 質問には調べて答え、指示では描き、評価の最中に割り込む */
 export const Conversation: Story = {
-  render: () => {
-    const [value, setValue] = useState('');
-    return (
-      <ChatLayout
-        header={<span className="font-medium">夕暮れの海辺の少女</span>}
-        log={
-          <ChatLog followKey={0}>
-            <MessageRow author="human" meta="15:30">
-              夕暮れの海辺に立つ少女、描けますか？
-            </MessageRow>
-            <ReasoningBlock>
-              質問なので、まだ描かない。使える checkpoint と LoRA を確かめてから答える。
-            </ReasoningBlock>
-            <ToolCallCard
-              name="list_capabilities"
-              args="kind: checkpoint, lora"
-              state="ok"
-              result="checkpoint 3件・LoRA 12件（風景・逆光の LoRA あり）"
-            />
-            <MessageRow author="ai">
-              描けます。風景向けの checkpoint と、逆光の LoRA が使えます。描きましょうか？
-            </MessageRow>
-            <MessageRow author="human" meta="15:31">
-              お願い。柔らかい光で
-            </MessageRow>
-            <ToolCallCard
-              name="start_drawing"
-              args="request: 夕暮れの海辺に立つ少女。柔らかい光で / 5 回まで"
-              state="ok"
-              result="ジョブ 20261009-153112-k3f9 を作った"
-            />
-            <MessageRow author="ai">描きます。</MessageRow>
-            <JobStartCard
-              request="夕暮れの海辺に立つ少女。柔らかい光で"
-              conditions={['AI が意図どおりと判断したら', '5 回まで']}
-              permissions="prompt・seed・steps を AI に任せる"
-              link={jobLink}
-            />
-            <ThinkNote
-              iteration={1}
-              rationale="逆光の LoRA を弱めに足し、夕焼けの色を prompt に入れる"
-              changes={['LoRA backlight 0.6', 'steps 28']}
-            />
-            <ImageRow
-              iteration={1}
-              link={jobLink}
-              images={IMAGES.map((src, index) => ({
-                key: String(index),
-                href: src,
-                src,
-                alt: `1 回目の画像 ${index}`,
-                score: ['0.62', '0.48', '0.55'][index],
-                issues: index === 1 ? ['手の形が崩れている'] : ['空の色が強すぎる'],
-                verdict: index === 0 ? 'favorite' : null,
-                actions: <SmallButtons />,
-              }))}
-            />
-            <JudgeNote iteration={1} canStop={false} nextChange="空の彩度を下げ、手を隠す構図に" />
-            <GenerationProgress iteration={2} progress={0.35} step={7} steps={20} etaMs={5200} />
-            <MessageRow author="human" meta="15:33">
-              あ、1枚目でいいから、次は髪をなびかせて
-            </MessageRow>
-            <StatusLine status="job.paused" />
-          </ChatLog>
-        }
-        composer={
-          <ChatComposer
-            value={value}
-            onChange={setValue}
-            onSend={() => setValue('')}
-            onStop={() => undefined}
-            running
-          />
-        }
-      />
-    );
-  },
+  render: () => <ConversationScreen />,
+};
+
+const NAV = ['会話', '生成と設定', '依頼', 'ジョブ', '記憶', '許可', '候補の説明'];
+
+/** 狭い幅（携帯）で、上の帯の下に会話の画面を置いたもの。入力欄が画面の下に収まる */
+export const ConversationNarrow: Story = {
+  globals: { viewport: { value: 'mobile2', isRotated: false } },
+  render: () => (
+    <>
+      <SiteHeader brand="drawroid">
+        {NAV.map((label, index) => (
+          <a key={label} href={`#${label}`} className={siteNavLinkClass({ isActive: index === 0 })}>
+            {label}
+          </a>
+        ))}
+      </SiteHeader>
+      <ConversationScreen />
+    </>
+  ),
 };
 
 export const Messages: Story = {
