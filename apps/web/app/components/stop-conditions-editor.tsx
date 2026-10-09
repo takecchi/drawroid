@@ -46,7 +46,8 @@ export function StopConditionsEditor({
       const { draft } = await parseStopConditionsText(text);
       onChange(stopConditionsToForm(draft.conditions));
       setNotes({ unparsed: draft.unparsed, clippedFrom: draft.clippedFrom });
-      setWarnings(draft.warnings);
+      // never-stops は案の警告として持たない: blocker が同じ文言を常に出しており、案の直後に2回並ぶため
+      setWarnings(draft.warnings.filter((warning) => warning.kind !== 'never-stops'));
     } catch (caught) {
       setParseError(describeParseError(caught));
     } finally {

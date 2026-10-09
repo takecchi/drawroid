@@ -78,7 +78,7 @@ describe('StopConditionsEditor', () => {
     expect(screen.getByLabelText(/AI が意図どおり/)).toHaveProperty('checked', false);
   });
 
-  it('shows the never-stops warning and the phrases it could not read', async () => {
+  it('says once that a draft never stops and shows the phrases it could not read', async () => {
     parse.mockResolvedValue(
       draftOf({
         conditions: { aiJudgement: false },
@@ -90,8 +90,11 @@ describe('StopConditionsEditor', () => {
 
     await makeDraftFrom('夕方になったら止める');
 
-    expect(await screen.findByText('警告: この案は止まらない')).toBeTruthy();
-    expect(screen.getByText('夕方になったら')).toBeTruthy();
+    expect(await screen.findByText('夕方になったら')).toBeTruthy();
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.textContent).toContain('この条件では止まらない');
+    expect(screen.queryByText('警告: この案は止まらない')).toBeNull();
   });
 
   it('keeps the confirm button disabled and explains why while nothing can stop the job', () => {
