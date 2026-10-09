@@ -28,7 +28,7 @@ import { toLlmCallRecord } from '../llm/record.js';
 import type { MemoryItem } from '../memory/item.js';
 import type { MemoryLimits } from '../memory/limits.js';
 import { DEFAULT_DISTILL_BUDGET, type DistillBudget } from '../memory/distill/budget.js';
-import type { StoppedJobMaterial } from '../memory/distill/input.js';
+import type { InterventionMaterial, StoppedJobMaterial } from '../memory/distill/input.js';
 import type { DistillLog } from '../memory/distill/log.js';
 import { distillStoppedJob } from '../memory/distill/run.js';
 import type { MemoryStore } from '../memory/store.js';
@@ -52,7 +52,14 @@ import {
   type StageJudgement,
 } from './carry.js';
 import { LlmGate } from './llm-gate.js';
-import { buildJudgeInput, buildRefGistInput, buildThinkInput, type MemoryInput } from './inputs.js';
+import {
+  buildJudgeInput,
+  buildRefGistInput,
+  buildThinkInput,
+  progressOf,
+  type MemoryInput,
+  type Progress,
+} from './inputs.js';
 import {
   buildJudgeOutputSchema,
   buildThinkOutputSchema,
@@ -103,6 +110,8 @@ export type JobMemory = {
   /** 役ごとの記憶の予算。job.json に budgets が無い古いジョブの既定。省けば既定値 */
   limits?: MemoryLimits;
   distillBudget?: DistillBudget;
+  /** ジョブを作った会話での、そのジョブに関わる人間の発言（古い順）。止まったときの蒸留の材料に足す */
+  conversationMessages?: (spec: AutoJobSpec) => Promise<readonly InterventionMaterial[]>;
 };
 
 export type JobRunnerDeps = {
@@ -461,6 +470,7 @@ export class JobRunner {
           .sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))
           .map((i) => ({ id: i.interventionId, text: i.text })),
         selections: await summarizeSelections(store, jobId),
+        conversation: (await memory.conversationMessages?.(spec)) ?? [],
       };
       const startedAt = this.now();
       const callId = this.newCallId(startedAt);
@@ -688,7 +698,12 @@ export class JobRunner {
       const memoryItems = await this.readMemory();
       const think = await this.think(
         spec,
-        conditions,
+        progressOf({
+          iteration,
+          conditions,
+          imagesGenerated: state.imagesGenerated,
+          elapsedMs: this.now().getTime() - Date.parse(state.startedAt),
+        }),
         withReferences,
         iteration,
         paramsPlan,
@@ -773,7 +788,7 @@ export class JobRunner {
 
   private think(
     spec: AutoJobSpec,
-    conditions: StopConditions,
+    progress: Progress,
     carry: Carry,
     iteration: number,
     paramsPlan: ParamsPlan,
@@ -781,13 +796,13 @@ export class JobRunner {
     signal: AbortSignal,
   ): Promise<ThinkOutput> {
     return this.llmStage(signal, (stageSignal) =>
-      this.thinkOnce(spec, conditions, carry, iteration, paramsPlan, memoryItems, stageSignal),
+      this.thinkOnce(spec, progress, carry, iteration, paramsPlan, memoryItems, stageSignal),
     );
   }
 
   private async thinkOnce(
     spec: AutoJobSpec,
-    conditions: StopConditions,
+    progress: Progress,
     carry: Carry,
     iteration: number,
     paramsPlan: ParamsPlan,
@@ -803,13 +818,9 @@ export class JobRunner {
       reopenClaimedBy(iteration, await store.listInterventions(spec.jobId)),
       budget.interventions,
     );
-    const max = conditions.maxIterations;
     const messages = buildThinkInput({
       carry,
-      progress: {
-        iteration,
-        ...(max === undefined ? {} : { remainingIterations: max - iteration + 1 }),
-      },
+      progress,
       allowed: Object.keys(paramsPlan.params.schema.shape) as ParamKey[],
       budget,
       window: llm.describe('think').window,

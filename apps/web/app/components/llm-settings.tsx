@@ -188,7 +188,7 @@ export function LlmSettings() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      await saveLlmSettings(buildLlmSettings(values, stored));
+      await saveLlmSettings(buildLlmSettings(values));
       setEdited(undefined);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
@@ -328,6 +328,32 @@ export function LlmSettings() {
             {!values.talkSameAsThink && (
               <RoleFields role="talk" values={values.talk} onChange={(talk) => change({ talk })} />
             )}
+          </SubSection>
+          <SubSection title="再試行の回数">
+            <FieldRow>
+              <Field label="出力が形に合わないとき">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={values.validationRetries}
+                  onChange={(event) => change({ validationRetries: event.target.value })}
+                  aria-label="出力が形に合わないときの再試行の回数"
+                  placeholder="既定"
+                  className="w-32"
+                />
+              </Field>
+              <Field label="繋がらない・混んでいるとき">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={values.networkRetries}
+                  onChange={(event) => change({ networkRetries: event.target.value })}
+                  aria-label="繋がらない・混んでいるときの再試行の回数"
+                  placeholder="既定"
+                  className="w-32"
+                />
+              </Field>
+            </FieldRow>
           </SubSection>
           <Button type="submit" variant="primary" disabled={saving}>
             LLM の設定を保存

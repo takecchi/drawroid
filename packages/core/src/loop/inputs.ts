@@ -14,14 +14,57 @@ import {
 import type { CandidateKind } from '../backend.js';
 import type { ShownCandidate } from '../candidates/select.js';
 import type { ParamKey } from '../params/param-key.js';
+import type { StopConditions } from '../job/types.js';
 import type { Budget, ModelWindow } from './budget.js';
 import type { CarriedResult, Carry } from './carry.js';
 
 export type Progress = {
   /** これから回す回（1始まり） */
   iteration: number;
+  /** 止める条件に回数があるときだけ。この回を含む */
   remainingIterations?: number;
+  /** 止める条件に枚数があるときだけ */
+  remainingImages?: number;
+  /** 止める条件に時間があるときだけ */
+  remainingMs?: number;
 };
+
+/**
+ * 考える役に見せる進み具合。止める条件の残りは、その条件があるときだけ載せる（無い上限を「無限」とは書かない）。
+ * 残りは 0 で止める: 境目の判定と時計の読みの間に過ぎた分で、負の残りを見せないため
+ */
+export function progressOf(args: {
+  iteration: number;
+  conditions: StopConditions;
+  imagesGenerated: number;
+  elapsedMs: number;
+}): Progress {
+  const { iteration, conditions, imagesGenerated, elapsedMs } = args;
+  const { maxIterations, maxImages, maxDurationMs } = conditions;
+  return {
+    iteration,
+    ...(maxIterations === undefined ? {} : { remainingIterations: maxIterations - iteration + 1 }),
+    ...(maxImages === undefined
+      ? {}
+      : { remainingImages: Math.max(0, maxImages - imagesGenerated) }),
+    ...(maxDurationMs === undefined ? {} : { remainingMs: Math.max(0, maxDurationMs - elapsedMs) }),
+  };
+}
+
+/** 進み具合の残りを、回数 → 枚数 → 時間の順に1行で書く（止める条件を確かめる順と同じ） */
+function describeRemaining(progress: Progress): string {
+  const parts = [
+    ...(progress.remainingIterations === undefined ? [] : [`${progress.remainingIterations} 回`]),
+    ...(progress.remainingImages === undefined ? [] : [`${progress.remainingImages} 枚`]),
+    ...(progress.remainingMs === undefined ? [] : [describeMs(progress.remainingMs)]),
+  ];
+  return parts.length === 0 ? '' : `（残り ${parts.join('・')}）`;
+}
+
+function describeMs(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  return minutes === 0 ? '1 分未満' : `約 ${minutes} 分`;
+}
 
 /** 見る役に渡す縮小版 */
 export type PreviewImage = {
@@ -302,8 +345,7 @@ export function buildThinkInput(args: {
   const { carry, progress, allowed, budget, window, memory, interventions, candidates } = args;
   const withImageSourceKeys = args.withImageSourceKeys ?? false;
   const w = new SectionWriter();
-  const remaining =
-    progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
+  const remaining = describeRemaining(progress);
   const required: Section[] = [
     intentSection(w, carry, budget),
     {

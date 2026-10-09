@@ -4,11 +4,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  backfillJobEvents,
   bridgeJobEvents,
+  closeInterruptedTurns,
   relayJobReasoning,
   ConversationHubs,
+  conversationMessagesFor,
   createDrawingTools,
   createGenerationProgress,
+  createMemoryTools,
   createReadOnlyTools,
   DEFAULT_BUDGET,
   jobSummaryFor,
@@ -97,6 +101,21 @@ async function main() {
   const manualRunner = new ManualGenerationRunner({ backend, store });
   process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
 
+  // 自動ジョブを再開する前・話す役を立てる前に、落ちる前の会話を整える: 途切れたターンを閉じ、
+  // 段のファイルはあるのに会話に出ていないジョブのイベントを書き足す
+  const closedTurns = await closeInterruptedTurns({
+    store: conversationStore,
+    hubs: conversationHubs,
+  });
+  if (closedTurns > 0) log(`drawroid: 再起動で途切れた会話のターンを閉じた: ${closedTurns}`);
+  const backfilled = await backfillJobEvents({
+    jobs: store,
+    conversations: conversationStore,
+    hubs: conversationHubs,
+  });
+  if (backfilled > 0)
+    log(`drawroid: 会話に出ていなかったジョブのイベントを書き足した: ${backfilled}`);
+
   const memoryStore = createFsMemoryStore(dataPaths(root).memory);
   const readPermissions = createPermissionReader(() => readPermissionSettings(configPath), log);
   // 起動のときに一度読む: 読めない行があれば、ジョブを待たずにログで知らせる
@@ -111,7 +130,11 @@ async function main() {
     // 回の境目ごとに config.json を読み直す: API で変えた許可を、再起動せずに走行中のジョブの次の回から効かせるため
     permissions: readPermissions,
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
-    memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
+    memory: {
+      store: memoryStore,
+      distillLog: createFsDistillLog(root),
+      conversationMessages: conversationMessagesFor(conversationStore),
+    },
     generationProgress: createGenerationProgress({
       backend,
       hubs: conversationHubs,
@@ -203,6 +226,7 @@ async function main() {
         budgets: async () => (await budgetSettings.read()).effective,
         now: () => new Date(),
       }),
+      ...createMemoryTools({ memory: memoryStore, now: () => new Date() }),
     ],
     jobSummary: jobSummaryFor({
       jobs: store,
