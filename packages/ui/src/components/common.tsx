@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import {
   useState,
   type ButtonHTMLAttributes,
@@ -15,6 +16,7 @@ import { Button as ShadcnButton } from '@/components/ui/button';
 import { Card as ShadcnCard } from '@/components/ui/card';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Spinner as ShadcnSpinner } from '@/components/ui/spinner';
 import { Textarea as ShadcnTextarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
@@ -71,36 +73,62 @@ export function SubSection({
   );
 }
 
+// 既定は縁のある outline にする: 縁の無い secondary は、暗い地の上では押せることが形から読めないため
 const BUTTON_VARIANTS = {
-  primary: 'default',
-  // 既定は縁のある outline にする: 縁の無い secondary は、押せることが形から読めないため
-  default: 'outline',
-  ghost: 'ghost',
-  danger: 'destructive',
+  primary: { shadcn: 'default', className: 'shadow-sm shadow-primary/20' },
+  default: { shadcn: 'outline', className: 'dark:border-foreground/20' },
+  ghost: { shadcn: 'ghost', className: '' },
+  danger: { shadcn: 'destructive', className: 'border-destructive/40' },
+} as const;
+
+const BUTTON_SIZES = {
+  // 狭い画面ではタップ標的を 44px（`h-11`）にする: 指で押す先は 44px 以上が下限のため
+  sm: { shadcn: 'sm', className: 'h-11 px-3 text-xs md:h-7 md:px-2' },
+  md: { shadcn: 'default', className: 'h-11 px-3 text-sm md:h-9' },
 } as const;
 
 export function Button({
   variant = 'default',
+  size = 'md',
+  loading = false,
+  disabled,
   className,
+  children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof BUTTON_VARIANTS }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: keyof typeof BUTTON_VARIANTS;
+  size?: keyof typeof BUTTON_SIZES;
+  /** 送っている間など。輪を出して押せなくする */
+  loading?: boolean;
+}) {
   return (
     <ShadcnButton
       // type を明示する: 省略すると form の中で submit になり、押した覚えのない送信を作るため
       type="button"
-      variant={BUTTON_VARIANTS[variant]}
-      className={cn('disabled:cursor-not-allowed', className)}
+      variant={BUTTON_VARIANTS[variant].shadcn}
+      size={BUTTON_SIZES[size].shadcn}
+      className={cn(
+        'disabled:cursor-not-allowed',
+        BUTTON_VARIANTS[variant].className,
+        BUTTON_SIZES[size].className,
+        className,
+      )}
+      disabled={disabled === true || loading}
       {...props}
-    />
+    >
+      {loading && <ShadcnSpinner className="size-3.5" aria-hidden role={undefined} />}
+      {children}
+    </ShadcnButton>
   );
 }
 
 const BADGE_TONES = {
   neutral: { variant: 'secondary', className: '' },
-  ok: { variant: 'outline', className: 'border-ok/40 bg-ok/10 text-ok' },
-  warn: { variant: 'outline', className: 'border-warn/40 bg-warn/10 text-warn' },
+  ok: { variant: 'outline', className: 'border-ok/30 bg-ok/10 text-ok' },
+  warn: { variant: 'outline', className: 'border-warn/30 bg-warn/10 text-warn' },
   danger: { variant: 'destructive', className: '' },
   muted: { variant: 'outline', className: 'text-muted-foreground' },
+  accent: { variant: 'default', className: '' },
 } as const;
 
 export type BadgeTone = keyof typeof BADGE_TONES;
@@ -113,7 +141,12 @@ export function Badge({
   return (
     <ShadcnBadge
       variant={BADGE_TONES[tone].variant}
-      className={cn(BADGE_TONES[tone].className, className)}
+      className={cn(
+        // 折り返しを許す: 中身は長さの上限が無い文字列（モデル名・候補の名前）で、折り返さないとはみ出すため
+        'h-auto shrink-0 overflow-visible break-words whitespace-normal',
+        BADGE_TONES[tone].className,
+        className,
+      )}
       {...props}
     />
   );
@@ -250,6 +283,7 @@ export function Select({
 export function ErrorNote({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <Alert variant="destructive" className={cn('border-destructive/40', className)}>
+      <AlertTriangle aria-hidden />
       <AlertDescription className="min-w-0 break-words text-destructive">
         {children}
       </AlertDescription>
@@ -263,11 +297,13 @@ export function WarnNote({ className, children }: { className?: string; children
     <div
       role="status"
       className={cn(
-        'rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm break-words text-warn',
+        'flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn',
         className,
       )}
     >
-      {children}
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      {/* div にする: 段落や一覧を入れる呼び手があり、span の中へ入れると DOM の入れ子が崩れるため */}
+      <div className="min-w-0 break-words">{children}</div>
     </div>
   );
 }
@@ -276,6 +312,25 @@ export function WarnNote({ className, children }: { className?: string; children
 export function OkNote({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <p className={cn('rounded-md bg-ok/10 px-3 py-2 text-sm text-ok', className)}>{children}</p>
+  );
+}
+
+/** 読み込み中。輪は読み上げから外し、文言を読ませる（shadcn の輪は英語の `aria-label` を持つため） */
+export function Spinner({
+  label = '読み込み中',
+  className,
+}: {
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      role="status"
+      className={cn('flex items-center gap-2 text-sm text-muted-foreground', className)}
+    >
+      <ShadcnSpinner aria-hidden role={undefined} aria-label={undefined} />
+      {label}
+    </div>
   );
 }
 

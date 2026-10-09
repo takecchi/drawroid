@@ -20,6 +20,7 @@ import {
   OkNote,
   Section,
   Select,
+  Spinner,
   SubSection,
   Textarea,
   WarnNote,
@@ -41,6 +42,22 @@ export const Buttons: Story = {
       <Button variant="ghost">閉じる</Button>
       <Button variant="danger">ジョブを止める</Button>
       <Button disabled>押せない</Button>
+      <Button variant="primary" loading>
+        送っている
+      </Button>
+    </FieldRow>
+  ),
+};
+
+// 狭い画面では、どちらの大きさも指で押せる高さ（44px）になる
+export const ButtonSizes: Story = {
+  render: () => (
+    <FieldRow>
+      <Button size="sm">小さい</Button>
+      <Button>ふつう</Button>
+      <Button size="sm" variant="ghost">
+        小さい ghost
+      </Button>
     </FieldRow>
   ),
 };
@@ -53,6 +70,8 @@ export const Badges: Story = {
       <Badge tone="muted">終了</Badge>
       <Badge>手動</Badge>
       <Badge tone="danger">失敗</Badge>
+      <Badge tone="accent">選択中</Badge>
+      <Badge className="max-w-48">長いモデル名 qwen3-vl-30b-a3b-instruct-q4_k_m を折り返す</Badge>
     </FieldRow>
   ),
 };
@@ -104,8 +123,16 @@ export const Notes: Story = {
     <div className="space-y-2">
       <ErrorNote>送れない: バックエンドに繋がらない（http://127.0.0.1:7860）</ErrorNote>
       <WarnNote>入力が長いので途中で切って読んだ</WarnNote>
+      <WarnNote>
+        <p>止める条件が無い。</p>
+        <BulletList>
+          <li>回数の上限</li>
+          <li>AI の判断</li>
+        </BulletList>
+      </WarnNote>
       <OkNote>送った。次の回の「考える」から反映される</OkNote>
       <Muted>まだ画像は無い。</Muted>
+      <Spinner label="ジョブを読み込み中" />
     </div>
   ),
 };
