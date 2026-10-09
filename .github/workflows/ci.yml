@@ -98,3 +98,7 @@ jobs:
       # 会話を1つ開けて、コンソールのエラー・失敗した読み込みが無いことを見る。
       # ブラウザは取得しない: ubuntu-latest に入っている Chrome を使う（scripts/check-packed-browser.mjs）。
       - run: pnpm check:packed-browser
+
+      # 同じ job に足す: build 済みの成果物と Chrome を使い回せるため。偽の LLM と偽の Forge は scripts/packed-conversation/ の部品を使う。
+      # 会話で頼み、思考と返答が流れること・進み具合のカード・止めるでターンが止まること・再読み込みとサーバの立て直しのあとにログが戻ること（SSE の復帰）を、画面で見る。
+      - run: pnpm check:packed-browser-conversation
