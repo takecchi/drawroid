@@ -105,3 +105,18 @@ describe('the descriptions of the tools of the talking role', () => {
     expect(descriptionOf('remember')).toContain('覚えておいて');
   });
 });
+
+describe('how the talking role points at an image', () => {
+  const schemaOf = (name: string) => tools.find((tool) => tool.name === name)!.inputSchema;
+
+  it.each(['adopt_image', 'review_image'])(
+    '%s counts the images from 1, as the summary does, and refuses anything else',
+    (name) => {
+      const schema = schemaOf(name);
+      expect(schema.safeParse({ iteration: 1, number: 2 }).success).toBe(true);
+      // 0 から数えた数や、前の 0 から数える欄は、黙って1枚目にせずに断る
+      expect(schema.safeParse({ iteration: 1, number: 0 }).success).toBe(false);
+      expect(schema.safeParse({ iteration: 1, index: 1 }).success).toBe(false);
+    },
+  );
+});

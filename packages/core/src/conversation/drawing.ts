@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import type { CandidateKind } from '../backend.js';
 import type { JobStore } from '../job/store.js';
 import type { JobState } from '../job/types.js';
@@ -115,6 +117,29 @@ export type Judgement = {
 };
 
 /**
+ * 話す役から見える画像の数え方。回も枚目も 1 から数える（要約・評価の文・ツールの入力のどれも同じ）。
+ * 置き場所・API・画面の中の画像（ImageRef の index）は 0 から数え、話す役との境目でだけ読み替える。
+ */
+// 話す役に 0 から数える数を見せない: 要約の「2枚目」を小さなモデルが 0 から数える欄にそのまま渡し、
+// 範囲の中で1つずれた別の画像を黙って選んでいたため。人の言い方（「2枚目」）も画面（「画像 2 番」）も 1 から数える
+export function talkImageLabel(image: { iteration: number; index: number }): string {
+  return `${image.iteration} 回目の ${image.index + 1}枚目`;
+}
+
+/** 話す役のツールが画像を指す欄。0 は断る（0 から数えた数を渡されたときに、黙って別の画像にしないため） */
+export const talkImageNumberSchema = z
+  .number()
+  .int()
+  .positive()
+  .optional()
+  .describe('その回の何枚目か（1 から。要約や評価の「N枚目」と同じ数え方）。省けば 1枚目');
+
+/** talkImageNumberSchema の数を、置き場所の画像の index（0 から）にする */
+export function indexOfTalkImageNumber(number: number | undefined): number {
+  return (number ?? 1) - 1;
+}
+
+/**
  * 見る役の短い欄（点数・問題点・次に変えること・止めてよいか）を、決まった型の文にする。
  */
 // 見る役に「人間向けの一言」の欄を足さない: 出力トークンが増えるため（設計の推奨 6）
@@ -159,7 +184,7 @@ export function summarizeJobForTalk(
     parts.push(`${carry.completedIterations} 回済み。`);
     if (carry.best !== undefined) {
       const best = carry.best;
-      const image = `${best.iteration} 回目の ${best.imageIndex + 1}枚目`;
+      const image = talkImageLabel({ iteration: best.iteration, index: best.imageIndex });
       const issues = clip(best.issues.join('・'), 80) || '問題なし';
       // 人が選んで止まったときは、最良が選ばれた画像になる（選択による評価は必ず最良になる）。点数（選択では 1）は出さず、選んだと書く
       parts.push(

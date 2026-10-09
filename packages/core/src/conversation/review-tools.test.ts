@@ -136,7 +136,7 @@ describe('review_image', () => {
       'job-1': job(runningState(), { judged: new Map([[1, judged]]) }),
     });
 
-    const result = await review({ iteration: 1, index: 1 });
+    const result = await review({ iteration: 1, number: 2 });
 
     expect(result.ok).toBe(true);
     expect(result.result).toContain(
@@ -152,7 +152,7 @@ describe('review_image', () => {
   it('calls the judge once for an image nobody evaluated, with its one preview only, and records the call', async () => {
     const { review, llm, calls } = setup({ 'job-1': job(stoppedState()) });
 
-    const result = await review({ iteration: 2, index: 1 });
+    const result = await review({ iteration: 2, number: 2 });
 
     expect(result).toMatchObject({ ok: true });
     expect(result.result).toContain('2枚目は 0.70（手が崩れている）');
@@ -196,8 +196,8 @@ describe('review_image', () => {
   it('returns the first evaluation, without calling the judge, when the same image is asked again', async () => {
     const { review, llm } = setup({ 'job-1': job(stoppedState()) });
 
-    const first = await review({ iteration: 2, index: 0 });
-    const second = await review({ iteration: 2, index: 0 });
+    const first = await review({ iteration: 2, number: 1 });
+    const second = await review({ iteration: 2, number: 1 });
 
     expect(llm.calls).toHaveLength(1);
     expect(second).toEqual(first);
@@ -225,8 +225,8 @@ describe('review_image', () => {
   });
 
   it.each([
-    ['an iteration that does not exist', { iteration: 9 }, '画像 9-0 は無い'],
-    ['an image that does not exist', { iteration: 1, index: 5 }, '画像 1-5 は無い'],
+    ['an iteration that does not exist', { iteration: 9 }, '9 回目の 1枚目の画像は無い'],
+    ['an image that does not exist', { iteration: 1, number: 6 }, '1 回目の 6枚目の画像は無い'],
     ['a job of another conversation', { jobId: 'other', iteration: 1 }, 'この会話のジョブではない'],
     ['a job that does not exist', { jobId: 'nothing', iteration: 1 }, 'この会話のジョブではない'],
   ])('refuses %s, saying what is wrong, without calling the judge', async (_, input, message) => {

@@ -16,6 +16,7 @@ import {
   DEFAULT_BUDGETS,
   DEFAULT_TALK_LIMITS,
   JobRunner,
+  jobSummaryFor,
   relayJobHeld,
   TalkRunner,
   type ConversationEvent,
@@ -28,6 +29,7 @@ import {
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script, type TalkScript } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { FsConversationStore } from './conversation-store.js';
 import { FsJobStore } from './job-store.js';
@@ -100,6 +102,8 @@ type SetupOptions = {
   gateStartDrawing?: boolean;
   /** adopt_image がジョブに採らせる直前に割り込む（その間にジョブが止まる競合を作るため） */
   beforeAdopt?: (jobRunner: JobRunner, jobId: string) => Promise<void>;
+  /** 話す役に、本物と同じジョブの要約（jobSummaryFor）を渡す */
+  jobSummary?: boolean;
 };
 
 async function setup(options: SetupOptions = {}) {
@@ -132,6 +136,7 @@ async function setup(options: SetupOptions = {}) {
             stop: (jobId) => jobRunner.stop(jobId),
             addInstruction: (jobId, text) => jobRunner.addInstruction(jobId, text),
             changeStopConditions: (jobId, change) => jobRunner.changeStopConditions(jobId, change),
+            addReference: (jobId, reference) => jobRunner.addReference(jobId, reference),
             adopt: async (jobId, image) => {
               await beforeAdopt(jobRunner, jobId);
               return jobRunner.adopt(jobId, image);
@@ -165,6 +170,9 @@ async function setup(options: SetupOptions = {}) {
     llm: () => llm,
     tools,
     limits: async () => DEFAULT_TALK_LIMITS,
+    ...(options.jobSummary === true && {
+      jobSummary: jobSummaryFor({ jobs, chars: async () => DEFAULT_TALK_LIMITS.jobChars }),
+    }),
     jobs: {
       active: (conversationId) => activeJobOfConversation(jobs, conversationId),
       hold: (jobId) => jobRunner.holdLlmStages(jobId),
@@ -244,7 +252,7 @@ describe('a human message while the job of the conversation is running', () => {
             ? {
                 text: '採ります。',
                 toolCalls: [
-                  { name: 'adopt_image', input: { iteration: 1, index: 1 } },
+                  { name: 'adopt_image', input: { iteration: 1, number: 2 } },
                   { name: 'revise_drawing', input: { instruction: '夕焼けにして' } },
                 ],
               }
@@ -331,7 +339,7 @@ describe('a human message while the job of the conversation is running', () => {
       judge: judging.script,
       talk: (_call, n) =>
         n === 0
-          ? { toolCalls: [{ name: 'adopt_image', input: { iteration: 1, index: 5 } }] }
+          ? { toolCalls: [{ name: 'adopt_image', input: { iteration: 1, number: 5 } }] }
           : { text: '選べませんでした' },
     });
     // 描いている絵が無い会話
@@ -718,6 +726,61 @@ describe('interrupting from the human', () => {
 });
 
 describe('interrupting and adopting, in more detail', () => {
+  /**
+   * 小さなモデルの読み方: 要約の「最良は I 回目の N枚目」を読み、adopt_image の欄のうち説明に「回」「何枚目」とある欄へ、
+   * その数をそのまま入れる（数え方の違いを読み替えない）
+   */
+  const takesNumbersFromTheSummary: TalkScript = (call, n) => {
+    if (n > 0) return { text: '決めました' };
+    const best = /最良は (\d+) 回目の (\d+)枚目/.exec(textOf(call));
+    const spec = call.tools.find((tool) => tool.name === 'adopt_image');
+    if (best === null || spec === undefined) return { text: '分からない' };
+    const { properties } = z.toJSONSchema(spec.inputSchema) as {
+      properties: Record<string, { description?: string }>;
+    };
+    const fieldFor = (word: string) =>
+      Object.entries(properties).find(([, field]) => field.description?.includes(word))?.[0];
+    const input = {
+      [fieldFor('何枚目') ?? '']: Number(best[2]),
+      [fieldFor('回。') ?? '']: Number(best[1]),
+    };
+    return { toolCalls: [{ name: 'adopt_image', input }] };
+  };
+
+  it('adopts the very image the summary names, when the talk passes on the numbers it read', async () => {
+    // 1回目の3枚のうち、2枚目が最良
+    const judging = blocking(
+      (call) => ({
+        images: call.messages.user
+          .filter((part) => part.type === 'image')
+          .map((_, index) => ({ score: index === 1 ? 0.9 : 0.3, issues: [] })),
+        nextChange: 'そのまま',
+        canStop: false,
+      }),
+      (n) => n === 1,
+    );
+    const { say, talk, conversationId, jobs, jobRunner, submit } = await setup({
+      judge: judging.script,
+      talk: takesNumbersFromTheSummary,
+      jobSummary: true,
+    });
+    const jobId = await submit({ aiJudgement: false, maxIterations: 3 }, 3);
+    jobRunner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+
+    await say('一番いいのでいい');
+    await within(talk.idle(conversationId));
+    await within(jobRunner.idle());
+
+    expect(await jobs.readSelection(jobId, '1-1')).toMatchObject({ verdict: 'favorite' });
+    expect(await jobs.listSelections(jobId)).toHaveLength(1);
+    expect((await jobs.readState(jobId)).carry?.best).toMatchObject({
+      iteration: 1,
+      imageIndex: 1,
+    });
+    expect(await stoppedReason(jobs, jobId)).toBe('adopted');
+  });
+
   it('scope all while a tool runs: waits for the tool, then stops the job the tool made', async () => {
     const judging = blocking(judge, () => true);
     const { say, talk, conversationId, jobs, jobRunner, toolEntered, openTool } = await setup({

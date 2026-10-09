@@ -26,6 +26,8 @@ export type ChatItem =
       turnInterrupted?: string;
       /** 途切れたあと、同じ本文がもう送られた（「送り直す」を外す） */
       resent?: boolean;
+      /** 添えた画像の枚数 */
+      attachments: number;
     }
   | {
       kind: 'assistant';
@@ -293,7 +295,14 @@ function buildConfirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[
           items[index] = { ...(items[index] as ItemOf<'user'>), resent: true };
         }
         userIndex.set(event.seq, items.length);
-        items.push({ kind: 'user', key, seq: event.seq, at: event.at, text: event.text });
+        items.push({
+          kind: 'user',
+          key,
+          seq: event.seq,
+          at: event.at,
+          text: event.text,
+          attachments: event.attachments.length,
+        });
         break;
       }
       case 'turn.started':

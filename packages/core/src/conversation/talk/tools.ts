@@ -14,6 +14,7 @@ import { selectMemory } from '../../memory/select.js';
 import type { MemoryStore } from '../../memory/store.js';
 import type { ParamKey } from '../../params/param-key.js';
 import type { Permissions } from '../../permissions/permission.js';
+import { talkImageLabel } from '../drawing.js';
 import type { ConversationEvent } from '../events.js';
 import type { TalkLimits } from './limits.js';
 
@@ -189,7 +190,7 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
         parts.push(`${carry.completedIterations} 回済み`);
         if (carry.best !== undefined)
           parts.push(
-            `最良は ${carry.best.iteration} 回目の ${carry.best.imageIndex + 1}枚目（${carry.best.score.toFixed(2)}）`,
+            `最良は ${talkImageLabel({ iteration: carry.best.iteration, index: carry.best.imageIndex })}（${carry.best.score.toFixed(2)}）`,
           );
       }
       if (state.status === 'stopped') parts.push(`止まった理由: ${state.reason.detail}`);
