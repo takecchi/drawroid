@@ -336,6 +336,25 @@ describe('ConversationView', () => {
     expect(recheckBackendStatus).toHaveBeenCalledTimes(1);
   });
 
+  // 読み直すのは、いちばん新しいバックエンドの失敗ごと: 前に一度落ちた会話でも、また落ちたら気づけるように
+  it('reads the backend again when another job stops because the backend failed again', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    const failed = (jobId: string) =>
+      confirmed({
+        type: 'job.stopped',
+        jobId,
+        reason: { kind: 'error', detail: '生成の段: 繋がらない', backendErrorKind: 'unreachable' },
+      });
+
+    stream.emit(failed(JOB));
+    await waitFor(() => expect(recheckBackendStatus).toHaveBeenCalledTimes(1));
+    stream.emit(failed('20261009-160000-z9y8'));
+
+    await waitFor(() => expect(recheckBackendStatus).toHaveBeenCalledTimes(2));
+  });
+
   it.each([
     ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
     ['it reached its limit', { kind: 'limit:iterations', detail: '3 回に達した' }],
