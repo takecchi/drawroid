@@ -1,0 +1,24 @@
+{
+  "txt2img": [
+    "prompt matrix",
+    "prompts from file or textbox",
+    "x/y/z plot",
+    "refiner",
+    "seed",
+    "controlnet"
+  ],
+  "img2img": [
+    "img2img alternative test",
+    "loopback",
+    "outpainting mk2",
+    "poor man's outpainting",
+    "prompt matrix",
+    "prompts from file or textbox",
+    "sd upscale",
+    "x/y/z plot",
+    "refiner",
+    "seed",
+    "soft inpainting",
+    "controlnet"
+  ]
+}

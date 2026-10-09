@@ -1,0 +1,9 @@
+[
+  { "name": "DPM++ 2M", "aliases": ["k_dpmpp_2m"], "options": { "scheduler": "karras" } },
+  {
+    "name": "Euler a",
+    "aliases": ["k_euler_a", "k_euler_ancestral"],
+    "options": { "uses_ensd": "True" }
+  },
+  { "name": "Euler", "aliases": ["k_euler"], "options": {} }
+]

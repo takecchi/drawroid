@@ -52,9 +52,25 @@ class MemoryJobStore implements JobStore {
   async listGenerations(jobId: string) {
     return this.generations.get(jobId) ?? [];
   }
+  async readGeneration(jobId: string, iteration: number) {
+    return this.generations.get(jobId)?.find((g) => g.iteration === iteration);
+  }
   async readImage() {
     return undefined;
   }
+  // 以下は自動ジョブ（M2）の口。手動の生成は使わない
+  readStage = notUsed;
+  writeStage = notUsed;
+  loadPreview = notUsed;
+  markSent = notUsed;
+  writeLlmCall = notUsed;
+  listLlmCalls = notUsed;
+  listLlmCallRecords = notUsed;
+  listIterations = notUsed;
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('手動の生成では使わない口');
 }
 
 const params = { prompt: 'a cat', steps: 4, cfgScale: 7, width: 64, height: 64, batchSize: 2 };

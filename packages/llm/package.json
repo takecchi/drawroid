@@ -1,0 +1,31 @@
+{
+  "name": "@drawroid/llm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.75",
+    "@ai-sdk/openai": "^4.0.87",
+    "@ai-sdk/openai-compatible": "^3.0.65",
+    "@drawroid/core": "workspace:*",
+    "ai": "^7.0.131",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}
