@@ -75,4 +75,66 @@ describe('SdapiClient', () => {
       }
     },
   );
+
+  // 失敗の文から、どちらのバックエンドの失敗かが分かる（ジョブの止まった理由やログには、画面の補いが付かないため）
+  describe.each(['Forge', 'A1111'])('naming %s in every failure', (product) => {
+    const other = product === 'Forge' ? 'A1111' : 'Forge';
+    async function failureWith(fakeFetch: typeof fetch, timeoutMs = 5000) {
+      const client = new SdapiClient({
+        product,
+        baseUrl: 'http://127.0.0.1:7860',
+        timeoutMs,
+        fetch: fakeFetch,
+      });
+      const error: unknown = await client
+        .getJson('/sdapi/v1/cmd-flags', z.object({ ok: z.boolean() }))
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+      expect(error).toBeInstanceOf(BackendError);
+      return error as BackendError;
+    }
+
+    it.each([
+      [
+        'times out',
+        'timeout',
+        // 止められるまで返らない
+        ((_url: unknown, init?: RequestInit) =>
+          new Promise((_resolve, reject) =>
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+              once: true,
+            }),
+          )) as typeof fetch,
+        20,
+      ],
+      [
+        'answers a body that is not JSON',
+        'bad_response',
+        (async () => new Response('<html>')) as typeof fetch,
+        5000,
+      ],
+      [
+        'answers JSON of another shape',
+        'bad_response',
+        (async () => new Response('{"ok":"yes"}')) as typeof fetch,
+        5000,
+      ],
+      [
+        'cannot be reached for a reason without a known code',
+        'unreachable',
+        (async () => {
+          throw new TypeError('fetch failed', { cause: new Error('何かが起きた') });
+        }) as typeof fetch,
+        5000,
+      ],
+    ] as const)('when it %s', async (_case, kind, fakeFetch, timeoutMs) => {
+      const error = await failureWith(fakeFetch, timeoutMs);
+
+      expect(error.kind).toBe(kind);
+      expect(error.message).toContain(product);
+      expect(error.message).not.toContain(other);
+    });
+  });
 });
