@@ -90,6 +90,27 @@ describe('toGenerationRequest', () => {
     expect(request).not.toHaveProperty('rationale');
   });
 
+  it('generates with the ControlNet units the human fixed, whatever the AI returned', () => {
+    const units = [{ image: 'refs/r1.png', model: 'canny [0123abcd]', weight: 0.6 }];
+    const request = toGenerationRequest({
+      decided: { ...decidedByAi, controlnet: [] },
+      permissions: mergePermissions(allAuto(), { controlnet: { mode: 'fixed', value: units } }),
+      batchSize: 1,
+    });
+
+    expect(request.controlnet).toMatchObject(units);
+  });
+
+  it('leaves img2img out when it is not used, even if the AI returned a source image', () => {
+    const request = toGenerationRequest({
+      decided: { ...decidedByAi, img2img: { image: 'refs/r1.png', denoisingStrength: 0.5 } },
+      permissions: mergePermissions(allAuto(), { img2img: { mode: 'off' } }),
+      batchSize: 1,
+    });
+
+    expect(request.img2img).toBeUndefined();
+  });
+
   it('refuses to generate with a fixed value the backend cannot take', () => {
     expect(() =>
       toGenerationRequest({

@@ -2,13 +2,6 @@ import { generationRequestSchema, type GenerationRequest } from '../backend.js';
 import { PARAM_KEYS } from '../params/param-key.js';
 import type { Permissions } from './permission.js';
 
-const REQUEST_FIELDS = generationRequestSchema.shape;
-type RequestField = keyof typeof REQUEST_FIELDS;
-
-function isRequestField(key: string): key is RequestField {
-  return Object.hasOwn(REQUEST_FIELDS, key);
-}
-
 /**
  * 考える役の決定から、バックエンドに渡す生成の依頼を組み立てる。生成の直前に呼ぶ。
  * 「AI に任せる」パラメータだけ AI の値を使い、「固定」は人間の値で上書きし、「使わない」は渡さない。
@@ -23,7 +16,6 @@ export function toGenerationRequest(args: {
   const { decided, permissions, batchSize } = args;
   const request: Record<string, unknown> = { batchSize };
   for (const key of PARAM_KEYS) {
-    if (!isRequestField(key)) continue;
     const permission = permissions[key];
     if (permission.mode === 'fixed') request[key] = permission.value;
     else if (permission.mode === 'auto' && decided[key] !== undefined) request[key] = decided[key];
