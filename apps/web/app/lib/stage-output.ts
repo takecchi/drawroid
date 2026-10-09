@@ -2,13 +2,20 @@ import { z } from 'zod';
 
 // core のスキーマを使わない: あちらは予算の上限を値に取り込んでいて、過去に別の予算で書いた記録を画面が読めなくなるため
 const thinkSchema = z.object({
-  params: z.object({
-    prompt: z.string().optional(),
-    negativePrompt: z.string().optional(),
-    seed: z.number().optional(),
-    steps: z.number().optional(),
-    cfg: z.number().optional(),
-  }),
+  params: z
+    .object({
+      prompt: z.string().optional(),
+      negativePrompt: z.string().optional(),
+      seed: z.number().optional(),
+      steps: z.number().optional(),
+      cfgScale: z.number().optional(),
+      // M4 で cfgScale に改めた。それより前に書いた記録は cfg のまま残っているので、cfgScale として読む
+      cfg: z.number().optional(),
+    })
+    .transform(({ cfg, ...params }) => ({
+      ...params,
+      ...(params.cfgScale === undefined && cfg !== undefined && { cfgScale: cfg }),
+    })),
   rationale: z.string(),
 });
 
