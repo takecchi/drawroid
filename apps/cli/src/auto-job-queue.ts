@@ -5,6 +5,7 @@ import {
   mergePermissions,
   type Budget,
   type CandidateNotes,
+  type GenerationProgressPort,
   type ImageBackend,
   type JobMemory,
   type InterventionRecord,
@@ -42,6 +43,8 @@ export type AutoJobQueueOptions = {
   candidateNotes?: () => Promise<CandidateNotes>;
   /** 記憶の置き場所と蒸留の記録の置き場所。省けば記憶なしで回る */
   memory?: JobMemory;
+  /** 会話に属するジョブの生成の進み具合の流し先。省けば流さない */
+  generationProgress?: GenerationProgressPort;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   log: (line: string) => void;
 };
@@ -70,6 +73,9 @@ export class AutoJobQueue implements AutoJobQueuePort {
         mergePermissions(BASE_PERMISSIONS, (await options.permissions?.()) ?? {}),
       ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
       ...(options.memory !== undefined && { memory: options.memory }),
+      ...(options.generationProgress !== undefined && {
+        generationProgress: options.generationProgress,
+      }),
       log: options.log,
     });
   }

@@ -7,6 +7,7 @@ import {
   bridgeJobEvents,
   ConversationHubs,
   createDrawingTools,
+  createGenerationProgress,
   createReadOnlyTools,
   DEFAULT_BUDGET,
   jobSummaryFor,
@@ -99,6 +100,8 @@ async function main() {
   const readPermissions = createPermissionReader(() => readPermissionSettings(configPath), log);
   // 起動のときに一度読む: 読めない行があれば、ジョブを待たずにログで知らせる
   await readPermissions();
+  const progressPreviews = new ProgressPreviews();
+  const generationProgressSettings = createGenerationProgressSettings(configPath);
   const autoQueue = new AutoJobQueue({
     store,
     backend,
@@ -108,6 +111,16 @@ async function main() {
     permissions: readPermissions,
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
     memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
+    generationProgress: createGenerationProgress({
+      backend,
+      hubs: conversationHubs,
+      previews: progressPreviews,
+      settings: () => generationProgressSettings.read(),
+      onError: (error) =>
+        log(
+          `drawroid: 生成の進み具合を読めなかった（生成は続ける）: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    }),
     log,
   });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
@@ -208,8 +221,8 @@ async function main() {
       autoQueue,
       reselection,
       budgetSettings,
-      progressPreviews: new ProgressPreviews(),
-      generationProgressSettings: createGenerationProgressSettings(configPath),
+      progressPreviews,
+      generationProgressSettings,
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,
