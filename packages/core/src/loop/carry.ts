@@ -22,7 +22,11 @@ export type Carry = {
   completedIterations: number;
   best?: CarriedResult;
   latest?: CarriedResult;
+  /** 人間が添えた参照画像の要点（新しい順に件数の上限まで）。画像そのものは持ち回さない */
+  references?: CarriedReference[];
 };
+
+export type CarriedReference = { refId: string; gist: string };
 
 export function createCarry(
   request: string,

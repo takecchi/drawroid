@@ -694,3 +694,100 @@ describe('a human instruction reaches the next think without stopping the image 
     expect((await stoppedState(store, spec.jobId)).carry?.intent).toBe(INTEGRATED);
   });
 });
+
+const GIST = '逆光の海辺、白いワンピースの裾が風になびく構図';
+const refGist: Script = () => ({ gist: GIST });
+
+/** 縮小が意味を持つ大きさの参照画像（原寸） */
+async function bigReference(): Promise<Uint8Array> {
+  return sharp({ create: { width: 2000, height: 1200, channels: 3, background: '#2266aa' } })
+    .jpeg()
+    .toBuffer();
+}
+
+function textOf(call: LlmCall<unknown>): string {
+  return call.messages.user.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
+}
+
+function imageKeysOf(call: LlmCall<unknown>): string[] {
+  return call.messages.user.flatMap((part) => (part.type === 'image' ? [part.key] : []));
+}
+
+describe('a reference image goes to the LLM once, shrunk, then travels as its gist (M3:102)', () => {
+  it('shows the reference once to the judge role, and only the gist text afterwards', async () => {
+    const { store, runner, llm } = setup({
+      scripts: { think, judge: judge(), 'ref-gist': refGist },
+    });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 3 });
+    const reference = await store.addReference(
+      spec.jobId,
+      { data: await bigReference(), mediaType: 'image/jpeg', note: 'この構図で' },
+      new Date(),
+    );
+    runner.kick();
+    await runner.idle();
+
+    const refKey = `jobs/${spec.jobId}/refs/${reference.refId}`;
+    const carrying = llm.calls.filter((call) => imageKeysOf(call).includes(refKey));
+    expect(carrying).toHaveLength(1);
+    expect(carrying[0]!.purpose).toBe('ref-gist');
+    expect(carrying[0]!.role).toBe('judge');
+
+    const shown = carrying[0]!.messages.user.find((part) => part.type === 'image');
+    const { width = 0, height = 0 } = await sharp(
+      shown?.type === 'image' ? shown.data : undefined,
+    ).metadata();
+    expect(Math.max(width, height)).toBeLessThanOrEqual(DEFAULT_BUDGET.imageLongEdge);
+
+    const after = llm.calls.slice(llm.calls.indexOf(carrying[0]!) + 1);
+    expect(after.map((call) => call.purpose)).toEqual([
+      'think',
+      'judge',
+      'think',
+      'judge',
+      'think',
+      'judge',
+    ]);
+    for (const call of after) {
+      expect(imageKeysOf(call)).not.toContain(refKey);
+      expect(textOf(call)).toContain(GIST);
+    }
+
+    const [stored] = await store.listReferences(spec.jobId);
+    expect(stored).toMatchObject({ gist: GIST, sentInCall: expect.any(String) });
+    expect((await stoppedState(store, spec.jobId)).carry?.references).toEqual([
+      { refId: reference.refId, gist: GIST },
+    ]);
+  });
+
+  it('turns a reference that arrives mid-iteration into its gist at the next boundary', async () => {
+    const job = { jobId: '' };
+    const backend = new BackendWithHook(async (n) => {
+      if (n === 1) {
+        await set.store.addReference(
+          job.jobId,
+          { data: await bigReference(), mediaType: 'image/jpeg' },
+          new Date(),
+        );
+      }
+    });
+    const set = setup({ scripts: { think, judge: judge(), 'ref-gist': refGist }, backend });
+    const spec = await submit(set.store, { aiJudgement: false, maxIterations: 2 });
+    job.jobId = spec.jobId;
+    set.runner.kick();
+    await set.runner.idle();
+
+    expect(set.llm.calls.map((call) => call.purpose)).toEqual([
+      'think',
+      'judge',
+      'ref-gist',
+      'think',
+      'judge',
+    ]);
+    const [think1, judge1, , think2, judge2] = set.llm.calls;
+    expect(textOf(think1!)).not.toContain(GIST);
+    expect(textOf(judge1!)).not.toContain(GIST);
+    expect(textOf(think2!)).toContain(GIST);
+    expect(textOf(judge2!)).toContain(GIST);
+  });
+});

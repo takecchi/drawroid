@@ -550,6 +550,109 @@ describe('FsJobStore LLM call records', () => {
   });
 });
 
+describe('FsJobStore references', () => {
+  async function reference(width: number, height: number): Promise<Uint8Array> {
+    return sharp({ create: { width, height, channels: 3, background: '#2266aa' } })
+      .png()
+      .toBuffer();
+  }
+
+  it('lists references in the order they arrived, even within the same second', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const sameSecond = new Date('2026-10-09T06:31:00Z');
+    const data = await reference(16, 16);
+    const added: string[] = [];
+    for (let n = 1; n <= 10; n += 1) {
+      added.push(
+        (
+          await jobs.addReference(
+            a.jobId,
+            { data, mediaType: 'image/png', note: `${n}` },
+            sameSecond,
+          )
+        ).refId,
+      );
+    }
+
+    expect((await jobs.listReferences(a.jobId)).map((r) => r.refId)).toEqual(added);
+  });
+
+  it('keeps every reference received at once, whatever the image format', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const data = await reference(16, 16);
+    const formats = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+    await Promise.all(
+      Array.from({ length: 9 }, (_, n) =>
+        jobs.addReference(a.jobId, { data, mediaType: formats[n % 3]! }, new Date()),
+      ),
+    );
+
+    expect(new Set((await jobs.listReferences(a.jobId)).map((r) => r.refId)).size).toBe(9);
+  });
+
+  it('keeps references under refs/ in the order they arrived', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const first = await jobs.addReference(
+      a.jobId,
+      { data: await reference(64, 64), mediaType: 'image/png', note: 'この構図で' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    const second = await jobs.addReference(
+      a.jobId,
+      { data: await reference(64, 64), mediaType: 'image/png' },
+      new Date('2026-10-09T06:32:00Z'),
+    );
+
+    expect(await jobs.listReferences(a.jobId)).toEqual([first, second]);
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).refs)).toEqual(
+      expect.arrayContaining([`${first.refId}.png`, `${first.refId}.json`]),
+    );
+  });
+
+  it('shrinks a reference for the LLM and refuses to mark it sent twice', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const ref = await jobs.addReference(
+      a.jobId,
+      { data: await reference(1600, 900), mediaType: 'image/png' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    const image = { jobId: a.jobId, refId: ref.refId };
+
+    const preview = await jobs.loadPreview(image, 512);
+    expect(preview.longEdge).toBe(512);
+    expect(preview.sentInCall).toBeUndefined();
+
+    await jobs.markSent(image, 'c1', new Date('2026-10-09T06:32:00Z'));
+    expect((await jobs.loadPreview(image, 512)).sentInCall).toBe('c1');
+    await expect(jobs.markSent(image, 'c2', new Date())).rejects.toThrow(ImageAlreadySentError);
+  });
+
+  it('keeps the gist next to the reference', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const ref = await jobs.addReference(
+      a.jobId,
+      { data: await reference(64, 64), mediaType: 'image/png' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.writeReferenceGist(a.jobId, ref.refId, '青い背景');
+    expect(await jobs.listReferences(a.jobId)).toEqual([{ ...ref, gist: '青い背景' }]);
+  });
+
+  it('refuses a reference or intervention id that could point outside the job', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(jobs.writeReferenceGist(a.jobId, '../../config', 'x')).rejects.toThrow();
+    await expect(jobs.loadPreview({ jobId: a.jobId, refId: '../x' }, 512)).rejects.toThrow();
+    await expect(jobs.markInterventionApplied(a.jobId, '../../state', 1)).rejects.toThrow();
+  });
+});
+
 describe('a process killed while saving a job', () => {
   const child = fileURLToPath(
     new URL('./test-fixtures/job-store-writer-child.mjs', import.meta.url),

@@ -30,16 +30,23 @@ export function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   return writeFileAtomic(path, JSON.stringify(value, null, 2) + '\n');
 }
 
+export function createJsonExclusive(path: string, value: unknown): Promise<boolean> {
+  return createFileExclusive(path, JSON.stringify(value, null, 2) + '\n');
+}
+
 /**
  * 同じ名前のファイルが無いときだけ、原子的に置く。既にあれば何も置かずに false を返す。
  */
 // rename ではなく link で置く: rename は既にある名前を黙って上書きするので、同時に同じ名前を取りに来た2件の片方が消えるため
-export async function createJsonExclusive(path: string, value: unknown): Promise<boolean> {
+export async function createFileExclusive(
+  path: string,
+  data: string | Uint8Array,
+): Promise<boolean> {
   const dir = dirname(path);
   const temp = join(dir, `${TEMP_FILE_PREFIX}${randomBytes(6).toString('hex')}-${basename(path)}`);
   const file = await open(temp, 'wx');
   try {
-    await file.writeFile(JSON.stringify(value, null, 2) + '\n');
+    await file.writeFile(data);
     await file.sync();
   } finally {
     await file.close();

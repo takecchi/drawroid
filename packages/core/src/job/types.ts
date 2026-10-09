@@ -131,7 +131,32 @@ export const carrySchema = z.object({
   completedIterations: z.number().int().nonnegative(),
   best: carriedResultSchema.optional(),
   latest: carriedResultSchema.optional(),
+  references: z.array(z.object({ refId: z.string().min(1), gist: z.string() })).optional(),
 });
+
+export const REFERENCE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+/**
+ * refs/<refId>.json の中身。人間が添えた参照画像1枚の、用途の言葉・要点・渡した印。画像そのものは refs/<refId>.<ext>。
+ */
+export const referenceRecordSchema = z.object({
+  refId: z.string().min(1),
+  receivedAt: z.iso.datetime({ offset: true }),
+  mediaType: z.enum(REFERENCE_MEDIA_TYPES),
+  /** 人間が添えた用途の言葉（「この構図で」など） */
+  note: z.string().min(1).optional(),
+  /** 見る役が1度だけ見て書いた要点。以後はこれだけを持ち回す */
+  gist: z.string().optional(),
+  /** 画像を LLM に渡した呼び出しの ID（渡した印） */
+  sentInCall: z.string().min(1).optional(),
+  sentAt: z.iso.datetime({ offset: true }).optional(),
+});
+export type ReferenceRecord = z.infer<typeof referenceRecordSchema>;
+export type NewReference = {
+  data: Uint8Array;
+  mediaType: ReferenceRecord['mediaType'];
+  note?: string;
+};
 
 // carry は auto のジョブだけが持つ。manual は回が1つで、持ち回すものが無い
 const carryField = { carry: carrySchema.optional() };
