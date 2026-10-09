@@ -7,6 +7,7 @@ export {
   StoredFileError,
   type FsJobStoreOptions,
 } from './job-store.js';
+export { readLlmSettings, writeLlmSettings } from './llm-settings.js';
 export {
   dataPaths,
   iterationDirName,
