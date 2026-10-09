@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  basicPermissions,
   DEFAULT_BUDGET,
   generationRequestSchema,
   JobRunner,
   ManualGenerationRunner,
-  THINK_PARAM_KEYS,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { hc } from 'hono/client';
@@ -34,13 +34,13 @@ beforeEach(async () => {
     llm: new ScriptedLlm({}),
     backend,
     budget: DEFAULT_BUDGET,
-    allowed: THINK_PARAM_KEYS,
-    defaults: { width: 64, height: 64, steps: 4, cfgScale: 7, negativePrompt: '' },
+    permissions: basicPermissions({ width: 64, height: 64 }),
     now,
   });
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
     backendSettings: {
       read: () => Promise.reject(new Error('この試験では使わない')),

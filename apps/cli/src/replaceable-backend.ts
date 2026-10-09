@@ -3,12 +3,13 @@ import type {
   BackendCapabilities,
   Candidate,
   CandidateKind,
+  GenerationImages,
   GenerationRequest,
   GenerationResult,
   ImageBackend,
 } from '@drawroid/core';
 
-// 起動したまま Forge の URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる
+// 起動したままバックエンドの URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる
 export class ReplaceableBackend implements ImageBackend {
   private current: ImageBackend;
   private running = 0;
@@ -40,10 +41,14 @@ export class ReplaceableBackend implements ImageBackend {
     return this.current.listCandidates(kind, signal);
   }
 
-  async generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
+  async generate(
+    req: GenerationRequest,
+    signal: AbortSignal,
+    images?: GenerationImages,
+  ): Promise<GenerationResult> {
     this.running += 1;
     try {
-      return await this.current.generate(req, signal);
+      return await this.current.generate(req, signal, images);
     } finally {
       this.running -= 1;
     }

@@ -13,6 +13,8 @@ catalog:
   # CI の実行系（Node 22）に合わせる
   '@types/node': ^22.20.1
   zod: ^4.4.3
+  # 記憶のファイルの front matter（packages/storage-fs）。人間が手で書くので、自前の読み方ではなく YAML として読む
+  yaml: ^2.9.1
   hono: ^4.13.5
   '@hono/node-server': ^2.1.0
   # Web UI（apps/web）。React Router v7 を SPA モード（ssr: false）で使う

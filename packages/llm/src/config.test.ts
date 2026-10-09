@@ -42,6 +42,18 @@ describe('llmConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it.each([
+    ['openai', {}],
+    ['anthropic', {}],
+    ['openai-compatible', { baseURL: 'http://127.0.0.1:11434/v1' }],
+  ])('rejects an API key value on a %s provider', (type, extra) => {
+    const result = llmConfigSchema.safeParse({
+      ...base,
+      providers: { local: { type, ...extra, apiKey: 'sk-should-not-leak' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('fills the defaults of a role', () => {
     expect(llmConfigSchema.parse(base).roles.think).toEqual({
       provider: 'local',

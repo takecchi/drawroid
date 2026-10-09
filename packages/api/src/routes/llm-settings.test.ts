@@ -3,6 +3,7 @@ import {
   type ImageBackend,
   type JobStore,
   type ManualGenerationRunner,
+  type MemoryStore,
 } from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -27,11 +28,8 @@ function makeApp(env: Record<string, string | undefined>) {
     // 設定の経路はジョブとバックエンドを使わない
     backend: {} as ImageBackend,
     store: {} as JobStore,
+    memoryStore: {} as MemoryStore,
     manualRunner: {} as ManualGenerationRunner,
-    backendSettings: {
-      read: () => Promise.reject(new Error('この試験では使わない')),
-      write: () => Promise.reject(new Error('この試験では使わない')),
-    },
     autoQueue: {
       kick: () => undefined,
       stop: async () => undefined,
@@ -40,6 +38,7 @@ function makeApp(env: Record<string, string | undefined>) {
       addReference: notUsed,
     },
     budget: DEFAULT_BUDGET,
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: {
       read: async () => saved,
       write: async (c) => {
@@ -47,8 +46,11 @@ function makeApp(env: Record<string, string | undefined>) {
         saved = c;
       },
     },
-    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     env,
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
 }
 
@@ -69,6 +71,18 @@ describe('GET /settings/llm', () => {
     const res = await makeApp({}).request('/settings/llm');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ config: null });
+  });
+
+  it.each([
+    ['empty', ''],
+    ['missing', undefined],
+  ])('reports a stored config whose API key env var is %s as not set', async (_, value) => {
+    saved = config;
+    const res = await makeApp({ TEST_KEY: value }).request('/settings/llm');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      apiKeyEnv: { cloud: { name: 'TEST_KEY', set: false } },
+    });
   });
 
   it('answers 500 invalid_config when the stored settings are broken', async () => {

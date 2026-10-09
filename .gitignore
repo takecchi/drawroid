@@ -8,6 +8,8 @@
 # Node
 node_modules
 dist
+# apps/cli の配布用にまとめた出力
+bundle
 coverage
 *.tsbuildinfo
 
