@@ -5,6 +5,7 @@ import {
   buildStopConditions,
   changedConditions,
   buildStopConditionsChange,
+  describeStopConditions,
   neverStops,
   stopConditionsBlocker,
   stopConditionsToForm,
@@ -17,6 +18,19 @@ const empty: StopConditionsFormValues = {
   maxImages: '',
   maxDurationMinutes: '',
 };
+
+// 話す役が 1 分に満たない時間の上限を入れることがある（本物の小さなローカル LLM で、maxDurationMs: 5000）。
+// 分で書くと「0.08333333333333333 分まで」になるので、1 分に満たない上限は秒で書く（core の describeStopConditions と同じ）
+describe('describeStopConditions', () => {
+  it.each([
+    [5_000, '5 秒まで'],
+    [59_000, '59 秒まで'],
+    [60_000, '1 分まで'],
+    [600_000, '10 分まで'],
+  ])('writes a time limit of %i ms as %s', (maxDurationMs, text) => {
+    expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toEqual([text]);
+  });
+});
 
 describe('stopConditionsToForm', () => {
   it('turns milliseconds into minutes and leaves absent limits empty', () => {
@@ -125,6 +139,12 @@ describe('changedConditions', () => {
         { aiJudgement: true, maxIterations: 10 },
       ),
     ).toEqual([]);
+  });
+
+  it('writes a time limit under a minute in seconds', () => {
+    expect(
+      changedConditions({ aiJudgement: true, maxDurationMs: 5_000 }, { aiJudgement: true }),
+    ).toEqual([{ label: '時間の上限', submitted: '5 秒', current: 'なし' }]);
   });
 
   it('returns only the fields whose value differs, with absent limits as none', () => {
