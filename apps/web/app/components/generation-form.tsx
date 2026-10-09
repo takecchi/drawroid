@@ -1,5 +1,5 @@
 import type { CandidateKind } from '@drawroid/core';
-import { isApiError, startManualJob, useCandidates } from '@drawroid/swr';
+import { isApiError, startManualJob, useBackendSettings, useCandidates } from '@drawroid/swr';
 import {
   Button,
   ErrorNote,
@@ -15,6 +15,7 @@ import {
 } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
+import { backendSubject } from '../lib/backend-error';
 import {
   buildGenerationRequest,
   DEFAULT_FORM_VALUES,
@@ -35,10 +36,11 @@ function CandidateSelect({
   onChange: (value: string) => void;
 }) {
   const { data } = useCandidates(kind);
+  const { data: backend } = useBackendSettings();
   return (
     <Field label={label}>
       <Select value={value} onChange={(event) => onChange(event.target.value)} className="w-56">
-        <option value="">Forge の既定</option>
+        <option value="">{backendSubject(backend?.kind)}の既定</option>
         {data?.candidates.map((candidate) => (
           <option key={candidate.name} value={candidate.name}>
             {candidate.label ?? candidate.name}

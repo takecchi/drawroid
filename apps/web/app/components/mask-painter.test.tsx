@@ -36,7 +36,7 @@ async function openPainter() {
     />,
   );
   await user.click(screen.getByRole('button', { name: 'マスクを塗る' }));
-  const img = screen.getByAltText('2 回目の画像 1');
+  const img = screen.getByAltText('2 回目の画像 2 番');
   Object.defineProperty(img, 'naturalWidth', { value: 1024 });
   Object.defineProperty(img, 'naturalHeight', { value: 768 });
   fireEvent.load(img);
@@ -53,6 +53,19 @@ function drag(canvas: HTMLElement, from: [number, number], to: [number, number])
 }
 
 describe('MaskPainter', () => {
+  it('names the first image of an iteration number 1, as the other views do', async () => {
+    render(
+      <MaskPainter
+        jobId="job-1"
+        image={{ iteration: 1, index: 0, url: '/api/jobs/job-1/images/1-0.png' }}
+      />,
+    );
+    await userEvent.setup().click(screen.getByRole('button', { name: 'マスクを塗る' }));
+
+    expect(screen.getByRole('img').getAttribute('alt')).toBe('1 回目の画像 1 番');
+    expect(screen.queryByAltText(/画像 0/)).toBeNull();
+  });
+
   it('sends what was painted as a mask of the original size, for the image it was painted on', async () => {
     const { user, canvas } = await openPainter();
 
