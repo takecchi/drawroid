@@ -11,7 +11,7 @@ type State =
 
 /**
  * 「採る」ボタン。描いている絵を、この画像で決める（会話の adopt_image と同じ口: POST /jobs/:jobId/adopt）。
- * 押すとまず確かめ、決めたら「選んだ」と出す。ジョブがもう止まっているときは押せず、理由を出す。
+ * 押すとまず確かめ、決めたら「選んだ」と出す。走っているジョブにだけ出す（止まったジョブは採る口を受けないので、呼び手が ChooseAsFavorite を出す）。
  */
 // 確かめを挟む: 採るとジョブが止まる（続きの指示が無ければ）ので、押し間違いで描くのを終わらせないため。
 // 会話の「選んだ」（job.adopted）とジョブの止まった理由は、会話のイベントとして別に出る
@@ -19,15 +19,12 @@ export function AdoptButton({
   jobId,
   image,
   imageLabel,
-  disabledReason,
   chosen = false,
 }: {
   jobId: string;
   image: { iteration: number; index: number };
   /** どの画像のボタンか（「2 回目の画像 1 番」）。読み上げで、どの画像も同じ「採る」にならないように */
   imageLabel: string;
-  /** 押せない理由（ジョブが止まった、など）。あれば押せず、理由を出す */
-  disabledReason?: string;
   /** この画像で決まった（会話の job.adopted・回の adopted）。押した直後だけでなく、開き直しても同じに出すため */
   chosen?: boolean;
 }) {
@@ -47,16 +44,6 @@ export function AdoptButton({
 
   if (state.step === 'done' || chosen) {
     return <p className="text-xs text-muted-foreground">この画像で決めた（選んだ）</p>;
-  }
-  if (disabledReason !== undefined) {
-    return (
-      <div className="space-y-1">
-        <Button className={small} disabled aria-label={`この画像で決める: ${imageLabel}`}>
-          この画像で決める
-        </Button>
-        <p className="text-xs text-muted-foreground">{disabledReason}</p>
-      </div>
-    );
   }
   if (state.step === 'confirming' || state.step === 'sending') {
     return (

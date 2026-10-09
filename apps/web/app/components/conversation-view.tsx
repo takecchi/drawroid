@@ -47,6 +47,7 @@ import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
+import { ChooseAsFavorite } from './choose-as-favorite';
 import { MaskSurface, MaskTools, useMaskPainting } from './mask-painter';
 import { SetupNotice } from './setup-notice';
 
@@ -191,52 +192,6 @@ function ImageChoices({
           chosen={chosen}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * 止まったジョブの画像で「この画像に決める（お気に入りにする）」。止まりのカード・画像の行・大きく見る窓が同じものを使う。
- * すでにお気に入りなら、ボタンの代わりに「お気に入り」と出す
- */
-function ChooseAsFavorite({
-  jobId,
-  imageKey,
-  imageLabel,
-  verdict,
-}: {
-  jobId: string;
-  imageKey: string;
-  imageLabel: string;
-  verdict: SelectionVerdict | null;
-}) {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  async function choose() {
-    setPending(true);
-    setError(undefined);
-    try {
-      await setSelection(jobId, imageKey, 'favorite');
-    } catch (caught) {
-      if (!isApiError(caught)) throw caught;
-      setError(caught.message);
-    } finally {
-      setPending(false);
-    }
-  }
-  if (verdict === 'favorite') return <p className="text-xs text-ok">お気に入り</p>;
-  return (
-    <div className="space-y-1">
-      <Button
-        className="h-7 px-2 text-xs"
-        variant="primary"
-        disabled={pending}
-        aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
-        onClick={() => void choose()}
-      >
-        この画像に決める（お気に入りにする）
-      </Button>
-      {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
     </div>
   );
 }
