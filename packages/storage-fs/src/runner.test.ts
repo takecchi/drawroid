@@ -469,4 +469,17 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     );
     expect(await store.listInterventions(spec.jobId)).toEqual([]);
   });
+
+  it('refuses a change that would leave the job with no way to stop, and writes nothing', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 5 });
+
+    await expect(runner.changeStopConditions(spec.jobId, { maxIterations: null })).rejects.toThrow(
+      /止まらなくなる/,
+    );
+    expect(await store.listInterventions(spec.jobId)).toEqual([]);
+    expect(
+      await runner.changeStopConditions(spec.jobId, { maxIterations: null, maxImages: 8 }),
+    ).toEqual({ aiJudgement: false, maxImages: 8 });
+  });
 });

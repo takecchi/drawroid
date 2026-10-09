@@ -28,7 +28,7 @@ import {
   type ThinkOutput,
   type ThinkParamKey,
 } from './schemas.js';
-import { checkStopAtBoundary, effectiveStopConditions } from './stop.js';
+import { checkStopAtBoundary, effectiveStopConditions, hasAnyStopCondition } from './stop.js';
 
 /** AI に任せていないパラメータの値（M2 では解像度など） */
 export type GenerationDefaults = {
@@ -129,8 +129,15 @@ export class JobRunner {
     if ((await store.readState(jobId)).status === 'stopped') {
       throw new StopConditionsNotChangeableError(jobId, 'もう止まっている');
     }
+    const changed = effectiveStopConditions(await this.stopConditions(spec), [parsed]);
+    if (!hasAnyStopCondition(changed)) {
+      throw new StopConditionsNotChangeableError(
+        jobId,
+        '重ねると AI の判断も上限も無くなり、ジョブが止まらなくなる',
+      );
+    }
     await store.addIntervention(jobId, { stopConditions: parsed }, this.now());
-    return this.stopConditions(spec);
+    return changed;
   }
 
   private async stopConditions(spec: AutoJobSpec): Promise<StopConditions> {

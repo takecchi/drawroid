@@ -19,6 +19,16 @@ export function effectiveStopConditions(
   return conditions;
 }
 
+/** AI の判断か、上限（回数・時間・枚数）のどれか1つ以上を持つか。持たないジョブは止まらない */
+export function hasAnyStopCondition(conditions: StopConditions): boolean {
+  return (
+    conditions.aiJudgement ||
+    conditions.maxIterations !== undefined ||
+    conditions.maxDurationMs !== undefined ||
+    conditions.maxImages !== undefined
+  );
+}
+
 export type StopCheck = {
   conditions: StopConditions;
   completedIterations: number;
