@@ -250,6 +250,18 @@ try {
     await composer.fill(text);
     await composer.press('Enter');
   };
+  /**
+   * 話す役の呼び出しが、偽の LLM で止まるまで待つ（新しいターンが始まって、返事を待っている印）。
+   * 「止める」ボタンが見えるかでは待たない: 走っているジョブがあると、ターンが始まる前から見えているため
+   * @param {number} count
+   */
+  const talkHeld = async (count) => {
+    const deadline = Date.now() + STEP_TIMEOUT_MS;
+    while ((llm?.stats.heldTalkCalls ?? 0) < count) {
+      if (Date.now() > deadline) throw new Error('話す役の呼び出しが、偽の LLM で止まらなかった');
+      await sleep(50);
+    }
+  };
 
   // 1. 思考と返答が流れて画面に出る。思考は、返答の本文が来る前に出る（流れている）
   relay.holdAfterThinking();
@@ -270,9 +282,10 @@ try {
   await stopButton.waitFor({ state: 'hidden', timeout: 60_000 });
 
   // 3. 話す役のターンの途中で止めるを押すと、ターンが止まって表示が戻る
+  const heldBeforeStop = llm.stats.heldTalkCalls;
   llm.holdTalk();
   await say('やっぱり猫も入れて');
-  await stopButton.waitFor();
+  await talkHeld(heldBeforeStop + 1);
   await page.getByText('考えています').first().waitFor();
   await stopButton.click();
   await stopButton.waitFor({ state: 'hidden' });
@@ -316,7 +329,18 @@ try {
   await say('やっぱり白い猫にして');
   await log.getByText(REPLY).nth(repliesBefore).waitFor();
   await stopButton.waitFor({ state: 'visible' });
-  const all = await events();
+  // 返答は turn.ended より先に確定するので、返答が出ただけでは新しいターンはまだ閉じていないことがある。閉じるまで待つ
+  /** @type {Awaited<ReturnType<typeof events>>} */
+  let all = await events();
+  const closedBy = Date.now() + STEP_TIMEOUT_MS;
+  const lastTurnClosed = () => {
+    const lastStarted = all.findLast((e) => e.type === 'turn.started');
+    return all.some((e) => e.type === 'turn.ended' && e.turn === lastStarted?.turn);
+  };
+  while (!lastTurnClosed() && Date.now() < closedBy) {
+    await sleep(100);
+    all = await events();
+  }
   const seqOf = (/** @type {string} */ text) =>
     all.find((e) => e.type === 'user.message' && e.text === text)?.seq;
   const ended = all.filter((e) => e.type === 'turn.ended');
@@ -390,26 +414,26 @@ try {
   );
 
   // 4a. ページを再読み込みしても、ログが同じに戻る
-  const before = await log.innerText();
+  // textContent で比べる: innerText は描き方で変わり、ログは画面の外の行の描画を飛ばす（content-visibility）ので、
+  // 同じ中身でも、どの行が画面の中にあるかで空行の数が変わるため
+  const before = await log.textContent();
   await page.reload();
   await log.getByText('やっぱり猫も入れて').waitFor();
   // 戻るのを待ってから比べる: 画像の選択（お気に入り）は、ログの後から API で読むので、ログが出た時点ではまだ戻っていないことがある
-  let after = await log.innerText();
+  let after = await log.textContent();
   const settleBy = Date.now() + STEP_TIMEOUT_MS;
   while (after !== before && Date.now() < settleBy) {
     await sleep(100);
-    after = await log.innerText();
+    after = await log.textContent();
   }
   if (after !== before) {
-    // 違った行を残す（赤の理由を追えるように）
-    const was = before.split('\n');
-    const now = after.split('\n');
-    console.error(
-      `再読み込みの前にだけあった行:\n${was.filter((line) => !now.includes(line)).join('\n')}`,
-    );
-    console.error(
-      `再読み込みの後にだけあった行:\n${now.filter((line) => !was.includes(line)).join('\n')}`,
-    );
+    // 最初に違った位置の前後を残す（赤の理由を追えるように）
+    const was = before ?? '';
+    const now = after ?? '';
+    let at = 0;
+    while (at < was.length && at < now.length && was[at] === now[at]) at += 1;
+    console.error(`再読み込みの前: …${was.slice(Math.max(0, at - 40), at + 80)}…`);
+    console.error(`再読み込みの後: …${now.slice(Math.max(0, at - 40), at + 80)}…`);
   }
   expect(after === before, 'ページを再読み込みしても、ログが同じに戻る');
 
@@ -467,10 +491,11 @@ try {
   );
   relay.releaseThinking();
   await narrowLog.getByText(REPLY).nth(narrowReplies).waitFor();
+  const heldBeforeNarrowStop = llm.stats.heldTalkCalls;
   llm.holdTalk();
   await narrowComposer.fill('狭い画面で止める');
   await narrowComposer.press('Enter');
-  await narrowStop.waitFor();
+  await talkHeld(heldBeforeNarrowStop + 1);
   await narrowStop.click();
   await narrowStop.waitFor({ state: 'hidden' });
   expect(
