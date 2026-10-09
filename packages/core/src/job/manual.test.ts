@@ -65,8 +65,6 @@ class MemoryJobStore implements JobStore {
   markSent = notUsed;
   writeLlmCall = notUsed;
   listLlmCalls = notUsed;
-  listLlmCallRecords = notUsed;
-  listIterations = notUsed;
   addIntervention = notUsed;
   listInterventions = notUsed;
   markInterventionApplied = notUsed;
@@ -76,6 +74,8 @@ class MemoryJobStore implements JobStore {
   writeSelection = notUsed;
   readSelection = notUsed;
   listSelections = notUsed;
+  listLlmCallRecords = notUsed;
+  listIterations = notUsed;
 }
 
 async function notUsed(): Promise<never> {

@@ -31,8 +31,8 @@ export async function setup() {
     autoQueue: {
       kick: () => undefined,
       stop: async () => undefined,
-      addInstruction: () => Promise.reject(new Error('この試験では使わない')),
-      changeStopConditions: () => Promise.reject(new Error('この試験では使わない')),
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
@@ -95,4 +95,8 @@ export function llmRecord(
     outcome: { ok: true, value: { answer: 'OUTCOME-VALUE' } },
     ...overrides,
   };
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
 }

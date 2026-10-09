@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { open, readdir, rename, unlink } from 'node:fs/promises';
+import { link, open, readdir, rename, unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
 import { TEMP_FILE_PREFIX } from './paths.js';
@@ -28,6 +28,39 @@ export async function writeFileAtomic(path: string, data: string | Uint8Array): 
 export function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   // 人間がディレクトリを開いて読めるように整形して書く
   return writeFileAtomic(path, JSON.stringify(value, null, 2) + '\n');
+}
+
+export function createJsonExclusive(path: string, value: unknown): Promise<boolean> {
+  return createFileExclusive(path, JSON.stringify(value, null, 2) + '\n');
+}
+
+/**
+ * 同じ名前のファイルが無いときだけ、原子的に置く。既にあれば何も置かずに false を返す。
+ */
+// rename ではなく link で置く: rename は既にある名前を黙って上書きするので、同時に同じ名前を取りに来た2件の片方が消えるため
+export async function createFileExclusive(
+  path: string,
+  data: string | Uint8Array,
+): Promise<boolean> {
+  const dir = dirname(path);
+  const temp = join(dir, `${TEMP_FILE_PREFIX}${randomBytes(6).toString('hex')}-${basename(path)}`);
+  const file = await open(temp, 'wx');
+  try {
+    await file.writeFile(data);
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  try {
+    await link(temp, path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  } finally {
+    await unlink(temp).catch(() => undefined);
+  }
+  await syncDir(dir);
+  return true;
 }
 
 async function syncDir(dir: string): Promise<void> {
