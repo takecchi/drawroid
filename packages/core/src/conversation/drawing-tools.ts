@@ -315,7 +315,7 @@ export function readDrawingStopConditions(raw: unknown): {
   if (!parsed.success) {
     return {
       conditions: DEFAULT_DRAWING_STOP_CONDITIONS,
-      problem: `conversations の形が違う: ${parsed.error.issues[0]?.message ?? ''}`,
+      problem: `${['conversations', ...(parsed.error.issues[0]?.path ?? []).map(String)].join('.')} の形が違う: ${parsed.error.issues[0]?.message ?? ''}`,
     };
   }
   const written = parsed.data.defaultStopConditions;

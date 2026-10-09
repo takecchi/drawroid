@@ -2,7 +2,8 @@
 // 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing を呼び、結果が来たら短く返す。
 // toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
 // holdTalk() で、次の話す役の呼び出しを releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
-// queueTalkTool(name, input) で、次の話す役の呼び出し（native）に、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
+// queueTalkTool(name, input) で、次の話す役の呼び出しに、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
+// native では tools に、json では response_format のスキーマにそのツールがあるときに効く。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
@@ -97,8 +98,12 @@ export async function startFakeLlm({ stopAfterIterations }) {
         );
       const format = request.response_format;
       // 待ちが解けたあとに取る: 待っている間に台本を差し替えられるように
+      const talkSchema = format?.json_schema?.schema ?? format?.schema;
+      const hasTools = Array.isArray(request.tools) && request.tools.length > 0;
       const queued =
-        role === 'talk' && Array.isArray(request.tools) && request.tools.length > 0
+        role === 'talk' &&
+        queuedTool !== null &&
+        (hasTools || JSON.stringify(talkSchema ?? {}).includes(`"${queuedTool.name}"`))
           ? queuedTool
           : null;
       if (queued !== null) queuedTool = null;
@@ -112,18 +117,17 @@ export async function startFakeLlm({ stopAfterIterations }) {
       /** @type {'tool' | 'text' | 'json'} */
       let kind;
       let content = '';
-      const talkSchema = format?.json_schema?.schema ?? format?.schema;
       const isJsonTalk =
         role === 'talk' &&
-        !(Array.isArray(request.tools) && request.tools.length > 0) &&
-        JSON.stringify(talkSchema ?? {}).includes('"start_drawing"');
+        !hasTools &&
+        (queued !== null || JSON.stringify(talkSchema ?? {}).includes('"start_drawing"'));
       if (isJsonTalk) {
         stats.jsonTalkCalls++;
         kind = 'json';
         content = JSON.stringify(
           hasToolResult
             ? { kind: 'reply', text: '描き始めました。少しお待ちください。' }
-            : { kind: 'tool', name: 'start_drawing', input: JSON.parse(toolArgs) },
+            : { kind: 'tool', name: toolName, input: JSON.parse(toolArgs) },
         );
       } else if (role === 'talk' && Array.isArray(request.tools) && request.tools.length > 0) {
         stats.nativeTalkCalls++;

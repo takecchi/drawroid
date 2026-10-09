@@ -4,7 +4,11 @@ import { backendKindSchema, type BackendKind } from '@drawroid/api';
 
 import { DEFAULT_PORT } from './listen.js';
 
+/** 何をするか。省けば待ち受けを始める。doctor は、実機で試す前に設定と繋がりを一度に確かめて終わる */
+export type CliCommand = 'serve' | 'doctor';
+
 export interface CliOptions {
+  command: CliCommand;
   port: number;
   dataDir: string | undefined;
   backend: BackendKind | undefined;
@@ -12,7 +16,7 @@ export interface CliOptions {
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args: argv,
     options: {
       port: { type: 'string' },
@@ -23,13 +27,22 @@ export function parseCliArgs(argv: string[]): CliOptions {
       'forge-url': { type: 'string' },
     },
     strict: true,
+    allowPositionals: true,
   });
   return {
+    command: parseCommand(positionals),
     port: parsePort(values.port),
     dataDir: values['data-dir'],
     backend: parseBackend(values.backend),
     backendUrl: parseBackendUrl(values['backend-url'], values['forge-url']),
   };
+}
+
+function parseCommand(positionals: string[]): CliCommand {
+  const [first, ...rest] = positionals;
+  if (first === undefined) return 'serve';
+  if (first === 'doctor' && rest.length === 0) return 'doctor';
+  throw new Error(`知らない指定: ${positionals.join(' ')}（使えるのは doctor だけ）`);
 }
 
 function parseBackendUrl(
