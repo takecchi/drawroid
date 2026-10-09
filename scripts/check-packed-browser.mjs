@@ -162,7 +162,7 @@ try {
   await page.getByRole('button', { name: '確かめる' }).click();
   await page
     .getByRole('region', { name: 'LLM' })
-    .getByText(/1往復できた/)
+    .getByText(/話す役.*1往復できた/)
     .waitFor();
   await page
     .getByRole('region', { name: '画像のバックエンド（Forge）' })
