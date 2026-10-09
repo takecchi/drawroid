@@ -60,6 +60,26 @@ try {
     `CSS が効いている（body の背景色 ${background}）`,
   );
 
+  // キーボードで最初に届くのは「本文へ移動」で、押すと焦点が本文の枠に入る。枠は tabIndex={-1} が無いと焦点を受けられず、
+  // 押しても焦点が link に残る（jsdom の試験は枠を自前で置くので、root.tsx の枠はここでしか見られない）
+  const focused = async () =>
+    String(
+      await page.evaluate(
+        'document.activeElement ? document.activeElement.id || document.activeElement.textContent : ""',
+      ),
+    );
+  await page.keyboard.press('Tab');
+  const firstStop = await focused();
+  expect(firstStop === '本文へ移動', `Tab で最初に「本文へ移動」に届く（焦点: ${firstStop}）`);
+  const urlBeforeSkip = page.url();
+  await page.keyboard.press('Enter');
+  const afterSkip = await focused();
+  expect(
+    afterSkip === 'main-content',
+    `「本文へ移動」を押すと、焦点が本文の枠に入る（焦点: ${afterSkip.slice(0, 40)}）`,
+  );
+  expect(page.url() === urlBeforeSkip, '「本文へ移動」を押しても URL は変わらない');
+
   // 会話を1つ開く: ログと発言の入力欄が出る
   await link.click();
   await page.waitForURL(`${base}/conversations/${conversation.conversationId}`);
