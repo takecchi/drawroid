@@ -611,7 +611,8 @@ try {
   });
   llm.releaseTalk();
   const narrowAttachLog = narrow.getByLabel('会話のログ');
-  await narrowAttachLog.getByText('画像を 2 枚添えた').waitFor();
+  // 添えた画像は、発言の行に縮小版で並ぶ（名前と並びは check-packed-browser-image-viewer が見る）
+  await narrowAttachLog.getByRole('list', { name: '添えた画像（2 枚）' }).waitFor();
   await narrowAttachLog.getByText(REPLY).waitFor();
   /** @type {string | undefined} */
   let attachedJob;

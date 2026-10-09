@@ -309,7 +309,8 @@ function ConversationImageViewer({
   stoppedJobs,
   chosenImages,
 }: {
-  images: readonly (ViewerImage & { source: ViewerSource })[];
+  /** source が無いのは、人が会話で添えた画像（塗ることも選ぶこともできない） */
+  images: readonly (ViewerImage & { source?: ViewerSource })[];
   viewing: string | null;
   onViewingChange: (key: string | null) => void;
   stoppedJobs: ReadonlySet<string>;
@@ -320,7 +321,10 @@ function ConversationImageViewer({
   const painted =
     paintingKey === null || paintingKey !== viewing
       ? undefined
-      : images.find((image) => image.key === paintingKey);
+      : images.find(
+          (image): image is ViewerImage & { source: ViewerSource } =>
+            image.key === paintingKey && image.source !== undefined,
+        );
   const painting = useMaskPainting(
     painted === undefined
       ? undefined
