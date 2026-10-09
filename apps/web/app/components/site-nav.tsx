@@ -8,6 +8,7 @@ export function SiteNav() {
       <Link to="/jobs/new">依頼</Link>
       <Link to="/jobs">ジョブ</Link>
       <Link to="/memory">記憶</Link>
+      <Link to="/permissions">許可</Link>
     </nav>
   );
 }
