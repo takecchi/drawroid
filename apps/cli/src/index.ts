@@ -2,7 +2,8 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-import { DEFAULT_BUDGET } from '@drawroid/core';
+import { ForgeBackend } from '@drawroid/backend-forge';
+import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   dataPaths,
@@ -15,6 +16,7 @@ import {
 
 import { parseCliArgs } from './args.js';
 import { AutoJobQueue } from './auto-job-queue.js';
+import { readConfig, resolveForgeUrl } from './config.js';
 import { listen } from './listen.js';
 
 // apps/web の成果物を dist へ写さずに、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため
@@ -24,8 +26,8 @@ function resolveWebRoot(): string {
 }
 
 async function main() {
-  const { port, dataDir } = parseCliArgs(process.argv.slice(2));
-  const root = resolveDataDir({ cliArg: dataDir, env: process.env.DRAWROID_HOME });
+  const args = parseCliArgs(process.argv.slice(2));
+  const root = resolveDataDir({ cliArg: args.dataDir, env: process.env.DRAWROID_HOME });
   const { sweptTempFiles } = await initDataDir(root);
   process.stdout.write(`drawroid: データディレクトリ ${root}\n`);
   if (sweptTempFiles.length > 0) {
@@ -34,47 +36,68 @@ async function main() {
     );
   }
 
-  const log = (line: string) => process.stdout.write(`${line}\n`);
+  // どのアダプタを使うかを決めるのは、組み立ての根であるここだけ
+  const configPath = dataPaths(root).config;
+  const config = await readConfig(configPath);
+  const forgeUrl = resolveForgeUrl(args.forgeUrl, config);
+  const backend = new ForgeBackend({
+    baseUrl: forgeUrl,
+    ...(config.backend?.auth !== undefined && { auth: config.backend.auth }),
+    ...(config.backend?.generateTimeoutMs !== undefined && {
+      generateTimeoutMs: config.backend.generateTimeoutMs,
+    }),
+  });
   const store = new FsJobStore(root);
-  // Forge のアダプタが入るまでバックエンドは無い
-  const queue = new AutoJobQueue({
+  const manualRunner = new ManualGenerationRunner({ backend, store });
+  process.stdout.write(`drawroid: Forge ${forgeUrl}\n`);
+
+  const log = (line: string) => process.stdout.write(`${line}\n`);
+  const autoQueue = new AutoJobQueue({
     store,
-    backend: undefined,
+    backend,
     env: process.env,
     budget: DEFAULT_BUDGET,
     log,
   });
-  const configPath = dataPaths(root).config;
-
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
-    log('drawroid: LLM が未設定。PUT /api/settings/llm で設定するまで、ジョブは待ち行列に留まる');
+    log(
+      'drawroid: LLM が未設定。PUT /api/settings/llm で設定するまで、自動ジョブは待ち行列に留まる',
+    );
   } else {
     const parsed = llmConfigSchema.safeParse(stored);
     if (parsed.success) {
-      queue.configure(parsed.data);
+      autoQueue.configure(parsed.data);
     } else {
       log(
         `drawroid: config.json の llm が不正なので未設定のまま進む: ${parsed.error.issues[0]?.message ?? ''}`,
       );
     }
   }
-  log(
-    'drawroid: 画像生成バックエンドが未設定（Forge のアダプタは M1 で入る）。それまでジョブは待ち行列に留まる',
-  );
-  // 落ちる前のジョブを再開する
-  queue.kick();
-
+  // 落ちる前の自動ジョブを再開する
+  autoQueue.kick();
   const llmSettings = {
     read: () => readLlmSettings(configPath),
-    write: async (config: LlmConfig) => {
-      await writeLlmSettings(configPath, config);
-      queue.configure(config);
-      queue.kick();
+    write: async (llm: LlmConfig) => {
+      await writeLlmSettings(configPath, llm);
+      autoQueue.configure(llm);
+      autoQueue.kick();
     },
   };
-  const deps = { store, queue, budget: DEFAULT_BUDGET, llmSettings, env: process.env };
-  const { address } = await listen({ port, webRoot: resolveWebRoot(), deps });
+
+  const { address } = await listen({
+    port: args.port,
+    webRoot: resolveWebRoot(),
+    deps: {
+      backend,
+      store,
+      manualRunner,
+      autoQueue,
+      budget: DEFAULT_BUDGET,
+      llmSettings,
+      env: process.env,
+    },
+  });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
 }
 

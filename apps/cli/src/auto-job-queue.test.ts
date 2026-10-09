@@ -40,11 +40,11 @@ const config: LlmConfig = llmConfigSchema.parse({
   roles: { think: { provider: 'cloud', model: 'm' } },
 });
 
-function makeQueue(options: { backend?: StubBackend | undefined; env?: Record<string, string> }) {
+function makeQueue(options: { backend?: StubBackend; env?: Record<string, string> }) {
   const llm = new ScriptedLlm({ think, judge });
   const queue = new AutoJobQueue({
     store,
-    backend: 'backend' in options ? options.backend : new StubBackend(),
+    backend: options.backend ?? new StubBackend(),
     env: options.env ?? { TEST_KEY: 'sk-should-not-leak' },
     budget: DEFAULT_BUDGET,
     createLlm: (c, env) => (env['TEST_KEY'] ? llm : createLlm(c, { env })),
@@ -88,18 +88,6 @@ describe('AutoJobQueue', () => {
     const state = await stateOf(spec.jobId);
     expect(state).toMatchObject({ status: 'stopped', reason: { kind: 'limit:iterations' } });
     expect(backend.requests).toHaveLength(2);
-  });
-
-  it('does not run a job without a backend even when the LLM is configured', async () => {
-    const { queue, llm } = makeQueue({ backend: undefined });
-    const spec = await submit();
-
-    queue.configure(config);
-    queue.kick();
-    await queue.idle();
-
-    expect((await stateOf(spec.jobId)).status).toBe('queued');
-    expect(llm.calls).toEqual([]);
   });
 
   it('stops a waiting job as a human stop', async () => {

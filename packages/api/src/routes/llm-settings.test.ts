@@ -1,4 +1,9 @@
-import { DEFAULT_BUDGET, type JobStore } from '@drawroid/core';
+import {
+  DEFAULT_BUDGET,
+  type ImageBackend,
+  type JobStore,
+  type ManualGenerationRunner,
+} from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -19,9 +24,11 @@ let written: LlmConfig[];
 
 function makeApp(env: Record<string, string | undefined>) {
   return createApi({
-    // 設定の経路は store を使わない
+    // 設定の経路はジョブとバックエンドを使わない
+    backend: {} as ImageBackend,
     store: {} as JobStore,
-    queue: { kick: () => undefined, stop: async () => undefined },
+    manualRunner: {} as ManualGenerationRunner,
+    autoQueue: { kick: () => undefined, stop: async () => undefined },
     budget: DEFAULT_BUDGET,
     llmSettings: {
       read: async () => saved,

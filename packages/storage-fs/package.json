@@ -18,11 +18,11 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "zod": "catalog:"
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@drawroid/core": "workspace:*",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "zod": "catalog:"
   }
 }

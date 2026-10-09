@@ -1,6 +1,5 @@
 import type { AutoJobQueue as AutoJobQueuePort } from '@drawroid/api';
 import {
-  BackendError,
   JobRunner,
   THINK_PARAM_KEYS,
   type Budget,
@@ -27,39 +26,19 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 export type AutoJobQueueOptions = {
   store: JobStore;
-  backend: ImageBackend | undefined;
+  backend: ImageBackend;
   env: Env;
   budget: Budget;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   log: (line: string) => void;
 };
 
-/** バックエンドが無いとき、ランナーに渡すもの。kick が揃うまで回さないので、通常は呼ばれない */
-const UNCONFIGURED_BACKEND: ImageBackend = {
-  async probe() {
-    throw unconfigured();
-  },
-  async listCandidates() {
-    throw unconfigured();
-  },
-  async generate() {
-    throw unconfigured();
-  },
-  async interrupt() {},
-};
-
-function unconfigured(): BackendError {
-  return new BackendError('unreachable', '画像生成バックエンドが未設定');
-}
-
 export class AutoJobQueue implements AutoJobQueuePort {
   private readonly runner: JobRunner;
-  private readonly backend: ImageBackend | undefined;
   private readonly makeLlm: (config: LlmConfig, env: Env) => LlmPort;
   private llm: LlmPort | undefined;
 
   constructor(private readonly options: AutoJobQueueOptions) {
-    this.backend = options.backend;
     this.makeLlm = options.createLlm ?? ((config, env) => createLlm(config, { env }));
     // ランナーを作り直さず、委ね先だけを差し替える: 作り直すと、走っているジョブの中断と再開が絡むため
     const delegating: LlmPort = {
@@ -70,7 +49,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
     this.runner = new JobRunner({
       store: options.store,
       llm: delegating,
-      backend: options.backend ?? UNCONFIGURED_BACKEND,
+      backend: options.backend,
       budget: options.budget,
       allowed: THINK_PARAM_KEYS,
       defaults: DEFAULTS,
@@ -91,7 +70,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
   }
 
   kick(): void {
-    if (this.llm === undefined || this.backend === undefined) return;
+    if (this.llm === undefined) return;
     this.runner.kick();
   }
 

@@ -15,15 +15,18 @@
   },
   "dependencies": {
     "@drawroid/api": "workspace:*",
+    "@drawroid/backend-forge": "workspace:*",
     "@drawroid/core": "workspace:*",
     "@drawroid/llm": "workspace:*",
     "@drawroid/storage-fs": "workspace:*",
     "@drawroid/web": "workspace:*",
     "@hono/node-server": "catalog:",
-    "hono": "catalog:"
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^5.0.0"
   }
 }

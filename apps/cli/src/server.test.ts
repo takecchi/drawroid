@@ -1,20 +1,13 @@
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_BUDGET, type JobStore } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
+
+import { stubDeps } from './test-support.js';
 
 import { createApp } from './server.js';
 
 const webRoot = fileURLToPath(new URL('./test-fixtures/web', import.meta.url));
-const deps = {
-  // ここで確かめる経路は store を使わない
-  store: {} as JobStore,
-  queue: { kick: () => undefined, stop: async () => undefined },
-  budget: DEFAULT_BUDGET,
-  llmSettings: { read: async () => undefined, write: async () => undefined },
-  env: {},
-};
-const app = createApp({ webRoot, deps });
+const app = createApp({ webRoot, deps: stubDeps() });
 
 describe('createApp', () => {
   it('serves the API under /api', async () => {

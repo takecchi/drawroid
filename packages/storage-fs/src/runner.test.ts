@@ -136,7 +136,7 @@ describe('the loop stops (:70)', () => {
 
     const state = await stoppedState(store, spec.jobId);
     expect(state.reason.kind).toBe('ai');
-    expect(state.carry.completedIterations).toBe(2);
+    expect(state.carry?.completedIterations).toBe(2);
     expect(state.imagesGenerated).toBe(4);
   });
 
@@ -230,7 +230,8 @@ describe('the input to the LLM stays within the budget (:71)', () => {
       const early = Math.max(...sizes.slice(0, 10));
       expect(Math.max(...sizes.slice(10))).toBeLessThanOrEqual(early + 8);
     }
-  });
+    // 既定の 5 秒にしない: 30 回ぶんの画像の縮小をファイルの上で実際に回すため、遅い機械では超える
+  }, 30_000);
 });
 
 describe('images are passed once, and only as previews (:72)', () => {
@@ -315,7 +316,7 @@ describe('a job resumes where it stopped (:74)', () => {
 
     const state = await stoppedState(second.store, spec.jobId);
     expect(state.reason.kind).toBe('limit:iterations');
-    expect(state.carry.completedIterations).toBe(3);
+    expect(state.carry?.completedIterations).toBe(3);
     // 2回目は「見る」からやり直し、3回目だけを新しく考えて生成した
     expect(second.llm.calls.map((c) => c.purpose)).toEqual(['judge', 'think', 'judge']);
     expect(second.backend.requests).toHaveLength(1);
@@ -358,7 +359,7 @@ describe('a job resumes after the process is killed (:74)', () => {
 
     const state = await stoppedState(store, spec.jobId);
     expect(state.reason.kind).toBe('limit:iterations');
-    expect(state.carry.completedIterations).toBe(3);
+    expect(state.carry?.completedIterations).toBe(3);
     // 2回目は考え直さずに生成からやり直し、3回目だけを新しく考えた
     expect(llm.calls.map((c) => c.purpose)).toEqual(['judge', 'think', 'judge']);
     expect(backend.requests).toHaveLength(2);

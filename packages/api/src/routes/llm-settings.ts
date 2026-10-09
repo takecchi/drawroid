@@ -2,7 +2,7 @@ import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@dra
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
-import { describeIssues, errorBody } from '../errors.js';
+import { describeIssues, invalidConfig, invalidRequest } from '../errors.js';
 
 /** 値ではなく、名前と「入っているか」だけを返す */
 function apiKeyEnvStatus(config: LlmConfig, env: ApiDeps['env']) {
@@ -24,21 +24,21 @@ export function llmSettingsRoutes(deps: ApiDeps) {
       if (stored === undefined) return c.json({ config: null }, 200);
       const parsed = llmConfigSchema.safeParse(stored);
       if (!parsed.success) {
-        return c.json(errorBody('invalid_config', describeIssues(parsed.error)), 500);
+        return invalidConfig(c, describeIssues(parsed.error));
       }
       return c.json(view(parsed.data), 200);
     })
     .put('/', async (c) => {
       const parsed = llmConfigSchema.safeParse(await c.req.json().catch(() => undefined));
       if (!parsed.success) {
-        return c.json(errorBody('invalid_request', describeIssues(parsed.error)), 400);
+        return invalidRequest(c, describeIssues(parsed.error));
       }
       // 組み立てられない設定は保存しない: 保存した設定と実際に使う設定がずれ、走っているジョブが次の呼び出しで止まるため
       try {
         createLlm(parsed.data, { env: deps.env });
       } catch (error) {
         const reason = error instanceof LlmConfigError ? error.message : 'LLM を組み立てられない';
-        return c.json(errorBody('invalid_request', reason), 400);
+        return invalidRequest(c, reason);
       }
       await deps.llmSettings.write(parsed.data);
       return c.json(view(parsed.data), 200);
