@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_MODEL_WINDOW } from '../../loop/budget.js';
+import { InputOverBudgetError } from '../../loop/inputs.js';
 import type { ConversationEvent } from '../events.js';
 import { buildTalkInput } from './input.js';
 import { DEFAULT_TALK_LIMITS } from './limits.js';
@@ -174,5 +175,117 @@ describe('buildTalkInput', () => {
       }),
     );
     expect(text).toContain('ツールは使わず');
+  });
+
+  it('does not tell the model to answer without tools before the final step', () => {
+    seq = 0;
+    const text = textOf(
+      buildTalkInput({
+        events: [user('こんにちは')],
+        messageSeqs: [1],
+        steps: [],
+        final: false,
+        limits: DEFAULT_TALK_LIMITS,
+        window: DEFAULT_MODEL_WINDOW,
+      }),
+    );
+    expect(text).not.toContain('ツールは使わず');
+  });
+
+  it('passes exactly the recent messages and no older ones', () => {
+    seq = 0;
+    const events = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].map((t) => user(t));
+    const messages = buildTalkInput({
+      events,
+      messageSeqs: [6],
+      steps: [],
+      final: false,
+      limits: { ...DEFAULT_TALK_LIMITS, recentMessages: 3 },
+      window: DEFAULT_MODEL_WINDOW,
+    });
+    const text = textOf(messages);
+    expect(text).toContain('人間: m4');
+    expect(text).toContain('人間: m5');
+    expect(text).toContain('人間: m6');
+    expect(text).not.toContain('m3');
+    expect(messages.report.notes).toContainEqual(
+      expect.objectContaining({ kind: 'dropped', section: 'messages' }),
+    );
+  });
+
+  it('clips one message to messageChars and records that it did', () => {
+    seq = 0;
+    const messages = buildTalkInput({
+      events: [user('あ'.repeat(50))],
+      messageSeqs: [1],
+      steps: [],
+      final: false,
+      limits: { ...DEFAULT_TALK_LIMITS, messageChars: 10 },
+      window: DEFAULT_MODEL_WINDOW,
+    });
+    expect(messages.report.notes).toContainEqual({
+      kind: 'clipped',
+      section: 'message[1]',
+      from: 50,
+      to: 10,
+    });
+    expect(textOf(messages)).toContain('あ'.repeat(10));
+    expect(textOf(messages)).not.toContain('あ'.repeat(11));
+  });
+
+  it('clips the state of the job to jobChars and records that it did', () => {
+    seq = 0;
+    const messages = buildTalkInput({
+      events: [user('今どう？')],
+      messageSeqs: [1],
+      job: 'い'.repeat(50),
+      steps: [],
+      final: false,
+      limits: { ...DEFAULT_TALK_LIMITS, jobChars: 10 },
+      window: DEFAULT_MODEL_WINDOW,
+    });
+    expect(messages.report.notes).toContainEqual({
+      kind: 'clipped',
+      section: 'job',
+      from: 50,
+      to: 10,
+    });
+    expect(textOf(messages)).not.toContain('い'.repeat(11));
+  });
+
+  it('drops the oldest messages first when the input limit is reached', () => {
+    seq = 0;
+    // 上限は 1 件が約 100 トークンの発言が 3 件入る大きさ。直近の件数では落ちない
+    const events = [1, 2, 3, 4, 5, 6].map((i) => user(`${i}番目${'あ'.repeat(100)}`));
+    const messages = buildTalkInput({
+      events: [...events, user('最後の発言')],
+      messageSeqs: [7],
+      steps: [],
+      final: false,
+      limits: { ...DEFAULT_TALK_LIMITS, recentMessages: 20 },
+      window: { contextTokens: 400, maxOutputTokens: 0 },
+    });
+    const text = textOf(messages);
+    expect(messages.report.estimatedInputTokens).toBeLessThanOrEqual(400);
+    expect(text).toContain('6番目');
+    expect(text).not.toContain('1番目');
+    expect(text).toContain('最後の発言');
+    expect(messages.report.notes).toContainEqual(
+      expect.objectContaining({ kind: 'dropped', section: 'message[1]' }),
+    );
+  });
+
+  it('refuses to build an input whose required part alone exceeds the limit', () => {
+    seq = 0;
+    expect(() =>
+      buildTalkInput({
+        events: [user('あ'.repeat(500))],
+        messageSeqs: [1],
+        steps: [],
+        final: false,
+        limits: DEFAULT_TALK_LIMITS,
+        window: { contextTokens: 300, maxOutputTokens: 0 },
+      }),
+    ).toThrow(InputOverBudgetError);
   });
 });

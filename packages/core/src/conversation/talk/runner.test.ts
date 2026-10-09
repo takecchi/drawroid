@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { JobStore } from '../../job/store.js';
-import type { TalkStepCall } from '../../llm/port.js';
+import type { LlmPort, TalkStepCall, TalkStepPart } from '../../llm/port.js';
 import { basicPermissions } from '../../loop/iteration-permissions.js';
 import type { Permissions } from '../../permissions/permission.js';
 import { MemoryConversationStore } from '../../testing/memory-conversation-store.js';
 import { ScriptedLlm, type TalkScript } from '../../testing/scripted-llm.js';
 import { StubBackend } from '../../testing/stub-backend.js';
-import { ConversationHubs } from '../hub.js';
+import { ConversationHubs, type HubMessage } from '../hub.js';
 import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
 import { TalkRunner } from './runner.js';
 import { createReadOnlyTools } from './tools.js';
@@ -24,6 +24,8 @@ async function setup(
     permissions?: Permissions;
     llm?: boolean;
     loras?: { name: string; label?: string }[];
+    /** 台本の LLM を包んで、出し直しなど台本で書けない流れを作る */
+    wrap?: (scripted: ScriptedLlm) => LlmPort;
   } = {},
 ) {
   const store = new MemoryConversationStore();
@@ -47,7 +49,7 @@ async function setup(
   const runner = new TalkRunner({
     store,
     hubs,
-    llm: () => (options.llm === false ? undefined : llm),
+    llm: () => (options.llm === false ? undefined : (options.wrap?.(llm) ?? llm)),
     tools: createReadOnlyTools({ backend, permissions: async () => permissions, jobs: noJobs }),
     limits: async () => ({ ...DEFAULT_TALK_LIMITS, ...options.limits }),
     now,
@@ -263,6 +265,81 @@ describe('TalkRunner', () => {
     ).toEqual(['interrupted', 'done']);
     // 1つ目のターンは、LLM を呼ぶ前に打ち切られた。呼ばれたのは2つ目のターンの1回だけ
     expect(llm.steps).toHaveLength(1);
+  });
+
+  it('numbers the turns 1, 2, 3 across messages', async () => {
+    const { say, events } = await setup(() => ({ text: 'はい' }));
+    await say('1つ目');
+    await say('2つ目');
+    await say('3つ目');
+
+    const turns = (await events()).flatMap((e) => (e.type === 'turn.started' ? [e.turn] : []));
+    expect(turns).toEqual([1, 2, 3]);
+  });
+
+  it('streams the reply once: the deltas add up to the confirmed message', async () => {
+    const { say, events, hubs, conversationId } = await setup(() => ({
+      reasoning: '考える',
+      text: '描けます',
+    }));
+    const live: HubMessage[] = [];
+    await hubs.get(conversationId).subscribe(0, (message) => live.push(message));
+    await say('描ける？');
+
+    // 画面は増分を足して写しを作る。replace のときは写しを置き換える
+    let copy = '';
+    for (const message of live) {
+      if (message.kind === 'live' && message.event.type === 'delta.text') {
+        copy = message.event.replace === true ? message.event.text : copy + message.event.text;
+      }
+    }
+    const confirmed = (await events()).find((e) => e.type === 'assistant.message');
+    expect(confirmed).toMatchObject({ text: '描けます' });
+    expect(copy).toBe('描けます');
+  });
+
+  it('drops the tool calls of a response that was retried', async () => {
+    const { say, events } = await setup(() => ({}), {
+      // 1つ目の応答はツールを呼んだあとに出し直しになり、出し直しの応答は本文だけ
+      wrap: (scripted) => ({
+        describe: (role) => scripted.describe(role),
+        generateStructured: (call) => scripted.generateStructured(call),
+        async *streamStep(): AsyncIterable<TalkStepPart> {
+          yield { type: 'tool-call', callId: 'c1', name: 'describe_backend', input: {} };
+          yield { type: 'retry', reason: '引数が合わない' };
+          yield { type: 'text-delta', text: '出し直した返答' };
+          yield { type: 'finish', attempts: [] };
+        },
+      }),
+    });
+    await say('何ができる？');
+
+    const all = await events();
+    expect(all.some((e) => e.type === 'tool.call')).toBe(false);
+    expect(all.find((e) => e.type === 'assistant.message')).toMatchObject({
+      text: '出し直した返答',
+    });
+    expect(all.at(-1)).toMatchObject({ type: 'turn.ended', outcome: 'done' });
+  });
+
+  it('puts the preface text on the first tool of a step only', async () => {
+    const { say, llm } = await setup((_call, n) =>
+      n === 0
+        ? {
+            text: 'まず調べます。',
+            toolCalls: [
+              { name: 'describe_backend', input: {} },
+              { name: 'drawing_status', input: {} },
+            ],
+          }
+        : { text: '答えます' },
+    );
+    await say('調べて');
+
+    const next = textOf(llm.steps[1]);
+    expect(next).toContain('ツール describe_backend');
+    expect(next).toContain('ツール drawing_status');
+    expect(next.split('まず調べます。')).toHaveLength(2);
   });
 
   it('closes the turn as an error when no LLM is set up', async () => {
