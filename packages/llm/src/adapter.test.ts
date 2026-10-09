@@ -541,7 +541,8 @@ describe('AiSdkLlm.streamStep', () => {
       { type: 'text-delta', text: '調べます。' },
       {
         type: 'tool-call',
-        callId: 'call-0',
+        // サーバの ID に、呼び出しごとの接頭辞が付く（ステップごとに同じ ID を返すサーバがあるため）
+        callId: expect.stringMatching(/^native-[0-9a-f-]+-call-0$/),
         name: 'search_candidates',
         input: { kind: 'lora', query: 'miku' },
       },
