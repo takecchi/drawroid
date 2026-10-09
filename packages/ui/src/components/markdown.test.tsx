@@ -63,6 +63,11 @@ describe('Markdown', () => {
         '[データ](data:text/html,<script>alert(4)</script>)',
         '',
         '![画像](javascript:alert(5))',
+        '',
+        // `?` や `#` より前に `:` が在れば scheme なので、後ろに `?`・`#` が続いても通さない
+        '[問い](javascript:alert(6)?x)',
+        '',
+        '[印](javascript:alert(7)#x)',
       ].join('\n'),
     );
 
@@ -75,6 +80,27 @@ describe('Markdown', () => {
     expect(root.querySelectorAll('a')).toHaveLength(0);
     expect(root.textContent).toContain('押す');
     expect(root.textContent).toContain('参照');
+    expect(root.textContent).toContain('問い');
+    expect(root.textContent).toContain('印');
+  });
+
+  it('keeps a link whose safe scheme is written in capitals', () => {
+    draw('[大文字の https](HTTPS://example.com/ref) と [メール](MAILTO:a@example.com)');
+
+    expect(screen.getByRole('link', { name: '大文字の https' }).getAttribute('href')).toBe(
+      'HTTPS://example.com/ref',
+    );
+    expect(screen.getByRole('link', { name: 'メール' }).getAttribute('href')).toBe(
+      'MAILTO:a@example.com',
+    );
+  });
+
+  it('percent-encodes spaces and non-ASCII characters in a URL', () => {
+    draw('[海辺](<https://example.com/海 辺>)');
+
+    expect(screen.getByRole('link', { name: '海辺' }).getAttribute('href')).toBe(
+      'https://example.com/%E6%B5%B7%20%E8%BE%BA',
+    );
   });
 
   it.each([false, true])(
@@ -114,10 +140,33 @@ describe('Markdown', () => {
     }
   });
 
+  it('keeps the footnote links in the same tab, so they jump within the reply', () => {
+    const root = draw('注[^1]\n\n[^1]: 脚注の中身');
+
+    const links = [...root.querySelectorAll('a')];
+    expect(links.length).toBeGreaterThanOrEqual(2);
+    for (const link of links) {
+      expect(link.getAttribute('href')).toMatch(/^#/);
+      expect(link.getAttribute('target')).toBeNull();
+      expect(link.getAttribute('rel')).toBeNull();
+    }
+  });
+
   it('does not load outside images, and offers them as links instead', () => {
-    const root = draw('![夕暮れの海](https://example.com/sea.png)');
+    const root = draw(
+      [
+        '![夕暮れの海](https://example.com/sea.png)',
+        '',
+        '![参照の海][sea]',
+        '',
+        '[sea]: https://example.com/ref-sea.png',
+      ].join('\n'),
+    );
 
     expect(root.querySelector('img')).toBeNull();
+    expect(screen.getByRole('link', { name: '画像: 参照の海' }).getAttribute('href')).toBe(
+      'https://example.com/ref-sea.png',
+    );
     expect(screen.getByRole('link', { name: '画像: 夕暮れの海' }).getAttribute('href')).toBe(
       'https://example.com/sea.png',
     );
