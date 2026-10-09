@@ -78,6 +78,8 @@ export type ChatItem =
       step?: number;
       steps?: number;
       etaMs?: number;
+      /** 途中の画像（設定で有効なときだけ） */
+      previewUrl?: string;
     }
   | { kind: 'status'; key: string; status: ChatStatus };
 
@@ -420,6 +422,7 @@ export function chatItems(state: ChatState): ChatItem[] {
       step: progress.step,
       steps: progress.steps,
       etaMs: progress.etaMs,
+      previewUrl: progress.previewUrl,
     });
   }
   if (state.status !== undefined)

@@ -256,6 +256,12 @@ function renderItem(
           step={item.step}
           steps={item.steps}
           etaMs={item.etaMs}
+          previewSrc={
+            item.previewUrl === undefined
+              ? undefined
+              : // 進みごとに URL を変える: 途中の画像の URL はジョブごとに1つで、同じ src のままではブラウザが取り直さないため
+                `${item.previewUrl}?progress=${item.step ?? Math.round(item.progress * 100)}`
+          }
         />
       );
     case 'status':
