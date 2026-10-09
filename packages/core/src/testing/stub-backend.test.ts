@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import { generationRequestSchema } from '../backend.js';
+import { generationRequestSchema, type ImageBackend } from '../backend.js';
 import { BackendError } from '../backend-error.js';
 import { describeImageBackendContract } from './image-backend-contract.js';
 import { StubBackend } from './stub-backend.js';
@@ -23,6 +23,12 @@ const request = generationRequestSchema.parse({
 });
 
 describe('StubBackend', () => {
+  it('has no progress, which the ImageBackend contract allows', () => {
+    expectTypeOf<StubBackend>().not.toHaveProperty('progress');
+    const backend: ImageBackend = new StubBackend();
+    expect(backend.progress).toBeUndefined();
+  });
+
   it('records what it was asked to generate', async () => {
     const backend = new StubBackend();
     await backend.generate(request, new AbortController().signal);

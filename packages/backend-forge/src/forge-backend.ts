@@ -1,9 +1,10 @@
-import { interruptGeneration } from '@drawroid/backend-sdapi';
+import { interruptGeneration, readProgress } from '@drawroid/backend-sdapi';
 import type {
   BackendCapabilities,
   Candidate,
   CandidateKind,
   GenerationImages,
+  GenerationProgress,
   GenerationRequest,
   GenerationResult,
   ImageBackend,
@@ -62,5 +63,13 @@ export class ForgeBackend implements ImageBackend {
 
   async interrupt(): Promise<void> {
     await interruptGeneration(this.client);
+  }
+
+  // 待つ上限は client の既定（requestTimeoutMs）のまま: 進み具合は短く答えるはずの問い合わせで、生成の上限を渡すと止まった生成を長く待ってしまうため
+  progress(
+    signal: AbortSignal,
+    options?: { includePreview?: boolean },
+  ): Promise<GenerationProgress | undefined> {
+    return readProgress(this.client, signal, options);
   }
 }
