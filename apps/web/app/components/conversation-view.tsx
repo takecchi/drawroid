@@ -471,13 +471,15 @@ function ImagesItem({
 }
 
 /**
- * 止まりの行。AI の判断・上限・エラーで止まったときは、最良の画像と「この画像に決める（お気に入りにする）」を添え、人が最後に選べるようにする。
- * 人が止めた・人が選んだ止まりには添えない（人がもう会話の中で動いているため）。
+ * 止まりの行。人が画像を選んで止めたとき以外は、最良の画像と「この画像に決める（お気に入りにする）」を添え、人が最後に選べるようにする。
+ * 人が止めたときも添える（止めたあと、途中の画像から選べるように）。人が選んだ止まりには添えない（もう選んである）。
+ * 覚えたことは、AI の判断・上限・エラーで止まったときだけ添える。
  */
 // 止まったジョブには採る口（adopt）が使えない（止まったら受けない約束。API は 409）ので、決めるのはお気に入りの口で行う。
 // 最良はジョブの状態（carry.best）から読む: 話す役の要約と同じ出どころにするため
 function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped' }> }) {
-  const offersChoice = item.reason.kind !== 'human' && item.reason.kind !== 'adopted';
+  const offersChoice = item.reason.kind !== 'adopted';
+  const showsLearned = offersChoice && item.reason.kind !== 'human';
   const { data: job } = useJob(offersChoice ? item.jobId : undefined);
   const best = offersChoice ? job?.state.carry?.best : undefined;
   return (
@@ -508,7 +510,7 @@ function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped
           score={best.score}
         />
       )}
-      {offersChoice && <LearnedFromJob jobId={item.jobId} />}
+      {showsLearned && <LearnedFromJob jobId={item.jobId} />}
     </div>
   );
 }
