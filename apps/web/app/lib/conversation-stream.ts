@@ -37,6 +37,8 @@ export interface ConversationSource {
 
 type Action =
   | { type: 'reset' }
+  /** 読み込んだページまでを畳んだもの。購読を開く前だけ使う（ほかから状態が変わらない間） */
+  | { type: 'restored'; chat: ChatState }
   | { type: 'confirmed'; event: ConversationEvent }
   | { type: 'live'; event: LiveEvent }
   | { type: 'loaded' }
@@ -54,6 +56,8 @@ function reduce(state: StreamState, action: Action): StreamState {
   switch (action.type) {
     case 'reset':
       return INITIAL;
+    case 'restored':
+      return { ...state, chat: action.chat };
     case 'confirmed':
       return { ...state, chat: applyConfirmed(state.chat, action.event) };
     case 'live':
@@ -102,12 +106,13 @@ export function useConversationStream(conversationId: string, source: Conversati
           const parsed = conversationEventSchema.safeParse(raw);
           if (!parsed.success) continue;
           chat = applyConfirmed(chat, parsed.data);
-          dispatch({ type: 'confirmed', event: parsed.data });
         }
         // 進まないページで回り続けない: 置き場所が more を返し続けても、画面を固めないため
         if (!page.more || page.last <= after) break;
         after = page.last;
       }
+      // 読み終えてから1度だけ渡す: ページごとに渡すと、そのたびにそこまでの全部の行を描き直し、長い会話ほど開くのが重くなるため
+      dispatch({ type: 'restored', chat });
       dispatch({ type: 'loaded' });
       stream = source.openStream(conversationId, lastSeq(chat));
       for (const type of STREAM_EVENT_TYPES) {

@@ -175,6 +175,21 @@ describe('chatItems', () => {
 
     expect(chatItems(again)).toHaveLength(1);
   });
+
+  it('puts a late event with an older seq back in order, and still adds it only once', () => {
+    const message = (seq: number, text: string) =>
+      ({ type: 'user.message', text, attachments: [], seq, at: AT }) as ConversationEvent;
+    let state = applyConfirmed(EMPTY_CHAT_STATE, message(1, '一'));
+    state = applyConfirmed(state, message(3, '三'));
+    state = applyConfirmed(state, message(2, '二'));
+    state = applyConfirmed(state, message(2, '二'));
+
+    expect(chatItems(state).map((item) => (item.kind === 'user' ? item.text : ''))).toEqual([
+      '一',
+      '二',
+      '三',
+    ]);
+  });
 });
 
 describe('streaming parts', () => {
