@@ -39,7 +39,7 @@ import {
   referencesWithoutGist,
   type ReferenceLimits,
 } from '../reference/reference.js';
-import { DEFAULT_BUDGETS, type Budgets } from '../budget/settings.js';
+import { DEFAULT_BUDGETS, resolveBudgets, type Budgets } from '../budget/settings.js';
 import type { Budget } from './budget.js';
 import { advanceCarry, createCarry, type Carry } from './carry.js';
 import { buildJudgeInput, buildRefGistInput, buildThinkInput, type MemoryInput } from './inputs.js';
@@ -297,7 +297,7 @@ export class JobRunner {
   // 走行中に設定を読み直さない: 回を重ねても上限が一定であること（PRD:135・milestones:71）が崩れ、
   // 縮小版の長辺が途中で変わって同じ画像の縮小版が2つできるため
   private budgetsFor(spec: AutoJobSpec): Budgets {
-    if (spec.budgets !== undefined) return spec.budgets;
+    if (spec.budgets !== undefined) return resolveBudgets(spec.budgets);
     const { memory } = this.deps;
     return {
       ...this.deps.budget,

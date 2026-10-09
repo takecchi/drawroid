@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   budgetOverridesSchema,
   budgetsSchema,
+  storedBudgetsSchema,
   DEFAULT_BUDGETS,
   resolveBudgets,
 } from './settings.js';
@@ -77,5 +78,23 @@ describe('budgetsSchema', () => {
     delete withoutDistill.distill;
 
     expect(budgetsSchema.safeParse(withoutDistill).success).toBe(false);
+  });
+});
+
+describe('storedBudgetsSchema', () => {
+  it('still reads budgets written before a field was added or removed, and the missing field falls back to the default', () => {
+    const older: Record<string, unknown> = { ...DEFAULT_BUDGETS, imageLongEdge: 256, retired: 1 };
+    delete older.distill;
+
+    const parsed = storedBudgetsSchema.safeParse(older);
+
+    expect(parsed.success).toBe(true);
+    const resolved = resolveBudgets(parsed.data ?? {});
+    expect(resolved.imageLongEdge).toBe(256);
+    expect(resolved.distill).toEqual(DEFAULT_BUDGETS.distill);
+  });
+
+  it('rejects a stored value out of range', () => {
+    expect(storedBudgetsSchema.safeParse({ imageLongEdge: 0 }).success).toBe(false);
   });
 });

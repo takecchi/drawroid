@@ -52,6 +52,7 @@ function treeOf(
   defaults: Record<string, unknown>,
   partial: boolean,
   special: Record<string, z.ZodType> = {},
+  strict = true,
 ): z.ZodType {
   const shape: Record<string, z.ZodType> = {};
   for (const [key, fallback] of Object.entries(defaults)) {
@@ -59,9 +60,9 @@ function treeOf(
       special[key] ??
       (typeof fallback === 'number'
         ? count(fallback)
-        : treeOf(fallback as Record<string, unknown>, partial));
+        : treeOf(fallback as Record<string, unknown>, partial, {}, strict));
   }
-  const object = z.strictObject(shape);
+  const object = strict ? z.strictObject(shape) : z.looseObject(shape);
   return partial ? object.partial() : object;
 }
 
@@ -69,6 +70,17 @@ const specialLeaves = { imageLongEdge, imagesPerJudge };
 
 /** job.json に写す、解決済みの予算。全欄が要る */
 export const budgetsSchema = treeOf(DEFAULT_BUDGETS, false, specialLeaves) as z.ZodType<Budgets>;
+
+/**
+ * job.json に写した予算を読むときの形。書かれた欄だけを確かめ、足りない欄は読む側が既定で埋める。
+ */
+// 全欄必須・未知の鍵を拒む形にしない: あとで予算に欄を足したり減らしたりすると、それより前に投入したジョブの job.json が読めなくなるため
+export const storedBudgetsSchema = treeOf(
+  DEFAULT_BUDGETS,
+  true,
+  specialLeaves,
+  false,
+) as z.ZodType<BudgetOverrides>;
 
 /** config.json の budgets と PUT の本文。書いた欄だけを、範囲を確かめて受ける */
 export const budgetOverridesSchema = treeOf(
