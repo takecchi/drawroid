@@ -8,6 +8,7 @@ import type {
   BackendSettingsResponse,
   BackendStatus,
   BudgetSettingsResponse,
+  GenerationProgressSettingsResponse,
   CandidateNotesResponse,
   CandidatesResponse,
   ConversationEventsResponse,
@@ -198,6 +199,12 @@ export function useConversationEvents(conversationId: string | undefined, after 
           query: { after: String(after) },
         }),
       ),
+  );
+}
+
+export function useGenerationProgressSettings() {
+  return useSWR<GenerationProgressSettingsResponse, ApiError>(keys.generationProgressSettings, () =>
+    unwrap<GenerationProgressSettingsResponse>(() => client.settings['generation-progress'].$get()),
   );
 }
 

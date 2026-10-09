@@ -157,6 +157,23 @@ try {
   await page.getByRole('button', { name: 'LLM の設定を保存' }).click();
   await page.getByText('まだ LLM が設定されていない').waitFor({ state: 'hidden' });
   expect(true, '案内から LLM の設定へ行き、保存できる');
+  // 生成の途中の画像は、既定では出さない（設計書の推奨の13）。設定の画面で有効にでき、保存した値は API でも開き直しても同じ
+  const previewBox = page.getByRole('checkbox', { name: '生成の途中の画像を出す' });
+  await previewBox.waitFor();
+  expect(!(await previewBox.isChecked()), '生成の途中の画像は、既定では出さない');
+  await previewBox.check();
+  await page.getByText('保存した。次に始まる生成から効く。').waitFor();
+  const savedPreview = /** @type {{ includePreview: boolean }} */ (
+    await (
+      await fetch(`${base}/api/settings/generation-progress`, {
+        signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+      })
+    ).json()
+  );
+  expect(
+    savedPreview.includePreview === true,
+    '設定の画面で、生成の途中の画像を出すようにでき、保存される',
+  );
   // 設定したら、まとめて確かめる（drawroid doctor と同じ確かめ）: LLM とは1往復でき、バックエンドが無いことが、することと一緒に出る
   llm.queueTalkTool('doctor_ping', {});
   await page.getByRole('button', { name: '確かめる' }).click();
@@ -175,6 +192,7 @@ try {
   // 前のリンク（/generate#llm）は、設定の画面の同じ欄へ送られる
   await page.goto(`${base}/generate#llm`);
   await page.waitForURL(`${base}/settings#llm`);
+  await page.getByRole('checkbox', { name: '生成の途中の画像を出す', checked: true }).waitFor();
   expect(true, '前のリンク（/generate#llm）は、設定の画面の LLM の欄へ送られる');
 
   await page.goto(`${base}/conversations/${conversation.conversationId}`);

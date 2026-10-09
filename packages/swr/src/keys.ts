@@ -9,6 +9,7 @@ export const keys = {
   llmSettings: '/api/settings/llm',
   permissionSettings: '/api/settings/permissions',
   budgetSettings: '/api/settings/budgets',
+  generationProgressSettings: '/api/settings/generation-progress',
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
   iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,

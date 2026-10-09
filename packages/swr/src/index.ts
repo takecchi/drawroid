@@ -3,6 +3,7 @@ export { jobImageUrls } from './urls.js';
 export {
   useBackendSettings,
   useBudgetSettings,
+  useGenerationProgressSettings,
   useBackendStatus,
   useCandidateNotes,
   useConversationEvents,
@@ -34,6 +35,7 @@ export {
   saveBackendSettings,
   saveBudgetSettings,
   saveCandidateNotes,
+  saveGenerationProgressSettings,
   conversationStreamUrl,
   createConversation,
   interruptConversation,
@@ -65,6 +67,7 @@ export type {
   ConversationsResponse,
   ConversationUploadResponse,
   DoctorResponse,
+  GenerationProgressSettingsResponse,
   PostedMessageResponse,
   CandidatesResponse,
   ChangeStopConditionsResponse,
