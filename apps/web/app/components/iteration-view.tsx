@@ -5,6 +5,7 @@ import type { IterationsResponse } from '@drawroid/swr';
 import { readJudge, readThink } from '../lib/stage-output';
 import { AuthorLabel, InterventionItem, markStyle, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
+import { MaskPainter } from './mask-painter';
 import { SelectionControls } from './selection-controls';
 
 export type Iteration = IterationsResponse['iterations'][number];
@@ -80,6 +81,7 @@ export function IterationView({
   calls,
   verdicts,
   interventions = [],
+  canPaintMask = false,
 }: {
   jobId: string;
   iteration: Iteration;
@@ -87,6 +89,8 @@ export function IterationView({
   verdicts: ReadonlyMap<string, SelectionVerdict>;
   /** この回に取り込んだ人間の指示。考える役の決定の前に出す */
   interventions?: Intervention[];
+  /** 画像にマスクを塗って送れるか。自動ジョブで、まだ止まっていないときだけ */
+  canPaintMask?: boolean;
 }) {
   const judge = readJudge(iteration.judge);
   return (
@@ -131,6 +135,12 @@ export function IterationView({
                 imageKey={imageKey}
                 verdict={verdicts.get(imageKey) ?? null}
               />
+              {canPaintMask && (
+                <MaskPainter
+                  jobId={jobId}
+                  image={{ iteration: iteration.iteration, index: image.index, url: image.url }}
+                />
+              )}
             </figure>
           );
         })}
@@ -152,6 +162,7 @@ export function IterationList({
   calls,
   verdicts,
   interventions = [],
+  canPaintMask = false,
 }: {
   jobId: string;
   heading: string;
@@ -159,6 +170,7 @@ export function IterationList({
   calls: LlmCallSummary[];
   verdicts: ReadonlyMap<string, SelectionVerdict>;
   interventions?: Intervention[];
+  canPaintMask?: boolean;
 }) {
   return (
     <section>
@@ -170,6 +182,7 @@ export function IterationList({
           jobId={jobId}
           iteration={iteration}
           verdicts={verdicts}
+          canPaintMask={canPaintMask}
           interventions={interventions.filter(
             (intervention) =>
               intervention.kind === 'instruction' &&

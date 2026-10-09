@@ -170,6 +170,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             calls={llmCalls.data?.calls ?? []}
             verdicts={verdicts}
             interventions={interventions.data?.interventions ?? []}
+            canPaintMask={data.spec.kind === 'auto' && live}
           />
           <InvalidList
             title="読めない回"
