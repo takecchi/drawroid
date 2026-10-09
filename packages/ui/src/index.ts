@@ -5,4 +5,5 @@
 export * from './components/common';
 export * from './components/layout';
 export * from './components/features/record';
+export * from './components/features/chat';
 export { cn } from './lib/utils';
