@@ -1,4 +1,5 @@
 import type { CandidateKind } from '../backend.js';
+import type { JobStore } from '../job/store.js';
 import type { JobState } from '../job/types.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
@@ -7,6 +8,7 @@ import {
   type Permission,
   type Permissions,
 } from '../permissions/permission.js';
+import type { ConversationEvent } from './events.js';
 
 /** 人間に見せるパラメータの名前（話す役への理由・画面で同じ言葉を使う） */
 export const PARAM_LABELS: Record<ParamKey, string> = {
@@ -166,4 +168,21 @@ export function summarizeJobForTalk(
     parts.push(`依頼の要点: ${carry.intent}`);
   }
   return clip(parts.join(''), limits.chars);
+}
+
+/**
+ * 会話の実行器（TalkRunner）の jobSummary に渡す関数を作る。会話の最後のジョブ（いちばん新しい job.started）の
+ * 状態を、summarizeJobForTalk の短い文にする。会話にジョブが無ければ undefined。
+ */
+export function jobSummaryFor(deps: {
+  jobs: Pick<JobStore, 'readState'>;
+  /** 要約の文字数の上限（予算の talk.jobChars） */
+  chars: () => Promise<number>;
+}): (events: readonly ConversationEvent[]) => Promise<string | undefined> {
+  return async (events) => {
+    const started = events.findLast((event) => event.type === 'job.started');
+    if (started === undefined || started.type !== 'job.started') return undefined;
+    const state = await deps.jobs.readState(started.jobId);
+    return summarizeJobForTalk(started.jobId, state, { chars: await deps.chars() });
+  };
 }

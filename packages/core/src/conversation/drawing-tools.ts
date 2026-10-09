@@ -11,13 +11,13 @@ import {
   type StopConditions,
   type StopConditionsChange,
 } from '../job/types.js';
-import type { ToolSpec } from '../llm/port.js';
 import { createCarry } from '../loop/carry.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
 import { narrowPermissions } from './drawing.js';
 import type { ConversationStore } from './store.js';
+import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js';
 
 /** 描くツールが使うジョブ実行器の口 */
 export type DrawingRunner = {
@@ -27,11 +27,11 @@ export type DrawingRunner = {
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
 };
 
-/** ツールを実行するときに、会話の実行器が渡すもの */
-export type DrawingToolContext = {
-  conversationId: string;
-  /** いまのターンの番号。作ったジョブの job.json に残す */
-  turn: number;
+/**
+ * 描くツールが使うもの。cli で描くツールを作るときに閉じ込めて渡す（副作用の無いツールの createReadOnlyTools と同じ形）。
+ * 会話 ID とターンの番号は、会話の実行器が呼ぶたびに TalkToolContext で渡す
+ */
+export type DrawingToolDeps = {
   /** 会話への橋渡しで包んだジョブの置き場所 */
   jobs: JobStore;
   runner: DrawingRunner;
@@ -45,14 +45,6 @@ export type DrawingToolContext = {
   /** 投入のときに解決してジョブへ写す予算 */
   budgets(): Promise<Budgets>;
   now(): Date;
-};
-
-/** ツールの結果。summary は表示と、話す役へ返す要約（予算で切るのは会話の実行器） */
-export type ToolOutcome = { ok: boolean; summary: string; data?: Record<string, unknown> };
-
-/** 話す役のツール1つ。LLM へは ToolSpec（名前・説明・引数のスキーマ）だけを渡し、実行は core が行う */
-export type DrawingTool = ToolSpec & {
-  run(input: unknown, context: DrawingToolContext): Promise<ToolOutcome>;
 };
 
 const MAX_REQUEST_CHARS = 2000;
@@ -96,15 +88,9 @@ const reviseInputSchema = z
     message: '指示か止める条件の変更のどちらかを書く',
   });
 
-/** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
-async function activeJobOf(context: DrawingToolContext): Promise<string | undefined> {
-  for (const jobId of await context.jobs.listJobIds()) {
-    const spec = await context.jobs.readJob(jobId);
-    if (spec.kind !== 'auto' || spec.conversationId !== context.conversationId) continue;
-    const state = await context.jobs.readState(jobId);
-    if (state.status !== 'stopped') return jobId;
-  }
-  return undefined;
+/** 結果の文を、話す役へ返す result と画面に出す summary の両方に使う */
+function outcome(ok: boolean, text: string): TalkToolOutcome {
+  return { ok, result: text, summary: text };
 }
 
 /** 止める条件を言葉にする（ツールの結果に出し、人間がログで見て言葉で直せるように） */
@@ -120,118 +106,122 @@ export function describeStopConditions(conditions: StopConditions): string {
   return parts.join('・');
 }
 
-const startDrawing: DrawingTool = {
-  name: 'start_drawing',
-  description:
-    '絵を描き始める。人間が描くよう求めたときだけ呼ぶ（「○○を描いて」）。描けるかを聞かれたとき・できることを聞かれたときは呼ばない（調べるツールで答える）。会話で描いている絵がすでにあるときは、revise_drawing か stop_drawing を使う',
-  inputSchema: startInputSchema,
-  async run(raw, context) {
-    const input = startInputSchema.parse(raw);
-    const running = await activeJobOf(context);
-    if (running !== undefined) {
-      return {
-        ok: false,
-        summary: `ジョブ ${running} がまだ描いている。直すなら revise_drawing、やめて描き直すなら stop_drawing のあとで start_drawing を呼ぶ`,
-      };
+/** 描くツール（副作用のあるもの）。会話の実行器に、副作用の無いツール（createReadOnlyTools）と並べて渡す */
+export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
+  /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
+  async function activeJobOf(context: TalkToolContext): Promise<string | undefined> {
+    for (const jobId of await deps.jobs.listJobIds()) {
+      const spec = await deps.jobs.readJob(jobId);
+      if (spec.kind !== 'auto' || spec.conversationId !== context.conversationId) continue;
+      const state = await deps.jobs.readState(jobId);
+      if (state.status !== 'stopped') return jobId;
     }
-    let permissions: Partial<Permissions> | undefined;
-    if (input.permissions !== undefined) {
-      const lists: Partial<Record<CandidateKind, string[]>> = {};
-      for (const kind of new Set(Object.values(CANDIDATE_PARAMS))) {
-        lists[kind] = await context.candidateNames(kind);
+    return undefined;
+  }
+
+  const startDrawing: TalkTool = {
+    name: 'start_drawing',
+    description:
+      '絵を描き始める。人間が描くよう求めたときだけ呼ぶ（「○○を描いて」）。描けるかを聞かれたとき・できることを聞かれたときは呼ばない（調べるツールで答える）。会話で描いている絵がすでにあるときは、revise_drawing か stop_drawing を使う',
+    inputSchema: startInputSchema,
+    async run(raw, context) {
+      const input = startInputSchema.parse(raw);
+      const running = await activeJobOf(context);
+      if (running !== undefined) {
+        return outcome(
+          false,
+          `ジョブ ${running} がまだ描いている。直すなら revise_drawing、やめて描き直すなら stop_drawing のあとで start_drawing を呼ぶ`,
+        );
       }
-      const narrowed = narrowPermissions(
-        await context.humanPermissions(),
-        input.permissions,
-        lists,
-      );
-      if (!narrowed.ok) return { ok: false, summary: `許可を変えられない: ${narrowed.reason}` };
-      permissions = narrowed.value;
-    }
-    const stopConditions = input.stopConditions ?? (await context.defaultStopConditions());
-    if (!hasAnyStopCondition(stopConditions)) {
-      return { ok: false, summary: 'この止める条件では止まらない。回数か AI の判断を足す' };
-    }
-    const references: NewReference[] = [];
-    for (const attachment of input.attachments ?? []) {
-      const upload = await context.conversations.readUpload(
-        context.conversationId,
-        attachment.uploadId,
-      );
-      if (upload === undefined) {
-        return { ok: false, summary: `添えた画像 ${attachment.uploadId} はこの会話に無い` };
+      let permissions: Partial<Permissions> | undefined;
+      if (input.permissions !== undefined) {
+        const lists: Partial<Record<CandidateKind, string[]>> = {};
+        for (const kind of new Set(Object.values(CANDIDATE_PARAMS))) {
+          lists[kind] = await deps.candidateNames(kind);
+        }
+        const narrowed = narrowPermissions(await deps.humanPermissions(), input.permissions, lists);
+        if (!narrowed.ok) return outcome(false, `許可を変えられない: ${narrowed.reason}`);
+        permissions = narrowed.value;
       }
-      references.push({
-        data: upload.data,
-        mediaType: upload.mediaType,
-        ...(attachment.note !== undefined && { note: attachment.note }),
-      });
-    }
-    const budgets = await context.budgets();
-    const spec = await context.jobs.createJob(
-      {
-        kind: 'auto',
-        request: input.request,
-        stopConditions,
-        batchSize: input.batchSize ?? 1,
-        ...(permissions !== undefined && { permissions }),
-        budgets,
-        conversationId: context.conversationId,
-        turn: context.turn,
-      },
-      { status: 'queued', carry: createCarry(input.request, budgets).carry },
-      context.now(),
-      references,
-    );
-    context.runner.kick();
-    return {
-      ok: true,
-      summary: `ジョブ ${spec.jobId} で描き始めた。止める条件: ${describeStopConditions(stopConditions)}`,
-      data: { jobId: spec.jobId, stopConditions },
-    };
-  },
-};
+      const stopConditions = input.stopConditions ?? (await deps.defaultStopConditions());
+      if (!hasAnyStopCondition(stopConditions)) {
+        return outcome(false, 'この止める条件では止まらない。回数か AI の判断を足す');
+      }
+      const references: NewReference[] = [];
+      for (const attachment of input.attachments ?? []) {
+        const upload = await deps.conversations.readUpload(
+          context.conversationId,
+          attachment.uploadId,
+        );
+        if (upload === undefined) {
+          return outcome(false, `添えた画像 ${attachment.uploadId} はこの会話に無い`);
+        }
+        references.push({
+          data: upload.data,
+          mediaType: upload.mediaType,
+          ...(attachment.note !== undefined && { note: attachment.note }),
+        });
+      }
+      const budgets = await deps.budgets();
+      const spec = await deps.jobs.createJob(
+        {
+          kind: 'auto',
+          request: input.request,
+          stopConditions,
+          batchSize: input.batchSize ?? 1,
+          ...(permissions !== undefined && { permissions }),
+          budgets,
+          conversationId: context.conversationId,
+          turn: context.turn,
+        },
+        { status: 'queued', carry: createCarry(input.request, budgets).carry },
+        deps.now(),
+        references,
+      );
+      deps.runner.kick();
+      return outcome(
+        true,
+        `ジョブ ${spec.jobId} で描き始めた。止める条件: ${describeStopConditions(stopConditions)}`,
+      );
+    },
+  };
 
-const reviseDrawing: DrawingTool = {
-  name: 'revise_drawing',
-  description:
-    '描いている絵に、人間の指示を伝える・止める条件を変える。次の回の境目から効く。描いている絵が無いときは使えない',
-  inputSchema: reviseInputSchema,
-  async run(raw, context) {
-    const input = reviseInputSchema.parse(raw);
-    const jobId = await activeJobOf(context);
-    if (jobId === undefined) return { ok: false, summary: '描いている絵が無い' };
-    const done: string[] = [];
-    if (input.instruction !== undefined) {
-      await context.runner.addInstruction(jobId, input.instruction);
-      done.push('指示を伝えた');
-    }
-    if (input.stopConditions !== undefined) {
-      const conditions = await context.runner.changeStopConditions(jobId, input.stopConditions);
-      done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
-    }
-    return {
-      ok: true,
-      summary: `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`,
-      data: { jobId },
-    };
-  },
-};
+  const reviseDrawing: TalkTool = {
+    name: 'revise_drawing',
+    description:
+      '描いている絵に、人間の指示を伝える・止める条件を変える。次の回の境目から効く。描いている絵が無いときは使えない',
+    inputSchema: reviseInputSchema,
+    async run(raw, context) {
+      const input = reviseInputSchema.parse(raw);
+      const jobId = await activeJobOf(context);
+      if (jobId === undefined) return outcome(false, '描いている絵が無い');
+      const done: string[] = [];
+      if (input.instruction !== undefined) {
+        await deps.runner.addInstruction(jobId, input.instruction);
+        done.push('指示を伝えた');
+      }
+      if (input.stopConditions !== undefined) {
+        const conditions = await deps.runner.changeStopConditions(jobId, input.stopConditions);
+        done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
+      }
+      return outcome(true, `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`);
+    },
+  };
 
-const stopDrawing: DrawingTool = {
-  name: 'stop_drawing',
-  description: '描いている絵を止める。人間が止めるよう言ったときに呼ぶ',
-  inputSchema: z.object({}),
-  async run(_raw, context) {
-    const jobId = await activeJobOf(context);
-    if (jobId === undefined) return { ok: false, summary: '描いている絵が無い' };
-    await context.runner.stop(jobId);
-    return { ok: true, summary: `ジョブ ${jobId} を止めた`, data: { jobId } };
-  },
-};
+  const stopDrawing: TalkTool = {
+    name: 'stop_drawing',
+    description: '描いている絵を止める。人間が止めるよう言ったときに呼ぶ',
+    inputSchema: z.object({}),
+    async run(_raw, context) {
+      const jobId = await activeJobOf(context);
+      if (jobId === undefined) return outcome(false, '描いている絵が無い');
+      await deps.runner.stop(jobId);
+      return outcome(true, `ジョブ ${jobId} を止めた`);
+    },
+  };
 
-/** 描くツール（副作用のあるもの）。会話の実行器（会話 E）が、副作用の無いツールと並べて話す役に渡す */
-export const DRAWING_TOOLS: readonly DrawingTool[] = [startDrawing, reviseDrawing, stopDrawing];
+  return [startDrawing, reviseDrawing, stopDrawing];
+}
 
 /** 話す役が止める条件を省いたときの既定（設定に書かなければこれ） */
 export const DEFAULT_DRAWING_STOP_CONDITIONS: StopConditions = {

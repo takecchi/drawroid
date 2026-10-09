@@ -236,7 +236,7 @@ export class TalkRunner {
           let result: { ok: boolean; result: string; summary: string };
           try {
             if (tool === undefined) throw new Error(`知らないツール ${call.name}`);
-            result = await tool.run(call.input, { conversationId, events, limits, signal });
+            result = await tool.run(call.input, { conversationId, turn, events, limits, signal });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             result = { ok: false, result: `失敗した: ${message}`, summary: `失敗した: ${message}` };
