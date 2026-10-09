@@ -38,6 +38,10 @@ function makeApp(env: Record<string, string | undefined>) {
       },
     },
     env,
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
 }
 

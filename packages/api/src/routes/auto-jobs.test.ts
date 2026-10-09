@@ -36,6 +36,10 @@ beforeEach(async () => {
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
     now,
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
 });
 afterEach(async () => {

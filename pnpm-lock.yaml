@@ -42,6 +42,9 @@ catalogs:
     react-router:
       specifier: ^7.18.2
       version: 7.18.4
+    swr:
+      specifier: ^2.5.1
+      version: 2.5.1
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
@@ -123,6 +126,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@drawroid/swr':
+        specifier: workspace:*
+        version: link:../../packages/swr
       '@react-router/node':
         specifier: 'catalog:'
         version: 7.18.4(react-router@7.18.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(typescript@6.0.3)
@@ -139,6 +145,9 @@ importers:
         specifier: 'catalog:'
         version: 7.18.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
+      '@drawroid/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@react-router/dev':
         specifier: 'catalog:'
         version: 7.18.4(@types/node@22.20.5)(lightningcss@1.33.0)(react-router@7.18.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(typescript@6.0.3)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.28.2))
@@ -157,6 +166,9 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.3.3(@types/node@22.20.5)(esbuild@0.28.2)
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.3(@types/node@22.20.5)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.28.2))
 
   packages/api:
     dependencies:
@@ -267,6 +279,37 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/swr:
+    dependencies:
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.13
+      swr:
+        specifier: 'catalog:'
+        version: 2.5.1(react@19.3.0)
+    devDependencies:
+      '@drawroid/api':
+        specifier: workspace:*
+        version: link:../api
+      '@drawroid/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.5
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.3(@types/node@22.20.5)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.28.2))
 
 packages:
 
@@ -1348,6 +1391,10 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
+  dequal@2.0.3:
+    resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
+    engines: {node: '>=6'}
+
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -1801,6 +1848,11 @@ packages:
   std-env@4.3.0:
     resolution: {integrity: sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==}
 
+  swr@2.5.1:
+    resolution: {integrity: sha512-BRw55e8r0B7SpDN20CAzoQAHl7y1yP7/Zt7oqUjMv0vSt2u2Xnkm88Ws+VypbV9BXHQVuSuyVq7zMjO16wSExw==}
+    peerDependencies:
+      react: ^16.11.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   tinybench@6.2.1:
     resolution: {integrity: sha512-IAbQaPJIIdhVxi0mqy9lez1wEwje0UQf9F1vwtbelEG5Nbgn0nPOxCvU+mNeNS9gyJTAhrHp74CbUaSynQpZcQ==}
     engines: {node: '>=20.0.0'}
@@ -1853,6 +1905,11 @@ packages:
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
+
+  use-sync-external-store@1.7.0:
+    resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   valibot@1.5.0:
     resolution: {integrity: sha512-nil6AkP2TChWL43Z5uJ6GTxX01CUA+g8LWUM+N/rB9NBbkUMaUsi9PUNzlUPgoKASgmx9f7eGOYpJ04/fSa6FQ==}
@@ -2932,6 +2989,8 @@ snapshots:
 
   deep-is@0.1.4: {}
 
+  dequal@2.0.3: {}
+
   detect-libc@2.1.2: {}
 
   electron-to-chromium@1.5.451: {}
@@ -3389,6 +3448,12 @@ snapshots:
 
   std-env@4.3.0: {}
 
+  swr@2.5.1(react@19.3.0):
+    dependencies:
+      dequal: 2.0.3
+      react: 19.3.0
+      use-sync-external-store: 1.7.0(react@19.3.0)
+
   tinybench@6.2.1: {}
 
   tinyexec@1.3.1: {}
@@ -3435,6 +3500,10 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  use-sync-external-store@1.7.0(react@19.3.0):
+    dependencies:
+      react: 19.3.0
 
   valibot@1.5.0(typescript@6.0.3):
     optionalDependencies:
