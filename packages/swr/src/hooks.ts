@@ -13,6 +13,7 @@ import type {
   JobsResponse,
   LlmCallDetail,
   LlmCallsResponse,
+  SelectionsResponse,
 } from './types.js';
 
 const JOBS_POLL_MS = 2000;
@@ -90,5 +91,16 @@ export function useLlmCall(jobId: string | undefined, callId: string | undefined
 export function useBackendSettings() {
   return useSWR<BackendSettingsResponse, ApiError>(keys.backendSettings, () =>
     unwrap<BackendSettingsResponse>(() => client.settings.backend.$get()),
+  );
+}
+
+// 変更の関数が mutate で取り直すので、ポーリングはしない: 選択を書き換えるのは人間の操作だけのため
+export function useSelections(jobId: string | undefined) {
+  return useSWR<SelectionsResponse, ApiError>(
+    jobId === undefined ? null : keys.selections(jobId),
+    () =>
+      unwrap<SelectionsResponse>(() =>
+        client.jobs[':jobId'].selections.$get({ param: { jobId: jobId ?? '' } }),
+      ),
   );
 }
