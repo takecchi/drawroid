@@ -7,6 +7,7 @@ import { backendRoutes } from './routes/backend.js';
 import { backendSettingsRoutes } from './routes/backend-settings.js';
 import { budgetSettingsRoutes } from './routes/budget-settings.js';
 import { candidateNotesRoutes } from './routes/candidate-notes.js';
+import { conversationsRoutes } from './routes/conversations.js';
 import { filesRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
 import { iterationsRoutes } from './routes/iterations.js';
@@ -39,6 +40,7 @@ export type {
   AutoJobQueue,
   BudgetSettingsPort,
   CandidateNotesStore,
+  ConversationsPort,
   LlmSettingsStore,
   PermissionSettingsStore,
 } from './deps.js';
@@ -65,6 +67,7 @@ export function createApi(deps: ApiDeps) {
     .route('/stop-conditions', stopConditionParseRoutes(deps))
     .route('/settings/permissions', permissionSettingsRoutes(deps))
     .route('/settings/budgets', budgetSettingsRoutes(deps))
+    .route('/conversations', conversationsRoutes(deps))
     .onError(handleUncaught);
 }
 

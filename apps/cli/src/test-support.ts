@@ -1,5 +1,10 @@
-import { basicPermissions, DEFAULT_BUDGETS, ManualGenerationRunner } from '@drawroid/core';
-import { StubBackend } from '@drawroid/core/testing';
+import {
+  basicPermissions,
+  ConversationHubs,
+  DEFAULT_BUDGETS,
+  ManualGenerationRunner,
+} from '@drawroid/core';
+import { MemoryConversationStore, StubBackend } from '@drawroid/core/testing';
 import type { ApiDeps } from '@drawroid/api';
 import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 
@@ -7,6 +12,7 @@ import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
   const backend = new StubBackend();
   const store = new FsJobStore(root);
+  const conversationStore = new MemoryConversationStore();
   return {
     backend,
     store,
@@ -36,6 +42,10 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
       write: async () => undefined,
     },
     candidateNotes: { read: async () => ({ notes: new Map() }), write: async () => undefined },
+    conversations: {
+      store: conversationStore,
+      hubs: new ConversationHubs({ store: conversationStore }),
+    },
     env: {},
   };
 }

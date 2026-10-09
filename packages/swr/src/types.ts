@@ -20,6 +20,18 @@ export type CandidateNotesResponse = InferResponseType<
 export type CandidateNotesInput = InferRequestType<
   (typeof client.backend)['candidate-notes']['$put']
 >['json'];
+/** 会話の一覧（最後の発言の先頭と、ターンが走っているか付き） */
+export type ConversationsResponse = InferResponseType<typeof client.conversations.$get, 200>;
+export type ConversationResponse = InferResponseType<typeof client.conversations.$post, 201>;
+/** 確定したイベントの1ページ。last はどこまで読んだか、more はまだ後ろがあるか */
+export type ConversationEventsResponse = InferResponseType<
+  (typeof client.conversations)[':conversationId']['events']['$get'],
+  200
+>;
+export type PostedMessageResponse = InferResponseType<
+  (typeof client.conversations)[':conversationId']['messages']['$post'],
+  202
+>;
 export type BackendSettingsResponse = InferResponseType<typeof client.settings.backend.$get, 200>;
 export type MemoryList = InferResponseType<typeof client.memory.$get, 200>;
 export type MemoryItemDetail = InferResponseType<(typeof client.memory)[':id']['$get'], 200>;

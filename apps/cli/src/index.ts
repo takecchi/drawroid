@@ -3,11 +3,12 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import { ConversationHubs, DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   createFsDistillLog,
   createFsMemoryStore,
+  FsConversationStore,
   dataPaths,
   FsJobStore,
   initDataDir,
@@ -119,6 +120,7 @@ async function main() {
     },
   };
 
+  const conversationStore = new FsConversationStore(root);
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),
@@ -139,6 +141,10 @@ async function main() {
         base: BASE_PERMISSIONS,
         read: () => readPermissionSettings(configPath),
         write: (overrides) => writePermissionSettings(configPath, overrides),
+      },
+      conversations: {
+        store: conversationStore,
+        hubs: new ConversationHubs({ store: conversationStore }),
       },
       candidateNotes: {
         read: () => readCandidateNotes(dataPaths(root).candidateNotes),

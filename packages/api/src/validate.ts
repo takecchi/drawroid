@@ -32,3 +32,31 @@ export function jsonBody<T extends z.ZodType>(
 ): WithRequestBody<ValidateJson<T>, z.input<T>> {
   return validateJson(schema) as unknown as WithRequestBody<ValidateJson<T>, z.input<T>>;
 }
+
+function validateQuery<T extends z.ZodType>(schema: T) {
+  return validator('query', (value, c) => {
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) return invalidRequest(c, describeIssues(parsed.error));
+    return parsed.data as z.output<T>;
+  });
+}
+
+type ValidateQuery<T extends z.ZodType> = ReturnType<typeof validateQuery<T>>;
+
+type WithRequestQuery<M, Query> =
+  M extends MiddlewareHandler<infer E, infer P, infer I, infer R>
+    ? MiddlewareHandler<E, P, Omit<I, 'in'> & { in: { query: Query } }, R>
+    : never;
+
+/**
+ * クエリ文字列を zod のスキーマで検証する。通らなければ 400 を返す。
+ * hono/client が推論する「送るクエリの型」は、スキーマの欄ごとの省略できる文字列になる（URL のクエリは文字列のため）。
+ */
+export function queryParams<T extends z.ZodObject>(
+  schema: T,
+): WithRequestQuery<ValidateQuery<T>, { [K in keyof z.input<T>]?: string }> {
+  return validateQuery(schema) as unknown as WithRequestQuery<
+    ValidateQuery<T>,
+    { [K in keyof z.input<T>]?: string }
+  >;
+}

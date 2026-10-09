@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import {
   basicPermissions,
+  ConversationHubs,
   generationRequestSchema,
   ManualGenerationRunner,
   resolveBudgets,
@@ -12,11 +13,16 @@ import {
   type JobState,
   type LlmCallRecord,
 } from '@drawroid/core';
-import { StubBackend } from '@drawroid/core/testing';
+import { MemoryConversationStore, StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 
-import type { BudgetSettingsPort, CandidateNotesStore, PermissionSettingsStore } from './deps.js';
+import type {
+  BudgetSettingsPort,
+  CandidateNotesStore,
+  ConversationsPort,
+  PermissionSettingsStore,
+} from './deps.js';
 import { createApi } from './index.js';
 
 /** 許可の設定を使わない試験のための、何も書かれていない置き場所 */
@@ -36,6 +42,12 @@ export function memoryBudgetSettings(initial: BudgetOverrides = {}): BudgetSetti
       return resolveBudgets(next);
     },
   };
+}
+
+/** 会話をメモリに置く。会話を使わない試験でも、createApi の依存として渡す */
+export function memoryConversations(): ConversationsPort {
+  const store = new MemoryConversationStore();
+  return { store, hubs: new ConversationHubs({ store }) };
 }
 
 /** 候補の説明を使わない試験のための、何も書かれていない置き場所 */
@@ -67,6 +79,7 @@ export async function setup() {
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    conversations: memoryConversations(),
     env: {},
     backendSettings: {
       read: () => Promise.reject(new Error('この試験では使わない')),

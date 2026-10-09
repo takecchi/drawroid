@@ -13,7 +13,12 @@ import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi, type AppType } from '../index.js';
-import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
+import {
+  noCandidateNotes,
+  noPermissionSettings,
+  memoryBudgetSettings,
+  memoryConversations,
+} from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -47,6 +52,7 @@ beforeEach(async () => {
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
+    conversations: memoryConversations(),
     env: {},
     now,
   });

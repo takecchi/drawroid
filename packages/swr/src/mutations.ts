@@ -18,6 +18,9 @@ import type {
   BudgetSettingsResponse,
   CandidateNotesInput,
   CandidateNotesResponse,
+  ConversationEventsResponse,
+  ConversationResponse,
+  PostedMessageResponse,
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
   LlmSettingsInput,
@@ -123,6 +126,70 @@ export async function saveCandidateNotes(
   // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
   await mutate(keys.candidateNotes, saved, { revalidate: false });
   return saved;
+}
+
+/** 会話を作る。一覧を取り直す */
+export async function createConversation(): Promise<ConversationResponse['conversation']> {
+  const created = await unwrap<ConversationResponse>(() => client.conversations.$post());
+  await mutate(keys.conversations);
+  return created.conversation;
+}
+
+/** 会話のタイトルを直す */
+export async function renameConversation(conversationId: string, title: string): Promise<void> {
+  await unwrap<unknown>(() =>
+    client.conversations[':conversationId'].$patch({ param: { conversationId }, json: { title } }),
+  );
+  await mutate(keys.conversations);
+}
+
+/** 確定したイベントを after より後から1ページ読む（会話の画面が、開くときに読み通すため） */
+export function loadConversationEvents(
+  conversationId: string,
+  after: number,
+): Promise<ConversationEventsResponse> {
+  return unwrap<ConversationEventsResponse>(() =>
+    client.conversations[':conversationId'].events.$get({
+      param: { conversationId },
+      query: { after: String(after) },
+    }),
+  );
+}
+
+/** EventSource で開く購読の URL。つなぎ直しと Last-Event-ID はブラウザに任せる */
+export function conversationStreamUrl(conversationId: string, after: number): string {
+  return `${keys.conversations}/${conversationId}/stream?after=${after}`;
+}
+
+/**
+ * 発言する。202 と確定した seq が返り、続きは購読（SSE）で届く。同じ clientMessageId の再送は二重に受けられない
+ */
+export async function postConversationMessage(
+  conversationId: string,
+  text: string,
+  clientMessageId: string,
+): Promise<PostedMessageResponse> {
+  const posted = await unwrap<PostedMessageResponse>(() =>
+    client.conversations[':conversationId'].messages.$post({
+      param: { conversationId },
+      json: { text, clientMessageId },
+    }),
+  );
+  await mutate(keys.conversations);
+  return posted;
+}
+
+/** 中断する。turn は話す役のターンだけ、all は会話のジョブも止める */
+export async function interruptConversation(
+  conversationId: string,
+  scope: 'turn' | 'all',
+): Promise<void> {
+  await unwrap<unknown>(() =>
+    client.conversations[':conversationId'].interrupt.$post({
+      param: { conversationId },
+      json: { scope },
+    }),
+  );
 }
 
 /** 案を返すだけで何も保存しない。LLM 未設定は ApiError（kind: 'llm_not_configured'）、変換失敗は 'unparsable' */

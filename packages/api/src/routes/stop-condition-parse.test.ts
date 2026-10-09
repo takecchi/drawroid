@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
 import { LlmNotConfiguredError } from '../stop-condition-parse.js';
-import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
+import {
+  noCandidateNotes,
+  noPermissionSettings,
+  memoryBudgetSettings,
+  memoryConversations,
+} from '../test-support.js';
 
 function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
   return createApi({
@@ -30,6 +35,7 @@ function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: (text) => parse(text) },
+    conversations: memoryConversations(),
     env: {},
   });
 }
