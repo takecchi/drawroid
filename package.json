@@ -15,7 +15,9 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check:no-attribution-trailers": "node ./scripts/check-no-attribution-trailers.mjs"
+    "check:no-attribution-trailers": "node ./scripts/check-no-attribution-trailers.mjs",
+    "check:duplicate-json-keys": "node ./scripts/check-duplicate-json-keys.mjs",
+    "check:packed-install": "node ./scripts/check-packed-install.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

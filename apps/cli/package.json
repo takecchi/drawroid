@@ -4,29 +4,37 @@
   "private": true,
   "type": "module",
   "bin": {
-    "drawroid": "./dist/index.js"
+    "drawroid": "./bundle/index.js"
   },
   "files": [
-    "dist"
+    "bundle"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "bundle": "node scripts/bundle.mjs",
+    "prepack": "pnpm run bundle",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
     "@drawroid/api": "workspace:*",
+    "@drawroid/backend-a1111": "workspace:*",
     "@drawroid/backend-forge": "workspace:*",
     "@drawroid/core": "workspace:*",
     "@drawroid/llm": "workspace:*",
     "@drawroid/storage-fs": "workspace:*",
     "@drawroid/web": "workspace:*",
     "@hono/node-server": "catalog:",
-    "hono": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
     "@types/node": "catalog:",
+    "esbuild": "^0.28.2",
+    "hono": "catalog:",
     "typescript": "catalog:",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "zod": "catalog:"
   }
 }

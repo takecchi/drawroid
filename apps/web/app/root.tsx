@@ -1,6 +1,8 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { ReactNode } from 'react';
 
+import { SiteNav } from './components/site-nav';
+
 export function meta() {
   return [{ title: 'drawroid' }, { name: 'robots', content: 'noindex, nofollow' }];
 }
@@ -15,6 +17,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
+        <SiteNav />
         {children}
         <ScrollRestoration />
         <Scripts />

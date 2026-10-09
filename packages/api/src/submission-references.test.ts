@@ -10,7 +10,7 @@ import {
   type LlmCall,
 } from '@drawroid/core';
 import { ScriptedLlm, STUB_PNG, StubBackend, type Script } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
@@ -71,9 +71,15 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     autoQueue: runner,
     budget: DEFAULT_BUDGET,
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,

@@ -8,7 +8,9 @@ import {
   isReferenceImageRef,
   jobSpecSchema,
   jobStateSchema,
+  parseImageKey,
   referenceRecordSchema,
+  selectionRecordSchema,
   type AnyImageRef,
   type GenerationRequest,
   type GenerationResult,
@@ -27,6 +29,7 @@ import {
   type PreviewImage,
   type ReferenceImageRef,
   type ReferenceRecord,
+  type SelectionRecord,
   type StageName,
   type StoredGeneration,
 } from '@drawroid/core';
@@ -51,6 +54,23 @@ export class StoredFileError extends Error {
     this.name = 'StoredFileError';
   }
 }
+
+// 画面の一覧と合計が読む欄だけを調べる: 全欄を調べると、記録の形を足すたびに古い記録が読めなくなるため
+const llmCallRecordShape = z
+  .object({
+    callId: z.string(),
+    iteration: z.number().nullable(),
+    role: z.string(),
+    purpose: z.string(),
+    provider: z.string(),
+    model: z.string(),
+    startedAt: z.string(),
+    durationMs: z.number(),
+    usage: z.object({ inputTokens: z.number().nullable(), outputTokens: z.number().nullable() }),
+    attempts: z.array(z.unknown()),
+    outcome: z.object({ ok: z.boolean() }).loose(),
+  })
+  .loose();
 
 const imageMetaSchema = z.object({ seed: z.number().nullable() });
 
@@ -227,12 +247,15 @@ export class FsJobStore implements JobStore {
     await writeJsonAtomic(files.request, request);
   }
 
-  async listGenerations(jobId: string): Promise<StoredGeneration[]> {
-    const files = this.jobFiles(jobId);
-    const iterations = (await listNames(files.iterations))
+  async listIterations(jobId: string): Promise<number[]> {
+    return (await listNames(this.jobFiles(jobId).iterations))
       .filter((name) => /^\d+$/.test(name))
       .map(Number)
       .sort((a, b) => a - b);
+  }
+
+  async listGenerations(jobId: string): Promise<StoredGeneration[]> {
+    const iterations = await this.listIterations(jobId);
     const generations: StoredGeneration[] = [];
     for (const iteration of iterations) {
       const generation = await this.readGeneration(jobId, iteration);
@@ -427,6 +450,33 @@ export class FsJobStore implements JobStore {
     await writeJsonAtomic(path, { callId, sentAt: now.toISOString() });
   }
 
+  async writeSelection(jobId: string, selection: SelectionRecord): Promise<void> {
+    const parsed = selectionRecordSchema.parse(selection);
+    const files = this.jobFiles(jobId);
+    await mkdir(files.selections, { recursive: true });
+    await writeJsonAtomic(this.selectionPath(jobId, parsed.imageKey), parsed);
+  }
+
+  async readSelection(jobId: string, imageKey: string): Promise<SelectionRecord | undefined> {
+    const path = this.selectionPath(jobId, imageKey);
+    if (!(await exists(path))) return undefined;
+    return readValid(path, selectionRecordSchema);
+  }
+
+  async listSelections(jobId: string): Promise<SelectionRecord[]> {
+    const dir = this.jobFiles(jobId).selections;
+    const names = (await listNames(dir)).filter((name) => name.endsWith('.json'));
+    const records: SelectionRecord[] = [];
+    for (const name of names) records.push(await readValid(join(dir, name), selectionRecordSchema));
+    return records;
+  }
+
+  // 画像キーの形かを確かめてからパスを組む: 外から来たキーでジョブのディレクトリの外を指させないため
+  private selectionPath(jobId: string, imageKey: string): string {
+    if (parseImageKey(imageKey) === undefined) throw new Error(`画像キーの形ではない: ${imageKey}`);
+    return this.jobFiles(jobId).selection(imageKey);
+  }
+
   async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {
     const files = this.jobFiles(jobId);
     await mkdir(files.refs, { recursive: true });
@@ -515,6 +565,23 @@ export class FsJobStore implements JobStore {
     const records: LlmCallRecord[] = [];
     for (const name of names) records.push((await readJson(join(dir, name))) as LlmCallRecord);
     return records;
+  }
+
+  async listLlmCallRecords(jobId: string) {
+    const dir = this.jobFiles(jobId).llmCalls;
+    const records: LlmCallRecord[] = [];
+    const invalid: { callId: string; reason: string }[] = [];
+    for (const name of (await listNames(dir)).filter((n) => n.endsWith('.json'))) {
+      try {
+        const parsed = llmCallRecordShape.safeParse(await readJson(join(dir, name)));
+        if (!parsed.success) throw new StoredFileError(join(dir, name), parsed.error);
+        records.push(parsed.data as unknown as LlmCallRecord);
+      } catch (error) {
+        if (!(error instanceof StoredFileError)) throw error;
+        invalid.push({ callId: name.slice(0, -'.json'.length), reason: error.message });
+      }
+    }
+    return { records, invalid };
   }
 
   /** データディレクトリからの相対で、拡張子の無い形（記録と UI で画像を指す） */

@@ -15,6 +15,7 @@ import {
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import {
+  createFsMemoryStore,
   dataPaths,
   FsJobStore,
   readCandidateNotes,
@@ -72,9 +73,15 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(paths.memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
     autoQueue: runner,
     budget: DEFAULT_BUDGET,
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     llmSettings: { read: async () => undefined, write: async () => undefined },
     permissionSettings: {
       base,

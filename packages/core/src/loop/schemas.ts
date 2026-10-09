@@ -13,7 +13,6 @@ export const THINK_PARAM_KEYS = [
   'steps',
   'cfgScale',
 ] as const satisfies readonly ParamKey[];
-export type ThinkParamKey = (typeof THINK_PARAM_KEYS)[number];
 
 export type ThinkParams = Partial<Omit<GenerationRequest, 'batchSize'>>;
 
