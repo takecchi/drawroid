@@ -41,7 +41,17 @@ export type {
 export * from './llm/record.js';
 export * from './loop/budget.js';
 export * from './loop/carry.js';
-export * from './loop/inputs.js';
+// 名前を挙げて出す: inputs.js の区画の部品（seal・SectionWriter・Section）は蒸留と共有する内部の部品で、
+// 公開すると後から外しにくくなるため
+export {
+  buildJudgeInput,
+  buildThinkInput,
+  ImageNotAllowedError,
+  InputOverBudgetError,
+  type MemoryInput,
+  type PreviewImage,
+  type Progress,
+} from './loop/inputs.js';
 export * from './loop/schemas.js';
 export {
   MEMORY_SCOPES,
