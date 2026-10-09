@@ -8,6 +8,8 @@ import {
   type AutoJobSpec,
   type InterventionRecord,
   type JobState,
+  type NewReference,
+  type ReferenceRecord,
   type StopConditions,
   type StopConditionsChange,
   type StopReason,
@@ -172,6 +174,12 @@ export class JobRunner {
   async addInstruction(jobId: string, text: string): Promise<InterventionRecord> {
     await this.acceptingJob(jobId);
     return this.deps.store.addIntervention(jobId, { kind: 'instruction', text }, this.now());
+  }
+
+  /** 走行中・待ち行列のジョブに参照画像を添える。次の回の境目で、見る役が1度だけ見て要点にする */
+  async addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord> {
+    await this.acceptingJob(jobId);
+    return this.deps.store.addReference(jobId, reference, this.now());
   }
 
   /** 口出しを受けられる自動ジョブ（止まっていないもの）を返す */

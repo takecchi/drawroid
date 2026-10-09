@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
 import { conflict, invalidRequest, notFound } from '../errors.js';
+import { referenceUploadSchema } from '../references.js';
 import { jsonBody } from '../validate.js';
 import { isAutoJob } from './auto-jobs.js';
 
@@ -19,6 +20,8 @@ const bodySchema = z.discriminatedUnion('kind', [
       .refine((text) => text.trim().length > 0, { message: '指示が空' }),
   }),
   z.object({ kind: z.literal('stopConditions'), stopConditions: stopConditionsChangeSchema }),
+  // 画像を kind と同じ段に並べない: 検証で画像のバイト列に戻すので、判別 union の枝にそのまま置けないため
+  z.object({ kind: z.literal('reference'), image: referenceUploadSchema }),
 ]);
 
 function rejected(c: Context, error: unknown) {
@@ -33,7 +36,7 @@ function rejected(c: Context, error: unknown) {
   }
 }
 
-/** 走行中・待ち行列の自動ジョブへの口出し（人間の指示・止める条件の変更）。どれも次の回の境目から効く */
+/** 走行中・待ち行列の自動ジョブへの口出し（人間の指示・止める条件の変更・参照画像）。どれも次の回の境目から効く */
 export function interventionsRoutes({ store, autoQueue }: ApiDeps) {
   return new Hono().post('/:jobId/interventions', jsonBody(bodySchema), async (c) => {
     const jobId = c.req.param('jobId');
@@ -43,6 +46,10 @@ export function interventionsRoutes({ store, autoQueue }: ApiDeps) {
       if (body.kind === 'instruction') {
         const intervention = await autoQueue.addInstruction(jobId, body.text);
         return c.json({ intervention }, 202);
+      }
+      if (body.kind === 'reference') {
+        const reference = await autoQueue.addReference(jobId, body.image);
+        return c.json({ reference }, 202);
       }
       const stopConditions = await autoQueue.changeStopConditions(jobId, body.stopConditions);
       return c.json({ stopConditions }, 202);
