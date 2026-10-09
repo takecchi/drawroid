@@ -203,13 +203,28 @@ describe('review_image', () => {
     expect(second).toEqual(first);
   });
 
+  it('says, in the counting of the talking role, when the record of an earlier review cannot be read', async () => {
+    const { review, calls } = setup({ 'job-1': job(stoppedState()) });
+    await review({ iteration: 2, number: 1 });
+    // 渡した記録が消えた（人が消した・壊れた）
+    calls.splice(0);
+
+    const result = await review({ iteration: 2, number: 1 });
+
+    expect(result.ok).toBe(false);
+    expect(result.result).toContain(
+      '2 回目の 1枚目は呼び出し call-1 で渡し済みだが、その記録が読めない',
+    );
+  });
+
   it('says the image is still being evaluated, without calling the judge, while the loop judges its iteration', async () => {
     const { review, llm, calls } = setup({ 'job-1': job(runningState()) });
 
     const result = await review({ iteration: 2 });
 
     expect(result.ok).toBe(false);
-    expect(result.result).toContain('まだ評価中');
+    // 話す役の数え方（1 から）で名指す
+    expect(result.result).toContain('2 回目の 1枚目はまだ評価中');
     expect(llm.calls).toHaveLength(0);
     expect(calls).toHaveLength(0);
   });
@@ -227,6 +242,8 @@ describe('review_image', () => {
   it.each([
     ['an iteration that does not exist', { iteration: 9 }, '9 回目の 1枚目の画像は無い'],
     ['an image that does not exist', { iteration: 1, number: 6 }, '1 回目の 6枚目の画像は無い'],
+    // 置き場所の回は2枚。3枚目（index 2）は、枚数と同じ所で断る
+    ['the image just past the last one', { iteration: 1, number: 3 }, '1 回目の 3枚目の画像は無い'],
     ['a job of another conversation', { jobId: 'other', iteration: 1 }, 'この会話のジョブではない'],
     ['a job that does not exist', { jobId: 'nothing', iteration: 1 }, 'この会話のジョブではない'],
   ])('refuses %s, saying what is wrong, without calling the judge', async (_, input, message) => {

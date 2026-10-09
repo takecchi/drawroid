@@ -20,6 +20,9 @@ describe('describeStopConditions', () => {
 
   it.each([
     [400, '400 ミリ秒まで'],
+    // 1 秒に満たなければミリ秒（秒に丸めると「1 秒」と長めに言ってしまう）。1 秒ちょうどからは秒
+    [999, '999 ミリ秒まで'],
+    [1_000, '1 秒まで'],
     [59_500, '1 分まで'],
   ])(
     'writes a time limit of %i ms as %s, never as 0 seconds or 60 seconds',

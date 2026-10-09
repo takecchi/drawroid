@@ -161,6 +161,26 @@ describe('summarizeJobForTalk', () => {
     expect(summary).not.toContain('最良は');
   });
 
+  it('says best, not chosen, when the job stopped for any other reason', () => {
+    const stopped: JobState = {
+      status: 'stopped',
+      stoppedAt: '2026-10-09T00:10:00.000Z',
+      imagesGenerated: 4,
+      reason: { kind: 'ai', detail: '見る役が止めてよいと言った' },
+      carry: {
+        intent: '海辺の少女',
+        completedIterations: 2,
+        best: { ...carriedResult(2, 0.9), imageIndex: 1, issues: [] },
+      },
+    };
+
+    const summary = summarizeJobForTalk('job-1', stopped, { chars: 600 });
+
+    // 人が選んでいないのに「人が選んだ」と書かない
+    expect(summary).toContain('最良は 2 回目の 2枚目で 0.90');
+    expect(summary).not.toContain('人が選んだ');
+  });
+
   it('stays within its budget however many iterations the job has run', () => {
     const lengths = [1, 30, 300].map(
       (n) => summarizeJobForTalk('job-1', running(n), { chars: 600 }).length,
