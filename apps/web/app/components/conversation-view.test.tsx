@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ConversationSource, EventPage, StreamLike } from '../lib/conversation-stream';
 import { encodeMaskPng } from '../lib/mask-png';
-import { ConversationView, type ConversationActions } from './conversation-view';
+import { ConversationView, jobNameOf, type ConversationActions } from './conversation-view';
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
@@ -348,6 +348,83 @@ describe('what the job taught, on the stop card', () => {
 
     expect(screen.queryByRole('region', { name: 'このジョブから覚えたこと' })).toBeNull();
     expect(useJobDistill).not.toHaveBeenCalled();
+  });
+});
+
+describe('telling the jobs of one conversation apart', () => {
+  it('names each image after the head of its request, so two jobs do not share names', async () => {
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    for (const [jobId, request] of [
+      ['job-cat', '猫を描いて'],
+      ['job-dog', '夕暮れの海辺で犬と遊ぶ少女を描いて'],
+    ] as const) {
+      stream.emit(
+        confirmed({
+          type: 'job.started',
+          jobId,
+          request,
+          stopConditions: { aiJudgement: true, maxIterations: 3 },
+        }),
+      );
+      stream.emit(
+        confirmed({ type: 'job.images', jobId, iteration: 1, images: [{ index: 0, seed: 7 }] }),
+      );
+    }
+
+    const cat = await screen.findByRole('button', {
+      name: '大きく見る: 猫を描いて 1 回目の画像 1 番（seed 7）',
+    });
+    // 長い依頼は頭の 12 文字で切る
+    expect(
+      screen.getByRole('button', {
+        name: '大きく見る: 夕暮れの海辺で犬と遊ぶ少… 1 回目の画像 1 番（seed 7）',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'お気に入り: 猫を描いて 1 回目の画像 1 番' }),
+    ).toBeTruthy();
+
+    await user.click(cat);
+    expect(screen.getByRole('dialog', { name: /猫を描いて 1 回目の画像 1 番/ })).toBeTruthy();
+  });
+
+  it('numbers the second job drawn from the same request, so their images still differ', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    for (const jobId of ['job-1', 'job-2']) {
+      stream.emit(
+        confirmed({
+          type: 'job.started',
+          jobId,
+          request: '猫を描いて',
+          stopConditions: { aiJudgement: true, maxIterations: 3 },
+        }),
+      );
+      stream.emit(
+        confirmed({ type: 'job.images', jobId, iteration: 1, images: [{ index: 0, seed: 7 }] }),
+      );
+    }
+
+    expect(
+      await screen.findByRole('button', {
+        name: '大きく見る: 猫を描いて 1 回目の画像 1 番（seed 7）',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: '大きく見る: 猫を描いて（2） 1 回目の画像 1 番（seed 7）',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('calls a job without a request a manual generation', () => {
+    expect(jobNameOf(undefined)).toBe('手動の生成');
+    expect(jobNameOf('  ')).toBe('手動の生成');
+    expect(jobNameOf('猫を描いて')).toBe('猫を描いて');
+    expect(jobNameOf('一二三四五六七八九十一二三')).toBe('一二三四五六七八九十一二…');
   });
 });
 
@@ -1323,8 +1400,14 @@ describe('ConversationView', () => {
 
       expect(addMask).toHaveBeenCalledWith(JOB, { iteration: 2, index: 0 }, 'PNG-BASE64');
       expect(await dialog().findByText(/送った/)).toBeTruthy();
+      // 送ったら見る形に戻る: 塗る面は消え、「マスクを塗る」に戻り、送ったことを短く出す。前後へ送れる
+      expect(dialog().getByText('マスクを送った。次の回で描き直す。')).toBeTruthy();
+      expect(dialog().queryByLabelText('マスクを塗る所')).toBeNull();
+      expect(dialog().getByRole('button', { name: 'マスクを塗る' })).toBeTruthy();
+      expect(dialog().queryByText(/塗っている間は前後へ送れない/)).toBeNull();
+      expect(dialog().getByRole('button', { name: '次の画像' })).toHaveProperty('disabled', false);
       // 送ったら塗りかけは残らないので、閉じないとは言わず、Esc で閉じる
-      expect(dialog().queryByText(/Esc や窓の外を押しても閉じません/)).toBeNull();
+      expect(dialog().queryByText(/Esc や窓の外を押しても閉じない/)).toBeNull();
       await user.keyboard('{Escape}');
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
@@ -1334,8 +1417,8 @@ describe('ConversationView', () => {
       await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
       loadOriginal(dialog);
 
-      expect(dialog().getByText(/塗っている間は前後へ送れません/)).toBeTruthy();
-      expect(dialog().queryByText(/Esc や窓の外を押しても閉じません/)).toBeNull();
+      expect(dialog().getByText(/塗っている間は前後へ送れない/)).toBeTruthy();
+      expect(dialog().queryByText(/Esc や窓の外を押しても閉じない/)).toBeNull();
       await user.keyboard('{Escape}');
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
@@ -1347,7 +1430,7 @@ describe('ConversationView', () => {
       await user.keyboard('{ArrowRight}');
 
       expect(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ })).toBeTruthy();
-      expect(dialog().getByText(/塗っている間は前後へ送れません/)).toBeTruthy();
+      expect(dialog().getByText(/塗っている間は前後へ送れない/)).toBeTruthy();
       expect(dialog().getByRole('button', { name: '次の画像' })).toHaveProperty('disabled', true);
     });
 
@@ -1358,7 +1441,7 @@ describe('ConversationView', () => {
 
       await user.keyboard('{Escape}');
       expect(screen.getByRole('dialog')).toBeTruthy();
-      expect(dialog().getByText(/Esc や窓の外を押しても閉じません/)).toBeTruthy();
+      expect(dialog().getByText(/Esc や窓の外を押しても閉じない/)).toBeTruthy();
 
       await user.click(dialog().getByRole('button', { name: '閉じる' }));
       expect(screen.queryByRole('dialog')).toBeNull();

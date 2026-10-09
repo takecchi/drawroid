@@ -390,8 +390,9 @@ try {
   await stopButton.waitFor({ state: 'hidden' });
   expect(
     relay.stats.judgeCut === 1 &&
-      (await page.getByRole('button', { name: /^お気に入りを外す: 1 回目の画像 1 番/ }).count()) >=
-        1,
+      (await page
+        .getByRole('button', { name: /^お気に入りを外す: .*1 回目の画像 1 番/ })
+        .count()) >= 1,
     '待たせていた見る役は呼ばれ直さず、ジョブはその画像をお気に入りにして止まる',
   );
 
@@ -408,10 +409,10 @@ try {
   await say('夕焼けの犬を描いて');
   await until(() => relay?.stats.judgeHeld === 2, '見る役の返事を止める');
   const adoptButton = page
-    .getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番', exact: true })
+    .getByRole('button', { name: /^この画像で決める: .*1 回目の画像 1 番$/ })
     .last();
   await adoptButton.click();
-  await page.getByRole('button', { name: '決める: 1 回目の画像 1 番', exact: true }).click();
+  await page.getByRole('button', { name: /^決める: .*1 回目の画像 1 番$/ }).click();
   await page.getByText('この画像で決めた（選んだ）').nth(chosenBefore).waitFor();
   await log
     .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
@@ -432,6 +433,17 @@ try {
         .getByRole('button', { name: /^この画像に決める（お気に入りにする）: / })
         .count()) > 0,
     '止まったジョブの画像は、採る口ではなく「この画像に決める（お気に入りにする）」になり、押せない理由は出ない',
+  );
+  // 同じ会話に描いたジョブが幾つもある。画像の名前にジョブを見分ける言葉（依頼の文の頭）が付き、どの画像の名前も重ならない
+  const imageNames = /** @type {string[]} */ (
+    await page.evaluate(`[...document.querySelectorAll('button')]
+      .map((b) => b.getAttribute('aria-label') ?? '')
+      .filter((name) => name.startsWith('大きく見る: ') && name.includes('回目の画像'))`)
+  );
+  const jobCount = (await api(base, 'GET', '/api/jobs')).jobs.length;
+  expect(
+    jobCount >= 2 && imageNames.length > 0 && new Set(imageNames).size === imageNames.length,
+    `同じ会話に ${jobCount} 個のジョブがあっても、画像の名前は重ならない（${imageNames.length} 枚。例: ${imageNames[0] ?? 'なし'}）`,
   );
   const wideOverflow = await chooseButtonsOverflowing(page);
   expect(
@@ -527,7 +539,7 @@ try {
   const bestCard = narrow.getByRole('region', { name: /^最良の画像: / }).first();
   await bestCard.scrollIntoViewIfNeeded();
   const chooseBest = bestCard.getByRole('button', {
-    name: /^この画像に決める（お気に入りにする）: \d+ 回目の画像 \d+ 番$/,
+    name: /^この画像に決める（お気に入りにする）: .*\d+ 回目の画像 \d+ 番$/,
   });
   await chooseBest.waitFor();
   const cardBox = await bestCard.boundingBox();
@@ -540,7 +552,7 @@ try {
       buttonBox.x + buttonBox.width <= 390 &&
       (await bestCard.getByRole('img', { name: /^最良: / }).isVisible()) &&
       (await bestCard
-        .getByText(/^最良: \d+ 回目の画像 \d+ 番（見る役の点 [\d.]+）$/)
+        .getByText(/^最良: .*\d+ 回目の画像 \d+ 番（見る役の点 [\d.]+）$/)
         .isVisible()) &&
       (await bestCard.getByText('続けるなら、話しかけて指示を出す。').isVisible()),
     '狭い画面で、止まりのカードに最良の画像・何回目の何番・点・決めるボタン（名前つき）・続けるときの一言が、画面の幅の中に出る',

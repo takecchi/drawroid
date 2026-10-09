@@ -121,7 +121,7 @@ try {
       );
     }
 
-    const thumbnail = page.getByRole('button', { name: /^大きく見る: 1 回目の画像 1 番/ });
+    const thumbnail = page.getByRole('button', { name: /^大きく見る: .*1 回目の画像 1 番/ });
     await thumbnail.scrollIntoViewIfNeeded();
     await thumbnail.click();
     const dialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
@@ -134,7 +134,7 @@ try {
     expect(true, `${label}: 窓の中の「マスクを塗る」で、塗る面が出る`);
 
     // 2. 塗っている間は前後へ送れないことが出て、キーでもなぞりでも送らない
-    await dialog.getByText(/塗っている間は前後へ送れません/).waitFor();
+    await dialog.getByText(/塗っている間は前後へ送れない/).waitFor();
     const box = await canvas.boundingBox();
     if (box === null) throw new Error('塗る面の位置が分からない');
     const y = box.y + box.height / 2;
@@ -175,7 +175,7 @@ try {
     await page.mouse.click(2, 2);
     expect(
       (await dialog.count()) === 1 &&
-        (await dialog.getByText(/Esc や窓の外を押しても閉じません/).count()) === 1,
+        (await dialog.getByText(/Esc や窓の外を押しても閉じない/).count()) === 1,
       `${label}: 塗りかけがある間は、Esc でも窓の外を押しても閉じず、そのことが出る`,
     );
 
@@ -184,7 +184,7 @@ try {
       const { jobs } = await api(base, 'GET', '/api/jobs');
       const jobId = /** @type {{ jobId: string }[]} */ (jobs)[0]?.jobId;
       await dialog.getByRole('button', { name: 'マスクを送る' }).click();
-      await dialog.getByText(/送った/).waitFor();
+      await dialog.getByText('マスクを送った。次の回で描き直す。').waitFor();
       const { interventions } = await api(base, 'GET', `/api/jobs/auto/${jobId}/interventions`);
       expect(
         /** @type {{ kind: string, image?: { iteration: number, index: number } }[]} */ (
@@ -194,10 +194,32 @@ try {
         ),
         `${label}: 窓の中で送ったマスクが、その画像（1 回目の 1 番）のマスクとしてジョブに入る`,
       );
-      // 送ったあとに、もう一度塗っておく（閉じるボタンが塗りかけを捨てるかを見るため）
-      await page.mouse.move(box.x + box.width * 0.3, y);
+      // 送ったら見る形に戻る: 塗る面は消え、「マスクを塗る」に戻り、前後へ送れる
+      // 送った知らせは塗る道具の中にも同じ文で出るので、文が出ただけでは見る形に戻ったとは言えない。塗る面が消えるのを待つ
+      await dialog.getByLabel('マスクを塗る所').waitFor({ state: 'detached' });
+      const returned = {
+        sentNote: await dialog.getByText('マスクを送った。次の回で描き直す。').count(),
+        paintButton: await dialog.getByRole('button', { name: 'マスクを塗る' }).count(),
+        lockNote: await dialog.getByText(/塗っている間は前後へ送れない/).count(),
+        nextEnabled: await dialog.getByRole('button', { name: '次の画像' }).isEnabled(),
+      };
+      expect(
+        returned.sentNote === 1 &&
+          returned.paintButton === 1 &&
+          returned.lockNote === 0 &&
+          returned.nextEnabled,
+        `${label}: マスクを送ると見る形に戻り、送ったことが短く出て、前後へ送れる（${JSON.stringify(returned)}）`,
+      );
+      // もう一度塗っておく（閉じるボタンが塗りかけを捨てるかを見るため）
+      await dialog.getByRole('button', { name: 'マスクを塗る' }).click();
+      const again = dialog.getByLabel('マスクを塗る所');
+      await again.waitFor();
+      const againBox = await again.boundingBox();
+      if (againBox === null) throw new Error('塗る面の位置が分からない');
+      const againY = againBox.y + againBox.height / 2;
+      await page.mouse.move(againBox.x + againBox.width * 0.3, againY);
       await page.mouse.down();
-      await page.mouse.move(box.x + box.width * 0.6, y + 10, { steps: 4 });
+      await page.mouse.move(againBox.x + againBox.width * 0.6, againY + 10, { steps: 4 });
       await page.mouse.up();
     }
 
