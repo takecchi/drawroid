@@ -1,4 +1,24 @@
-import type { StopConditions, StopConditionsChange, StopReason } from '../job/types.js';
+import type { JobStore } from '../job/store.js';
+import type {
+  AutoJobSpec,
+  StopConditions,
+  StopConditionsChange,
+  StopReason,
+} from '../job/types.js';
+
+/** 今そのジョブに効いている止める条件。job.json の条件に、interventions/ の変更を受けた順に重ねる */
+export async function readStopConditions(
+  store: JobStore,
+  spec: AutoJobSpec,
+): Promise<StopConditions> {
+  const interventions = await store.listInterventions(spec.jobId);
+  return effectiveStopConditions(
+    spec.stopConditions,
+    interventions.flatMap((intervention) =>
+      intervention.kind === 'stopConditions' ? [intervention.stopConditions] : [],
+    ),
+  );
+}
 
 /**
  * 実際に効いている止める条件。job.json の条件に、走行中の変更を受けた順に重ねる。

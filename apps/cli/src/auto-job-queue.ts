@@ -12,6 +12,8 @@ import {
   type LlmPort,
   type LlmRole,
   type LlmRoleInfo,
+  type NewReference,
+  type ReferenceRecord,
   type StopConditions,
   type StopConditionsChange,
 } from '@drawroid/core';
@@ -93,6 +95,10 @@ export class AutoJobQueue implements AutoJobQueuePort {
 
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions> {
     return this.runner.changeStopConditions(jobId, change);
+  }
+
+  addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord> {
+    return this.runner.addReference(jobId, reference);
   }
 
   idle(): Promise<void> {

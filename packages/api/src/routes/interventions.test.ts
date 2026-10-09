@@ -13,7 +13,10 @@ import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createApi } from '../index.js';
+import { hc } from 'hono/client';
+
+import { createApi, type AppType } from '../index.js';
+import { MAX_REFERENCE_BYTES } from '../references.js';
 
 let root: string;
 let store: FsJobStore;
@@ -48,6 +51,7 @@ beforeEach(async () => {
       stop: (jobId) => runner.stop(jobId),
       addInstruction: (jobId, text) => runner.addInstruction(jobId, text),
       changeStopConditions: (jobId, change) => runner.changeStopConditions(jobId, change),
+      addReference: (jobId, reference) => runner.addReference(jobId, reference),
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
@@ -161,6 +165,27 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
     expect((await app.request('/jobs/auto/no-such-job/interventions')).status).toBe(404);
   });
 
+  it('gives the hono client a typed body for an intervention', async () => {
+    const jobId = await createAuto();
+    const client = hc<AppType>('http://localhost', { fetch: app.request });
+    const interventions = client.jobs.auto[':jobId'].interventions;
+
+    const res = await interventions.$post({
+      param: { jobId },
+      json: { kind: 'instruction', text: '逆光にして' },
+    });
+    expect(res.status).toBe(202);
+
+    // 本文の形が違えば、送る前に型で弾かれる
+    const wrong = () =>
+      interventions.$post({
+        param: { jobId },
+        // @ts-expect-error instruction には text が要る
+        json: { kind: 'instruction' },
+      });
+    expect((await wrong()).status).toBe(400);
+  });
+
   it('answers 404 for a job that is not an automatic job', async () => {
     const manual = await store.createJob(
       {
@@ -179,5 +204,99 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
 
     expect((await intervene(manual.jobId, { kind: 'instruction', text: 'x' })).status).toBe(404);
     expect((await intervene('no-such-job', { kind: 'instruction', text: 'x' })).status).toBe(404);
+  });
+});
+
+describe('GET /jobs/auto/:jobId/stop-conditions', () => {
+  it('reads the stop conditions in effect, after changes, next to the submitted ones', async () => {
+    const jobId = await createAuto({ aiJudgement: false, maxIterations: 5 });
+    await intervene(jobId, { kind: 'stopConditions', stopConditions: { maxIterations: 8 } });
+    await intervene(jobId, { kind: 'stopConditions', stopConditions: { maxImages: 20 } });
+
+    const res = await app.request(`/jobs/auto/${jobId}/stop-conditions`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      submitted: { aiJudgement: false, maxIterations: 5 },
+      current: { aiJudgement: false, maxIterations: 8, maxImages: 20 },
+    });
+  });
+
+  it('answers 404 for a job that is not an automatic job', async () => {
+    expect((await app.request('/jobs/auto/no-such-job/stop-conditions')).status).toBe(404);
+  });
+});
+
+describe('reference images, at submission and as an intervention', () => {
+  const PNG = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13);
+  const JPEG = Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0, 16);
+  const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+
+  it('keeps the images attached to a submitted job, in the order given', async () => {
+    const res = await post('/jobs/auto', {
+      request: '夕暮れの海辺の少女',
+      references: [
+        { mediaType: 'image/png', data: b64(PNG), note: 'この構図で' },
+        { mediaType: 'image/jpeg', data: b64(JPEG) },
+      ],
+    });
+
+    expect(res.status).toBe(202);
+    const { jobId } = (await res.json()) as { jobId: string };
+    const references = await store.listReferences(jobId);
+    expect(references.map((r) => [r.mediaType, r.note])).toEqual([
+      ['image/png', 'この構図で'],
+      ['image/jpeg', undefined],
+    ]);
+  });
+
+  it('takes an image as an intervention to a running or queued job', async () => {
+    const jobId = await createAuto();
+
+    const res = await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(PNG), note: '服はこれ' },
+    });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      reference: { mediaType: 'image/png', note: '服はこれ' },
+    });
+    expect(await store.listReferences(jobId)).toHaveLength(1);
+  });
+
+  it('refuses an image for a job that has already stopped', async () => {
+    const jobId = await createAuto();
+    await post(`/jobs/auto/${jobId}/stop`, {});
+
+    const res = await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(PNG) },
+    });
+
+    expect(res.status).toBe(409);
+    expect(await store.listReferences(jobId)).toEqual([]);
+  });
+
+  it('refuses images it does not take, creating no job and writing nothing', async () => {
+    const jobId = await createAuto();
+    const before = await store.listJobIds();
+    const tooLarge = new Uint8Array(MAX_REFERENCE_BYTES + 1);
+    tooLarge.set(PNG);
+
+    for (const image of [
+      { mediaType: 'image/png', data: b64(JPEG) },
+      { mediaType: 'image/gif', data: b64(PNG) },
+      { mediaType: 'image/png', data: '*** not base64 ***' },
+      { mediaType: 'image/png', data: b64(tooLarge) },
+    ]) {
+      expect((await intervene(jobId, { kind: 'reference', image })).status).toBe(400);
+      expect((await post('/jobs/auto', { request: '海辺', references: [image] })).status).toBe(400);
+    }
+    const five = Array.from({ length: 5 }, () => ({ mediaType: 'image/png', data: b64(PNG) }));
+    expect((await post('/jobs/auto', { request: '海辺', references: five })).status).toBe(400);
+
+    expect(await store.listReferences(jobId)).toEqual([]);
+    expect(await store.listJobIds()).toEqual(before);
   });
 });

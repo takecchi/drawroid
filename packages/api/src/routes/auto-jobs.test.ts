@@ -37,6 +37,7 @@ beforeEach(async () => {
       stop: async (jobId) => void stops.push(jobId),
       addInstruction: notUsed,
       changeStopConditions: notUsed,
+      addReference: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },

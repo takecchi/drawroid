@@ -66,10 +66,10 @@ export async function stopJob(jobId: string): Promise<void> {
 /** 止まったジョブへは ApiError（status 409）、空の指示は 'invalid_request' を投げる */
 export async function addInstruction(jobId: string, text: string): Promise<AddInstructionResponse> {
   const added = await unwrap<AddInstructionResponse>(() =>
-    client.jobs.auto[':jobId'].interventions.$post(
-      { param: { jobId } },
-      jsonBody({ kind: 'instruction', text }),
-    ),
+    client.jobs.auto[':jobId'].interventions.$post({
+      param: { jobId },
+      json: { kind: 'instruction', text },
+    }),
   );
   await refreshJob(jobId);
   await mutate(keys.interventions(jobId));
@@ -82,10 +82,10 @@ export async function changeStopConditions(
   change: StopConditionsChange,
 ): Promise<ChangeStopConditionsResponse> {
   const changed = await unwrap<ChangeStopConditionsResponse>(() =>
-    client.jobs.auto[':jobId'].interventions.$post(
-      { param: { jobId } },
-      jsonBody({ kind: 'stopConditions', stopConditions: change }),
-    ),
+    client.jobs.auto[':jobId'].interventions.$post({
+      param: { jobId },
+      json: { kind: 'stopConditions', stopConditions: change },
+    }),
   );
   await refreshJob(jobId);
   await mutate(keys.interventions(jobId));
@@ -99,10 +99,10 @@ export async function setSelection(
   verdict: SelectionVerdict | null,
 ): Promise<SetSelectionResponse> {
   const set = await unwrap<SetSelectionResponse>(() =>
-    client.jobs[':jobId'].selections[':imageKey'].$put(
-      { param: { jobId, imageKey } },
-      jsonBody({ verdict }),
-    ),
+    client.jobs[':jobId'].selections[':imageKey'].$put({
+      param: { jobId, imageKey },
+      json: { verdict },
+    }),
   );
   await mutate(keys.selections(jobId));
   return set;
@@ -111,11 +111,4 @@ export async function setSelection(
 // 一覧も取り直す: 止めた・口出しした直後に、一覧の状態が古いまま残らないようにするため
 async function refreshJob(jobId: string): Promise<void> {
   await Promise.all([mutate(keys.job(jobId)), mutate(keys.jobs)]);
-}
-
-// json: で渡さない: この3つの経路は body を hono の validator ではなく zod の safeParse で検証しており、クライアントの型に body が現れないため
-function jsonBody(body: unknown) {
-  return {
-    init: { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } },
-  };
 }
