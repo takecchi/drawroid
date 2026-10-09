@@ -141,6 +141,25 @@ describe('PermissionSettings', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('vae: 形が違う');
   });
 
+  it('marks the rows that could not be read as falling back to the default, with why', () => {
+    mocks.usePermissionSettings.mockReturnValue({
+      data: {
+        ...stored,
+        invalid: [
+          { param: 'cfgScale', reason: 'value: 数ではない' },
+          { param: 'denoise', reason: '知らないパラメータ' },
+        ],
+      },
+      error: undefined,
+    });
+    render(<PermissionSettings />);
+
+    expect(rowOf('CFG scale').getByText(/無効（既定に戻る）: value: 数ではない/)).toBeTruthy();
+    const others = screen.getByText(/読めない許可がある/).textContent;
+    expect(others).toContain('denoise（知らないパラメータ）');
+    expect(others).toContain('保存すると');
+  });
+
   it('says the stored permissions cannot be read', () => {
     mocks.usePermissionSettings.mockReturnValue({
       data: undefined,

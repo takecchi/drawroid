@@ -52,14 +52,17 @@ describe('readConfig', () => {
     await expect(readConfig(path)).rejects.toThrow(/config\.json.*url と forgeUrl/s);
   });
 
-  it('reads the global permissions, and names the file when they have the wrong shape', async () => {
+  it('does not refuse the whole file for a broken permission, so the server still starts', async () => {
     const path = join(dir, 'config.json');
-    const permissions = { steps: { mode: 'fixed', value: 30 }, sampler: { mode: 'off' } };
-    await writeFile(path, JSON.stringify({ permissions }));
-    expect(await readConfig(path)).toEqual({ permissions });
+    await writeFile(
+      path,
+      JSON.stringify({
+        backend: { url: 'http://192.168.0.10:7860' },
+        permissions: { prompt: { mode: 'off' }, steps: { mode: 'fixed', value: 'twenty' } },
+      }),
+    );
 
-    await writeFile(path, JSON.stringify({ permissions: { prompt: { mode: 'off' } } }));
-    await expect(readConfig(path)).rejects.toThrow(/config\.json/);
+    expect(await readConfig(path)).toEqual({ backend: { url: 'http://192.168.0.10:7860' } });
   });
 
   it('names the file when it is not JSON', async () => {

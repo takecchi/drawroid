@@ -114,7 +114,7 @@ describe('the default permissions over HTTP', () => {
     const res = await app.request('/settings/permissions');
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ overrides: {}, permissions: base });
+    expect(await res.json()).toEqual({ overrides: {}, permissions: base, invalid: [] });
   });
 
   it('writes only the permissions key of config.json and answers with the permissions now in effect', async () => {
@@ -171,13 +171,33 @@ describe('the default permissions over HTTP', () => {
     expect(await readConfig()).toEqual({ llm: { providers: {} } });
   });
 
-  it('says the stored permissions are broken instead of answering something else', async () => {
-    await writeFile(paths.config, JSON.stringify({ permissions: { prompt: { mode: 'off' } } }));
+  it('answers the rows it can read, and marks each broken row with why it falls back to the base', async () => {
+    await writeFile(
+      paths.config,
+      JSON.stringify({
+        permissions: {
+          steps: { mode: 'fixed', value: 28 },
+          cfgScale: { mode: 'fixed', value: 'seven' },
+          prompt: { mode: 'off' },
+          denoise: { mode: 'auto' },
+        },
+      }),
+    );
 
     const res = await app.request('/settings/permissions');
 
-    expect(res.status).toBe(500);
-    expect(await res.json()).toMatchObject({ error: { kind: 'invalid_config' } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      overrides: object;
+      permissions: Permissions;
+      invalid: { param: string; reason: string }[];
+    };
+    expect(body.overrides).toEqual({ steps: { mode: 'fixed', value: 28 } });
+    expect(body.permissions.steps).toEqual({ mode: 'fixed', value: 28 });
+    expect(body.permissions.cfgScale).toEqual(base.cfgScale);
+    expect(body.permissions.prompt).toEqual(base.prompt);
+    expect(body.invalid.map(({ param }) => param)).toEqual(['cfgScale', 'prompt', 'denoise']);
+    expect(body.invalid[0]?.reason).toContain('value');
   });
 });
 

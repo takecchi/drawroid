@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
+import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   createFsDistillLog,
@@ -26,6 +26,7 @@ import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions, createBackendSettings } from './backend-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
+import { createPermissionReader } from './permission-reader.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
 import { createStopConditionParser } from './stop-condition-parser.js';
 import { pickWebRoot } from './web-root.js';
@@ -69,14 +70,16 @@ async function main() {
 
   const log = (line: string) => process.stdout.write(`${line}\n`);
   const memoryStore = createFsMemoryStore(dataPaths(root).memory);
+  const readPermissions = createPermissionReader(() => readPermissionSettings(configPath), log);
+  // 起動のときに一度読む: 読めない行があれば、ジョブを待たずにログで知らせる
+  await readPermissions();
   const autoQueue = new AutoJobQueue({
     store,
     backend,
     env: process.env,
     budget: DEFAULT_BUDGET,
     // 回の境目ごとに config.json を読み直す: API で変えた許可を、再起動せずに走行中のジョブの次の回から効かせるため
-    permissions: async () =>
-      permissionOverridesSchema.parse((await readPermissionSettings(configPath)) ?? {}),
+    permissions: readPermissions,
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
     memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
     log,

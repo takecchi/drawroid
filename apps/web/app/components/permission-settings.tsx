@@ -1,4 +1,4 @@
-import type { ParamKey, Permission } from '@drawroid/core';
+import { PARAM_KEYS, type ParamKey, type Permission } from '@drawroid/core';
 import { isApiError, savePermissionSettings, usePermissionSettings } from '@drawroid/swr';
 import { Button, ErrorNote, Muted, OkNote, Section } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
@@ -19,6 +19,13 @@ export function PermissionSettings() {
   const [saved, setSaved] = useState(false);
 
   const rows = edited ?? (data === undefined ? undefined : toRows(data.overrides));
+  // 読めなかった行は、表の行に出せるもの（知っているパラメータ）と、表の外に出すもの（知らない名前・全体）に分ける
+  const invalid = data?.invalid ?? [];
+  const known = (param: string) => (PARAM_KEYS as readonly string[]).includes(param);
+  const invalidRows = new Map(
+    invalid.filter(({ param }) => known(param)).map(({ param, reason }) => [param, reason]),
+  );
+  const otherInvalid = invalid.filter(({ param }) => !known(param));
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -52,9 +59,17 @@ export function PermissionSettings() {
       {error !== undefined && <ErrorNote>許可を読めない: {error.message}</ErrorNote>}
       {rows !== undefined && data !== undefined && (
         <form onSubmit={(event) => void save(event)} className="space-y-3">
+          {otherInvalid.length > 0 && (
+            <ErrorNote>
+              読めない許可がある（既定に戻っている）:{' '}
+              {otherInvalid.map(({ param, reason }) => `${param}（${reason}）`).join('、')}。
+              保存すると、読めない行は書いた内容から消える。
+            </ErrorNote>
+          )}
           <PermissionTable
             rows={rows}
             effective={data.permissions as Partial<Record<ParamKey, Permission>>}
+            invalid={invalidRows}
             defaults={{ option: '既定のまま', note: '既定' }}
             onChange={setEdited}
           />
