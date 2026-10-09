@@ -24,9 +24,10 @@ export class MemoryConversationStore implements ConversationStore {
   private readonly uploads = new Map<string, ConversationUpload>();
   private nextId = 1;
 
-  async addUpload(conversationId: string, upload: ConversationUpload, _now: Date): Promise<string> {
+  async addUpload(conversationId: string, upload: ConversationUpload, now: Date): Promise<string> {
     this.listOf(conversationId);
-    const uploadId = `u${this.uploads.size + 1}`;
+    // ファイルの実装と同じく、時刻を先頭に置いた ID にする
+    const uploadId = `${now.getTime()}-u${this.uploads.size + 1}`;
     this.uploads.set(`${conversationId}/${uploadId}`, upload);
     return uploadId;
   }
