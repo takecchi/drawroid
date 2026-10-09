@@ -66,6 +66,28 @@ describe('budgetOverridesSchema', () => {
   ])('rejects %s', (_name, value) => {
     expect(budgetOverridesSchema.safeParse(value).success).toBe(false);
   });
+
+  // 範囲は端を含む: 長辺 128〜1536、1回に見る枚数 1〜8、そのほかの数は 1 から既定の 20 倍まで
+  it.each([
+    ['the smallest image long edge', { imageLongEdge: 128 }],
+    ['the largest image long edge', { imageLongEdge: 1536 }],
+    ['1 image per judge', { imagesPerJudge: 1 }],
+    ['8 images per judge', { imagesPerJudge: 8 }],
+    ['a text limit of 1', { text: { prompt: 1 } }],
+    [
+      'a text limit of 20 times the default',
+      { text: { prompt: DEFAULT_BUDGETS.text.prompt * 20 } },
+    ],
+  ])('accepts %s', (_name, value) => {
+    expect(budgetOverridesSchema.safeParse(value).success).toBe(true);
+  });
+
+  it('rejects a text limit just above 20 times the default', () => {
+    expect(
+      budgetOverridesSchema.safeParse({ text: { prompt: DEFAULT_BUDGETS.text.prompt * 20 + 1 } })
+        .success,
+    ).toBe(false);
+  });
 });
 
 describe('budgetsSchema', () => {
