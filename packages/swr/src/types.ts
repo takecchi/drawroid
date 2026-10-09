@@ -67,6 +67,10 @@ export type LlmCallDetail = InferResponseType<
   (typeof client.jobs)[':jobId']['llm-calls'][':callId']['$get'],
   200
 >;
+export type UnattachedLlmCallsResponse = InferResponseType<
+  (typeof client)['llm-calls']['$get'],
+  200
+>;
 export type SelectionsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['selections']['$get'],
   200

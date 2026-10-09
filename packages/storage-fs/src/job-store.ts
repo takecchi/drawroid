@@ -567,8 +567,8 @@ export class FsJobStore implements JobStore {
     return records;
   }
 
-  async listLlmCallRecords(jobId: string) {
-    const dir = this.jobFiles(jobId).llmCalls;
+  async listLlmCallRecords(jobId: string | null) {
+    const dir = jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls;
     const records: LlmCallRecord[] = [];
     const invalid: { callId: string; reason: string }[] = [];
     for (const name of (await listNames(dir)).filter((n) => n.endsWith('.json'))) {

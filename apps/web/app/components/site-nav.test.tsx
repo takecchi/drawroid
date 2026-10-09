@@ -25,6 +25,7 @@ describe('SiteNav', () => {
     expect(hrefOf('記憶')).toBe('/memory');
     expect(hrefOf('許可')).toBe('/permissions');
     expect(hrefOf('候補の説明')).toBe('/candidates');
+    expect(hrefOf('LLM の記録')).toBe('/llm-calls');
   });
 
   it('marks the conversations as the current place on the list and on each conversation', () => {

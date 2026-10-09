@@ -24,6 +24,7 @@ import type {
   MemoryList,
   ReferencesResponse,
   SelectionsResponse,
+  UnattachedLlmCallsResponse,
   StopConditionsResponse,
 } from './types.js';
 
@@ -116,16 +117,34 @@ export function useLlmCalls(jobId: string | undefined, { live }: { live: boolean
   );
 }
 
+/**
+ * LLM 呼び出し1件の記録。jobId が null なら、ジョブに属さない呼び出し（止める条件の変換など）を読む。
+ */
 // ポーリングしない: 記録は書かれたら変わらず、開いたときに1度取れば足りるため
-export function useLlmCall(jobId: string | undefined, callId: string | undefined) {
-  return useSWR<LlmCallDetail, ApiError>(
-    jobId === undefined || callId === undefined ? null : keys.llmCall(jobId, callId),
-    () =>
-      unwrap<LlmCallDetail>(() =>
-        client.jobs[':jobId']['llm-calls'][':callId'].$get({
-          param: { jobId: jobId ?? '', callId: callId ?? '' },
-        }),
-      ),
+export function useLlmCall(jobId: string | null | undefined, callId: string | undefined) {
+  const key =
+    jobId === undefined || callId === undefined
+      ? null
+      : jobId === null
+        ? keys.unattachedLlmCall(callId)
+        : keys.llmCall(jobId, callId);
+  return useSWR<LlmCallDetail, ApiError>(key, () =>
+    unwrap<LlmCallDetail>(() =>
+      jobId === null
+        ? client['llm-calls'][':callId'].$get({ param: { callId: callId ?? '' } })
+        : client.jobs[':jobId']['llm-calls'][':callId'].$get({
+            param: { jobId: jobId ?? '', callId: callId ?? '' },
+          }),
+    ),
+  );
+}
+
+/** ジョブに属さない LLM 呼び出しの一覧。止める条件を変換するたびに増えるので、開いている間は取り直す */
+export function useUnattachedLlmCalls() {
+  return useSWR<UnattachedLlmCallsResponse, ApiError>(
+    keys.unattachedLlmCalls,
+    () => unwrap<UnattachedLlmCallsResponse>(() => client['llm-calls'].$get()),
+    { refreshInterval: JOB_FILES_POLL_MS },
   );
 }
 
