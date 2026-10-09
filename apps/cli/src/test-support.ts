@@ -7,5 +7,13 @@ import { FsJobStore } from '@drawroid/storage-fs';
 export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
   const backend = new StubBackend();
   const store = new FsJobStore(root);
-  return { backend, store, manualRunner: new ManualGenerationRunner({ backend, store }) };
+  return {
+    backend,
+    store,
+    manualRunner: new ManualGenerationRunner({ backend, store }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
+  };
 }
