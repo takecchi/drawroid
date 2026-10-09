@@ -288,3 +288,16 @@ describe('IterationList and what was left out of the AI choices', () => {
     },
   );
 });
+
+// ジョブの詳細の画像の枡も、点数は「見る役の点」と書く（#281: 会話の行・窓・止まりのカードとそろえる）
+describe('IterationList and the judge score in each image cell', () => {
+  it('names the score as the judge score', () => {
+    renderList(false, {
+      ...iteration,
+      judge: { images: [{ score: 0.5, issues: [] }], nextChange: '次', canStop: false },
+    } as unknown as Iteration);
+
+    expect(screen.getByText('見る役の点 0.50')).toBeTruthy();
+    expect(screen.queryByText(/score 0\.50/)).toBeNull();
+  });
+});

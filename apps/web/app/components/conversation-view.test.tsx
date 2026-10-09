@@ -2,6 +2,7 @@
 import {
   LLM_NOT_CONFIGURED_REASON,
   REPEATED_TOOL_CALL_REASON,
+  TOOL_THREW_PREFIX,
   type ConversationEvent,
   type LiveEvent,
 } from '@drawroid/core';
@@ -606,7 +607,8 @@ describe('ConversationView', () => {
         turn: 1,
         callId: 'c1',
         ok: false,
-        summary: REPEATED_TOOL_CALL_REASON,
+        // 実行器が残すとおりの形（投げた失敗には頭の言葉が付く）
+        summary: `${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`,
       }),
     );
 
@@ -618,7 +620,9 @@ describe('ConversationView', () => {
       .getByText(/stopConditions/)
       .closest('details');
     expect(raw?.open).toBe(false);
-    expect(within(card).getByText(REPEATED_TOOL_CALL_REASON).closest('details')).toBe(raw);
+    expect(
+      within(card).getByText(`${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`).closest('details'),
+    ).toBe(raw);
   });
 
   it('shows a row for each kind of streamed event', async () => {
@@ -1382,5 +1386,41 @@ describe('ConversationView', () => {
 
       expect(dialog().queryByRole('button', { name: 'マスクを塗る' })).toBeNull();
     });
+  });
+});
+
+// 足した文は「〜する」の調子にそろえる（#284）
+describe('the wording of the conversation', () => {
+  it('asks to talk in the same tone as the rest, while the conversation is empty', async () => {
+    const { source } = fakeSource([]);
+    renderView(source);
+
+    expect(await screen.findByText('描いてほしいものや、聞きたいことを話しかける。')).toBeTruthy();
+  });
+
+  it('says where to choose an image in the same tone, while an image is being made', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.started',
+        jobId: JOB,
+        request: '夕暮れの海',
+        stopConditions: { aiJudgement: true, maxIterations: 3 },
+      }),
+    );
+    stream.emit({
+      type: 'generation.progress',
+      jobId: JOB,
+      iteration: 1,
+      progress: 0.35,
+      step: 7,
+      steps: 20,
+    });
+
+    expect(
+      await screen.findByText('できあがったら、画像の行の「この画像で決める」で選べる'),
+    ).toBeTruthy();
   });
 });
