@@ -129,6 +129,22 @@ describe('manual jobs', () => {
     ]);
   });
 
+  it('treats a job file that is valid JSON but the wrong shape as invalid, naming the file', async () => {
+    const odd = await generate();
+    const intact = await generate();
+    await writeFile(dataPaths(root).jobFiles(odd).state, '{"status":"flying"}');
+    const res = await api.request('/jobs');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      jobs: { jobId: string }[];
+      invalid: { jobId: string; reason: string }[];
+    };
+    expect(body.jobs.map((j) => j.jobId)).toEqual([intact]);
+    expect(body.invalid).toEqual([
+      { jobId: odd, reason: expect.stringContaining('state.json') as unknown },
+    ]);
+  });
+
   it('records the cause when the backend fails, so the screen can show it', async () => {
     backend.failNextGenerate(
       new BackendError('unreachable', 'http://127.0.0.1:7860/ に繋がらない'),
