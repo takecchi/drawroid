@@ -6,10 +6,11 @@ import { STATUS_TEXT, type ChatStatus } from './cards';
 
 /**
  * 行の数がこれを超えた会話だけ、画面の外の行の配置と描画を飛ばす（LogRow）。
- * 短い会話では飛ばさない: 飛ばすと、画面に入るたびに行を描き起こすぶん、速いスクロールが重くなる（CPU 4x の 200 行で、
- * フレームの p95 が 16.8 → 33.4 ms）。描き直しの得がそれを上回るのは、長い会話だけだったため（#222 の続きで測った）
+ * 短い会話では飛ばさない: 飛ばすと、画面に入るたびに行を描き起こすぶん、速いスクロールが重くなる（CPU 4x で、フレームの p95 が
+ * 16.8 → 33.4 ms）。線は CPU 4x で測って決めた: 飛ばさない場合、流れている間に 20 ms を超えるフレームは 300 行で 3〜10%（困らない）、
+ * 350 行で 14〜21%、400 行で 33〜36%。飛ばすと 350 行で 2〜8%、400 行で 8〜15% に下がる。得が損を上回るのは 300 行より長い会話だった
  */
-export const SKIP_OFFSCREEN_AFTER_ROWS = 0;
+export const SKIP_OFFSCREEN_AFTER_ROWS = 300;
 
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
@@ -35,8 +36,10 @@ export function LogRow({
 }) {
   return (
     <div
-      // 飛ばすかは、ログの側の印（data-skip-offscreen）で切り替える: 行ごとに渡すと、長さの線を越えたときに全部の行を作り直すことになるため
-      className="group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate)] group-data-[skip-offscreen]/log:[content-visibility:auto] md:group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
+      // 飛ばすかは、ログの側の印（data-skip-offscreen）で切り替える: 行ごとに渡すと、長さの線を越えたときに全部の行を作り直すことになるため。
+      // 背の見積もり（contain-intrinsic-size: auto）は短い会話でも付けておく: 飛ばさない間は何もしないが、描いた背を覚えるので、
+      // 会話が長さの線を越えた瞬間に、描いたことのある行が見積もりの背へ縮んで、行がずれることが無いため
+      className="[contain-intrinsic-size:auto_var(--row-estimate)] group-data-[skip-offscreen]/log:[content-visibility:auto] md:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
       style={
         {
           '--row-estimate': `${Math.round(estimate)}px`,
