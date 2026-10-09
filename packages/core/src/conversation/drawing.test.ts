@@ -137,8 +137,28 @@ describe('summarizeJobForTalk', () => {
     expect(summary).toContain('job-1');
     expect(summary).toContain('走っている');
     expect(summary).toContain('3 回済み');
-    expect(summary).toContain('最良は 1 回目の 0.80');
+    expect(summary).toContain('最良は 1 回目の 1枚目で 0.80');
     expect(summary).not.toContain('p'.repeat(50));
+  });
+
+  it('names the image a human chose when the job stopped on it', () => {
+    const stopped: JobState = {
+      status: 'stopped',
+      stoppedAt: '2026-10-09T00:10:00.000Z',
+      imagesGenerated: 4,
+      reason: { kind: 'adopted', detail: '人間が画像を選んだ' },
+      carry: {
+        intent: '海辺の少女',
+        completedIterations: 2,
+        best: { ...carriedResult(2, 1), imageIndex: 1, issues: [] },
+      },
+    };
+
+    const summary = summarizeJobForTalk('job-1', stopped, { chars: 600 });
+
+    expect(summary).toContain('止まった（adopted: 人間が画像を選んだ）');
+    expect(summary).toContain('人が選んだのは 2 回目の 2枚目（問題なし）');
+    expect(summary).not.toContain('最良は');
   });
 
   it('stays within its budget however many iterations the job has run', () => {

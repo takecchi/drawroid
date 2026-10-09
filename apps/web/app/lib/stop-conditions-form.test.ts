@@ -5,6 +5,7 @@ import {
   buildStopConditions,
   changedConditions,
   buildStopConditionsChange,
+  describeStopConditions,
   neverStops,
   stopConditionsBlocker,
   stopConditionsToForm,
@@ -18,6 +19,24 @@ const empty: StopConditionsFormValues = {
   maxImages: '',
   maxDurationMinutes: '',
 };
+
+// 話す役が 1 分に満たない時間の上限を入れることがある（本物の小さなローカル LLM で、maxDurationMs: 5000）。
+// 分で書くと「0.08333333333333333 分まで」になるので、1 分に満たない上限は秒で書く（core の describeStopConditions と同じ）。
+// 1 秒に満たなければミリ秒で、秒に丸めて 60 になるなら分で書き、分の小数は2桁までにする
+describe('describeStopConditions', () => {
+  it.each([
+    [400, '400 ミリ秒まで'],
+    [5_000, '5 秒まで'],
+    [59_000, '59 秒まで'],
+    [59_500, '1 分まで'],
+    [60_000, '1 分まで'],
+    [90_000, '1.5 分まで'],
+    [100_000, '1.67 分まで'],
+    [600_000, '10 分まで'],
+  ])('writes a time limit of %i ms as %s', (maxDurationMs, text) => {
+    expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toEqual([text]);
+  });
+});
 
 describe('stopConditionsToForm', () => {
   it('turns milliseconds into minutes and leaves absent limits empty', () => {
@@ -128,6 +147,12 @@ describe('changedConditions', () => {
     ).toEqual([]);
   });
 
+  it('writes a time limit under a minute in seconds', () => {
+    expect(
+      changedConditions({ aiJudgement: true, maxDurationMs: 5_000 }, { aiJudgement: true }),
+    ).toEqual([{ label: '時間の上限', submitted: '5 秒', current: 'なし' }]);
+  });
+
   it('returns only the fields whose value differs, with absent limits as none', () => {
     expect(
       changedConditions(
@@ -139,18 +164,5 @@ describe('changedConditions', () => {
       { label: '枚数の上限', submitted: 'なし', current: '6 枚' },
       { label: '時間の上限', submitted: 'なし', current: '1.5 分' },
     ]);
-  });
-});
-
-describe('describeStopConditions', () => {
-  it.each([
-    [400, '400 ミリ秒まで'],
-    [5_000, '5 秒まで'],
-    [59_500, '1 分まで'],
-    [90_000, '1.5 分まで'],
-    [100_000, '1.67 分まで'],
-    [600_000, '10 分まで'],
-  ])('writes a time limit of %i ms as %s', (maxDurationMs, text) => {
-    expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toEqual([text]);
   });
 });
