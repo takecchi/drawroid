@@ -55,6 +55,20 @@ describe('useBackendStatus', () => {
     expect(fetchMock).toHaveBeenCalledTimes(7);
   });
 
+  // 定数ではなく時間そのもので見る: 定数ごと短くしても、上の試験は待つ時間も一緒に縮んで通ってしまうため
+  it('waits 10 seconds before reading again, not less', async () => {
+    fetchMock.mockImplementation(async () => down());
+    renderHook(readBackend, { wrapper });
+    await passes(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await passes(9_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await passes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('stops reading again once the backend answers', async () => {
     fetchMock.mockImplementation(async () => down());
     const { result } = renderHook(readBackend, { wrapper });
