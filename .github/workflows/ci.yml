@@ -83,3 +83,18 @@ jobs:
       # 外のサービスには繋がない: Forge と LLM は scripts/packed-conversation/ の偽物を 127.0.0.1 に立てる。実機の Forge・実際のモデルの挙動は確かめない。
       # 固めたものを起動し、会話 → 発言 → start_drawing → 進み具合 → 画像と評価 → 停止、と SSE の Last-Event-ID での再開を通す（全体の上限 120 秒）。
       - run: pnpm check:packed-conversation
+
+  # packed-install とは別の job にする: あちらの step は会話の確かめで手が入りやすく、ここは並んで走らせて全体の待ちを延ばさないため。
+  packed-browser:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - run: pnpm build
+
+      # 固めたものを起動し、ヘッドレスの Chrome で `/` を開く（M0「ブラウザで Web UI が開ける」）。会話の一覧が描かれ、CSS が効き、
+      # 会話を1つ開けて、コンソールのエラー・失敗した読み込みが無いことを見る。
+      # ブラウザは取得しない: ubuntu-latest に入っている Chrome を使う（scripts/check-packed-browser.mjs）。
+      - run: pnpm check:packed-browser
