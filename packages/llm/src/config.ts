@@ -33,6 +33,15 @@ export type StructuredOutputMode = z.infer<typeof structuredOutputModeSchema>;
 export const reasoningModeSchema = z.enum(['native', 'think-tag', 'none']);
 export type ReasoningMode = z.infer<typeof reasoningModeSchema>;
 
+/**
+ * 話す役のツールの呼び出し方。
+ * - native: モデルのツール呼び出し（OpenAI 互換の tools / tool_calls など）
+ * - json: ツールの呼び出しに弱いモデルの逃げ道。1ステップの出力を「返答か、ツールの呼び出し」の構造化出力にし、
+ *   structuredOutput（native / json / text）の出し方で回す
+ */
+export const toolCallingModeSchema = z.enum(['native', 'json']);
+export type ToolCallingMode = z.infer<typeof toolCallingModeSchema>;
+
 export const roleConfigSchema = z.object({
   /** providers の鍵 */
   provider: z.string().min(1),
@@ -43,6 +52,7 @@ export const roleConfigSchema = z.object({
   maxOutputTokens: z.number().int().positive().optional(),
   structuredOutput: structuredOutputModeSchema.default('native'),
   reasoning: reasoningModeSchema.default('native'),
+  toolCalling: toolCallingModeSchema.default('native'),
   imageInput: z.boolean().default(true),
 });
 export type RoleConfig = z.infer<typeof roleConfigSchema>;
