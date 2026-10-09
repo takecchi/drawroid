@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import type { ApiDeps } from './deps.js';
+import { handleUncaught } from './errors.js';
 import { autoJobsRoutes } from './routes/auto-jobs.js';
 import { backendRoutes } from './routes/backend.js';
 import { filesRoutes } from './routes/files.js';
@@ -31,7 +32,8 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs', jobsRoutes(deps))
     .route('/jobs', selectionsRoutes(deps))
     .route('/files', filesRoutes(deps))
-    .route('/settings/llm', llmSettingsRoutes(deps));
+    .route('/settings/llm', llmSettingsRoutes(deps))
+    .onError(handleUncaught);
 }
 
 export type AppType = ReturnType<typeof createApi>;
