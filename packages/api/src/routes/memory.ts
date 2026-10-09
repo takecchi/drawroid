@@ -1,5 +1,6 @@
 import { DEFAULT_DISTILL_BUDGET, memoryScopeSchema, type JobSpec } from '@drawroid/core';
 import { Hono } from 'hono';
+import { validator } from 'hono/validator';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
@@ -39,50 +40,58 @@ export function memoryRoutes({ memoryStore, store }: ApiDeps) {
     }
   }
 
-  return new Hono()
-    .get('/', async (c) => c.json(await memoryStore.list(), 200))
-    .get('/:id', async (c) => {
-      const id = c.req.param('id');
-      if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
-      let item;
-      try {
-        item = await memoryStore.get(id);
-      } catch (error) {
-        return invalidFile(c, message(error));
-      }
-      if (item === null) return notFound(c, `記憶 ${id} は無い`);
-      const knownJobIds = new Set(await store.listJobIds());
-      const sources = await Promise.all(
-        item.sources.map((jobId) => describeSource(jobId, knownJobIds)),
-      );
-      return c.json({ item, sources }, 200);
-    })
-    .put('/:id', async (c) => {
-      const id = c.req.param('id');
-      if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
-      const parsed = updateMemorySchema.safeParse(await c.req.json().catch(() => undefined));
-      if (!parsed.success) return invalidRequest(c, parsed.error.message);
-      const { expectedUpdatedAt, ...edit } = parsed.data;
+  return (
+    new Hono()
+      .get('/', async (c) => c.json(await memoryStore.list(), 200))
+      .get('/:id', async (c) => {
+        const id = c.req.param('id');
+        if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
+        let item;
+        try {
+          item = await memoryStore.get(id);
+        } catch (error) {
+          return invalidFile(c, message(error));
+        }
+        if (item === null) return notFound(c, `記憶 ${id} は無い`);
+        const knownJobIds = new Set(await store.listJobIds());
+        const sources = await Promise.all(
+          item.sources.map((jobId) => describeSource(jobId, knownJobIds)),
+        );
+        return c.json({ item, sources }, 200);
+      })
+      // hono/validator を通す: c.req.json() を直に読むと、hono/client が body の型を導けず、画面側に手で型を書くことになるため
+      .put(
+        '/:id',
+        validator('json', async (value, c) => {
+          const parsed = updateMemorySchema.safeParse(value);
+          return parsed.success ? parsed.data : invalidRequest(c, parsed.error.message);
+        }),
+        async (c) => {
+          const id = c.req.param('id');
+          if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
+          const { expectedUpdatedAt, ...edit } = c.req.valid('json');
 
-      let current;
-      try {
-        current = await memoryStore.get(id);
-      } catch (error) {
-        return invalidFile(c, message(error));
-      }
-      if (current === null) return notFound(c, `記憶 ${id} は無い`);
-      // 画面で開いたあとに変わったものを黙って上書きしない: 人間のファイル編集や蒸留の書き込みを失わないため
-      if (current.updatedAt !== expectedUpdatedAt) {
-        return conflict(c, 'conflict', '開いたあとに記憶が書き換えられた');
-      }
-      const item = { ...current, ...edit, updatedAt: new Date().toISOString() };
-      await memoryStore.put(item);
-      return c.json({ item }, 200);
-    })
-    .delete('/:id', async (c) => {
-      const id = c.req.param('id');
-      if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
-      if (!(await memoryStore.remove(id))) return notFound(c, `記憶 ${id} は無い`);
-      return c.body(null, 204);
-    });
+          let current;
+          try {
+            current = await memoryStore.get(id);
+          } catch (error) {
+            return invalidFile(c, message(error));
+          }
+          if (current === null) return notFound(c, `記憶 ${id} は無い`);
+          // 画面で開いたあとに変わったものを黙って上書きしない: 人間のファイル編集や蒸留の書き込みを失わないため
+          if (current.updatedAt !== expectedUpdatedAt) {
+            return conflict(c, 'conflict', '開いたあとに記憶が書き換えられた');
+          }
+          const item = { ...current, ...edit, updatedAt: new Date().toISOString() };
+          await memoryStore.put(item);
+          return c.json({ item }, 200);
+        },
+      )
+      .delete('/:id', async (c) => {
+        const id = c.req.param('id');
+        if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
+        if (!(await memoryStore.remove(id))) return notFound(c, `記憶 ${id} は無い`);
+        return c.body(null, 204);
+      })
+  );
 }
