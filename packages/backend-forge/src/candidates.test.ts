@@ -31,10 +31,10 @@ describe('listForgeCandidates', () => {
     ]);
   });
 
-  it('names LoRAs by the alias the prompt syntax resolves', async () => {
+  it('names LoRAs by the name that resolves even when aliases collide, showing the alias', async () => {
     expect(await listForgeCandidates(client, 'lora')).toEqual([
       { name: 'detail-tweaker-xl' },
-      { name: 'watercolor', label: 'watercolor_style_v2' },
+      { name: 'watercolor_style_v2', label: 'watercolor' },
     ]);
   });
 
