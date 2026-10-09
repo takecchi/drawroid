@@ -30,7 +30,9 @@ export function readGenerationResponse(
   try {
     info = generationInfoSchema.parse(JSON.parse(res.info));
   } catch (error) {
-    throw new BackendError('bad_response', `${endpoint} の info が読めない`, { cause: error });
+    throw new BackendError('bad_response', `${product} の ${endpoint} の info が読めない`, {
+      cause: error,
+    });
   }
   // バッチが2枚以上のとき、格子画像が先頭に足されることがある。index_of_first_image が個々の画像の始まりを指す。
   // 枚数ぶんだけ切り出す: ControlNet の検出マップなど、生成した画像でないものが末尾に付くことがあるため（modules/api/api.py）

@@ -113,11 +113,13 @@ export class SdapiClient {
     try {
       json = JSON.parse(text);
     } catch (error) {
-      throw new BackendError('bad_response', `${where}: 応答が JSON ではない`, { cause: error });
+      throw new BackendError('bad_response', `${where}: ${this.product} の応答が JSON ではない`, {
+        cause: error,
+      });
     }
     const parsed = schema.safeParse(json);
     if (!parsed.success) {
-      throw new BackendError('bad_response', `${where}: 応答の形が想定と違う`, {
+      throw new BackendError('bad_response', `${where}: ${this.product} の応答の形が想定と違う`, {
         cause: parsed.error,
       });
     }
@@ -155,9 +157,13 @@ function classifyFetchError(
   if (signal?.aborted)
     return new BackendError('aborted', `${where}: 呼び手が止めた`, { cause: error });
   if (timeout.aborted) {
-    return new BackendError('timeout', `${where}: ${timeoutMs}ms 待っても応答が無い`, {
-      cause: error,
-    });
+    return new BackendError(
+      'timeout',
+      `${where}: ${product} が ${timeoutMs}ms 待っても応答しない`,
+      {
+        cause: error,
+      },
+    );
   }
   const code = causeCode(error);
   if (code !== undefined && UNREACHABLE_CODES.has(code)) {
@@ -170,7 +176,7 @@ function classifyFetchError(
   // 原因の連鎖を最後までたどって書く: fetch は「fetch failed」とだけ言い、本当の理由（ポートが使えない・名前が引けない など）は cause の奥にあるため
   return new BackendError(
     'unreachable',
-    `${baseUrl} に繋がらない（${causeMessages(error)}）。URL の書き方とポートが合っているかを確かめる（${where}）`,
+    `${baseUrl} に繋がらない（${causeMessages(error)}）。${product} が起動しているか、URL の書き方とポートが合っているかを確かめる（${where}）`,
     { cause: error },
   );
 }

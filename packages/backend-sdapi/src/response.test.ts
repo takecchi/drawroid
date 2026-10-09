@@ -42,4 +42,17 @@ describe('readGenerationResponse', () => {
     expect(error.message).toContain('A1111 の設定の画像形式');
     expect(error.message).not.toContain('Forge');
   });
+
+  it.each(['Forge', 'A1111'])('names %s when the info cannot be read', (product) => {
+    const error = failureOf(() =>
+      readGenerationResponse({ images: [PNG], info: 'not json' }, 1, {
+        endpoint: 'txt2img',
+        product,
+      }),
+    );
+
+    expect(error.kind).toBe('bad_response');
+    expect(error.message).toContain(product);
+    expect(error.message).not.toContain(product === 'Forge' ? 'A1111' : 'Forge');
+  });
 });
