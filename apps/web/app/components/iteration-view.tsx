@@ -14,7 +14,7 @@ const PARAM_LABELS = {
   negativePrompt: 'negative prompt',
   seed: 'seed',
   steps: 'steps',
-  cfg: 'cfg',
+  cfgScale: 'cfg scale',
 } as const;
 
 function ThinkSection({ think }: { think: unknown }) {
