@@ -14,6 +14,7 @@ import {
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
+import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
@@ -41,6 +42,9 @@ const judge: Script = (call: LlmCall<unknown>) => ({
   canStop: false,
 });
 
+const GIST = '白いワンピースの裾が風になびく構図';
+const refGist: Script = () => ({ gist: GIST });
+
 let root: string;
 let runner: JobRunner;
 let app: ReturnType<typeof createApi>;
@@ -52,7 +56,7 @@ beforeEach(async () => {
   const backend = new StubBackend({ generateDelayMs: 30 });
   runner = new JobRunner({
     store,
-    llm: new ScriptedLlm({ think, judge }),
+    llm: new ScriptedLlm({ think, judge, 'ref-gist': refGist }),
     backend,
     budget: DEFAULT_BUDGET,
     allowed: THINK_PARAM_KEYS,
@@ -108,11 +112,19 @@ async function thinkInputOf(jobId: string, iteration: number): Promise<string> {
 
 describe('every M3 operation goes over HTTP (M3:98)', () => {
   it('submits, watches, instructs, changes the stop conditions, stops, selects and reads back', async () => {
-    // 1. 自動ジョブの投入
+    // 1. 自動ジョブの投入（参照画像を1枚添える）
+    const reference = await sharp({
+      create: { width: 1200, height: 800, channels: 3, background: '#2266aa' },
+    })
+      .png()
+      .toBuffer();
     const submitted = await call('POST', '/jobs/auto', {
       request: '夕暮れの海辺に立つ白いワンピースの少女、アニメ調',
       stopConditions: { aiJudgement: false, maxIterations: 50 },
       batchSize: 2,
+      references: [
+        { mediaType: 'image/png', data: reference.toString('base64'), note: 'この構図で' },
+      ],
     });
     expect(submitted.status).toBe(202);
     const { jobId } = submitted.body as { jobId: string };
@@ -144,6 +156,11 @@ describe('every M3 operation goes over HTTP (M3:98)', () => {
     });
     expect(changed.status).toBe(202);
     expect(changed.body.stopConditions).toEqual({ aiJudgement: false, maxIterations: 1000 });
+    // 変えたあとの条件は、変更の応答のほかに、読み取りの口でもいつでも読める
+    expect((await call('GET', `/jobs/auto/${jobId}/stop-conditions`)).body).toEqual({
+      submitted: { aiJudgement: false, maxIterations: 50 },
+      current: { aiJudgement: false, maxIterations: 1000 },
+    });
 
     // 指示を取り込んだ回を、口出しの読み取りの API で見る。どの回になるかは生成の進み具合で変わる
     const taken = await pollUntil(
@@ -202,6 +219,10 @@ describe('every M3 operation goes over HTTP (M3:98)', () => {
     expect(thinks[last - 1]).toContain(INTEGRATED);
     // 止める条件の変更は、変えたあとの「考える」の残り回数に効いている
     expect(thinks[last - 1]).toMatch(/残り 9\d\d 回/);
+    // 投入時の参照画像は、見る役が1度だけ見て要点にし、以後は要点の文字列で「考える」に載る
+    const gists = calls.body.calls.filter((c: { purpose: string }) => c.purpose === 'ref-gist');
+    expect(gists).toHaveLength(1);
+    expect(thinks.every((text) => text.includes(GIST))).toBe(true);
 
     const selections = await call('GET', `/jobs/${jobId}/selections`);
     expect(selections.body.selections).toEqual([
