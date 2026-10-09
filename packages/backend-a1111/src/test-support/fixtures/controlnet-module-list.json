@@ -1,0 +1,9 @@
+{
+  "module_list": ["none", "canny", "depth_midas", "lineart_anime"],
+  "module_detail": {
+    "none": { "model_free": false, "sliders": [] },
+    "canny": { "model_free": false, "sliders": [] },
+    "depth_midas": { "model_free": false, "sliders": [] },
+    "lineart_anime": { "model_free": false, "sliders": [] }
+  }
+}
