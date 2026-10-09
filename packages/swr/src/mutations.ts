@@ -11,6 +11,7 @@ import { client } from './client.js';
 import { keys } from './keys.js';
 import type {
   AddInstructionResponse,
+  AddMaskResponse,
   AddReferenceResponse,
   BackendSettingsResponse,
   ChangeStopConditionsResponse,
@@ -126,6 +127,26 @@ export async function addReference(
   await refreshJob(jobId);
   await mutate(keys.interventions(jobId));
   await mutate(keys.references(jobId));
+  return added;
+}
+
+/**
+ * 回の画像1枚に塗った inpaint のマスクを送る。png は白い所を描き直す PNG を base64 にしたもの。
+ * 止まったジョブへは ApiError（status 409）、無い画像へは 404、PNG でない・大きすぎるときは 'invalid_request' を投げる
+ */
+export async function addMask(
+  jobId: string,
+  image: { iteration: number; index: number },
+  png: string,
+): Promise<AddMaskResponse> {
+  const added = await unwrap<AddMaskResponse>(() =>
+    client.jobs.auto[':jobId'].interventions.$post({
+      param: { jobId },
+      json: { kind: 'mask', image, mask: { data: png } },
+    }),
+  );
+  await refreshJob(jobId);
+  await mutate(keys.interventions(jobId));
   return added;
 }
 

@@ -18,6 +18,7 @@ export {
 } from './hooks.js';
 export {
   addInstruction,
+  addMask,
   addReference,
   changeStopConditions,
   createAutoJob,
@@ -32,6 +33,7 @@ export {
 } from './mutations.js';
 export type {
   AddInstructionResponse,
+  AddMaskResponse,
   AddReferenceResponse,
   BackendSettingsResponse,
   BackendStatus,
