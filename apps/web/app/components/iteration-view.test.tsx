@@ -125,6 +125,30 @@ describe('IterationList and the large view of an image', () => {
       dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
     ).toBeTruthy();
   });
+
+  it('in the large view, does not let a stopped job be settled, and says why', async () => {
+    const user = userEvent.setup();
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[iteration]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{ disabledReason: '描くのはもう止まっているので、決められない' }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 7）' }),
+    );
+    const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 1 番/ }));
+
+    expect(
+      dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+    ).toHaveProperty('disabled', true);
+    expect(dialog.getByText('描くのはもう止まっているので、決められない')).toBeTruthy();
+  });
 });
 
 describe('IterationList and what was left out of the AI choices', () => {
