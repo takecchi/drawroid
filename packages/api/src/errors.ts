@@ -12,6 +12,10 @@ export function invalidRequest(c: Context, message: string) {
   return c.json(errorBody('invalid_request', message), 400);
 }
 
+export function conflict(c: Context, kind: string, message: string) {
+  return c.json(errorBody(kind, message), 409);
+}
+
 export function notFound(c: Context, message: string) {
   return c.json(errorBody('not_found', message), 404);
 }
