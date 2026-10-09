@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
 import { notFound } from '../errors.js';
-import { readAllIterationViews, summarizeJudge } from '../iterations.js';
+import { readAllIterationViews, summarizeAdopted, summarizeJudge } from '../iterations.js';
 
 export function jobsRoutes({ store }: ApiDeps) {
   return new Hono()
@@ -33,11 +33,11 @@ export function jobsRoutes({ store }: ApiDeps) {
         // listGenerations で一括しない: 壊れた回が1つあると詳細ごと失敗するため
         readAllIterationViews(store, jobId),
       ]);
-      const iterations = read.iterations.map(({ iteration, request, judge, images }) => ({
+      const iterations = read.iterations.map(({ iteration, request, judge, adopted, images }) => ({
         iteration,
         request,
         images,
-        judge: summarizeJudge(judge),
+        judge: summarizeJudge(judge) ?? summarizeAdopted(adopted, iteration, images.length),
       }));
       return c.json({ spec, state, iterations, invalid: read.invalid }, 200);
     });

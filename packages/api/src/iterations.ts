@@ -78,10 +78,28 @@ const judgeSummarySchema = z.object({
   images: z.array(z.object({ score: z.number() })),
 });
 
-export type JudgeSummary = { canStop: boolean; scores: number[] };
+export type JudgeSummary = { canStop: boolean; scores: number[]; adopted?: true };
 
 export function summarizeJudge(judge: unknown): JudgeSummary | null {
   const parsed = judgeSummarySchema.safeParse(judge);
   if (!parsed.success) return null;
   return { canStop: parsed.data.canStop, scores: parsed.data.images.map((image) => image.score) };
+}
+
+/**
+ * 人が画像を選んで見る役を済ませた回（adopted.json）の要約。点数は runner と同じく、選んだ画像だけ 1、ほかは 0。
+ * canStop は AI の判断の欄なので、人が選んだ回では立てない
+ */
+export function summarizeAdopted(
+  adopted: AdoptedRecord | null,
+  iteration: number,
+  imageCount: number,
+): JudgeSummary | null {
+  if (adopted === null) return null;
+  const chosen = adopted.image.iteration === iteration ? adopted.image.index : undefined;
+  return {
+    canStop: false,
+    scores: Array.from({ length: imageCount }, (_, index) => (index === chosen ? 1 : 0)),
+    adopted: true,
+  };
 }

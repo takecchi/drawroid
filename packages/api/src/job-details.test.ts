@@ -87,6 +87,32 @@ describe('GET /jobs/:jobId', () => {
     });
   });
 
+  it('summarizes an iteration the human picked an image in, instead of leaving its scores empty', async () => {
+    await env.store.writeGeneration(jobId, 2, request, {
+      images: [
+        { png: await png(64, 64), seed: 1, metadata: {} },
+        { png: await png(64, 64), seed: 2, metadata: {} },
+      ],
+      metadata: {},
+    });
+    await env.store.writeAdopted(jobId, 2, {
+      by: 'human',
+      image: { iteration: 2, index: 1 },
+      score: 1,
+      interventionId: 'iv-1',
+      adoptedAt: '2026-10-09T00:30:00.000Z',
+    });
+
+    const res = await env.api.request(`/jobs/${jobId}`);
+
+    const body = (await res.json()) as { iterations: { iteration: number; judge: unknown }[] };
+    expect(body.iterations.find((i) => i.iteration === 2)?.judge).toEqual({
+      canStop: false,
+      scores: [0, 1],
+      adopted: true,
+    });
+  });
+
   it('lists a broken iteration as invalid and still returns the rest of the detail', async () => {
     await writeFile(env.paths.jobFiles(jobId).iteration(1).think, '{ broken');
 
