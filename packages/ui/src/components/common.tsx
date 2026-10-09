@@ -144,6 +144,24 @@ export function Field({
   );
 }
 
+/** 入力のまとまり。legend が名前になる（読み上げは fieldset の名前として読む） */
+export function FieldSet({
+  legend,
+  className,
+  children,
+}: {
+  legend: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset className={cn('min-w-0 space-y-3 rounded-lg border border-border p-3', className)}>
+      <legend className="px-1 text-sm font-semibold">{legend}</legend>
+      {children}
+    </fieldset>
+  );
+}
+
 /** チェックボックスと文言を横に並べる。ネイティブの input のまま: 読み手が checked を見る口を変えないため */
 export function CheckboxField({
   label,

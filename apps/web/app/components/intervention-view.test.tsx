@@ -138,8 +138,10 @@ describe('IterationList with interventions', () => {
     const human = screen.getByText('人間の指示');
     const thinker = screen.getByText('AI（考える役）');
     const judge = screen.getByText('AI（見る役）');
-    expect(human.parentElement?.style.borderLeft).not.toBe('');
-    expect(human.parentElement?.style.borderLeft).not.toBe(thinker.parentElement?.style.borderLeft);
-    expect(thinker.parentElement?.style.borderLeft).toBe(judge.parentElement?.style.borderLeft);
+    const authorOf = (label: HTMLElement) =>
+      label.closest('[data-author]')?.getAttribute('data-author');
+    expect(authorOf(human)).toBe('human');
+    expect(authorOf(thinker)).toBe('ai');
+    expect(authorOf(judge)).toBe('ai');
   });
 });
