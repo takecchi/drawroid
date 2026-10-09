@@ -331,14 +331,20 @@ describe('a human message while the job of the conversation is running', () => {
       reason: { kind: 'adopted' },
     });
     expect(await jobs.readSelection(jobId, '1-0')).toMatchObject({ verdict: 'favorite' });
+    // 話す役の数え方（1 から）で名指す
+    expect((await events()).find((e) => e.type === 'tool.result')).toMatchObject({
+      ok: true,
+      summary: '1 回目の 1枚目をお気に入りにして採った',
+    });
   });
 
   it('fails adopt_image as a tool failure when there is no job or no such image, and writes no favorite', async () => {
     const judging = blocking(judge, (n) => n === 0);
     const { say, talk, conversationId, jobs, jobRunner, submit, events } = await setup({
       judge: judging.script,
+      // どちらの発言のターンでも、最初のステップで採らせる（ステップは 0・1 が1つ目、2・3 が2つ目のターン）
       talk: (_call, n) =>
-        n === 0
+        n % 2 === 0
           ? { toolCalls: [{ name: 'adopt_image', input: { iteration: 1, number: 5 } }] }
           : { text: '選べませんでした' },
     });
@@ -357,7 +363,8 @@ describe('a human message while the job of the conversation is running', () => {
     await say('5枚目でいい');
     await within(talk.idle(conversationId));
     const results = (await events()).filter((e) => e.type === 'tool.result');
-    expect(results.at(-1)).toMatchObject({ ok: false });
+    expect(results).toHaveLength(2);
+    expect(results.at(-1)).toMatchObject({ ok: false, summary: '1 回目の 5枚目の画像は無い' });
     expect(await jobs.listSelections(jobId)).toEqual([]);
     expect(await jobs.listInterventions(jobId)).toEqual([]);
     judging.answer(0);
@@ -878,7 +885,10 @@ describe('interrupting and adopting, in more detail', () => {
     await within(talk.idle(conversationId));
     await within(jobRunner.idle());
 
-    expect((await events()).find((e) => e.type === 'tool.result')).toMatchObject({ ok: false });
+    expect((await events()).find((e) => e.type === 'tool.result')).toMatchObject({
+      ok: false,
+      summary: '絵がもう止まっていて、1 回目の 1枚目を採れなかった',
+    });
     expect(await jobs.listSelections(jobId)).toEqual([]);
     expect(await jobs.listInterventions(jobId)).toEqual([]);
     expect(await stoppedReason(jobs, jobId)).toBe('human');
