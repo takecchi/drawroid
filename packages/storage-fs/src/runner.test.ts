@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   DEFAULT_BUDGET,
+  generationRequestSchema,
   JobRunner,
   THINK_PARAM_KEYS,
   type AutoJobSpec,
@@ -77,8 +78,9 @@ function setup(options: {
   scripts: ConstructorParameters<typeof ScriptedLlm>[0];
   backend?: StubBackend;
   now?: () => Date;
+  store?: FsJobStore;
 }) {
-  const store = new FsJobStore(root);
+  const store = options.store ?? new FsJobStore(root);
   const llm = new ScriptedLlm(options.scripts);
   const backend = options.backend ?? new BigImageBackend();
   let seq = 0;
@@ -99,19 +101,20 @@ async function submit(
   store: FsJobStore,
   conditions: AutoJobSpec['stopConditions'],
   batchSize = 2,
+  { request = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調', at = new Date() } = {},
 ): Promise<AutoJobSpec> {
   const spec = await store.createJob(
     {
       kind: 'auto',
-      request: '夕暮れの海辺に立つ白いワンピースの少女、アニメ調',
+      request,
       stopConditions: conditions,
       batchSize,
     },
     {
       status: 'queued',
-      carry: { intent: '夕暮れの海辺に立つ白いワンピースの少女、アニメ調', completedIterations: 0 },
+      carry: { intent: request, completedIterations: 0 },
     },
-    new Date(),
+    at,
   );
   if (spec.kind !== 'auto') throw new Error('auto のはず');
   return spec;
@@ -208,6 +211,82 @@ describe('the loop stops (:70)', () => {
   });
 });
 
+describe('the loop picks which job to run', () => {
+  const textOf = (call: LlmCall<unknown>) =>
+    call.messages.user.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
+
+  it('resumes a running job (one that was running before a crash) before an older queued job', async () => {
+    const { store, runner, llm } = setup({ scripts: { think, judge: judge(1) } });
+    const queued = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2, {
+      request: '古い待ちのジョブ',
+      at: new Date('2026-10-09T00:00:00Z'),
+    });
+    const running = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2, {
+      request: '落ちる前に走っていたジョブ',
+      at: new Date('2026-10-09T00:00:10Z'),
+    });
+    await store.writeState(running.jobId, {
+      status: 'running',
+      carry: { intent: running.request, completedIterations: 0 },
+      startedAt: '2026-10-09T00:00:20Z',
+      imagesGenerated: 0,
+    });
+    runner.kick();
+    await runner.idle();
+
+    expect(textOf(llm.calls[0] as LlmCall<unknown>)).toContain(running.request);
+    expect((await stoppedState(store, running.jobId)).reason.kind).toBe('ai');
+    expect((await stoppedState(store, queued.jobId)).reason.kind).toBe('ai');
+  });
+
+  it('leaves a manual job in the queue alone and goes idle after running the auto job', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge(1) } });
+    const manual = await store.createJob(
+      {
+        kind: 'manual',
+        request: generationRequestSchema.parse({
+          prompt: 'a cat',
+          negativePrompt: '',
+          loras: [],
+          steps: 4,
+          cfgScale: 7,
+          width: 64,
+          height: 64,
+          batchSize: 1,
+        }),
+      },
+      { status: 'queued' },
+      new Date('2026-10-09T00:00:00Z'),
+    );
+    const auto = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2, {
+      at: new Date('2026-10-09T00:00:10Z'),
+    });
+    runner.kick();
+    const settled = await Promise.race([
+      runner.idle().then(() => 'idle'),
+      new Promise((resolve) => setTimeout(() => resolve('still running'), 3_000)),
+    ]);
+
+    expect(settled).toBe('idle');
+    expect((await stoppedState(store, auto.jobId)).reason.kind).toBe('ai');
+    expect(await store.readState(manual.jobId)).toEqual({ status: 'queued' });
+  }, 10_000);
+
+  it('tells the thinking role how many iterations are left, counting the one about to run', async () => {
+    const { store, runner, llm } = setup({ scripts: { think, judge: judge() } });
+    await submit(store, { aiJudgement: true, maxIterations: 3 });
+    runner.kick();
+    await runner.idle();
+
+    const thinks = llm.calls.filter((c) => c.purpose === 'think');
+    expect(thinks.map(textOf)).toEqual([
+      expect.stringContaining('（残り 3 回）'),
+      expect.stringContaining('（残り 2 回）'),
+      expect.stringContaining('（残り 1 回）'),
+    ]);
+  });
+});
+
 describe('the input to the LLM stays within the budget (:71)', () => {
   it('keeps every think and judge input within the same limit from iteration 1 to 30', async () => {
     const { store, runner, llm } = setup({ scripts: { think, judge: judge() } });
@@ -290,6 +369,16 @@ describe('a broken structured output stops the job with the reason (:73)', () =>
     await runner.idle();
     expect((await stoppedState(store, spec.jobId)).reason.detail).toMatch(/^生成の段: /);
   });
+
+  it('keeps the kind of the backend error in the stop reason', async () => {
+    const backend = new BigImageBackend();
+    backend.setUnreachable(true);
+    const { store, runner } = setup({ scripts: { think, judge: judge() }, backend });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 });
+    runner.kick();
+    await runner.idle();
+    expect((await stoppedState(store, spec.jobId)).reason.backendErrorKind).toBe('unreachable');
+  });
 });
 
 describe('a job resumes where it stopped (:74)', () => {
@@ -321,6 +410,41 @@ describe('a job resumes where it stopped (:74)', () => {
     expect(second.llm.calls.map((c) => c.purpose)).toEqual(['judge', 'think', 'judge']);
     expect(second.backend.requests).toHaveLength(1);
     expect(first.backend.requests).toHaveLength(2);
+  });
+});
+
+describe('a job resumes after a crash between the judge output and state.json (:74)', () => {
+  /** 回の「見る」の出力を置いたあと、state.json の回を進める書き込みで落ちたものとみなす */
+  class CrashBeforeAdvanceStore extends FsJobStore {
+    override writeState(jobId: string, state: JobState): Promise<void> {
+      if (state.status === 'running' && state.carry?.completedIterations === 1) {
+        return new Promise(() => undefined);
+      }
+      return super.writeState(jobId, state);
+    }
+  }
+
+  it('goes on to the next iteration without judging the finished one again', async () => {
+    const first = setup({
+      scripts: { think, judge: judge() },
+      store: new CrashBeforeAdvanceStore(root),
+    });
+    const spec = await submit(first.store, { aiJudgement: false, maxIterations: 2 });
+    first.runner.kick();
+    while ((await first.store.readStage(spec.jobId, 1, 'judge')) === undefined) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    const second = setup({ scripts: { think: (c, n) => think(c, n + 1), judge: judge() } });
+    second.runner.kick();
+    await second.runner.idle();
+
+    const state = await stoppedState(second.store, spec.jobId);
+    expect(state.reason.kind).toBe('limit:iterations');
+    expect(state.carry?.completedIterations).toBe(2);
+    expect(second.llm.calls.map((c) => c.purpose)).toEqual(['think', 'judge']);
+    const sent = await readdir(dataPaths(root).jobFiles(spec.jobId).iteration(1).images);
+    expect(sent.filter((name) => name.endsWith('.sent.json'))).toHaveLength(2);
   });
 });
 
