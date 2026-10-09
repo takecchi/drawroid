@@ -107,6 +107,47 @@ describe('closing the turns a restart cut off', () => {
       expect.objectContaining({ turn: 2, outcome: 'interrupted', reason: RESTART_REASON }),
     ]);
   });
+
+  it('finds the open turn at the end of a long conversation without reading it from the start', async () => {
+    const store = new FsConversationStore(root);
+    const hubs = new ConversationHubs({ store });
+    const { conversationId } = await store.createConversation(new Date());
+    const hub = hubs.get(conversationId);
+    for (let turn = 1; turn <= 300; turn++) {
+      const { seq } = await hub.confirm({ type: 'user.message', text: `${turn}` });
+      await hub.confirm({ type: 'turn.started', turn, messageSeqs: [seq] });
+      await hub.confirm({ type: 'turn.ended', turn, outcome: 'done' });
+    }
+    const { seq } = await hub.confirm({ type: 'user.message', text: '描いて' });
+    await hub.confirm({ type: 'turn.started', turn: 301, messageSeqs: [seq] });
+    // 開いたターンのあとに、ターンの記録でないイベントが1回ぶんの読みより多く続いても見つける
+    for (let i = 0; i < 80; i++) {
+      await hub.confirm({ type: 'tool.call', turn: 301, callId: `c${i}`, name: 'x', input: {} });
+    }
+    let fromStart = 0;
+    let readFromTail = 0;
+    const counting = Object.assign(Object.create(store) as FsConversationStore, {
+      readEvents: async (...args: Parameters<FsConversationStore['readEvents']>) => {
+        fromStart++;
+        return store.readEvents(...args);
+      },
+      readEventsBefore: async (...args: Parameters<FsConversationStore['readEventsBefore']>) => {
+        const events = await store.readEventsBefore(...args);
+        readFromTail += events.length;
+        return events;
+      },
+    });
+
+    const restarted = new ConversationHubs({ store });
+    expect(await closeInterruptedTurns({ store: counting, hubs: restarted })).toBe(1);
+
+    expect(fromStart).toBe(0);
+    expect(readFromTail).toBeLessThan(200);
+    const last = await store.readEventsBefore(conversationId, { limit: 1 });
+    expect(last).toEqual([
+      expect.objectContaining({ type: 'turn.ended', turn: 301, outcome: 'interrupted' }),
+    ]);
+  });
 });
 
 describe('filling in the job events a restart left out', () => {

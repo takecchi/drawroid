@@ -180,6 +180,21 @@ export class FsConversationStore implements ConversationStore {
     return { events, last: events.at(-1)?.seq ?? after, more: later.length > limit };
   }
 
+  async readEventsBefore(
+    conversationId: string,
+    { before = Number.POSITIVE_INFINITY, limit }: { before?: number; limit: number },
+  ): Promise<ConversationEvent[]> {
+    const files = this.files(conversationId);
+    const earlier = (await this.eventNames(files.events)).filter(
+      (name) => Number.parseInt(name, 10) < before,
+    );
+    const events: ConversationEvent[] = [];
+    for (const name of earlier.slice(Math.max(0, earlier.length - limit))) {
+      events.push(await readValid(`${files.events}/${name}`, conversationEventSchema));
+    }
+    return events;
+  }
+
   async addUpload(conversationId: string, upload: ConversationUpload, now: Date): Promise<string> {
     const files = this.files(conversationId);
     await mkdir(files.uploads, { recursive: true });
