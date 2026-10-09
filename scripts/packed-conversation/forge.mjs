@@ -80,10 +80,10 @@ export function makePng(n, size = 64) {
 }
 
 /**
- * @param {{ fixturesDir: string, genMs: number }} options
+ * @param {{ fixturesDir: string, genMs: number, imageSize?: number }} options imageSize は生成する画像の一辺（省けば 64）
  * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { txt2img: number, heldGenerations: number, interrupts: number }, holdGeneration: () => void, releaseGeneration: () => void }>}
  */
-export async function startFakeForge({ fixturesDir, genMs }) {
+export async function startFakeForge({ fixturesDir, genMs, imageSize }) {
   /** @param {string} name */
   const fixture = (name) => JSON.parse(readFileSync(`${fixturesDir}/${name}`, 'utf8'));
   let genCount = 0;
@@ -164,7 +164,7 @@ export async function startFakeForge({ fixturesDir, genMs }) {
         const seed = params.seed === undefined || params.seed === -1 ? 123456 : params.seed;
         const seeds = Array.from({ length: batchSize }, (_, i) => seed + i);
         return send(res, 200, {
-          images: seeds.map(() => makePng(n).toString('base64')),
+          images: seeds.map(() => makePng(n, imageSize).toString('base64')),
           parameters: params,
           info: JSON.stringify({
             seed,
