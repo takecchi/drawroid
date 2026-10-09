@@ -28,58 +28,55 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
 }
 
 /**
- * 構造化出力にだけ答える、小さな偽の LLM（OpenAI 互換）。画像を含む呼び出しは 400 で断る（画像を読めないモデルの代わり）。
- * 見る役の型（color）を求められたら color を、ほかは ok を返す。ツールを渡す呼び出し（話す役）にも同じ文で答える
+ * 小さな偽の LLM（OpenAI 互換、ストリーム）。ツールを渡されたら doctor_ping を呼び、そうでなければ確かめの JSON を返す。
+ * 渡された画像の形式を数え、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る
  */
-async function startImageBlindLlm(): Promise<string> {
+async function startLlm({ rejectWebp }: { rejectWebp: boolean }) {
+  const imageTypes: string[] = [];
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (chunk: Buffer) => (body += chunk.toString()));
     req.on('end', () => {
-      if (body.includes('"image_url"')) {
+      const request = JSON.parse(body) as {
+        tools?: unknown[];
+        response_format?: { json_schema?: { schema?: unknown } };
+      };
+      imageTypes.push(...[...body.matchAll(/data:(image\/[a-z]+);base64/g)].map((m) => m[1]!));
+      if (rejectWebp && body.includes('data:image/webp')) {
         res.writeHead(400, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: { message: 'image input is not supported' } }));
+        res.end(JSON.stringify({ error: { message: 'Failed to load image or audio file' } }));
         return;
       }
-      const request = JSON.parse(body) as { model: string; stream?: boolean };
-      const content = JSON.stringify(body.includes('"color"') ? { color: 'red' } : { ok: true });
-      const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
-      if (request.stream === true) {
-        res.writeHead(200, { 'content-type': 'text/event-stream' });
-        const base = {
-          id: 'fake',
-          object: 'chat.completion.chunk',
-          created: 0,
-          model: request.model,
-        };
-        for (const [delta, finish] of [
-          [{ role: 'assistant', content }, null],
-          [{}, 'stop'],
-        ] as const) {
-          res.write(
-            `data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`,
-          );
-        }
-        res.write(`data: ${JSON.stringify({ ...base, choices: [], usage })}\n\n`);
-        res.end('data: [DONE]\n\n');
-        return;
+      const chunk = (delta: object, finish: string | null = null) =>
+        `data: ${JSON.stringify({ id: 'c', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      if ((request.tools ?? []).length > 0) {
+        res.write(
+          chunk({
+            role: 'assistant',
+            tool_calls: [
+              {
+                index: 0,
+                id: 'call_1',
+                type: 'function',
+                function: { name: 'doctor_ping', arguments: '{}' },
+              },
+            ],
+          }),
+        );
+        res.write(chunk({}, 'tool_calls'));
+      } else {
+        const schema = JSON.stringify(request.response_format ?? {});
+        const content = schema.includes('"color"') ? '{"color":"red"}' : '{"ok":true}';
+        res.write(chunk({ role: 'assistant', content }));
+        res.write(chunk({}, 'stop'));
       }
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          id: 'fake',
-          object: 'chat.completion',
-          created: 0,
-          model: request.model,
-          choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
-          usage,
-        }),
-      );
+      res.end('data: [DONE]\n\n');
     });
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, imageTypes };
 }
 
 const SDAPI_BASE = {
@@ -227,12 +224,46 @@ describe('runDoctor', () => {
     );
   });
 
-  it('passes the image only to the judge, and lists the roles as talk, think, judge', async () => {
-    const baseURL = await startImageBlindLlm();
+  // 見る役に渡る画像は、storage-fs が作る縮小版（webp）。確かめに別の形式（png）を渡すと、
+  // webp を読めないサーバ（llama.cpp）でも「1往復できた」と出て、ジョブを走らせてから見る役で落ちる
+  it('shows the judge an image in the same format the job loop sends', async () => {
+    const llm = await startLlm({ rejectWebp: true });
     const { text } = await setup({
       llm: {
-        providers: { a: { type: 'openai-compatible', baseURL } },
-        networkRetries: 0,
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+        roles: {
+          think: { provider: 'a', model: 'm1' },
+          judge: { provider: 'a', model: 'm2' },
+          talk: { provider: 'a', model: 'm1' },
+        },
+      },
+    });
+    expect(llm.imageTypes[0]).toBe('image/webp');
+    expect(text).toMatch(
+      /足りない {2}見る役（a の m2、.*画像（image\/webp。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない/,
+    );
+  });
+
+  // 話す役の確かめはツールを1つ呼ばせるだけで、画像を渡さない。割り当てが同じでも、見る役が画像を読めるかは別に確かめる
+  it('checks the judge with an image even when it shares the talk assignment', async () => {
+    const llm = await startLlm({ rejectWebp: false });
+    const { text } = await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+        roles: { think: { provider: 'a', model: 'm' } },
+      },
+    });
+    const trips = text.split('\n').filter((line) => line.includes('1往復'));
+    expect(trips).toHaveLength(2);
+    expect(trips[0]).toMatch(/よい +話す役・考える役（a の m、.*1往復できた/);
+    expect(trips[1]).toMatch(/よい +見る役（a の m、.*画像を1枚渡して1往復できた/);
+  });
+
+  it('passes the image only to the judge, and lists the roles as talk, think, judge', async () => {
+    const llm = await startLlm({ rejectWebp: true });
+    const { text } = await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
         roles: {
           think: { provider: 'a', model: 'think-model' },
           judge: { provider: 'a', model: 'judge-model' },
@@ -248,11 +279,11 @@ describe('runDoctor', () => {
       '考える役',
       '見る役',
     ]);
-    // 考える役には画像を渡さないので、画像を読めないモデルでも通る
+    // 考える役には画像を渡さないので、画像を読めないサーバでも通る
     expect(roleLines[1]).toMatch(/^ {2}よい +考える役（a の think-model、.*と1往復できた/);
     // 見る役には画像を渡すので断られ、画像なしなら通ることから、画像が原因と名指す
     expect(roleLines[2]).toMatch(
-      /^ {2}足りない +見る役（a の judge-model、.*このモデルは画像を読めない可能性がある/,
+      /^ {2}足りない +見る役（a の judge-model、.*このモデルが画像を読めないか/,
     );
   });
 

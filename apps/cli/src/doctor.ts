@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import type { BackendKind, DoctorItem, DoctorReport, DoctorSection } from '@drawroid/api';
 import {
+  DEFAULT_BUDGET,
   isBackendError,
   readBudgetOverrides,
   readDrawingStopConditions,
@@ -18,6 +19,7 @@ import {
   type ToolSpec,
 } from '@drawroid/core';
 import { createLlm, llmConfigSchema, resolveRoles, type LlmConfig } from '@drawroid/llm';
+import { makePreview, PREVIEW_MEDIA_TYPE } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 import { z } from 'zod';
 
@@ -537,32 +539,32 @@ const ROLE_NAMES = { think: '考える役', judge: '見る役', talk: '話す役
  * 役ごとに1往復を確かめる。割り当て（provider とモデル）が同じ役は、確かめを1回で済ませる。
  * 話す役はツールを1つ呼ばせ、考える役・見る役は構造化出力で1往復する。見る役には小さな画像を1枚渡す
  */
+// 見る役は、話す役と同じ割り当てでも別に確かめる: 話す役の確かめは画像を渡さないので、画像を読めないモデルを見逃すため
 async function roundTrips(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem[]> {
   const roles = resolveRoles(config);
   const same = (a: LlmRole, b: LlmRole) =>
     roles[a].provider === roles[b].provider && roles[a].model === roles[b].model;
-  const others = (['think', 'judge'] as const).filter((role) => !same(role, 'talk'));
   const items = [
     await toolRoundTrip(
       options,
       config,
-      (['talk', 'think', 'judge'] as const).filter((role) => same(role, 'talk')),
+      (['talk', 'think'] as const).filter((role) => same(role, 'talk')),
     ),
   ];
   // 考える役 → 見る役の順に出す。見る役と同じ割り当ての考える役は、見る役の確かめ（画像あり）に含める
-  if (others.includes('think') && !(others.includes('judge') && same('think', 'judge'))) {
+  if (!same('think', 'talk') && !same('think', 'judge')) {
     items.push(await structuredRoundTrip(options, config, ['think'], 'think'));
   }
-  if (others.includes('judge')) {
-    items.push(
-      await structuredRoundTrip(
-        options,
-        config,
-        others.filter((role) => same(role, 'judge')),
-        'judge',
+  items.push(
+    await structuredRoundTrip(
+      options,
+      config,
+      (['think', 'judge'] as const).filter(
+        (role) => role === 'judge' || (same(role, 'judge') && !same(role, 'talk')),
       ),
-    );
-  }
+      'judge',
+    ),
+  );
   return items;
 }
 
@@ -646,18 +648,18 @@ const JUDGE_PING_SCHEMA = z.object({ color: z.string().min(1) });
 const STRUCTURED_SYSTEM =
   'これは drawroid の接続の確かめです。指示どおりの JSON だけを返してください。';
 
-/** 画像を読めるかを確かめるための、赤一色の小さな PNG */
+/** 画像を読めるかを確かめるための、赤一色の小さな画像。ジョブが見る役に渡す縮小版と同じ変換を通す */
 async function probeImage(): Promise<ImagePart> {
-  const data = await sharp({
+  const source = await sharp({
     create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 40, b: 40 } },
   })
     .png()
     .toBuffer();
   return {
     type: 'image',
-    key: 'doctor-probe.png',
-    data: new Uint8Array(data),
-    mediaType: 'image/png',
+    key: 'doctor-probe',
+    data: await makePreview(source, DEFAULT_BUDGET.imageLongEdge),
+    mediaType: PREVIEW_MEDIA_TYPE,
   };
 }
 
@@ -737,8 +739,8 @@ async function structuredRoundTrip(
     if (withoutImage.ok) {
       return {
         ok: false,
-        what: `${who}は、画像を渡すと返事が来ない（画像なしなら返事が来る）。このモデルは画像を読めない可能性がある: ${withImage.reason}`,
-        todo: '見る役に、画像を読めるモデル（vision に対応したもの）を割り当てる。LLM のサーバ側で画像の入力を有効にする設定が要ることもある',
+        what: `${who}は、画像（${PREVIEW_MEDIA_TYPE}。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない（画像なしなら返事が来る）。このモデルが画像を読めないか、サーバがこの形式を読めない可能性がある: ${withImage.reason}`,
+        todo: '見る役に、画像を読めるモデル（vision に対応したもの）を割り当てる。LLM のサーバ側で、画像の入力やこの形式を読めるようにする設定が要ることもある',
       };
     }
     return {
