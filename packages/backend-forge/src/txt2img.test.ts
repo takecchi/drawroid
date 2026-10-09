@@ -120,6 +120,7 @@ describe('generateWithForge request', () => {
       hr_scale: 1.5,
       hr_second_pass_steps: 10,
       denoising_strength: 0.4,
+      hr_additional_modules: ['Use same choices'],
     });
   });
 });
@@ -163,11 +164,14 @@ describe('generateWithForge response', () => {
     });
   });
 
-  it('reports fewer images than asked as a bad response', async () => {
+  it('reports fewer images than asked as a bad response, pointing at an interrupt in Forge', async () => {
     forge.route(
       'POST /sdapi/v1/txt2img',
       json(200, { images: [], info: JSON.stringify({ all_seeds: [] }) }),
     );
-    await expect(generate()).rejects.toMatchObject({ kind: 'bad_response' });
+    await expect(generate()).rejects.toMatchObject({
+      kind: 'bad_response',
+      message: expect.stringContaining('中断') as unknown,
+    });
   });
 });
