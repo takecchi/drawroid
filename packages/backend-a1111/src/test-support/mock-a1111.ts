@@ -31,6 +31,8 @@ export function fixture(name: string): unknown {
 export interface RecordedRequest {
   method: string;
   path: string;
+  // 先頭の ? を含む（無ければ空）。storage-fs の LoopMockRequest には無いので任意
+  search?: string;
   headers: IncomingMessage['headers'];
   body: string;
 }
@@ -101,6 +103,8 @@ export async function startMockA1111({
   // img2img の応答は txt2img と同じ形（modules/api/models.py の ImageToImageResponse）
   routes.set('POST /sdapi/v1/img2img', generation);
   routes.set('POST /sdapi/v1/interrupt', json(200, {}));
+  // 既定は何も走っていない応答。走っている応答は、試験が route() で progress-running.json に差し替える
+  routes.set('GET /sdapi/v1/progress', json(200, fixture('progress-idle.json')));
   const requests: RecordedRequest[] = [];
   const server = createServer((req, res) => {
     let body = '';
@@ -109,6 +113,7 @@ export async function startMockA1111({
       const recorded: RecordedRequest = {
         method: req.method ?? '',
         path: new URL(req.url ?? '/', 'http://x').pathname,
+        search: new URL(req.url ?? '/', 'http://x').search,
         headers: req.headers,
         body,
       };

@@ -1,0 +1,17 @@
+{
+  "progress": 0.4385714285714286,
+  "eta_relative": 5.73,
+  "state": {
+    "skipped": false,
+    "interrupted": false,
+    "stopping_generation": false,
+    "job": "Batch 1 out of 1",
+    "job_count": 1,
+    "job_timestamp": "20250101120000",
+    "job_no": 0,
+    "sampling_step": 12,
+    "sampling_steps": 28
+  },
+  "current_image": null,
+  "textinfo": null
+}
