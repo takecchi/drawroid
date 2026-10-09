@@ -17,6 +17,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <body>
         <nav style={{ display: 'flex', gap: 16, padding: '8px 16px' }}>
           <Link to="/">生成</Link>
+          <Link to="/jobs/new">依頼</Link>
           <Link to="/jobs">ジョブ</Link>
         </nav>
         {children}
