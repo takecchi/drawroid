@@ -19,5 +19,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@drawroid/core": "workspace:*",
+    "zod": "catalog:"
   }
 }
