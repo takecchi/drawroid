@@ -45,23 +45,36 @@ export function candidateKindsToList(permissions: Permissions): CandidateKind[] 
 }
 
 /**
+ * 人間が候補に付けた短い説明（候補の名前 → 説明）。読めなかったときは、説明なしで理由を problem に持つ。
+ */
+export type CandidateNotes = {
+  notes: ReadonlyMap<string, string>;
+  problem?: string;
+};
+
+/**
  * その回に考える役へ見せる候補を、許可（人間の絞り込み）と予算で選ぶ。
  */
 export function shownCandidatesFor(args: {
   permissions: Permissions;
   lists: Partial<Record<CandidateKind, readonly Candidate[]>>;
-  notes: ReadonlyMap<string, string>;
+  notes: CandidateNotes;
   requestGist: string;
   limits: PackLimits;
 }): ShownCandidates {
-  const result: ShownCandidates = { shown: {}, dropped: [], notesDropped: [] };
+  const result: ShownCandidates = {
+    shown: {},
+    dropped: [],
+    notesDropped: [],
+    ...(args.notes.problem === undefined ? {} : { notesProblem: args.notes.problem }),
+  };
   for (const [key, kind] of Object.entries(CANDIDATE_PARAMS) as [ParamKey, CandidateKind][]) {
     const permission = args.permissions[key];
     if (permission.mode !== 'auto') continue;
     const selection = selectCandidates(
       args.lists[kind] ?? [],
       permission.choices,
-      args.notes,
+      args.notes.notes,
       args.requestGist,
       args.limits,
     );

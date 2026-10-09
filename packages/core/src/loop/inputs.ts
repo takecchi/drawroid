@@ -235,6 +235,8 @@ export type ShownCandidates = {
   shown: Partial<Record<CandidateKind, readonly ShownCandidate[]>>;
   dropped: { kind: CandidateKind; name: string; reason: 'count' | 'size' }[];
   notesDropped: { kind: CandidateKind; name: string }[];
+  /** 説明のファイルを読めなかった理由。あれば、説明なしで渡している */
+  notesProblem?: string;
 };
 
 const CANDIDATE_LABELS: Record<CandidateKind, string> = {
@@ -250,6 +252,10 @@ const CANDIDATE_LABELS: Record<CandidateKind, string> = {
 
 function candidateSections(w: SectionWriter, candidates: ShownCandidates | undefined): Section[] {
   if (candidates === undefined) return [];
+  // 読めなかった説明を、黙って無いことにしない: 人間が書いたはずの説明が効いていない理由を、記録から追えるようにするため
+  if (candidates.notesProblem !== undefined) {
+    w.notes.push({ kind: 'dropped', section: 'candidateNotes', reason: candidates.notesProblem });
+  }
   // 落とした候補と説明を記録に残す: 数百個の LoRA のうち何を見せなかったかを、後から追えるようにするため（M4:119）
   for (const { kind, name, reason } of candidates.dropped) {
     w.notes.push({
