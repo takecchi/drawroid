@@ -61,7 +61,15 @@ export type ChatItem =
       rationale: string;
       params: Record<string, unknown>;
     }
-  | { kind: 'images'; key: string; jobId: string; iteration: number; images: ChatImage[] }
+  | {
+      kind: 'images';
+      key: string;
+      jobId: string;
+      iteration: number;
+      images: ChatImage[];
+      /** 頼んだ画像の大きさ。縦横の比として、読み込む前から画像の背を取るのに使う。古い記録には無い */
+      size?: { width: number; height: number };
+    }
   | {
       kind: 'judge';
       key: string;
@@ -399,6 +407,7 @@ function buildConfirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[
           jobId: event.jobId,
           iteration: event.iteration,
           images: event.images.map(({ index, seed }) => ({ index, seed })),
+          ...(event.size !== undefined && { size: event.size }),
         };
         images.set(item.key, items.length);
         items.push(item);

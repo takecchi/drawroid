@@ -114,6 +114,25 @@ describe('ConversationView', () => {
     expect(screen.getByText('二つ目のページ')).toBeTruthy();
   });
 
+  // 読み込む前から縦横の比で背を取る: 上の画像が遅れて読み込まれても、下で読んでいる行が押し下げられないように
+  it('gives each image of a row the size the job asked for, so it holds its height before it loads', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 1,
+        images: [{ index: 0, seed: 1 }],
+        size: { width: 512, height: 768 },
+      }),
+    );
+
+    const image = await screen.findByAltText('1 回目の画像 1 番（seed 1）');
+    expect([image.getAttribute('width'), image.getAttribute('height')]).toEqual(['512', '768']);
+  });
+
   it('does not draw the log rows again while a person types', async () => {
     const { source, stream } = fakeSource([]);
     const { user } = renderView(source);

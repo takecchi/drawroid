@@ -71,6 +71,7 @@ export function ImageCard({
   caption,
   onOpen,
   viewerKey,
+  size,
   children,
 }: {
   href: string;
@@ -80,6 +81,11 @@ export function ImageCard({
   onOpen?: () => void;
   /** 大きく見る窓を閉じたとき、焦点を戻す先の目印（ImageViewer の key と同じ値） */
   viewerKey?: string;
+  /**
+   * 画像の大きさ（縦横の比が分かればよい）。渡すと、読み込む前から縦横の比で背を取る: 読み込んでから背が伸びると、
+   * 上の画像が遅れて読み込まれたとき、下で読んでいる所が押し下げられるため
+   */
+  size?: { width: number; height: number };
   verdict?: ImageVerdict | null;
   caption?: ReactNode;
   children?: ReactNode;
@@ -97,7 +103,13 @@ export function ImageCard({
     >
       {onOpen === undefined ? (
         <a href={href} className="block">
-          <img src={src} alt={alt} className="block h-auto w-full rounded-md bg-muted" />
+          <img
+            src={src}
+            alt={alt}
+            width={size?.width}
+            height={size?.height}
+            className="block h-auto w-full rounded-md bg-muted"
+          />
         </a>
       ) : (
         <button
@@ -108,7 +120,13 @@ export function ImageCard({
           className="block w-full cursor-zoom-in rounded-md"
         >
           {/* 画像の alt は残す: ボタンの名前は aria-label が決めるので二重には読まれず、画像そのものの説明として残すため */}
-          <img src={src} alt={alt} className="block h-auto w-full rounded-md bg-muted" />
+          <img
+            src={src}
+            alt={alt}
+            width={size?.width}
+            height={size?.height}
+            className="block h-auto w-full rounded-md bg-muted"
+          />
         </button>
       )}
       {caption !== undefined && (
