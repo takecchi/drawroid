@@ -24,6 +24,7 @@ export {
   type ControlNetUnit,
   type GeneratedImage,
   type GenerationImages,
+  type GenerationProgress,
   type GenerationRequest,
   type GenerationRequestInput,
   type GenerationResult,

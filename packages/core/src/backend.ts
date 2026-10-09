@@ -192,6 +192,17 @@ export interface BackendCapabilities {
   limits?: BackendLimits;
 }
 
+export interface GenerationProgress {
+  // 0〜1
+  fraction: number;
+  // 取れないバックエンドでは null
+  step: number | null;
+  steps: number | null;
+  etaSeconds: number | null;
+  // includePreview を true にして、バックエンドが途中の画像を持っているときだけ付く
+  preview?: { data: Uint8Array; mediaType: 'image/png' | 'image/jpeg' | 'image/webp' };
+}
+
 export interface ImageBackend {
   probe(signal?: AbortSignal): Promise<BackendCapabilities>;
   listCandidates(kind: CandidateKind, signal?: AbortSignal): Promise<Candidate[]>;
@@ -203,4 +214,15 @@ export interface ImageBackend {
   ): Promise<GenerationResult>;
   // 走っている生成をバックエンド側で止める。signal の abort は HTTP の待ちを切るだけで、GPU は回り続けるため
   interrupt(): Promise<void>;
+  /**
+   * 走っている生成の進み具合を返す。何も走っていなければ undefined。
+   *
+   * 任意のメソッド: 持たないアダプタは実装しない（その場合、画面は「生成中」とだけ出す）。
+   * 進み具合はファイルに書かない（生成が終われば job.images が確定するため）。
+   * LLM は通さない（トークンを使わず、バックエンドの HTTP を読むだけ）。
+   */
+  progress?(
+    signal: AbortSignal,
+    options?: { includePreview?: boolean },
+  ): Promise<GenerationProgress | undefined>;
 }
