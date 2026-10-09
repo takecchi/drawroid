@@ -115,6 +115,8 @@ export function LlmSettings() {
 
   const stored = data?.config ?? null;
   const keyStatus = data !== undefined && 'apiKeyEnv' in data ? data.apiKeyEnv : {};
+  const limitWarnings =
+    data !== undefined && 'outputLimitWarnings' in data ? data.outputLimitWarnings : [];
   const values = edited ?? (data === undefined ? undefined : toFormValues(stored));
 
   function change(next: Partial<LlmSettingsFormValues>) {
@@ -245,6 +247,12 @@ export function LlmSettings() {
             ))}
           </datalist>
           <h3>役ごとのモデル</h3>
+          {/* 保存されている値についての警告。値は書き換えず、上げるかどうかは利用者が決める */}
+          {limitWarnings.map((warning) => (
+            <p key={warning.role} role="status">
+              警告: {warning.message}
+            </p>
+          ))}
           <RoleFields role="think" values={values.think} onChange={(think) => change({ think })} />
           <label>
             <input
