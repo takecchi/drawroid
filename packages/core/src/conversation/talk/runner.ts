@@ -8,6 +8,13 @@ import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
 import type { TalkTool } from './tools.js';
 import { TalkWindowReader } from './window.js';
 
+/**
+ * LLM が未設定でターンを閉じるときの理由。画面はこの文を見て、設定の画面の LLM の欄へのリンクを添える
+ * （呼び方は、設定の画面「設定」の欄の名前「LLM の設定」にそろえる）
+ */
+export const LLM_NOT_CONFIGURED_REASON =
+  'LLM が未設定。設定の画面の「LLM の設定」で、provider と考える役のモデルを入れる';
+
 export type TalkRunnerDeps = {
   store: ConversationStore;
   hubs: ConversationHubs;
@@ -242,7 +249,7 @@ export class TalkRunner {
 
     const llm = this.deps.llm();
     if (llm === undefined) {
-      await end('error', 'LLM が未設定。LLM の設定で、provider と考える役のモデルを入れる');
+      await end('error', LLM_NOT_CONFIGURED_REASON);
       return true;
     }
     const limits = await this.deps.limits();
