@@ -23,26 +23,23 @@ import type {
 } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
 import type { MemoryItem } from '../memory/item.js';
-import { DEFAULT_MEMORY_LIMITS, type MemoryLimits } from '../memory/limits.js';
-import type { DistillBudget } from '../memory/distill/budget.js';
+import type { MemoryLimits } from '../memory/limits.js';
+import { DEFAULT_DISTILL_BUDGET, type DistillBudget } from '../memory/distill/budget.js';
 import type { StoppedJobMaterial } from '../memory/distill/input.js';
 import type { DistillLog } from '../memory/distill/log.js';
 import { distillStoppedJob } from '../memory/distill/run.js';
 import type { MemoryStore } from '../memory/store.js';
 import { summarizeSelections } from '../selection/selection.js';
 import { applyIntegratedIntent } from '../intervention/integrate.js';
-import {
-  DEFAULT_INTERVENTION_LIMITS,
-  type InterventionLimits,
-} from '../intervention/intervention.js';
+import type { InterventionLimits } from '../intervention/intervention.js';
 import { planInterventions } from '../intervention/plan.js';
 import {
   buildRefGistOutputSchema,
   carriedReferences,
-  DEFAULT_REFERENCE_LIMITS,
   referencesWithoutGist,
   type ReferenceLimits,
 } from '../reference/reference.js';
+import { DEFAULT_BUDGETS, type Budgets } from '../budget/settings.js';
 import type { Budget } from './budget.js';
 import { advanceCarry, createCarry, type Carry } from './carry.js';
 import { buildJudgeInput, buildRefGistInput, buildThinkInput, type MemoryInput } from './inputs.js';
@@ -85,7 +82,6 @@ import {
 import {
   type CandidateNotes,
   candidateKindsToList,
-  DEFAULT_CANDIDATE_LIMITS,
   shownCandidatesFor,
 } from './iteration-permissions.js';
 
@@ -94,7 +90,7 @@ export type JobMemory = {
   /** 回の境目ごとに読み直す。人間が直したら次の回から効く */
   store: MemoryStore;
   distillLog: DistillLog;
-  /** 役ごとの記憶の予算。省けば既定値 */
+  /** 役ごとの記憶の予算。job.json に budgets が無い古いジョブの既定。省けば既定値 */
   limits?: MemoryLimits;
   distillBudget?: DistillBudget;
 };
@@ -103,6 +99,7 @@ export type JobRunnerDeps = {
   store: JobStore;
   llm: LlmPort;
   backend: ImageBackend;
+  /** job.json に budgets が無い古いジョブのための既定。新しいジョブは投入のときの値で回る */
   budget: Budget;
   /**
    * 全体の既定の許可。ジョブごとの上書き（job.json の permissions）を重ねて使う。
@@ -293,6 +290,25 @@ export class JobRunner {
     return queued;
   }
 
+  /**
+   * そのジョブの予算。投入のときに job.json へ写した値を、ジョブが終わるまで使う。
+   * budgets が無い古いジョブだけ、runner の既定で回る。
+   */
+  // 走行中に設定を読み直さない: 回を重ねても上限が一定であること（PRD:135・milestones:71）が崩れ、
+  // 縮小版の長辺が途中で変わって同じ画像の縮小版が2つできるため
+  private budgetsFor(spec: AutoJobSpec): Budgets {
+    if (spec.budgets !== undefined) return spec.budgets;
+    const { memory } = this.deps;
+    return {
+      ...this.deps.budget,
+      candidates: this.deps.candidateLimits ?? DEFAULT_BUDGETS.candidates,
+      interventions: this.deps.interventionLimits ?? DEFAULT_BUDGETS.interventions,
+      references: this.deps.referenceLimits ?? DEFAULT_BUDGETS.references,
+      memory: memory?.limits ?? DEFAULT_BUDGETS.memory,
+      distill: memory?.distillBudget ?? DEFAULT_DISTILL_BUDGET,
+    };
+  }
+
   private async runJob(jobId: string): Promise<void> {
     const controller = new AbortController();
     this.running = { jobId, controller };
@@ -307,7 +323,7 @@ export class JobRunner {
         running = {
           status: 'running',
           // 走る前の要約は依頼だけから決まるので、無ければここで作る
-          carry: state.carry ?? createCarry(spec.request, this.deps.budget).carry,
+          carry: state.carry ?? createCarry(spec.request, this.budgetsFor(spec)).carry,
           startedAt: this.now().toISOString(),
           imagesGenerated: 0,
         };
@@ -355,7 +371,8 @@ export class JobRunner {
       if (spec.kind !== 'auto') return;
       const material: StoppedJobMaterial = {
         jobId,
-        intent: stopped.carry?.intent ?? createCarry(spec.request, this.deps.budget).carry.intent,
+        intent:
+          stopped.carry?.intent ?? createCarry(spec.request, this.budgetsFor(spec)).carry.intent,
         stopReason: { kind: reason.kind, detail: reason.detail },
         interventions: (await store.listInterventions(jobId))
           .flatMap((i) => (i.kind === 'instruction' ? [i] : []))
@@ -371,7 +388,7 @@ export class JobRunner {
           memory: memory.store,
           log: memory.distillLog,
           window: this.deps.llm.describe('think').window,
-          ...(memory.distillBudget === undefined ? {} : { budget: memory.distillBudget }),
+          budget: this.budgetsFor(spec).distill,
           now: this.now,
           callId,
         },
@@ -414,10 +431,10 @@ export class JobRunner {
 
   private memoryInput(
     items: readonly MemoryItem[] | undefined,
+    limits: MemoryLimits,
     role: 'think' | 'judge',
   ): { memory: MemoryInput } | Record<string, never> {
     if (items === undefined) return {};
-    const limits = this.deps.memory?.limits ?? DEFAULT_MEMORY_LIMITS;
     return { memory: { items, limits: limits[role] } };
   }
 
@@ -528,10 +545,10 @@ export class JobRunner {
       lists: view.lists,
       notes: view.notes,
       requestGist: carry.intent,
-      limits: this.deps.candidateLimits ?? DEFAULT_CANDIDATE_LIMITS,
+      limits: this.budgetsFor(spec).candidates,
     });
     const sources = permissions.img2img.mode === 'auto' ? imageSourcesOf(carry) : [];
-    const params = this.paramsSchema(permissions, candidates, sources);
+    const params = this.paramsSchema(permissions, candidates, sources, this.budgetsFor(spec));
     return { permissions, merged, disabled, candidates, sources, mask, params };
   }
 
@@ -539,10 +556,11 @@ export class JobRunner {
     permissions: Permissions,
     candidates: ShownCandidates,
     sources: readonly { key: ImageSourceKey }[],
+    budget: Budgets,
   ): ParamsSchema {
     return buildParamsSchema(permissions, {
       shown: candidates.shown,
-      budget: this.deps.budget,
+      budget,
       imageSources: sources.map((source) => source.key),
     });
   }
@@ -591,7 +609,7 @@ export class JobRunner {
         signal,
       );
       // think.json から求め直す: 考えたあと state.json を書く前に落ちても、再開で同じ要点になるように
-      const carry = applyIntegratedIntent(withReferences, think, this.deps.budget);
+      const carry = applyIntegratedIntent(withReferences, think, this.budgetsFor(spec));
       const imageCount = await this.generate(spec, iteration, think, paramsPlan, signal);
       const judge = await this.judge(spec, carry, iteration, imageCount, memoryItems, signal);
 
@@ -613,8 +631,9 @@ export class JobRunner {
     iteration: number,
     signal: AbortSignal,
   ): Promise<Carry> {
-    const { store, llm, budget } = this.deps;
-    const limits = this.deps.referenceLimits ?? DEFAULT_REFERENCE_LIMITS;
+    const { store, llm } = this.deps;
+    const budget = this.budgetsFor(spec);
+    const limits = budget.references;
     for (const reference of referencesWithoutGist(await store.listReferences(spec.jobId))) {
       const ref: ReferenceImageRef = { jobId: spec.jobId, refId: reference.refId };
       const messages = buildRefGistInput({
@@ -672,13 +691,14 @@ export class JobRunner {
     memoryItems: readonly MemoryItem[] | undefined,
     signal: AbortSignal,
   ): Promise<ThinkOutput> {
-    const { store, llm, budget } = this.deps;
+    const { store, llm } = this.deps;
+    const budget = this.budgetsFor(spec);
     const done = await store.readStage(spec.jobId, iteration, 'think');
     if (done !== undefined) return done as ThinkOutput;
 
     const plan = planInterventions(
       reopenClaimedBy(iteration, await store.listInterventions(spec.jobId)),
-      this.deps.interventionLimits ?? DEFAULT_INTERVENTION_LIMITS,
+      budget.interventions,
     );
     const max = conditions.maxIterations;
     const messages = buildThinkInput({
@@ -693,9 +713,9 @@ export class JobRunner {
       interventions: plan,
       candidates: paramsPlan.candidates,
       withImageSourceKeys: paramsPlan.sources.length > 0,
-      ...this.memoryInput(memoryItems, 'think'),
+      ...this.memoryInput(memoryItems, budget.memory, 'think'),
     });
-    const params = this.paramsShownIn(messages, paramsPlan);
+    const params = this.paramsShownIn(messages, paramsPlan, budget);
     // LLM を呼ぶ前に書く: 考える役に見せた形を残し、呼び出しの途中で落ちても何を外したかが残るようにするため
     await store.writeStage(spec.jobId, iteration, 'plan', {
       excluded: excludedOf(paramsPlan.merged, paramsPlan.disabled, params.omitted),
@@ -720,14 +740,18 @@ export class JobRunner {
   /**
    * 入力の上限で落ちた区画の元画像のキーを、出力スキーマから外す。見せていない画像は元画像に選ばせない（Issue #5 の G）。
    */
-  private paramsShownIn(messages: BudgetedMessages, paramsPlan: ParamsPlan): ParamsSchema {
+  private paramsShownIn(
+    messages: BudgetedMessages,
+    paramsPlan: ParamsPlan,
+    budget: Budgets,
+  ): ParamsSchema {
     const dropped = new Set(
       messages.report.notes.filter((n) => n.kind === 'dropped').map((n) => n.section),
     );
     const sectionOf = (key: ImageSourceKey) => (key.startsWith('ref:') ? 'references' : key);
     const shown = paramsPlan.sources.filter((source) => !dropped.has(sectionOf(source.key)));
     if (shown.length === paramsPlan.sources.length) return paramsPlan.params;
-    return this.paramsSchema(paramsPlan.permissions, paramsPlan.candidates, shown);
+    return this.paramsSchema(paramsPlan.permissions, paramsPlan.candidates, shown, budget);
   }
 
   /**
@@ -833,7 +857,8 @@ export class JobRunner {
     memoryItems: readonly MemoryItem[] | undefined,
     signal: AbortSignal,
   ): Promise<JudgeOutput> {
-    const { store, llm, budget } = this.deps;
+    const { store, llm } = this.deps;
+    const budget = this.budgetsFor(spec);
     const done = await store.readStage(spec.jobId, iteration, 'judge');
     if (done !== undefined) return done as JudgeOutput;
 
@@ -849,7 +874,7 @@ export class JobRunner {
       images: previews,
       budget,
       window: llm.describe('judge').window,
-      ...this.memoryInput(memoryItems, 'judge'),
+      ...this.memoryInput(memoryItems, budget.memory, 'judge'),
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'judge', messages, {
       schema: buildJudgeOutputSchema(imageCount, budget),

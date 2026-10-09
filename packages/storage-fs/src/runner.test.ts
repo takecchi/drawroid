@@ -9,11 +9,15 @@ import { fileURLToPath } from 'node:url';
 import {
   BackendError,
   basicPermissions,
+  createCarry,
   DEFAULT_BUDGET,
+  DEFAULT_BUDGETS,
   generationRequestSchema,
   JobRunner,
   InterventionRejectedError,
+  resolveBudgets,
   type AutoJobSpec,
+  type BudgetOverrides,
   type GenerationRequest,
   type GenerationResult,
   type JobState,
@@ -23,6 +27,7 @@ import {
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import sharp from 'sharp';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { FsJobStore } from './job-store.js';
 import { dataPaths } from './paths.js';
@@ -103,18 +108,25 @@ async function submit(
   store: FsJobStore,
   conditions: AutoJobSpec['stopConditions'],
   batchSize = 2,
-  { request = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調', at = new Date() } = {},
+  {
+    request = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調',
+    at = new Date(),
+    budgets,
+  }: { request?: string; at?: Date; budgets?: BudgetOverrides } = {},
 ): Promise<AutoJobSpec> {
+  const resolved = budgets === undefined ? undefined : resolveBudgets(budgets);
   const spec = await store.createJob(
     {
       kind: 'auto',
       request,
       stopConditions: conditions,
       batchSize,
+      ...(resolved === undefined ? {} : { budgets: resolved }),
     },
     {
       status: 'queued',
-      carry: { intent: request, completedIterations: 0 },
+      // 投入と同じく、そのジョブの予算で依頼を切り詰めた要約から始める
+      carry: createCarry(request, resolved ?? DEFAULT_BUDGETS).carry,
     },
     at,
   );
@@ -341,6 +353,75 @@ describe('images are passed once, and only as previews (:72)', () => {
     ).toBe(true);
     const sent = await readdir(dataPaths(root).jobFiles(spec.jobId).iteration(5).images);
     expect(sent.filter((name) => name.endsWith('.sent.json'))).toHaveLength(3);
+  });
+});
+
+describe('a job runs with the budgets written in its job.json (Issue #63)', () => {
+  it('shrinks images to the long edge of the job and places previews of that size only', async () => {
+    const { store, runner, llm } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 2 }, 2, {
+      budgets: { imageLongEdge: 256 },
+    });
+    runner.kick();
+    await runner.idle();
+
+    const images = llm.calls.flatMap((c) =>
+      c.messages.user.flatMap((p) => (p.type === 'image' ? [p] : [])),
+    );
+    expect(images).toHaveLength(4);
+    for (const image of images) {
+      const meta = await sharp(image.data).metadata();
+      expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(256);
+    }
+    const names = await readdir(dataPaths(root).jobFiles(spec.jobId).iteration(1).images);
+    expect(names).toContain('0.preview-256.webp');
+    expect(names.some((name) => name.includes('preview-512'))).toBe(false);
+  });
+
+  it('keeps every think input within the limit of the job when its text budgets are small', async () => {
+    const request = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調。'.repeat(40);
+    const small = setup({ scripts: { think, judge: judge() } });
+    await submit(small.store, { aiJudgement: false, maxIterations: 8 }, 2, {
+      request,
+      budgets: { text: { intent: 40, prompt: 60, negativePrompt: 30, rationale: 20 } },
+    });
+    small.runner.kick();
+    await small.runner.idle();
+    const roomy = setup({ scripts: { think, judge: judge() } });
+    await submit(roomy.store, { aiJudgement: false, maxIterations: 8 }, 2, { request });
+    roomy.runner.kick();
+    await roomy.runner.idle();
+
+    const thinkCalls = (llm: ScriptedLlm) => llm.calls.filter((c) => c.purpose === 'think');
+    const sizesOf = (llm: ScriptedLlm) =>
+      thinkCalls(llm).map((c) => c.messages.report.estimatedInputTokens);
+    expect(sizesOf(small.llm)).toHaveLength(8);
+    for (const call of thinkCalls(small.llm)) {
+      expect(call.messages.report.estimatedInputTokens).toBeLessThanOrEqual(
+        call.messages.report.inputTokenLimit,
+      );
+      const json = z.toJSONSchema(call.schema) as unknown as {
+        properties: { params: { properties: { prompt: { maxLength: number } } } };
+      };
+      expect(json.properties.params.properties.prompt.maxLength).toBe(60);
+    }
+    expect(Math.max(...sizesOf(small.llm))).toBeLessThan(Math.min(...sizesOf(roomy.llm)));
+  });
+
+  it('runs a job without budgets on the defaults of the runner', async () => {
+    const { store, runner, llm } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 1 });
+    expect(spec.budgets).toBeUndefined();
+    runner.kick();
+    await runner.idle();
+
+    const images = llm.calls.flatMap((c) =>
+      c.messages.user.flatMap((p) => (p.type === 'image' ? [p] : [])),
+    );
+    const meta = await sharp(images[0]!.data).metadata();
+    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(DEFAULT_BUDGET.imageLongEdge);
+    const names = await readdir(dataPaths(root).jobFiles(spec.jobId).iteration(1).images);
+    expect(names).toContain(`0.preview-${DEFAULT_BUDGET.imageLongEdge}.webp`);
   });
 });
 
