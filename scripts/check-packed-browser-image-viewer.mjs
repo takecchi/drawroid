@@ -4,6 +4,7 @@
 // 3. Esc で閉じ、焦点は最後に見ていた画像の縮小版へ戻る
 // 4. 狭い画面（390×844）でも、窓と画像が画面の中に収まり、横にはみ出さない。横へなぞると次の画像へ送る
 // 5. ジョブの詳細の画像も、同じ窓で大きく見られる
+// 6. 窓の中で、見る役の点と言葉が読め、お気に入り・却下と「この画像で決める」が使える（画像の枡と同じ口）
 // 会話は、組み立てた @drawroid/storage-fs で置き場所へ直に書いてから起動する（画像を生成せずに画像の行を作るため）。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -87,7 +88,25 @@ async function seed(root) {
       iteration,
       images: Array.from({ length: PER_ITERATION }, (_, index) => ({ index, seed: index })),
     });
+    await append({
+      type: 'job.judge',
+      jobId: job.jobId,
+      iteration,
+      images: Array.from({ length: PER_ITERATION }, (_, index) => ({
+        index,
+        score: 0.5 + index / 10,
+        issues: [`${iteration} 回目の ${index + 1} 枚目の指摘`],
+      })),
+      nextChange: '背景を明るく',
+      canStop: false,
+    });
   }
+  // ジョブは止まっている（会話にもそう書く）: 画面は会話の job.stopped で、「この画像で決める」を押せなくするため
+  await append({
+    type: 'job.stopped',
+    jobId: job.jobId,
+    reason: { kind: 'human', detail: '確かめのため' },
+  });
   return { conversationId, jobId: job.jobId };
 }
 
@@ -124,6 +143,29 @@ try {
     const dialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
     await dialog.waitFor();
     expect(true, `${label}: 縮小版を押すと、その画像の名前の窓が開く`);
+
+    // 窓の中で、見る役の点と言葉が読め、お気に入り・却下と「この画像で決める」が使える（画像の枡と同じ口）
+    await dialog.getByText('見る役の点 0.50').waitFor();
+    await dialog.getByText('1 回目の 1 枚目の指摘').waitFor();
+    const favorite = dialog.getByRole('button', { name: 'お気に入り: 1 回目の画像 1 番' });
+    await favorite.click();
+    await dialog
+      .getByRole('button', { name: 'お気に入りを外す: 1 回目の画像 1 番', pressed: true })
+      .waitFor();
+    // 押したら元に戻す（次の画面の幅でも、同じ形から確かめるため）
+    await dialog.getByRole('button', { name: 'お気に入りを外す: 1 回目の画像 1 番' }).click();
+    await favorite.waitFor();
+    // このジョブは止まっているので、「この画像で決める」は押せず、理由が出る
+    const adopt = dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' });
+    expect(
+      await adopt.isDisabled(),
+      `${label}: 止まったジョブでは、窓の中の「この画像で決める」も押せない`,
+    );
+    await dialog.getByText('描くのはもう止まっているので、決められない').waitFor();
+    expect(
+      true,
+      `${label}: 窓の中で、見る役の点と言葉が読め、お気に入りを付け外しでき、「この画像で決める」が理由つきで出る`,
+    );
 
     for (let step = 0; step < PER_ITERATION; step += 1) await page.keyboard.press('ArrowRight');
     await page.getByRole('dialog', { name: /2 回目の画像 1 番/ }).waitFor();

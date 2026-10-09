@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { IterationList, type Iteration } from './iteration-view';
@@ -86,6 +87,43 @@ describe('IterationList and an iteration the human picked an image in', () => {
 
     expect(screen.getByRole('heading', { name: '見る役の評価' })).toBeTruthy();
     expect(screen.queryByText(/人が選んだ/)).toBeNull();
+  });
+});
+
+describe('IterationList and the large view of an image', () => {
+  it('opens an image large with the judge score and words, the selection buttons and the adopt button', async () => {
+    const user = userEvent.setup();
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[
+          {
+            ...iteration,
+            judge: {
+              images: [{ score: 0.5, issues: ['指が崩れている'] }],
+              nextChange: '次',
+              canStop: false,
+            },
+          } as unknown as Iteration,
+        ]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{}}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 7）' }),
+    );
+    const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 1 番/ }));
+
+    expect(dialog.getByText('見る役の点 0.50')).toBeTruthy();
+    expect(dialog.getByText('指が崩れている')).toBeTruthy();
+    expect(dialog.getAllByRole('button', { name: /お気に入り/ }).length).toBeGreaterThan(0);
+    expect(
+      dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+    ).toBeTruthy();
   });
 });
 

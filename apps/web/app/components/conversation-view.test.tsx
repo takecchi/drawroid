@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
 import { setSelection, useSelections } from '@drawroid/swr';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -460,6 +460,37 @@ describe('ConversationView', () => {
 
     await user.click(screen.getByRole('button', { name: '却下: 2 回目の画像 2 番' }));
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'rejected');
+  });
+
+  it('shows the judge score and words in the large view, and chooses the image there through the same APIs', async () => {
+    vi.mocked(setSelection).mockResolvedValue({} as never);
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 2, images: [{ index: 1, seed: 9 }] }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'job.judge',
+        jobId: JOB,
+        iteration: 2,
+        images: [{ index: 1, score: 0.82, issues: ['指が崩れている'] }],
+        nextChange: '背景を明るく',
+        canStop: false,
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 2 番/ }));
+    const dialog = within(screen.getByRole('dialog', { name: /2 回目の画像 2 番/ }));
+
+    expect(dialog.getByText(/見る役の点 0\.82/)).toBeTruthy();
+    expect(dialog.getByText('指が崩れている')).toBeTruthy();
+    await user.click(dialog.getByRole('button', { name: 'お気に入り: 2 回目の画像 2 番' }));
+    expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
+    expect(
+      dialog.getByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
+    ).toBeTruthy();
   });
 
   it('names each image button after its image, so that they can be told apart when read aloud', async () => {

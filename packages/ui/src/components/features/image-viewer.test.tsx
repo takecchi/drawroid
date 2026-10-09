@@ -111,4 +111,31 @@ describe('ImageViewer', () => {
       screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番' }),
     );
   });
+
+  it('keeps moving with the arrow keys after a button in the view was pressed and took the focus away', async () => {
+    const user = userEvent.setup();
+    function WithDetails() {
+      const [open, setOpen] = useState<string | null>('1-0');
+      const [pressed, setPressed] = useState(false);
+      return (
+        <ImageViewer
+          images={IMAGES}
+          openKey={open}
+          onOpenKeyChange={setOpen}
+          details={() => (
+            // 押すと押せなくなる（送っている間のボタンと同じ）: 焦点は窓の外へ落ちる
+            <button type="button" disabled={pressed} onClick={() => setPressed(true)}>
+              お気に入り
+            </button>
+          )}
+        />
+      );
+    }
+    render(<WithDetails />);
+
+    await user.click(screen.getByRole('button', { name: 'お気に入り' }));
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ })).toBeTruthy();
+  });
 });

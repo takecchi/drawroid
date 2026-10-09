@@ -1,6 +1,7 @@
 import { formatImageKey, LLM_NOT_CONFIGURED_REASON, type SelectionVerdict } from '@drawroid/core';
 import { isApiError, jobImageUrls, setSelection, useSelections } from '@drawroid/swr';
 import {
+  BulletList,
   Button,
   ChatComposer,
   ChatLayout,
@@ -129,6 +130,84 @@ function VerdictButtons({
   );
 }
 
+/** 1枚の画像への選び方（お気に入り・却下と「この画像で決める」）。画像の行と、大きく見る窓の両方に置く（同じ口を呼ぶ） */
+function ImageChoices({
+  jobId,
+  iteration,
+  index,
+  verdict,
+  stopped,
+  chosen,
+}: {
+  jobId: string;
+  iteration: number;
+  index: number;
+  verdict: SelectionVerdict | null;
+  /** ジョブが止まった。採る（この画像で決める）は押せない */
+  stopped: boolean;
+  chosen: boolean;
+}) {
+  const imageKey = formatImageKey({ iteration, index });
+  // 1 から数える: 人が選んだ回の表示（「N 回目の画像 M 番」）と同じ呼び方にするため
+  const imageLabel = `${iteration} 回目の画像 ${index + 1} 番`;
+  return (
+    <div className="space-y-1">
+      <VerdictButtons jobId={jobId} imageKey={imageKey} imageLabel={imageLabel} verdict={verdict} />
+      <AdoptButton
+        jobId={jobId}
+        image={{ iteration, index }}
+        imageLabel={imageLabel}
+        chosen={chosen}
+        {...(stopped && { disabledReason: '描くのはもう止まっているので、決められない' })}
+      />
+    </div>
+  );
+}
+
+/** 大きく見る窓の画像の下: 見る役の点と言葉、選び方。選択は行と同じく今の API から読む */
+function ViewerImageDetails({
+  jobId,
+  iteration,
+  image,
+  stopped,
+  chosen,
+}: {
+  jobId: string;
+  iteration: number;
+  image: ChatImage;
+  stopped: boolean;
+  chosen: boolean;
+}) {
+  const { data } = useSelections(jobId);
+  const imageKey = formatImageKey({ iteration, index: image.index });
+  const verdict =
+    data?.selections.find((selection) => selection.imageKey === imageKey)?.verdict ?? null;
+  return (
+    <div className="space-y-2 text-sm">
+      {(image.score !== undefined || (image.issues?.length ?? 0) > 0) && (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          {image.score !== undefined && <div>見る役の点 {formatScore(image.score)}</div>}
+          {image.issues !== undefined && image.issues.length > 0 && (
+            <BulletList className="text-xs">
+              {image.issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </BulletList>
+          )}
+        </div>
+      )}
+      <ImageChoices
+        jobId={jobId}
+        iteration={iteration}
+        index={image.index}
+        verdict={verdict}
+        stopped={stopped}
+        chosen={chosen}
+      />
+    </div>
+  );
+}
+
 function ImagesItem({
   item,
   stopped,
@@ -172,21 +251,14 @@ function ImagesItem({
           issues: image.issues,
           verdict,
           actions: (
-            <div className="space-y-1">
-              <VerdictButtons
-                jobId={item.jobId}
-                imageKey={imageKey}
-                imageLabel={imageLabel}
-                verdict={verdict}
-              />
-              <AdoptButton
-                jobId={item.jobId}
-                image={{ iteration: item.iteration, index: image.index }}
-                imageLabel={imageLabel}
-                chosen={chosenImages.has(`${item.jobId}:${imageKey}`)}
-                {...(stopped && { disabledReason: '描くのはもう止まっているので、決められない' })}
-              />
-            </div>
+            <ImageChoices
+              jobId={item.jobId}
+              iteration={item.iteration}
+              index={image.index}
+              verdict={verdict}
+              stopped={stopped}
+              chosen={chosenImages.has(`${item.jobId}:${imageKey}`)}
+            />
           ),
         };
       })}
@@ -250,8 +322,10 @@ function rowEstimate(item: ChatItem): { estimate: number; wideEstimate: number }
 /** 会話の中で画像を見分ける key（ジョブが違えば同じ回・番でも別の画像） */
 const viewerKeyOf = (jobId: string, imageKey: string) => `${jobId}:${imageKey}`;
 
+type ViewerSource = { jobId: string; iteration: number; image: ChatImage };
+
 /** 会話に出た画像を、出た順（回の順・番の順）に並べる。大きく見る窓の送りはこの順に進む */
-function viewerImagesOf(items: readonly ChatItem[]): ViewerImage[] {
+function viewerImagesOf(items: readonly ChatItem[]): (ViewerImage & { source: ViewerSource })[] {
   return items.flatMap((item) =>
     item.kind !== 'images'
       ? []
@@ -267,6 +341,7 @@ function viewerImagesOf(items: readonly ChatItem[]): ViewerImage[] {
             fullSrc: urls.url,
             title,
             alt: `${title}（seed ${image.seed ?? '不明'}）`,
+            source: { jobId: item.jobId, iteration: item.iteration, image },
           };
         }),
   );
@@ -536,7 +611,26 @@ export function ConversationView({
   const last = items.at(-1);
   return (
     <>
-      <ImageViewer images={viewerImages} openKey={viewing} onOpenKeyChange={setViewing} />
+      <ImageViewer
+        images={viewerImages}
+        openKey={viewing}
+        onOpenKeyChange={setViewing}
+        details={(image) => {
+          const source = viewerImages.find((candidate) => candidate.key === image.key)?.source;
+          if (source === undefined) return null;
+          const imageKey = formatImageKey({
+            iteration: source.iteration,
+            index: source.image.index,
+          });
+          return (
+            <ViewerImageDetails
+              {...source}
+              stopped={stoppedJobs.has(source.jobId)}
+              chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
+            />
+          );
+        }}
+      />
       <ChatLayout
         header={title}
         status={currentStatus(chat)}
