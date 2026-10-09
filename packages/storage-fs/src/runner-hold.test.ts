@@ -1,7 +1,7 @@
 // ジョブの LLM の段を待たせる口（holdLlmStages）と、人間がその回の画像を選ぶ口出し（adopt）を、
 // 本物のファイルの置き場所の上で見る試験。LLM は台本、バックエンドはスタブで、
 // 呼び出しを「合図まで返さない」形にした包みで、段の最中・生成の最中を決まって作る
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,6 +16,7 @@ import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FsJobStore } from './job-store.js';
+import { dataPaths } from './paths.js';
 import { blocking, GatedBackend } from './testing/hold-gates.js';
 
 let root: string;
@@ -328,6 +329,106 @@ describe('adopting an image the human chose', () => {
       imageIndex: 1,
       score: 1,
     });
+  });
+
+  it('stops on a choice of the image the judge already ranked best, and makes it the best as chosen', async () => {
+    const judging = blocking(judge, (n) => n === 1);
+    const { store, runner } = setup({ judge: judging.script });
+    const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
+    runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    expect((await store.readState(jobId)).carry?.best).toMatchObject({
+      iteration: 1,
+      imageIndex: 0,
+      score: 0.5,
+    });
+
+    await runner.adopt(jobId, { iteration: 1, index: 0 });
+    judging.answer(1);
+    await runner.idle();
+
+    expect(await stoppedReason(store, jobId)).toBe('adopted');
+    expect(await store.listGenerations(jobId)).toHaveLength(2);
+    expect((await store.readState(jobId)).carry?.best).toMatchObject({
+      iteration: 1,
+      imageIndex: 0,
+      score: 1,
+    });
+  });
+
+  it('stops on a new choice of another image in an iteration a human already chose, with that image as the best', async () => {
+    const judging = blocking(judge, (n) => n <= 1);
+    const { store, runner } = setup({ judge: judging.script });
+    const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
+    runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await runner.addInstruction(jobId, 'もっと夕焼けを赤く');
+    await runner.adopt(jobId, { iteration: 1, index: 0 });
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+
+    await runner.adopt(jobId, { iteration: 1, index: 1 });
+    judging.answer(1);
+    await runner.idle();
+
+    expect(await stoppedReason(store, jobId)).toBe('adopted');
+    expect(await store.listGenerations(jobId)).toHaveLength(2);
+    expect((await store.readState(jobId)).carry?.best).toMatchObject({
+      iteration: 1,
+      imageIndex: 1,
+      score: 1,
+    });
+  });
+
+  it('does not take a choice in again after a restart, once the job went on with an instruction', async () => {
+    const judging = blocking(judge, (n) => n === 1 || n === 2);
+    const first = setup({ judge: judging.script });
+    const jobId = await submit(first.store, { aiJudgement: false, maxIterations: 4 }, 2);
+    first.runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await first.runner.adopt(jobId, { iteration: 1, index: 1 });
+    await first.runner.addInstruction(jobId, 'もっと夕焼けを赤く');
+    judging.answer(1);
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(3));
+    // 選択を取り込んで3回目へ進み、3回目の見る役の最中に落ちた跡を作る（走っている状態のまま、新しい実行器で再開する）
+    const running = await first.store.readState(jobId);
+    await first.runner.stop(jobId);
+    await first.runner.idle();
+    await first.store.writeState(jobId, running);
+
+    const second = setup({});
+    second.runner.kick();
+    await second.runner.idle();
+
+    expect(await stoppedReason(second.store, jobId)).toBe('limit:iterations');
+    expect((await second.store.readState(jobId)).carry?.completedIterations).toBe(4);
+  });
+
+  it('does not take in again, after a restart, a choice that settled an earlier iteration before choices were marked', async () => {
+    const judging = blocking(judge, (n) => n === 0);
+    const thinking = blocking(think, (n) => n === 2);
+    const first = setup({ think: thinking.script, judge: judging.script });
+    const jobId = await submit(first.store, { aiJudgement: false, maxIterations: 3 }, 2);
+    first.runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await first.runner.addInstruction(jobId, 'もっと夕焼けを赤く');
+    const chosen = await first.runner.adopt(jobId, { iteration: 1, index: 1 });
+    await vi.waitFor(() => expect(thinking.signals).toHaveLength(3));
+    // 2回目のあとの境目を越え、3回目を考えている最中に落ちた跡を、選択に取り込みの印を付けなかった前の版のものとして作る
+    const running = await first.store.readState(jobId);
+    await first.runner.stop(jobId);
+    await first.runner.idle();
+    await first.store.writeState(jobId, running);
+    const file = dataPaths(root).jobFiles(jobId).intervention(chosen.interventionId);
+    const record = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    delete record.takenAfterIteration;
+    await writeFile(file, JSON.stringify(record));
+
+    const second = setup({});
+    second.runner.kick();
+    await second.runner.idle();
+
+    expect(await stoppedReason(second.store, jobId)).toBe('limit:iterations');
+    expect((await second.store.readState(jobId)).carry?.completedIterations).toBe(3);
   });
 
   it('cuts the judge call in flight for the chosen iteration, without holding the stages', async () => {

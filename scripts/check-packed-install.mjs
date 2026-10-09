@@ -2,6 +2,7 @@
 // 続けて `drawroid doctor` を、偽の Forge・偽の LLM が揃っている場合と、どちらにも繋がらない場合とで確かめる。
 // 前提: `pnpm build` 済み（web の build/client が要る）。外のサービスには繋がない（偽物は 127.0.0.1 に立てる）。
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import console from 'node:console';
 import { tmpdir } from 'node:os';
@@ -42,13 +43,15 @@ function expect(ok, what, output) {
  * doctor を走らせ、出力と終了コードを返す。
  * @param {string} bin
  * @param {string} dataDir
- * @param {Record<string, unknown>} config
+ * @param {Record<string, unknown> | undefined} config 省けば、データディレクトリも config.json も作らずに走らせる
  * @param {NodeJS.ProcessEnv} env
  * @returns {Promise<{ code: number, output: string }>}
  */
 async function runDoctor(bin, dataDir, config, env) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(join(dataDir, 'config.json'), JSON.stringify(config));
+  if (config !== undefined) {
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(dataDir, 'config.json'), JSON.stringify(config));
+  }
   return new Promise((resolve) => {
     execFile(
       bin,
@@ -188,6 +191,38 @@ try {
     } finally {
       await blind.close();
     }
+  }
+
+  // doctor: LLM が受け取った鍵を断りの本文に入れて返す。出力では「（鍵）」に伏せ、値は出さない
+  {
+    const echo = await startFakeLlm({ stopAfterIterations: 1, echoKey: true });
+    try {
+      const { code, output } = await runDoctor(
+        bin,
+        join(work, 'doctor-echo-key'),
+        { backend: { url: forge.url }, llm: llmConfig(echo.url, 'native') },
+        { DOCTOR_KEY: SECRET },
+      );
+      console.log(output);
+      expect(code === 1, 'LLM に断られれば終了コード 1', output);
+      expect(
+        output.includes('invalid api key: （鍵）') && !output.includes(SECRET),
+        'LLM が鍵を文に返しても、出力では「（鍵）」に伏せる',
+        output,
+      );
+    } finally {
+      await echo.close();
+    }
+  }
+
+  // doctor: 無いデータディレクトリを渡しても、作らない（確かめるだけで、何も書き換えない）
+  {
+    const parent = join(work, 'doctor-no-data-dir');
+    const { code, output } = await runDoctor(bin, join(parent, 'data'), undefined, {});
+    console.log(output);
+    expect(code === 1, '設定が無ければ（LLM が未設定なので）終了コード 1', output);
+    expect(output.includes('まだ無い'), '設定ファイルが無いことを「まだ無い」と出す', output);
+    expect(!existsSync(parent), '無いデータディレクトリを渡しても、作らない', output);
   }
 
   // doctor: 繋がらない場合。バックエンドも LLM も、誰も待ち受けていないポートを指す

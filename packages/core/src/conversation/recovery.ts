@@ -117,6 +117,14 @@ async function expectedEvents(jobs: JobStore, spec: AutoJobSpec): Promise<NewCon
     if (judge !== undefined) events.push(jobEvents.judge(jobId, iteration, judge));
     const adopted = await jobs.readAdopted(jobId, iteration);
     if (adopted !== undefined) events.push(jobEvents.adopted(jobId, iteration, adopted));
+    // 取り込んだ選択は、その回のあとの境目で確定している（橋渡しと同じ順）
+    for (const intervention of interventions) {
+      if (intervention.kind === 'adopt' && intervention.takenAfterIteration === iteration) {
+        events.push(
+          jobEvents.intervention(jobId, intervention.interventionId, intervention.kind, iteration),
+        );
+      }
+    }
   }
   const state = await jobs.readState(jobId);
   if (state.status === 'stopped') events.push(jobEvents.stopped(jobId, state.reason));
