@@ -70,7 +70,7 @@ const permissions = {
 /** 「初音ミク描けますか？」を1ターン回し、確定したイベントと、search_candidates を実際に走らせた回数を返す */
 async function talk(
   toolCalling: 'native' | 'json',
-  replies: StreamResult[],
+  replies: StreamResult[] | MockLanguageModelV4['doStream'],
 ): Promise<{ events: ConversationEvent[]; searches: number }> {
   const store = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store, now });
@@ -273,6 +273,30 @@ describe('a tool it was not given', () => {
     expect(searches).toBe(1);
     expect(ended(events)).toMatchObject({ outcome: 'done' });
   });
+});
+
+describe('the same tool called again and again with the same arguments', () => {
+  for (const toolCalling of ['native', 'json'] as const) {
+    it(`runs it once, then has the model answer without tools (${toolCalling})`, async () => {
+      const again = () =>
+        toolCalling === 'native'
+          ? toolStream('search_candidates', JSON.stringify(SEARCH.arguments))
+          : jsonTool('search_candidates', SEARCH.arguments);
+      const reply = () => (toolCalling === 'native' ? textStream(REPLY) : jsonReply(REPLY));
+      // ツールを渡されている間は同じ呼び出しを繰り返し、渡されなければ答えるモデル
+      const { events, searches } = await talk(toolCalling, async (options) => {
+        // native はツールの定義、json は指示文のスキーマに tool の変種があるかで、ツールを渡されたかが分かる
+        const system = options.prompt.find((m) => m.role === 'system');
+        const schema = typeof system?.content === 'string' ? system.content : '';
+        const offered = (options.tools?.length ?? 0) > 0 || schema.includes('"const":"tool"');
+        return offered ? again() : reply();
+      });
+
+      expect(searches).toBe(1);
+      expect(messages(events)).toContain(REPLY);
+      expect(ended(events)).toMatchObject({ outcome: 'done' });
+    });
+  }
 });
 
 describe('thinking tags and empty text', () => {
