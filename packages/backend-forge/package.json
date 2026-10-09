@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@drawroid/backend-sdapi": "workspace:*",
     "@drawroid/core": "workspace:*",
     "zod": "catalog:"
   },

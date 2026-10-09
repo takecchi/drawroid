@@ -8,7 +8,7 @@ const [root] = process.argv.slice(2);
 const imageCount = (call) => call.messages.user.filter((part) => part.type === 'image').length;
 const llm = new ScriptedLlm({
   think: (_call, n) => ({
-    params: { prompt: `take ${n + 1}`, negativePrompt: '', seed: 1, steps: 20, cfg: 7 },
+    params: { prompt: `take ${n + 1}`, negativePrompt: '', seed: 1, steps: 20, cfgScale: 7 },
     rationale: 'r',
   }),
   judge: (call) => ({

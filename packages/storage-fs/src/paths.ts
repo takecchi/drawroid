@@ -58,6 +58,8 @@ function jobFiles(dir: string) {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
+    /** ジョブが止まったときと選び直したときの蒸留の記録 */
+    distill: join(dir, 'distill.json'),
     refs,
     /** 人間が添えた参照画像（原寸） */
     ref: (refId: string, ext: string) => join(refs, `${refId}.${ext}`),

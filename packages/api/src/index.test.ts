@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { BackendError, DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { STUB_PNG, StubBackend } from '@drawroid/core/testing';
-import { dataPaths, FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApi } from './index.js';
@@ -17,13 +17,19 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-api-'));
   backend = new StubBackend();
   const store = new FsJobStore(root);
+  const memoryStore = createFsMemoryStore(dataPaths(root).memory);
   // 呼ぶたびに1秒進める: jobId は秒までしか持たず、同じ秒に作ったジョブの順は決まらないため
   let clock = Date.parse('2026-10-09T06:30:00Z');
   const now = () => new Date((clock += 1000));
   api = createApi({
     backend,
     store,
+    memoryStore,
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     autoQueue: {
       kick: () => undefined,
       stop: async () => undefined,
