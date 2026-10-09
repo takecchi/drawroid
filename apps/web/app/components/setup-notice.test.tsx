@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
-import { ApiError, useBackendStatus, useLlmSettings } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import {
+  ApiError,
+  saveBackendSettings,
+  saveLlmSettings,
+  useBackendStatus,
+  useLlmSettings,
+} from '@drawroid/swr';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SetupNotice } from './setup-notice';
 
@@ -67,5 +73,69 @@ describe('SetupNotice', () => {
 
     expect(screen.getByRole('note', { name: 'はじめに要る設定' })).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+describe('SetupNotice, reading the settings through the API', () => {
+  const json = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  let llmConfig: unknown;
+  let backendUp: boolean;
+
+  // 設定の保存と同じ口（API）を、fetch を差し替えて受ける
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
+    vi.mocked(useLlmSettings).mockImplementation(actual.useLlmSettings);
+    vi.mocked(useBackendStatus).mockImplementation(actual.useBackendStatus);
+    llmConfig = null;
+    backendUp = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const method = init?.method ?? 'GET';
+        if (url.includes('/api/settings/llm')) {
+          if (method === 'PUT') llmConfig = JSON.parse(String(init?.body));
+          return json(200, { config: llmConfig, apiKeyEnv: {} });
+        }
+        if (url.includes('/api/settings/backend')) {
+          if (method === 'PUT') backendUp = true;
+          return json(200, { url: 'http://127.0.0.1:7860/' });
+        }
+        if (url.includes('/api/backend')) {
+          return backendUp
+            ? json(200, { capabilities: { unavailable: [] } })
+            : json(502, { error: { kind: 'backend_unreachable', message: '繋がらない' } });
+        }
+        return json(404, { error: { kind: 'not_found', message: '無い' } });
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('goes away once the settings are saved, without opening the screen again', async () => {
+    render(
+      <MemoryRouter>
+        <SetupNotice />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/LLM が未設定なので/)).toBeTruthy();
+    expect(await screen.findByText(/描き始めても止まる/)).toBeTruthy();
+
+    await saveLlmSettings({
+      providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:11434/v1' } },
+      roles: { think: { provider: 'local', model: 'qwen2.5' } },
+    });
+    await waitFor(() => expect(screen.queryByText(/LLM が未設定なので/)).toBeNull());
+    expect(screen.getByText(/描き始めても止まる/)).toBeTruthy();
+
+    await saveBackendSettings({ url: 'http://127.0.0.1:7860/' });
+    await waitFor(() => expect(screen.queryByRole('note')).toBeNull());
   });
 });
