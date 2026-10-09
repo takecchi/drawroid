@@ -135,13 +135,16 @@ try {
   await log.getByText(/LLM が未設定/).waitFor();
   await notice.getByRole('link', { name: 'LLM を設定する' }).click();
   await page.waitForURL(`${base}/settings#llm`);
-  // 設定の画面は、初めての人に要るもの（バックエンドと LLM）が上にあり、予算は「詳しい設定」として畳んである
+  // 設定の画面は、初めての人に要るもの（バックエンドと LLM）が上にあり、予算は「詳しい設定」として畳んである。
+  // 測る前に、画面が描き終わるのを待つ: URL が変わった直後は、まだ前の画面か読み込み中の形で、位置が測れないことがあるため
+  await page.getByLabel('provider 1番目 の名前').waitFor();
+  await page.locator('details#budgets').waitFor({ state: 'attached' });
   const order = await page.evaluate(
     '["backend", "llm", "budgets"].map((id) => (document.getElementById(id)?.getBoundingClientRect().top ?? NaN) + window.scrollY)',
   );
   expect(
     Array.isArray(order) && order[0] < order[1] && order[1] < order[2],
-    '設定の画面は、バックエンド・LLM・詳しい設定の順に並ぶ',
+    `設定の画面は、バックエンド・LLM・詳しい設定の順に並ぶ（上端: ${JSON.stringify(order)}）`,
   );
   expect(
     (await page.locator('details#budgets').getAttribute('open')) === null,
