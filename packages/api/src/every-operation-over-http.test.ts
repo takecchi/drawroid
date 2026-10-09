@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  basicPermissions,
   DEFAULT_BUDGET,
+  basicPermissions,
   JobRunner,
   ManualGenerationRunner,
   type LlmCall,
@@ -18,7 +18,7 @@ import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { noCandidateNotes, noPermissionSettings } from './test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from './test-support.js';
 
 const INTEGRATED = '逆光で、夕暮れの海辺に立つ白いワンピースの少女';
 
@@ -72,7 +72,7 @@ beforeEach(async () => {
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
     autoQueue: runner,
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },

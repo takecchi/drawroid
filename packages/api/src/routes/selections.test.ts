@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  DEFAULT_BUDGET,
   generationRequestSchema,
   ManualGenerationRunner,
   type GenerationResult,
@@ -14,7 +13,7 @@ import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi, type AppType } from '../index.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -43,7 +42,7 @@ beforeEach(async () => {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },

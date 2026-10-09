@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { generationRequestSchema } from '../backend.js';
 import { BACKEND_ERROR_KINDS } from '../backend-error.js';
+import { storedBudgetsSchema } from '../budget/settings.js';
 import { permissionOverridesSchema } from '../permissions/permission.js';
 
 export const stopConditionsSchema = z.object({
@@ -96,6 +97,8 @@ export const autoJobSpecSchema = z.object({
   batchSize: z.number().int().positive(),
   /** 全体の既定の許可に重ねる、このジョブだけの上書き。書いたパラメータだけ */
   permissions: permissionOverridesSchema.optional(),
+  /** 投入のときに解決した予算。走行中は読み直さない。無い古いジョブは runner の既定で回る */
+  budgets: storedBudgetsSchema.optional(),
 });
 export type AutoJobSpec = z.infer<typeof autoJobSpecSchema>;
 

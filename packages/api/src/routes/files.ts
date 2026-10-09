@@ -1,9 +1,19 @@
+import { DEFAULT_BUDGETS, type JobStore } from '@drawroid/core';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
 import { notFound } from '../errors.js';
 
-export function filesRoutes({ store, budget }: ApiDeps) {
+// 設定の今の値を使わない: 縮小版の名前は長辺を含み、ジョブの途中で変わると同じ画像の縮小版が2つできて、画面と記録で指す縮小版が食い違うため
+async function previewLongEdge(store: JobStore, jobId: string): Promise<number> {
+  const spec = await store.readJob(jobId);
+  return (
+    (spec.kind === 'auto' ? spec.budgets?.imageLongEdge : undefined) ??
+    DEFAULT_BUDGETS.imageLongEdge
+  );
+}
+
+export function filesRoutes({ store }: ApiDeps) {
   return new Hono()
     .get('/jobs/:jobId/refs/:file', async (c) => {
       const { jobId, file } = c.req.param();
@@ -16,7 +26,10 @@ export function filesRoutes({ store, budget }: ApiDeps) {
       if (!(await store.listReferences(jobId)).some((r) => r.refId === refId)) {
         return notFound(c, 'そのファイルは無い');
       }
-      const { data } = await store.loadPreview({ jobId, refId: refId ?? '' }, budget.imageLongEdge);
+      const { data } = await store.loadPreview(
+        { jobId, refId: refId ?? '' },
+        await previewLongEdge(store, jobId),
+      );
       return c.body(data as Uint8Array<ArrayBuffer>, 200, { 'content-type': 'image/webp' });
     })
     .get('/jobs/:jobId/iterations/:iteration/images/:file', async (c) => {
@@ -37,7 +50,7 @@ export function filesRoutes({ store, budget }: ApiDeps) {
         return c.body(png as Uint8Array<ArrayBuffer>, 200, { 'content-type': 'image/png' });
       }
       try {
-        const { data } = await store.loadPreview(ref, budget.imageLongEdge);
+        const { data } = await store.loadPreview(ref, await previewLongEdge(store, jobId));
         return c.body(data as Uint8Array<ArrayBuffer>, 200, { 'content-type': 'image/webp' });
       } catch (error) {
         // 縮小版は原寸から作るので、原寸が無いことは ENOENT で現れる

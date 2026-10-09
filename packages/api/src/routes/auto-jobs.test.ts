@@ -2,13 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DEFAULT_BUDGET, generationRequestSchema, ManualGenerationRunner } from '@drawroid/core';
+import { generationRequestSchema, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -38,7 +38,7 @@ beforeEach(async () => {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     permissionSettings: noPermissionSettings,

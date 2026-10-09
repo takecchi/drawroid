@@ -7,6 +7,7 @@ import { keys } from './keys.js';
 import type {
   BackendSettingsResponse,
   BackendStatus,
+  BudgetSettingsResponse,
   CandidateNotesResponse,
   CandidatesResponse,
   InterventionsResponse,
@@ -156,6 +157,13 @@ export function useLlmSettings() {
 export function usePermissionSettings() {
   return useSWR<PermissionSettingsResponse, ApiError>(keys.permissionSettings, () =>
     unwrap<PermissionSettingsResponse>(() => client.settings.permissions.$get()),
+  );
+}
+
+// ポーリングしない: 予算を変えるのは人間の操作だけで、保存の関数が置き直すため
+export function useBudgetSettings() {
+  return useSWR<BudgetSettingsResponse, ApiError>(keys.budgetSettings, () =>
+    unwrap<BudgetSettingsResponse>(() => client.settings.budgets.$get()),
   );
 }
 

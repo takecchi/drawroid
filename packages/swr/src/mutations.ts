@@ -14,6 +14,8 @@ import type {
   AddMaskResponse,
   AddReferenceResponse,
   BackendSettingsResponse,
+  BudgetOverridesInput,
+  BudgetSettingsResponse,
   CandidateNotesInput,
   CandidateNotesResponse,
   ChangeStopConditionsResponse,
@@ -90,6 +92,21 @@ export async function savePermissionSettings(
   );
   // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
   await mutate(keys.permissionSettings, saved, { revalidate: false });
+  return saved;
+}
+
+/**
+ * 予算を、書いた欄ごと置き換える。書いた予算は、そのあとに投入するジョブから効く（走っているジョブには効かない）。
+ * 範囲外の値や知らない鍵は ApiError（kind: 'invalid_request'）を投げる
+ */
+export async function saveBudgetSettings(
+  overrides: BudgetOverridesInput,
+): Promise<BudgetSettingsResponse> {
+  const saved = await unwrap<BudgetSettingsResponse>(() =>
+    client.settings.budgets.$put({ json: overrides }),
+  );
+  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
+  await mutate(keys.budgetSettings, saved, { revalidate: false });
   return saved;
 }
 

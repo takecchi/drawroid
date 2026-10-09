@@ -48,6 +48,8 @@ export function autoJobsRoutes(deps: ApiDeps) {
       .post('/', jsonBody(createBodySchema), async (c) => {
         const { request, stopConditions, batchSize, references, permissions } = c.req.valid('json');
         const now = (deps.now ?? (() => new Date()))();
+        // 投入のときに1度だけ読み、ジョブへ写す: 以後に設定を変えても、走っている・待っているジョブの上限は変えないため
+        const { effective } = await deps.budgetSettings.read();
         const spec = await store.createJob(
           {
             kind: 'auto',
@@ -55,8 +57,9 @@ export function autoJobsRoutes(deps: ApiDeps) {
             stopConditions: stopConditions ?? DEFAULT_STOP_CONDITIONS,
             batchSize: batchSize ?? DEFAULT_BATCH_SIZE,
             ...(permissions !== undefined && { permissions }),
+            budgets: effective,
           },
-          { status: 'queued', carry: createCarry(request, deps.budget).carry },
+          { status: 'queued', carry: createCarry(request, effective).carry },
           now,
           // ジョブを作ってから足さない: ランナーが先にジョブを拾うと、最初の回の「考える」に要点が載らないため
           references ?? [],

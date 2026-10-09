@@ -8,6 +8,7 @@ export const keys = {
   memoryItem: (id: string) => `/api/memory/${id}`,
   llmSettings: '/api/settings/llm',
   permissionSettings: '/api/settings/permissions',
+  budgetSettings: '/api/settings/budgets',
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
   iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,

@@ -1,0 +1,117 @@
+// @vitest-environment jsdom
+import { ApiError, type BudgetSettingsResponse } from '@drawroid/swr';
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { BudgetSettings } from './budget-settings';
+
+const mocks = vi.hoisted(() => ({
+  saveBudgetSettings: vi.fn(),
+  useBudgetSettings: vi.fn(),
+}));
+
+vi.mock('@drawroid/swr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@drawroid/swr')>()),
+  saveBudgetSettings: mocks.saveBudgetSettings,
+  useBudgetSettings: mocks.useBudgetSettings,
+}));
+
+afterEach(cleanup);
+
+const defaults = {
+  text: { intent: 600, prompt: 600 },
+  imageLongEdge: 512,
+  memory: { think: { maxCount: 8, maxSize: 400 } },
+};
+const stored = {
+  overrides: {},
+  effective: defaults,
+  defaults,
+} as unknown as BudgetSettingsResponse;
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.useBudgetSettings.mockReturnValue({ data: stored, error: undefined });
+  mocks.saveBudgetSettings.mockResolvedValue(stored);
+});
+
+const input = (label: string) => screen.getByLabelText<HTMLInputElement>(label);
+const saveButton = () => screen.getByRole('button', { name: '予算を保存' });
+
+describe('BudgetSettings', () => {
+  it('shows an empty field for every number of the defaults, with the default as the placeholder', () => {
+    render(<BudgetSettings />);
+
+    expect(input('imageLongEdge').value).toBe('');
+    expect(input('imageLongEdge').placeholder).toBe('512');
+    expect(input('text.prompt').placeholder).toBe('600');
+    expect(input('memory.think.maxCount').placeholder).toBe('8');
+  });
+
+  it('shows the written values in their fields', () => {
+    mocks.useBudgetSettings.mockReturnValue({
+      data: { ...stored, overrides: { imageLongEdge: 256, memory: { think: { maxCount: 2 } } } },
+      error: undefined,
+    });
+    render(<BudgetSettings />);
+
+    expect(input('imageLongEdge').value).toBe('256');
+    expect(input('memory.think.maxCount').value).toBe('2');
+    expect(input('text.prompt').value).toBe('');
+  });
+
+  it('saves only the fields that were filled in', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+
+    await user.type(input('imageLongEdge'), '256');
+    await user.type(input('memory.think.maxCount'), '2');
+    await user.click(saveButton());
+
+    expect(mocks.saveBudgetSettings).toHaveBeenCalledWith({
+      imageLongEdge: 256,
+      memory: { think: { maxCount: 2 } },
+    });
+  });
+
+  it('refuses a value that is not an integer or is below 1, saying why, without saving', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+
+    await user.type(input('imageLongEdge'), '2.5');
+    await user.type(input('text.prompt'), '0');
+    await user.click(saveButton());
+
+    const alert = (await screen.findByRole('alert')).textContent ?? '';
+    expect(alert).toContain('imageLongEdge: 整数で入れる');
+    expect(alert).toContain('text.prompt: 1 以上で入れる');
+    expect(mocks.saveBudgetSettings).not.toHaveBeenCalled();
+  });
+
+  it('shows the reason of the API when it refuses a value, and keeps what was typed', async () => {
+    const user = userEvent.setup();
+    mocks.saveBudgetSettings.mockRejectedValue(
+      new ApiError('invalid_request', 'imageLongEdge: 128 以上で入れる', 400),
+    );
+    render(<BudgetSettings />);
+
+    await user.type(input('imageLongEdge'), '64');
+    await user.click(saveButton());
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'imageLongEdge: 128 以上で入れる',
+    );
+    expect(input('imageLongEdge').value).toBe('64');
+  });
+
+  it('says the stored budgets cannot be read', () => {
+    mocks.useBudgetSettings.mockReturnValue({
+      data: undefined,
+      error: new ApiError('invalid_config', 'config.json の budgets が不正', 500),
+    });
+    render(<BudgetSettings />);
+
+    expect(screen.getByRole('alert').textContent).toContain('config.json の budgets が不正');
+  });
+});

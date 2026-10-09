@@ -1,9 +1,4 @@
-import {
-  DEFAULT_DISTILL_BUDGET,
-  isMemoryId,
-  memoryScopeSchema,
-  type JobSpec,
-} from '@drawroid/core';
+import { isMemoryId, memoryScopeSchema, type DistillBudget, type JobSpec } from '@drawroid/core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { validator } from 'hono/validator';
@@ -12,15 +7,15 @@ import { z } from 'zod';
 import type { ApiDeps } from '../deps.js';
 import { conflict, invalidFile, invalidRequest, notFound } from '../errors.js';
 
-// 蒸留の出力と同じ上限を人間の編集にも掛ける: 手で長く書けると、予算で締めた LLM への入力が人間の編集で膨らむため
-const limit = DEFAULT_DISTILL_BUDGET.output;
-
-const updateMemorySchema = z.object({
-  body: z.string().trim().min(1).max(limit.body),
-  tags: z.array(z.string().min(1).max(limit.tag)).max(limit.tags),
-  scope: memoryScopeSchema,
-  expectedUpdatedAt: z.iso.datetime({ offset: true }),
-});
+// 蒸留の出力と同じ上限を人間の編集にも掛ける: 手で長く書けると、予算で締めた LLM への入力が人間の編集で膨らむため。
+// 上限は設定で変わるので、要求のたびに読んで組み立てる
+const updateMemorySchema = (limit: DistillBudget['output']) =>
+  z.object({
+    body: z.string().trim().min(1).max(limit.body),
+    tags: z.array(z.string().min(1).max(limit.tag)).max(limit.tags),
+    scope: memoryScopeSchema,
+    expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  });
 
 // ストアに投げる前に、ストアと同じ isMemoryId で弾く。ストアは使えない形の id と読めないファイルを
 // どちらも Error で返し、型では見分けられないため、前者を 404 にするにはここで先に判定するしかない
@@ -29,7 +24,7 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function memoryRoutes({ memoryStore, store }: ApiDeps) {
+export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
   async function describeSource(jobId: string, knownJobIds: ReadonlySet<string>) {
     // 一覧に在るものだけを引く: front matter は人間が書き換えられ、そのまま置き場所へ渡さないため
     if (!knownJobIds.has(jobId)) return { jobId, job: null };
@@ -71,7 +66,8 @@ export function memoryRoutes({ memoryStore, store }: ApiDeps) {
       .put(
         '/:id',
         validator('json', async (value, c) => {
-          const parsed = updateMemorySchema.safeParse(value);
+          const { effective } = await budgetSettings.read();
+          const parsed = updateMemorySchema(effective.distill.output).safeParse(value);
           return parsed.success ? parsed.data : invalidRequest(c, parsed.error.message);
         }),
         async (c) => {

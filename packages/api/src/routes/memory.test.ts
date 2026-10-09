@@ -2,29 +2,26 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  DEFAULT_BUDGET,
-  generationRequestSchema,
-  ManualGenerationRunner,
-  type MemoryItem,
-} from '@drawroid/core';
+import { generationRequestSchema, ManualGenerationRunner, type MemoryItem } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 let root: string;
 let memoryDir: string;
 let jobs: FsJobStore;
 let api: ReturnType<typeof createApi>;
+let budgetSettings: ReturnType<typeof memoryBudgetSettings>;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-api-memory-'));
   memoryDir = dataPaths(root).memory;
   jobs = new FsJobStore(root);
   const backend = new StubBackend();
+  budgetSettings = memoryBudgetSettings();
   api = createApi({
     backend,
     store: jobs,
@@ -42,7 +39,7 @@ beforeEach(async () => {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings,
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
@@ -201,6 +198,19 @@ describe('PUT /memory/:id', () => {
       item: MemoryItem;
     };
     expect(reread.item).toEqual(saved);
+  });
+
+  it('limits the body and the tags by the distill output budget of the settings at the time of the request', async () => {
+    await putFile('no-broken-fingers', itemFile());
+    const longBody = { ...edit, body: 'あ'.repeat(81) };
+
+    expect((await put('no-broken-fingers', longBody)).status).toBe(400);
+
+    await budgetSettings.write({ distill: { output: { body: 200 } } });
+    expect((await put('no-broken-fingers', longBody)).status).toBe(200);
+
+    await budgetSettings.write({ distill: { output: { body: 5 } } });
+    expect((await put('no-broken-fingers', { ...edit, body: 'あ'.repeat(6) })).status).toBe(400);
   });
 
   it('ignores fields a human may not edit', async () => {

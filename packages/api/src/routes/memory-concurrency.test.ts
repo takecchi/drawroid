@@ -6,7 +6,6 @@ import { join } from 'node:path';
 
 import {
   applyDistillOperations,
-  DEFAULT_BUDGET,
   ManualGenerationRunner,
   type MemoryItem,
   type MemoryStore,
@@ -16,7 +15,7 @@ import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 let root: string;
 let memoryDir: string;
@@ -64,7 +63,7 @@ beforeEach(async () => {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },

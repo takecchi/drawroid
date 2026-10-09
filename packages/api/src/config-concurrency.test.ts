@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  DEFAULT_BUDGET,
   basicPermissions,
   type ImageBackend,
   type JobStore,
@@ -21,7 +20,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { noCandidateNotes } from './test-support.js';
+import { noCandidateNotes, memoryBudgetSettings } from './test-support.js';
 
 let dir: string;
 let configPath: string;
@@ -44,7 +43,7 @@ beforeEach(async () => {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     stopConditionParser: { parse: notUsed },
     backendSettings: { read: notUsed, write: notUsed },
     llmSettings: {

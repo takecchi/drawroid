@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  basicPermissions,
   DEFAULT_BUDGET,
+  basicPermissions,
   generationRequestSchema,
   JobRunner,
   ManualGenerationRunner,
@@ -18,7 +18,7 @@ import { hc } from 'hono/client';
 import { createApi, type AppType } from '../index.js';
 import { MAX_MASK_BYTES } from '../masks.js';
 import { MAX_REFERENCE_BYTES } from '../references.js';
-import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -56,7 +56,7 @@ beforeEach(async () => {
       addReference: (jobId, reference) => runner.addReference(jobId, reference),
       addMask: (jobId, mask) => runner.addMask(jobId, mask),
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     permissionSettings: noPermissionSettings,

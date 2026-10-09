@@ -1,4 +1,4 @@
-import { basicPermissions, DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import { basicPermissions, DEFAULT_BUDGETS, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import type { ApiDeps } from '@drawroid/api';
 import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
@@ -24,7 +24,10 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
       addReference: notUsed,
       addMask: notUsed,
     },
-    budget: DEFAULT_BUDGET,
+    budgetSettings: {
+      read: async () => ({ overrides: {}, effective: DEFAULT_BUDGETS }),
+      write: async () => DEFAULT_BUDGETS,
+    },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
     permissionSettings: {

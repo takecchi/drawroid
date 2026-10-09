@@ -1,5 +1,6 @@
 import type {
-  Budget,
+  BudgetOverrides,
+  Budgets,
   CandidateNotes,
   ImageBackend,
   InterventionRecord,
@@ -47,6 +48,13 @@ export type PermissionSettingsStore = {
   write(overrides: Partial<Permissions>): Promise<void>;
 };
 
+/** config.json の budgets（予算のうち、書いた欄だけ）。解決は既定に深く重ねる */
+export type BudgetSettingsPort = {
+  /** overrides は検証していない（人間が手で直したものを含む）。読めない設定は、理由を付けて投げる */
+  read(): Promise<{ overrides: unknown; effective: Budgets }>;
+  write(overrides: BudgetOverrides): Promise<Budgets>;
+};
+
 /** candidate-notes.json（候補の名前 → 人間の短い説明） */
 export type CandidateNotesStore = {
   read(): Promise<CandidateNotes>;
@@ -60,8 +68,8 @@ export type ApiDeps = {
   manualRunner: ManualGenerationRunner;
   backendSettings: BackendSettingsPort;
   autoQueue: AutoJobQueue;
-  /** 自動ジョブの依頼を要約へ切り詰めるときの予算 */
-  budget: Budget;
+  /** 投入のときに解決した予算を、ジョブへ写すために読む。走行中のジョブには効かせない */
+  budgetSettings: BudgetSettingsPort;
   llmSettings: LlmSettingsStore;
   stopConditionParser: StopConditionParser;
   permissionSettings: PermissionSettingsStore;

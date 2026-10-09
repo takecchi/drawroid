@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  basicPermissions,
   DEFAULT_BUDGET,
+  basicPermissions,
   JobRunner,
   ManualGenerationRunner,
   type LlmCall,
@@ -14,7 +14,7 @@ import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { noCandidateNotes, noPermissionSettings } from './test-support.js';
+import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from './test-support.js';
 
 const GIST = '白いワンピースの裾が風になびく構図';
 
@@ -78,7 +78,7 @@ beforeEach(async () => {
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
     autoQueue: runner,
-    budget: DEFAULT_BUDGET,
+    budgetSettings: memoryBudgetSettings(),
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
     permissionSettings: noPermissionSettings,

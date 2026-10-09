@@ -1,4 +1,4 @@
-import type { Permissions } from '@drawroid/core';
+import type { BudgetOverrides, Permissions } from '@drawroid/core';
 import type { ReferenceUploadInput } from '@drawroid/api';
 import type { InferRequestType, InferResponseType } from 'hono/client';
 
@@ -39,6 +39,10 @@ export type PermissionSettingsResponse = InferResponseType<
  * core の型を使う: api の validator の schema は型を Permissions へ明示しているので、hono/client から引くと unknown になるため
  */
 export type PermissionOverridesInput = Partial<Permissions>;
+/** overrides は書いた欄、effective は既定に重ねた実際の値、defaults は何も書かないときの値 */
+export type BudgetSettingsResponse = InferResponseType<typeof client.settings.budgets.$get, 200>;
+/** 保存するときに送る、予算の上書き（書いた欄だけ）。api の schema は型を core へ明示しているので、core の型を使う */
+export type BudgetOverridesInput = BudgetOverrides;
 export type IterationsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['iterations']['$get'],
   200

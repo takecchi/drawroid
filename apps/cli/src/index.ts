@@ -24,6 +24,7 @@ import { parseCliArgs } from './args.js';
 import { AutoJobQueue, BASE_PERMISSIONS } from './auto-job-queue.js';
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions, createBackendSettings } from './backend-settings.js';
+import { createBudgetSettings } from './budget-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
@@ -125,7 +126,7 @@ async function main() {
       backendSettings,
       memoryStore,
       autoQueue,
-      budget: DEFAULT_BUDGET,
+      budgetSettings: createBudgetSettings(configPath),
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,
