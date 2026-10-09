@@ -84,7 +84,7 @@ export const llmConfigSchema = z
           code: 'custom',
           path: ['roles', role, 'provider'],
           message: `${ROLE_LABELS[role]}の provider「${provider}」が、定義した provider（${
-            defined.length === 0 ? 'まだ無い' : defined.join('・')
+            defined.length === 0 ? 'まだ無い' : defined.slice(0, 2).join('・')
           }）に無い`,
         });
       }
