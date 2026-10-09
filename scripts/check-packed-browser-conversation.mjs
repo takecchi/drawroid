@@ -8,6 +8,7 @@
 // 6. 見る役が済む前に「この画像でいい」と言うと、会話に「選んだ」が出て（job.adopted）、待たせていたジョブはその画像で止まる
 // 7. 狭い画面（390×844）でも、流れる・止めるが同じように動き、入力欄が画面の外へ押し出されない
 // 8. 画像の行の「この画像で決める」で選ぶと、会話に「選んだ」が出て（job.adopted）、ジョブはその画像で止まる（adopt_image と同じ口）
+// 9. 偽の Forge が止まっているときに描くよう頼むと、描き始めずに、繋がらないことと次にすることが出る
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -475,6 +476,23 @@ try {
   expect(
     (await narrowComposer.isEnabled()) && (await composerInView()),
     '狭い画面でも、止めるでターンが止まり、入力欄が画面の中に残る',
+  );
+
+  // 9. 偽の Forge が止まっているときに描くよう頼むと、話す役は描き始めず（ジョブを作らず）、何が足りないかが画面に出る
+  const jobsBefore = (await api(base, 'GET', '/api/jobs')).jobs.length;
+  const stoppedForge = forge;
+  forge = undefined;
+  await stoppedForge.close();
+  await narrowComposer.fill('止まっている間に描いて');
+  await narrowComposer.press('Enter');
+  await narrowLog
+    .getByText(/描き始められない: 画像のバックエンド（Forge \/ A1111）に繋がらない/)
+    .first()
+    .waitFor();
+  await narrowStop.waitFor({ state: 'hidden' });
+  expect(
+    (await api(base, 'GET', '/api/jobs')).jobs.length === jobsBefore,
+    'バックエンドが止まっているときは、描き始めずに、繋がらないことと次にすることが画面に出る',
   );
 } catch (error) {
   // 落ちたときに、画面に何が出ていたかを残す（赤の理由を追えるように）

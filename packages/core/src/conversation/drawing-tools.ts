@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { CandidateKind } from '../backend.js';
+import { isBackendError } from '../backend-error.js';
 import type { Budgets } from '../budget/settings.js';
 import type { JobStore } from '../job/store.js';
 import {
@@ -63,7 +64,27 @@ export type DrawingToolDeps = {
   /** 投入のときに解決してジョブへ写す予算 */
   budgets(): Promise<Budgets>;
   now(): Date;
+  /**
+   * 描き始める前に、画像のバックエンドに繋がるかを軽く確かめる（問い合わせ1回）。繋がらなければ投げる（BackendError なら理由つき）。
+   * 省けば確かめない
+   */
+  checkBackend?(signal: AbortSignal): Promise<void>;
 };
+
+/** 描き始める前の確かめを待つ長さ。繋がるときは1回の問い合わせで返るので、描くたびに遅くはならない */
+export const BACKEND_CHECK_TIMEOUT_MS = 5_000;
+
+/** 描き始める前の確かめで、繋がらなかった理由を人に伝える形にする */
+function backendProblem(error: unknown): string {
+  const detail = isBackendError(error)
+    ? error.kind === 'aborted'
+      ? `${BACKEND_CHECK_TIMEOUT_MS / 1000} 秒待っても応答が無い`
+      : error.message
+    : error instanceof Error
+      ? error.message
+      : String(error);
+  return `描き始められない: 画像のバックエンド（Forge / A1111）に繋がらない（${detail}）。バックエンドを起動するか、設定の画面でバックエンドの URL を確かめてから、もう一度頼んでもらう`;
+}
 
 const MAX_REQUEST_CHARS = 2000;
 const MAX_INSTRUCTION_CHARS = 2000;
@@ -147,6 +168,14 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
           false,
           `ジョブ ${running} がまだ描いている。直すなら revise_drawing、やめて描き直すなら stop_drawing のあとで start_drawing を呼ぶ`,
         );
+      }
+      // ジョブを作る前に確かめる: 繋がらないまま描き始めると、ジョブがすぐ止まり、人には「描き始めた」と伝わってしまうため
+      if (deps.checkBackend !== undefined) {
+        try {
+          await deps.checkBackend(AbortSignal.timeout(BACKEND_CHECK_TIMEOUT_MS));
+        } catch (error) {
+          return outcome(false, backendProblem(error));
+        }
       }
       let permissions: Partial<Permissions> | undefined;
       if (input.permissions !== undefined) {
