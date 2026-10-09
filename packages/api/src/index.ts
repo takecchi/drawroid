@@ -11,6 +11,7 @@ import { jobsRoutes } from './routes/jobs.js';
 import { llmSettingsRoutes } from './routes/llm-settings.js';
 import { llmCallsRoutes } from './routes/llm-calls.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
+import { memoryRoutes } from './routes/memory.js';
 
 export {
   BackendBusyError,
@@ -34,6 +35,7 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs/:jobId/iterations', iterationsRoutes(deps))
     .route('/jobs/:jobId/llm-calls', llmCallsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))
+    .route('/memory', memoryRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps));
 }

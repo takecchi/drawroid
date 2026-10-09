@@ -6,6 +6,7 @@ import { ForgeBackend, type ForgeBackendOptions } from '@drawroid/backend-forge'
 import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
+  createFsMemoryStore,
   dataPaths,
   FsJobStore,
   initDataDir,
@@ -98,6 +99,7 @@ async function main() {
       store,
       manualRunner,
       backendSettings,
+      memoryStore: createFsMemoryStore(dataPaths(root).memory),
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,

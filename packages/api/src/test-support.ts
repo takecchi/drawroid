@@ -11,7 +11,7 @@ import {
   type LlmCallRecord,
 } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
-import { dataPaths, FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 
 import { createApi } from './index.js';
@@ -23,6 +23,7 @@ export async function setup() {
   const api = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
     autoQueue: { kick: () => undefined, stop: async () => undefined },
     budget: DEFAULT_BUDGET,

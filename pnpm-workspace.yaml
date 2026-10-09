@@ -30,6 +30,11 @@ catalog:
   # Web UI のデータ取得（packages/swr）。ポーリングで画面を更新する
   swr: ^2.5.1
   vite: ^8.2.1
+  # Web UI の部品の試験（apps/web）
+  jsdom: ^30.1.2
+  '@testing-library/react': ^16.3.3
+  '@testing-library/dom': ^10.4.2
+  '@testing-library/user-event': ^14.6.7
 
 # `pnpm --filter <存在しないパッケージ名>` が黙って exit 0 を返すのを塞ぐ。
 # `.npmrc` に置くと無視される（alteroid で実測済み）ので、ここに置く。

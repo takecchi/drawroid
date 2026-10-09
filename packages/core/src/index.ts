@@ -78,6 +78,7 @@ export * from './job/types.js';
 export * from './loop/runner.js';
 export * from './loop/stop.js';
 export {
+  isMemoryId,
   MEMORY_SCOPES,
   memoryItemSchema,
   memoryScopeSchema,
