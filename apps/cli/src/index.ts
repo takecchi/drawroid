@@ -4,11 +4,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  bridgeJobEvents,
   ConversationHubs,
+  createDrawingTools,
   createReadOnlyTools,
   DEFAULT_BUDGET,
+  jobSummaryFor,
   ManualGenerationRunner,
   mergePermissions,
+  readDrawingStopConditions,
   ProgressPreviews,
   ReselectionDistiller,
   TalkRunner,
@@ -22,6 +26,7 @@ import {
   FsJobStore,
   initDataDir,
   readCandidateNotes,
+  readConversationSettings,
   readLlmSettings,
   readPermissionSettings,
   resolveDataDir,
@@ -76,11 +81,20 @@ async function main() {
     createBackend,
     initial: { kind, url, source, config },
   });
-  const store = new FsJobStore(root);
+  const log = (line: string) => process.stdout.write(`${line}\n`);
+  const conversationStore = new FsConversationStore(root);
+  const conversationHubs = new ConversationHubs({ store: conversationStore });
+  // ジョブの置き場所を橋渡しで包む: 会話から作ったジョブの段が、会話のログに出るように
+  const store = bridgeJobEvents(new FsJobStore(root), {
+    hubs: conversationHubs,
+    onError: (error) =>
+      log(
+        `drawroid: ジョブの段を会話に書けなかった（ジョブは続ける）: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
   const manualRunner = new ManualGenerationRunner({ backend, store });
   process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
 
-  const log = (line: string) => process.stdout.write(`${line}\n`);
   const memoryStore = createFsMemoryStore(dataPaths(root).memory);
   const readPermissions = createPermissionReader(() => readPermissionSettings(configPath), log);
   // 起動のときに一度読む: 読めない行があれば、ジョブを待たずにログで知らせる
@@ -140,21 +154,43 @@ async function main() {
     },
   };
 
-  const conversationStore = new FsConversationStore(root);
-  const conversationHubs = new ConversationHubs({ store: conversationStore });
   const budgetSettings = createBudgetSettings(configPath);
   const readCandidates = () => readCandidateNotes(dataPaths(root).candidateNotes);
+  const humanPermissions = async () => mergePermissions(BASE_PERMISSIONS, await readPermissions());
   // 話す役。LLM は自動ジョブと同じ設定（役 talk、省けば考える役）を使う
   const talkRunner = new TalkRunner({
     store: conversationStore,
     hubs: conversationHubs,
     llm: () => autoQueue.currentLlm(),
-    tools: createReadOnlyTools({
-      backend,
-      permissions: async () => mergePermissions(BASE_PERMISSIONS, await readPermissions()),
-      candidateNotes: async () => (await readCandidates()).notes,
-      memory: memoryStore,
+    tools: [
+      ...createReadOnlyTools({
+        backend,
+        permissions: humanPermissions,
+        candidateNotes: async () => (await readCandidates()).notes,
+        memory: memoryStore,
+        jobs: store,
+      }),
+      ...createDrawingTools({
+        jobs: store,
+        runner: autoQueue,
+        conversations: conversationStore,
+        humanPermissions,
+        // 読めなければ候補が無いとして扱う: 広げる側には倒れない（候補の外の値で固定する引数は断られる）
+        candidateNames: async (kind) =>
+          (await backend.listCandidates(kind).catch(() => [])).map((candidate) => candidate.name),
+        defaultStopConditions: async () => {
+          const read = readDrawingStopConditions(await readConversationSettings(configPath));
+          if (read.problem !== undefined) log(`drawroid: ${read.problem}。既定の止める条件を使う`);
+          return read.conditions;
+        },
+        // 投入の口と同じく、作るときに1度だけ読んでジョブへ写す
+        budgets: async () => (await budgetSettings.read()).effective,
+        now: () => new Date(),
+      }),
+    ],
+    jobSummary: jobSummaryFor({
       jobs: store,
+      chars: async () => (await budgetSettings.read()).effective.talk.jobChars,
     }),
     // ターンの始めに読み直す: 画面で直した予算を、再起動せずに次のターンから効かせるため
     limits: async () => (await budgetSettings.read()).effective.talk,

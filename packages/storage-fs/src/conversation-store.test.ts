@@ -231,3 +231,26 @@ describe('job.json and conversations', () => {
     });
   });
 });
+
+describe('images a human attached in a conversation', () => {
+  it('keeps an attached image under uploads/ and reads it back with its type', async () => {
+    const store = new FsConversationStore(root);
+    const { conversationId: id } = await store.createConversation(at);
+    const data = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 1, 2, 3);
+
+    const uploadId = await store.addUpload(id, { data, mediaType: 'image/png' }, at);
+
+    expect(await store.readUpload(id, uploadId)).toEqual({ data, mediaType: 'image/png' });
+    expect(await readdir(dataPaths(root).conversationFiles(id).uploads)).toEqual([
+      `${uploadId}.png`,
+    ]);
+  });
+
+  it('reads nothing for an upload that does not exist or would point outside the conversation', async () => {
+    const store = new FsConversationStore(root);
+    const { conversationId: id } = await store.createConversation(at);
+
+    expect(await store.readUpload(id, '20261009-063012-none')).toBeUndefined();
+    expect(await store.readUpload(id, '../conversation')).toBeUndefined();
+  });
+});

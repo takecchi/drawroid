@@ -19,6 +19,8 @@ import type { TalkLimits } from './limits.js';
 
 export type TalkToolContext = {
   conversationId: string;
+  /** いまのターンの番号（描くツールが、作ったジョブの job.json に残す） */
+  turn: number;
   /** その会話の確定したイベント（ターンの始めに読んだもの） */
   events: readonly ConversationEvent[];
   limits: TalkLimits;

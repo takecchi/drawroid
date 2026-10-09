@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createMessageIntake } from '../conversation-messages.js';
 import type { ApiDeps } from '../deps.js';
 import { notFound } from '../errors.js';
+import { referenceUploadSchema } from '../references.js';
 import { jsonBody, queryParams } from '../validate.js';
 
 /** SSE のハートビートの既定の間隔 */
@@ -147,6 +148,14 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         if (!(await store.hasConversation(id))) return notFound(c, missing(id));
         const { seq } = await intake.post(id, c.req.valid('json'));
         return c.json({ seq }, 202);
+      })
+      // 会話で添える画像。描き始めるときに、ジョブの参照画像へ写す（用途の言葉は、描き始めるときに話す役が付ける）
+      .post('/:conversationId/uploads', jsonBody(referenceUploadSchema), async (c) => {
+        const id = c.req.param('conversationId');
+        if (!(await store.hasConversation(id))) return notFound(c, missing(id));
+        const { data, mediaType } = c.req.valid('json');
+        const uploadId = await store.addUpload(id, { data, mediaType }, new Date());
+        return c.json({ uploadId }, 201);
       })
       // 中断の口の枠。ターンを走らせるのは後の段（会話 E・I）で、今は受けるだけ
       .post('/:conversationId/interrupt', jsonBody(interruptSchema), async (c) => {
