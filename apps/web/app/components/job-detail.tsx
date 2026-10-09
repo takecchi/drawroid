@@ -4,6 +4,7 @@ import {
   useIterations,
   useJob,
   useLlmCalls,
+  useReferences,
   useSelections,
   type JobDetail as JobDetailData,
 } from '@drawroid/swr';
@@ -14,6 +15,7 @@ import { InterventionList } from './intervention-view';
 import { IterationList } from './iteration-view';
 import { JobOperations } from './job-operations';
 import { LlmTotals } from './llm-call-view';
+import { ReferenceList } from './reference-list';
 import { StopReasonMessage } from './stop-reason-message';
 
 function JobHeader({ job }: { job: JobDetailData }) {
@@ -116,6 +118,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const iterations = useIterations(data === undefined ? undefined : jobId, { live });
   // 手動ジョブには口出しが無く、取りに行くと 404 になる: 自動ジョブのときだけ取る
   const interventions = useInterventions(data?.spec.kind === 'auto' ? jobId : undefined, { live });
+  const references = useReferences(data?.spec.kind === 'auto' ? jobId : undefined, { live });
   const llmCalls = useLlmCalls(data === undefined ? undefined : jobId, { live });
   const selections = useSelections(data === undefined ? undefined : jobId);
   // 外した選択（verdict が null）は入れない: 画像の側は「無い」を未選択として扱うため
@@ -148,12 +151,16 @@ export function JobDetail({ jobId }: { jobId: string }) {
       {interventions.error !== undefined && (
         <p role="alert">人間の指示を読めない: {interventions.error.message}</p>
       )}
+      {references.error !== undefined && (
+        <p role="alert">添えた参照画像を読めない: {references.error.message}</p>
+      )}
       {llmCalls.error !== undefined && (
         <p role="alert">LLM の記録を読めない: {llmCalls.error.message}</p>
       )}
       {interventions.data !== undefined && (
         <InterventionList interventions={interventions.data.interventions} />
       )}
+      {references.data !== undefined && <ReferenceList references={references.data.references} />}
       {iterations.data !== undefined && (
         <>
           <IterationList

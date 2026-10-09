@@ -26,6 +26,7 @@ export {
   type UpdateBackendSettings,
 } from './backend-settings.js';
 export { LlmNotConfiguredError, type StopConditionParser } from './stop-condition-parse.js';
+export type { ReferenceUploadInput } from './references.js';
 export type { ApiDeps, AutoJobQueue, LlmSettingsStore } from './deps.js';
 export type { ApiErrorBody } from './errors.js';
 

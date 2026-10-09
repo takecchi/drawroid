@@ -9,6 +9,7 @@ export {
   useJobs,
   useLlmCall,
   useLlmCalls,
+  useReferences,
   useSelections,
   useStopConditions,
 } from './hooks.js';
@@ -37,6 +38,7 @@ export type {
   JobsResponse,
   LlmCallDetail,
   LlmCallsResponse,
+  ReferencesResponse,
   ReferenceUpload,
   SelectionsResponse,
   SetSelectionResponse,
