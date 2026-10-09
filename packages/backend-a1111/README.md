@@ -3,6 +3,14 @@
 AUTOMATIC1111/stable-diffusion-webui（A1111）の `/sdapi/v1` を叩く、画像生成バックエンドのアダプタ（M6。Issue #61）。
 Forge のアダプタ（`@drawroid/backend-forge`）と共通の部分は `@drawroid/backend-sdapi` にあり、ここには A1111 だけの差を置く。
 
+## 選び方
+
+起動のときに `--backend a1111` を付けるか、`<データディレクトリ>/config.json` の `backend.kind` を `"a1111"` にする（どちらも無ければ Forge）。URL は Forge と同じく `--forge-url` か `backend.forgeUrl` に書く（名前は Forge のままで、改名は別の PR）。
+
+```json
+{ "backend": { "kind": "a1111", "forgeUrl": "http://127.0.0.1:7860" } }
+```
+
 ## 対応する版
 
 **A1111 は 1.9 以上に対応する。** これはクローン（miku）の判断で、オーナーの決定ではない。

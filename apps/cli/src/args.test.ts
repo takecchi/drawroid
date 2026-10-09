@@ -8,6 +8,7 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs([])).toEqual({
       port: DEFAULT_PORT,
       dataDir: undefined,
+      backend: undefined,
       forgeUrl: undefined,
     });
   });
@@ -18,6 +19,12 @@ describe('parseCliArgs', () => {
 
   it('accepts --data-dir', () => {
     expect(parseCliArgs(['--data-dir', '/data'])).toMatchObject({ dataDir: '/data' });
+  });
+
+  it('accepts --backend forge or a1111, and refuses other kinds', () => {
+    expect(parseCliArgs(['--backend', 'a1111'])).toMatchObject({ backend: 'a1111' });
+    expect(parseCliArgs(['--backend', 'forge'])).toMatchObject({ backend: 'forge' });
+    expect(() => parseCliArgs(['--backend', 'comfyui'])).toThrow(/--backend/);
   });
 
   it('accepts --forge-url', () => {

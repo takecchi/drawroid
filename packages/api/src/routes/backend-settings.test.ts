@@ -42,6 +42,7 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
 }
 
 const initial: BackendSettingsView = {
+  kind: 'a1111',
   forgeUrl: 'http://127.0.0.1:7860',
   forgeUrlSource: 'default',
   auth: null,
@@ -49,11 +50,12 @@ const initial: BackendSettingsView = {
 };
 
 describe('GET /settings/backend', () => {
-  it('returns the url, where it came from, and the auth username without the password', async () => {
+  it('returns the kind, the url, where it came from, and the auth username without the password', async () => {
     const { api } = setup(initial);
     const res = await api.request('/settings/backend');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
+      kind: 'a1111',
       forgeUrl: 'http://127.0.0.1:7860',
       forgeUrlSource: 'default',
       auth: { username: 'u' },
@@ -102,9 +104,10 @@ describe('PUT /settings/backend', () => {
     expect(written).toEqual([]);
   });
 
-  it('ignores auth and generateTimeoutMs in the body', async () => {
+  it('ignores the kind, auth and generateTimeoutMs in the body', async () => {
     const { put, written } = setup(initial);
     await put({
+      kind: 'forge',
       forgeUrl: 'http://gpu:7860',
       auth: { username: 'x', password: 'y' },
       generateTimeoutMs: 1,

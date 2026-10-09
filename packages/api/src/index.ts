@@ -15,8 +15,10 @@ import { memoryRoutes } from './routes/memory.js';
 
 export {
   BackendBusyError,
+  backendKindSchema,
   backendSettingsViewSchema,
   updateBackendSettingsSchema,
+  type BackendKind,
   type BackendSettingsPort,
   type BackendSettingsView,
   type UpdateBackendSettings,

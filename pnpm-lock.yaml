@@ -104,6 +104,9 @@ importers:
       '@drawroid/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@drawroid/backend-a1111':
+        specifier: workspace:*
+        version: link:../../packages/backend-a1111
       '@drawroid/backend-forge':
         specifier: workspace:*
         version: link:../../packages/backend-forge
