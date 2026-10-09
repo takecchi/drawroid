@@ -1,21 +1,33 @@
 // @vitest-environment jsdom
 import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
-import { recheckBackendStatus, setSelection, useJob, useSelections } from '@drawroid/swr';
+import {
+  addMask,
+  adoptImage,
+  recheckBackendStatus,
+  setSelection,
+  useJob,
+  useSelections,
+} from '@drawroid/swr';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ConversationSource, EventPage, StreamLike } from '../lib/conversation-stream';
+import { encodeMaskPng } from '../lib/mask-png';
 import { ConversationView, type ConversationActions } from './conversation-view';
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
+  addMask: vi.fn(),
+  adoptImage: vi.fn(),
   recheckBackendStatus: vi.fn(),
   setSelection: vi.fn(),
   useJob: vi.fn(),
   useSelections: vi.fn(),
 }));
+// jsdom には canvas の描画が無い: マスクを PNG にする所は差し替える
+vi.mock('../lib/mask-png', () => ({ encodeMaskPng: vi.fn() }));
 
 const JOB = '20261009-153112-k3f9';
 const AT = '2026-10-09T15:30:00+09:00';
@@ -290,12 +302,15 @@ describe('ConversationView', () => {
         reason: { kind: 'human', detail: '人が止めた' },
       }),
     );
+    // 止まると、選んでいない画像の行は採る口から「この画像に決める（お気に入りにする）」に変わる
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^この画像で決める/ })).toHaveProperty(
-        'disabled',
-        true,
-      ),
+      expect(
+        screen.getByRole('button', {
+          name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
+        }),
+      ).toBeTruthy(),
     );
+    expect(screen.queryAllByRole('button', { name: /^この画像で決める/ })).toHaveLength(0);
   });
 
   it('reads the backend again once when a job stops because the backend failed', async () => {
@@ -638,7 +653,7 @@ describe('ConversationView', () => {
     ).toBeTruthy();
   });
 
-  it('in the large view, does not let a stopped job be settled, and shows the chosen image as chosen', async () => {
+  it('in the large view, lets a stopped job be settled through the favorite only, and shows the chosen image as chosen', async () => {
     const { source, stream } = fakeSource([]);
     const { user } = renderView(source);
     await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
@@ -671,10 +686,18 @@ describe('ConversationView', () => {
 
     await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 2 番/ }));
     const second = within(screen.getByRole('dialog', { name: /2 回目の画像 2 番/ }));
+    // 止まったジョブは採る口を受けないので、止まりのカードと同じく「この画像に決める（お気に入りにする）」になる。押せない理由は出さない
     expect(
-      second.getByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
-    ).toHaveProperty('disabled', true);
-    expect(second.getByText('描くのはもう止まっているので、決められない')).toBeTruthy();
+      second.queryByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
+    ).toBeNull();
+    expect(second.queryByText(/決められない/)).toBeNull();
+    await user.click(
+      second.getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 2 回目の画像 2 番',
+      }),
+    );
+    expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
+    expect(adoptImage).not.toHaveBeenCalled();
 
     await user.click(second.getByRole('button', { name: '前の画像' }));
     const first = within(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ }));
@@ -979,5 +1002,123 @@ describe('ConversationView', () => {
     expect(screen.getByRole('link', { name: 'バックエンドの設定へ' }).getAttribute('href')).toBe(
       '/settings#backend',
     );
+  });
+
+  describe('painting a mask in the large view', () => {
+    // 1回目の画像を2枚出し、1枚目を大きく見る窓で開いて、塗り始める
+    async function startPainting(extra: ConversationEvent[] = []) {
+      vi.mocked(addMask).mockResolvedValue({} as never);
+      vi.mocked(encodeMaskPng).mockResolvedValue('PNG-BASE64');
+      const { source, stream } = fakeSource([]);
+      const { user } = renderView(source);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+      stream.emit(
+        confirmed({
+          type: 'job.images',
+          jobId: JOB,
+          iteration: 2,
+          images: [
+            { index: 0, seed: 8 },
+            { index: 1, seed: 9 },
+          ],
+        }),
+      );
+      for (const event of extra) stream.emit(event);
+      await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 1 番/ }));
+      const dialog = () => within(screen.getByRole('dialog'));
+      return { user, dialog };
+    }
+
+    // 原寸の画像（1024×768）が読み込まれたことにし、画面には 512×384 で出ているとする
+    function loadOriginal(dialog: () => ReturnType<typeof within>) {
+      const img = dialog().getByAltText('2 回目の画像 1 番（seed 8）');
+      Object.defineProperty(img, 'naturalWidth', { value: 1024 });
+      Object.defineProperty(img, 'naturalHeight', { value: 768 });
+      fireEvent.load(img);
+      const canvas = dialog().getByLabelText('マスクを塗る所');
+      canvas.getBoundingClientRect = () =>
+        ({
+          left: 0,
+          top: 0,
+          width: 512,
+          height: 384,
+          right: 512,
+          bottom: 384,
+          x: 0,
+          y: 0,
+        }) as DOMRect;
+      return canvas;
+    }
+
+    function paint(canvas: HTMLElement) {
+      fireEvent.pointerDown(canvas, { clientX: 0, clientY: 0, pointerId: 1 });
+      fireEvent.pointerMove(canvas, { clientX: 256, clientY: 192, pointerId: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 256, clientY: 192, pointerId: 1 });
+    }
+
+    it('says the original is loading before showing where to paint, then sends the mask through the same API as the job page', async () => {
+      const { user, dialog } = await startPainting();
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+
+      expect(dialog().getByText('原寸の画像を読み込んでいます…')).toBeTruthy();
+      expect(dialog().getByLabelText('マスクを塗る所').parentElement?.className).toContain(
+        'hidden',
+      );
+
+      const canvas = loadOriginal(dialog);
+      expect(dialog().queryByText('原寸の画像を読み込んでいます…')).toBeNull();
+      paint(canvas);
+      await user.click(dialog().getByRole('button', { name: 'マスクを送る' }));
+
+      expect(addMask).toHaveBeenCalledWith(JOB, { iteration: 2, index: 0 }, 'PNG-BASE64');
+      expect(await dialog().findByText(/送った/)).toBeTruthy();
+    });
+
+    it('does not move to another image while painting, and says so', async () => {
+      const { user, dialog } = await startPainting();
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+
+      await user.keyboard('{ArrowRight}');
+
+      expect(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ })).toBeTruthy();
+      expect(dialog().getByText(/塗っている間は前後へ送れません/)).toBeTruthy();
+      expect(dialog().getByRole('button', { name: '次の画像' })).toHaveProperty('disabled', true);
+    });
+
+    it('stays open on Escape while something is painted, and the close button throws the painting away', async () => {
+      const { user, dialog } = await startPainting();
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+      paint(loadOriginal(dialog));
+
+      await user.keyboard('{Escape}');
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(dialog().getByText(/Esc や窓の外を押しても閉じません/)).toBeTruthy();
+
+      await user.click(dialog().getByRole('button', { name: '閉じる' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 1 番/ }));
+      expect(dialog().queryByLabelText('マスクを塗る所')).toBeNull();
+      expect(dialog().getByRole('button', { name: 'マスクを塗る' })).toBeTruthy();
+    });
+
+    it('goes back to viewing, and moving again, when painting is given up', async () => {
+      const { user, dialog } = await startPainting();
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+      paint(loadOriginal(dialog));
+
+      await user.click(dialog().getByRole('button', { name: '塗るのをやめる' }));
+      await user.keyboard('{ArrowRight}');
+
+      expect(screen.getByRole('dialog', { name: /2 回目の画像 2 番/ })).toBeTruthy();
+      expect(addMask).not.toHaveBeenCalled();
+    });
+
+    it('offers no mask painting for the images of a job that has stopped', async () => {
+      const { dialog } = await startPainting([
+        confirmed({ type: 'job.stopped', jobId: JOB, reason: { kind: 'human', detail: '止めた' } }),
+      ]);
+
+      expect(dialog().queryByRole('button', { name: 'マスクを塗る' })).toBeNull();
+    });
   });
 });

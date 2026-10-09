@@ -47,6 +47,7 @@ import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
+import { MaskSurface, MaskTools, useMaskPainting } from './mask-painter';
 import { SetupNotice } from './setup-notice';
 
 /** 発言と止めるの送り先。どちらも HTTP API（会話 C）に乗る。画面にだけある経路は作らない */
@@ -163,7 +164,7 @@ function ImageChoices({
   iteration: number;
   index: number;
   verdict: SelectionVerdict | null;
-  /** ジョブが止まった。採る（この画像で決める）は押せない */
+  /** ジョブが止まった。採る口（adopt）は使わず、決めるのはお気に入りの口で行う */
   stopped: boolean;
   chosen: boolean;
 }) {
@@ -173,13 +174,69 @@ function ImageChoices({
   return (
     <div className="space-y-1">
       <VerdictButtons jobId={jobId} imageKey={imageKey} imageLabel={imageLabel} verdict={verdict} />
-      <AdoptButton
-        jobId={jobId}
-        image={{ iteration, index }}
-        imageLabel={imageLabel}
-        chosen={chosen}
-        {...(stopped && { disabledReason: '描くのはもう止まっているので、決められない' })}
-      />
+      {/* 止まったジョブは採る口を受けない（止まったら受けない約束。API は 409）ので、止まりのカードと同じく、決めるのはお気に入りにする。
+          人が選んで止まった画像は、選んだと出す */}
+      {stopped && !chosen ? (
+        <ChooseAsFavorite
+          jobId={jobId}
+          imageKey={imageKey}
+          imageLabel={imageLabel}
+          verdict={verdict}
+        />
+      ) : (
+        <AdoptButton
+          jobId={jobId}
+          image={{ iteration, index }}
+          imageLabel={imageLabel}
+          chosen={chosen}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 止まったジョブの画像で「この画像に決める（お気に入りにする）」。止まりのカード・画像の行・大きく見る窓が同じものを使う。
+ * すでにお気に入りなら、ボタンの代わりに「お気に入り」と出す
+ */
+function ChooseAsFavorite({
+  jobId,
+  imageKey,
+  imageLabel,
+  verdict,
+}: {
+  jobId: string;
+  imageKey: string;
+  imageLabel: string;
+  verdict: SelectionVerdict | null;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  async function choose() {
+    setPending(true);
+    setError(undefined);
+    try {
+      await setSelection(jobId, imageKey, 'favorite');
+    } catch (caught) {
+      if (!isApiError(caught)) throw caught;
+      setError(caught.message);
+    } finally {
+      setPending(false);
+    }
+  }
+  if (verdict === 'favorite') return <p className="text-xs text-ok">お気に入り</p>;
+  return (
+    <div className="space-y-1">
+      <Button
+        className="h-7 px-2 text-xs"
+        variant="primary"
+        disabled={pending}
+        aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
+        onClick={() => void choose()}
+      >
+        この画像に決める（お気に入りにする）
+      </Button>
+      {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
     </div>
   );
 }
@@ -191,12 +248,15 @@ function ViewerImageDetails({
   image,
   stopped,
   chosen,
+  onPaint,
 }: {
   jobId: string;
   iteration: number;
   image: ChatImage;
   stopped: boolean;
   chosen: boolean;
+  /** 渡すと「マスクを塗る」を出す（止まっていないジョブの画像だけ） */
+  onPaint?: () => void;
 }) {
   const { data } = useSelections(jobId);
   const imageKey = formatImageKey({ iteration, index: image.index });
@@ -224,7 +284,103 @@ function ViewerImageDetails({
         stopped={stopped}
         chosen={chosen}
       />
+      {onPaint !== undefined && (
+        <Button className="h-7 px-2 text-xs" onClick={onPaint}>
+          マスクを塗る
+        </Button>
+      )}
     </div>
+  );
+}
+
+const PAINTING_LOCK = '塗っている間は前後へ送れません。';
+const PAINTING_HOLD =
+  '塗りかけがある間は、Esc や窓の外を押しても閉じません（閉じるボタンは、塗りかけを捨てて閉じます）。';
+
+/**
+ * 会話の画像を大きく見る窓。止まっていないジョブの画像には、窓の中でマスクを塗って送れる（ジョブの詳細と同じ口）。
+ * 塗っている間は前後へ送らない: 横に引いた筆が、なぞりとして次の画像への送りになるため。塗りかけがある間は、Esc と窓の外では閉じない。
+ * 塗る状態はここに置く: 筆を動かすたびに、会話のログまで描き直さないように
+ */
+function ConversationImageViewer({
+  images,
+  viewing,
+  onViewingChange,
+  stoppedJobs,
+  chosenImages,
+}: {
+  images: readonly (ViewerImage & { source: ViewerSource })[];
+  viewing: string | null;
+  onViewingChange: (key: string | null) => void;
+  stoppedJobs: ReadonlySet<string>;
+  chosenImages: ReadonlySet<string>;
+}) {
+  // 塗っている画像（窓の画像の key）。窓を閉じたら、塗りかけごと捨てる
+  const [paintingKey, setPaintingKey] = useState<string | null>(null);
+  const painted =
+    paintingKey === null || paintingKey !== viewing
+      ? undefined
+      : images.find((image) => image.key === paintingKey);
+  const painting = useMaskPainting(
+    painted === undefined
+      ? undefined
+      : {
+          jobId: painted.source.jobId,
+          iteration: painted.source.iteration,
+          index: painted.source.image.index,
+        },
+  );
+  const holding = painted !== undefined && painting.strokes.length > 0;
+  return (
+    <ImageViewer
+      images={images}
+      openKey={viewing}
+      onOpenKeyChange={(key) => {
+        setPaintingKey(null);
+        onViewingChange(key);
+      }}
+      keepOpen={holding}
+      {...(painted !== undefined && {
+        navigationLock: holding ? `${PAINTING_LOCK}${PAINTING_HOLD}` : PAINTING_LOCK,
+        stage: (
+          <MaskSurface
+            src={painted.fullSrc}
+            alt={painted.alt}
+            painting={painting}
+            imageClassName="block max-h-[50dvh] max-w-full"
+            loading={<p className="text-sm text-muted-foreground">原寸の画像を読み込んでいます…</p>}
+          />
+        ),
+      })}
+      details={(image) => {
+        if (painted !== undefined) {
+          return (
+            <div className="space-y-2">
+              <MaskTools
+                painting={painting}
+                onClose={() => setPaintingKey(null)}
+                closeLabel="塗るのをやめる"
+              />
+            </div>
+          );
+        }
+        const source = images.find((candidate) => candidate.key === image.key)?.source;
+        if (source === undefined) return null;
+        const imageKey = formatImageKey({
+          iteration: source.iteration,
+          index: source.image.index,
+        });
+        const stopped = stoppedJobs.has(source.jobId);
+        return (
+          <ViewerImageDetails
+            {...source}
+            stopped={stopped}
+            chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
+            {...(!stopped && { onPaint: () => setPaintingKey(image.key) })}
+          />
+        );
+      }}
+    />
   );
 }
 
@@ -235,7 +391,7 @@ function ImagesItem({
   open,
 }: {
   item: Extract<ChatItem, { kind: 'images' }>;
-  /** ジョブが止まった。採る（この画像で決める）は押せない */
+  /** ジョブが止まった。採る口（adopt）は使わず、決めるのはお気に入りの口で行う */
   stopped: boolean;
   /** 人が選んだ画像（<jobId>:<回>-<画像>） */
   chosenImages: ReadonlySet<string>;
@@ -344,23 +500,9 @@ function BestChoice({
   const imageKey = formatImageKey({ iteration, index });
   const verdict =
     data?.selections.find((selection) => selection.imageKey === imageKey)?.verdict ?? null;
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>();
   // 1 から数える: 画像の行（「N 回目の画像 M 番」）と同じ呼び方にするため
   const imageLabel = `${iteration} 回目の画像 ${index + 1} 番`;
   const urls = jobImageUrls(jobId, iteration, index);
-  async function choose() {
-    setPending(true);
-    setError(undefined);
-    try {
-      await setSelection(jobId, imageKey, 'favorite');
-    } catch (caught) {
-      if (!isApiError(caught)) throw caught;
-      setError(caught.message);
-    } finally {
-      setPending(false);
-    }
-  }
   return (
     <section
       aria-label={`最良の画像: ${imageLabel}`}
@@ -375,20 +517,12 @@ function BestChoice({
         <p className="break-words">
           最良: {imageLabel}（見る役の点 {formatScore(score)}）
         </p>
-        {verdict === 'favorite' ? (
-          <p className="text-xs text-ok">お気に入り</p>
-        ) : (
-          <Button
-            className="h-7 px-2 text-xs"
-            variant="primary"
-            disabled={pending}
-            aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
-            onClick={() => void choose()}
-          >
-            この画像に決める（お気に入りにする）
-          </Button>
-        )}
-        {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
+        <ChooseAsFavorite
+          jobId={jobId}
+          imageKey={imageKey}
+          imageLabel={imageLabel}
+          verdict={verdict}
+        />
         <p className="text-xs text-muted-foreground">続けるなら、話しかけて指示を出す。</p>
       </div>
     </section>
@@ -825,25 +959,12 @@ export function ConversationView({
   const last = items.at(-1);
   return (
     <>
-      <ImageViewer
+      <ConversationImageViewer
         images={viewerImages}
-        openKey={viewing}
-        onOpenKeyChange={setViewing}
-        details={(image) => {
-          const source = viewerImages.find((candidate) => candidate.key === image.key)?.source;
-          if (source === undefined) return null;
-          const imageKey = formatImageKey({
-            iteration: source.iteration,
-            index: source.image.index,
-          });
-          return (
-            <ViewerImageDetails
-              {...source}
-              stopped={stoppedJobs.has(source.jobId)}
-              chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
-            />
-          );
-        }}
+        viewing={viewing}
+        onViewingChange={setViewing}
+        stoppedJobs={stoppedJobs}
+        chosenImages={chosenImages}
       />
       <ChatLayout
         header={title}
