@@ -18,4 +18,7 @@ export const keys = {
   stopConditions: (jobId: string) => `/api/jobs/auto/${jobId}/stop-conditions`,
   llmCalls: (jobId: string) => `/api/jobs/${jobId}/llm-calls`,
   llmCall: (jobId: string, callId: string) => `/api/jobs/${jobId}/llm-calls/${callId}`,
+  conversations: '/api/conversations',
+  conversationEvents: (conversationId: string, after: number) =>
+    `/api/conversations/${conversationId}/events?after=${after}`,
 } as const;

@@ -2,6 +2,24 @@ import { z } from 'zod';
 
 import type { ConversationEvent, NewConversationEvent } from './events.js';
 
+/** 最初の発言から作る会話のタイトルの長さの上限 */
+export const CONVERSATION_TITLE_CHARS = 40;
+
+/**
+ * 最初の発言から、会話のタイトルを決定的に作る。最初の空でない行を、上限の長さで切る。
+ */
+// LLM に付けさせない: タイトルのためだけに呼び出しを1回足し、トークンを払うことになるため
+export function titleFromMessage(text: string): string {
+  const line =
+    text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l !== '') ?? '';
+  return line.length > CONVERSATION_TITLE_CHARS
+    ? `${line.slice(0, CONVERSATION_TITLE_CHARS - 1)}…`
+    : line;
+}
+
 /** conversation.json の中身 */
 export const conversationSchema = z.object({
   conversationId: z.string().min(1),
@@ -27,6 +45,8 @@ export interface ConversationStore {
   createConversation(now: Date): Promise<Conversation>;
   /** conversation.json のある会話だけを返す。ディレクトリを消せば一覧から消える */
   listConversationIds(): Promise<string[]>;
+  /** その会話があるか。形の違う ID には false を返す */
+  hasConversation(conversationId: string): Promise<boolean>;
   readConversation(conversationId: string): Promise<Conversation>;
   /** タイトルを直す */
   writeConversation(conversation: Conversation): Promise<void>;

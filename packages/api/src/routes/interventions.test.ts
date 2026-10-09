@@ -18,7 +18,12 @@ import { hc } from 'hono/client';
 import { createApi, type AppType } from '../index.js';
 import { MAX_MASK_BYTES } from '../masks.js';
 import { MAX_REFERENCE_BYTES } from '../references.js';
-import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
+import {
+  noCandidateNotes,
+  noPermissionSettings,
+  memoryBudgetSettings,
+  memoryConversations,
+} from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -61,6 +66,7 @@ beforeEach(async () => {
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
+    conversations: memoryConversations(),
     env: {},
     now,
   });

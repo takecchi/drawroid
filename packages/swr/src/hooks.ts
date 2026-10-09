@@ -10,6 +10,8 @@ import type {
   BudgetSettingsResponse,
   CandidateNotesResponse,
   CandidatesResponse,
+  ConversationEventsResponse,
+  ConversationsResponse,
   InterventionsResponse,
   IterationsResponse,
   JobDetail,
@@ -146,6 +148,29 @@ export function useMemoryItem(id: string | undefined) {
 }
 
 // ポーリングしない: 設定を変えるのは人間の操作だけで、保存の関数が mutate で取り直すため
+// 一覧は数秒おきに読み直す: 走っているかの印が、別のタブや会話の画面の操作で変わるため
+export function useConversations() {
+  return useSWR<ConversationsResponse, ApiError>(
+    keys.conversations,
+    () => unwrap<ConversationsResponse>(() => client.conversations.$get()),
+    { refreshInterval: JOBS_POLL_MS },
+  );
+}
+
+/** 確定したイベントの1ページ。続きは会話の画面が SSE で受ける */
+export function useConversationEvents(conversationId: string | undefined, after = 0) {
+  return useSWR<ConversationEventsResponse, ApiError>(
+    conversationId === undefined ? null : keys.conversationEvents(conversationId, after),
+    () =>
+      unwrap<ConversationEventsResponse>(() =>
+        client.conversations[':conversationId'].events.$get({
+          param: { conversationId: conversationId ?? '' },
+          query: { after: String(after) },
+        }),
+      ),
+  );
+}
+
 export function useLlmSettings() {
   return useSWR<LlmSettingsResponse, ApiError>(keys.llmSettings, () =>
     unwrap<LlmSettingsResponse>(() => client.settings.llm.$get()),

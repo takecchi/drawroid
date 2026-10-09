@@ -26,7 +26,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { memoryBudgetSettings } from './test-support.js';
+import { memoryBudgetSettings, memoryConversations } from './test-support.js';
 
 const base: Permissions = basicPermissions({ width: 64, height: 64 });
 
@@ -93,6 +93,7 @@ beforeEach(async () => {
       read: () => readCandidateNotes(paths.candidateNotes),
       write: (notes) => writeCandidateNotes(paths.candidateNotes, notes),
     },
+    conversations: memoryConversations(),
     env: {},
   });
 });
