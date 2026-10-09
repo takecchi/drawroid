@@ -60,6 +60,10 @@ export type AddReferenceResponse = Extract<
   InferResponseType<(typeof client.jobs.auto)[':jobId']['interventions']['$post'], 202>,
   { reference: unknown }
 >;
+export type AddMaskResponse = Extract<
+  InferResponseType<(typeof client.jobs.auto)[':jobId']['interventions']['$post'], 202>,
+  { mask: unknown }
+>;
 /** 参照画像1枚を送るときの形。data は base64 の文字列（api の validator の変換の前の形） */
 export type ReferenceUpload = ReferenceUploadInput;
 export type ReferencesResponse = InferResponseType<
