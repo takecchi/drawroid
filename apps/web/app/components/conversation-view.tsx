@@ -10,6 +10,7 @@ import {
   ImageRow,
   JobStartCard,
   JudgeNote,
+  LogRow,
   MessageRow,
   Muted,
   ReasoningBlock,
@@ -194,6 +195,28 @@ function describeParams(params: Record<string, unknown>): string[] {
   return Object.entries(params).map(
     ([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`,
   );
+}
+
+/**
+ * 画面の外の行を置いておく背の見積もり（px。狭い画面 / 広い画面）。390px と 1280px の幅で、長い会話の行を種類ごとに測った値から決めた
+ * （人の発言は中央値、画像のカードは画像4枚、AI の返答は「背 ≈ 55 + 0.46 × 字数」の当てはめ）。
+ * 一度描いた行は実際の背を覚えて使うので、見積もりが効くのは、まだ一度も画面に入っていない行だけ。
+ */
+function rowEstimate(item: ChatItem): { estimate: number; wideEstimate: number } {
+  switch (item.kind) {
+    case 'user':
+      return { estimate: 82, wideEstimate: 59 };
+    case 'assistant': {
+      const height = 55 + 0.46 * item.text.length;
+      return { estimate: height, wideEstimate: height };
+    }
+    case 'reasoning':
+      return { estimate: 40, wideEstimate: 40 };
+    case 'images':
+      return { estimate: 1940, wideEstimate: 770 };
+    default:
+      return { estimate: 100, wideEstimate: 100 };
+  }
 }
 
 function renderItem(
@@ -419,11 +442,10 @@ export function ConversationView({
       items.map((item) => {
         const cached = rowCache.current.get(item);
         if (cached !== undefined && cached.sending === sending) return cached.row;
-        const row = renderItem(
-          item,
-          { onResend: resend, disabled: sending },
-          stoppedJobs,
-          chosenImages,
+        const row = (
+          <LogRow key={item.key} {...rowEstimate(item)}>
+            {renderItem(item, { onResend: resend, disabled: sending }, stoppedJobs, chosenImages)}
+          </LogRow>
         );
         rowCache.current.set(item, { sending, row });
         return row;

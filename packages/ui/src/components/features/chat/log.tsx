@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -6,6 +6,40 @@ import { STATUS_TEXT, type ChatStatus } from './cards';
 
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
+
+/**
+ * ログの1行の入れ物。画面の外にある間は、配置と描画を飛ばす（content-visibility: auto）:
+ * 長い会話では、増分のたびに数千行ぶんの配置と描画が走り、描き直し1回の大半を占めるため。
+ * 行は DOM に残るので、ページの中の検索（Ctrl+F）と読み上げは、画面の外の古い発言にも届く。
+ *
+ * 画面の外にある間の背は、いちど描いた背を覚えて使う（contain-intrinsic-size の auto）。まだ描いていない行は見積もりの背で置く:
+ * 見積もりが実際の背から遠いほど、上へ戻したときに行がずれるので、行の種類ごとの見積もりを渡す（狭い画面と広い画面で別々に）。
+ */
+export function LogRow({
+  estimate,
+  wideEstimate = estimate,
+  children,
+}: {
+  /** 狭い画面での背の見積もり（px） */
+  estimate: number;
+  /** 広い画面（md 以上）での背の見積もり（px） */
+  wideEstimate?: number;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="[contain-intrinsic-size:auto_var(--row-estimate)] [content-visibility:auto] md:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
+      style={
+        {
+          '--row-estimate': `${Math.round(estimate)}px`,
+          '--row-estimate-wide': `${Math.round(wideEstimate)}px`,
+        } as CSSProperties
+      }
+    >
+      {children}
+    </div>
+  );
+}
 
 /**
  * 会話のログ。末尾を見ている間だけ、行が増えたら末尾へ追従する。人間が上へ戻って読んでいる間は追従しない。
