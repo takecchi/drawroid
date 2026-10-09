@@ -164,6 +164,12 @@ export {
   type DistillResult,
 } from './memory/distill/run.js';
 export {
+  DEFAULT_RESELECTION_QUIET_MS,
+  ReselectionDistiller,
+  type ReselectionDistillerDeps,
+  type ReselectionTimers,
+} from './memory/distill/reselection.js';
+export {
   buildDistillOutputSchema,
   type DistilledPreference,
   type DistillOperation,
