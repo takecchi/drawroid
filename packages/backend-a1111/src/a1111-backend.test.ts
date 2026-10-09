@@ -3,13 +3,7 @@ import { describeImageBackendContract, STUB_PNG } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { A1111Backend } from './a1111-backend.js';
-import {
-  fixture,
-  json,
-  startMockA1111,
-  unusedUrl,
-  type MockA1111,
-} from './test-support/mock-a1111.js';
+import { startMockA1111, unusedUrl, type MockA1111 } from './test-support/mock-a1111.js';
 
 describeImageBackendContract('A1111Backend against the mock A1111 (v1.10.1 fixtures)', {
   connected: async () => {
@@ -18,6 +12,18 @@ describeImageBackendContract('A1111Backend against the mock A1111 (v1.10.1 fixtu
   },
   unreachable: async () => ({ backend: new A1111Backend({ baseUrl: await unusedUrl() }) }),
 });
+
+// ControlNet の拡張の雛形は sd-webui-controlnet v1.1.455（56cec5b）のソースから起こしたもので、実機の応答ではない
+describeImageBackendContract(
+  'A1111Backend against the mock A1111 with the ControlNet extension (v1.1.455 fixtures)',
+  {
+    connected: async () => {
+      const a1111 = await startMockA1111({ controlnet: true });
+      return { backend: new A1111Backend({ baseUrl: a1111.url }), close: () => a1111.close() };
+    },
+    unreachable: async () => ({ backend: new A1111Backend({ baseUrl: await unusedUrl() }) }),
+  },
+);
 
 const base = { prompt: 'a cat', steps: 4, cfgScale: 7, seed: 42, width: 64, height: 64 };
 
@@ -121,24 +127,27 @@ describe('A1111Backend', () => {
     });
   });
 
-  it('reports ControlNet as unavailable, saying whether the extension is installed', async () => {
+  it('reports ControlNet as unavailable, with a reason, when the extension is not installed', async () => {
     expect((await backend.probe()).unavailable).toEqual([
       {
         feature: 'controlnet',
         reason: 'A1111 に ControlNet の拡張（sd-webui-controlnet）が入っていない',
       },
     ]);
-
-    a1111.route('GET /sdapi/v1/scripts', json(200, fixture('scripts-with-controlnet.json')));
-    const [controlnet] = (await backend.probe()).unavailable;
-    expect(controlnet?.reason).toContain('まだ ControlNet を扱わない');
     expect(await backend.listCandidates('controlnetModel')).toEqual([]);
+    expect(await backend.listCandidates('controlnetModule')).toEqual([]);
   });
 
-  it('refuses ControlNet units instead of quietly dropping them', async () => {
+  it('refuses ControlNet units when the extension is not installed, instead of quietly dropping them', async () => {
+    const images: GenerationImages = new Map([
+      ['refs/r1.png', { data: STUB_PNG, mediaType: 'image/png' }],
+    ]);
     await expect(
-      generate({ controlnet: [{ image: 'refs/r1.png', model: 'canny' }] }),
-    ).rejects.toMatchObject({ kind: 'failed', message: expect.stringContaining('ControlNet') });
+      generate({ controlnet: [{ image: 'refs/r1.png', model: 'canny' }] }, images),
+    ).rejects.toMatchObject({
+      kind: 'failed',
+      message: 'A1111 に ControlNet の拡張（sd-webui-controlnet）が入っていない',
+    });
     expect(a1111.requests.some((r) => r.method === 'POST')).toBe(false);
   });
 

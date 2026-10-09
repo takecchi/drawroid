@@ -22,6 +22,16 @@ Forge の雛形（`packages/backend-forge/src/test-support/fixtures/`）と対�
 | `upscalers.json`                               | `GET /sdapi/v1/upscalers`                                       | `modules/api/models.py:245-250`（`UpscalerItem`）、`modules/api/api.py:225`・`706-716`。アダプタ本体の PR で足した（契約が Hires. fix の拡大器の候補を求めるため） |
 | `latent-upscale-modes.json`                    | `GET /sdapi/v1/latent-upscale-modes`                            | `modules/api/models.py:252-253`（`LatentUpscalerModeItem`）、`modules/api/api.py:226`・`718-724`、一覧は `modules/shared.py:55-62`。同上                           |
 
+## ControlNet の拡張の雛形
+
+`controlnet-model-list.json`・`controlnet-module-list.json`・`controlnet-settings.json` は、A1111 本体ではなく ControlNet の拡張（Mikubill/sd-webui-controlnet、`version_flag` が `v1.1.455`、コミット `56cec5b`、2024-07-25）のソースから起こした。**実機の応答では未確認。** 拡張が入った構成でだけ使う（偽の A1111 の `startMockA1111({ controlnet: true })`。`/sdapi/v1/scripts` は `scripts-with-controlnet.json` になる）。行番号は v1.1.455 のもの。
+
+| ファイル                      | 口                            | 形の出どころ                                                                                                                                                                                                                                     |
+| ----------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `controlnet-model-list.json`  | `GET /controlnet/model_list`  | `scripts/api.py:54-58`、`internal_controlnet/external_code.py:335-347`。名前は「ファイル名（拡張子なし） [ハッシュ8桁]」（`scripts/global_state.py:55-60`）で、"None" は含まれない（`83-89`）。モデル名は例                                      |
+| `controlnet-module-list.json` | `GET /controlnet/module_list` | `scripts/api.py:60-67`、`internal_controlnet/external_code.py:350-393`。先頭は前処理なしの `none`（`scripts/supported_preprocessor.py:130-137`）。`module_detail` は形だけで、`sliders` は空、`model_free` は false にした（アダプタは読まない） |
+| `controlnet-settings.json`    | `GET /controlnet/settings`    | `scripts/api.py:94-97`。値は設定 `control_net_unit_count` で、既定は 3（`internal_controlnet/external_code.py:214-220`）                                                                                                                         |
+
 ## Forge の雛形と違う所（A1111 のアダプタが吸収する差）
 
 - **VAE の口が違う。** A1111 は `/sdapi/v1/sd-vae`（`{ model_name, filename }`）で、`model_name` はファイル名（拡張子つき・サブフォルダは付かない）。Forge の `/sdapi/v1/sd-modules` は A1111 に無い
@@ -45,6 +55,10 @@ curl -s "$A1111/sdapi/v1/cmd-flags"  > cmd-flags.json
 curl -s "$A1111/sdapi/v1/upscalers"  > upscalers.json
 curl -s "$A1111/sdapi/v1/latent-upscale-modes" > latent-upscale-modes.json
 curl -s "$A1111/sdapi/v1/scripts"    > scripts.json   # ControlNet の拡張を入れたときは scripts-with-controlnet.json に
+# ControlNet の拡張を入れたときだけ
+curl -s "$A1111/controlnet/model_list"  > controlnet-model-list.json
+curl -s "$A1111/controlnet/module_list" > controlnet-module-list.json
+curl -s "$A1111/controlnet/settings"    > controlnet-settings.json
 curl -s -X POST "$A1111/sdapi/v1/txt2img" -H 'content-type: application/json' \
   -d '{"prompt":"a cat","steps":4,"cfg_scale":7,"seed":42,"width":64,"height":64,"batch_size":2,"save_images":false}' \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(JSON.parse(s).info),null,2)))' \

@@ -1,5 +1,11 @@
-import { listSharedCandidates, withLabel } from '@drawroid/backend-sdapi';
-import { BackendError, type Candidate, type CandidateKind } from '@drawroid/core';
+import {
+  fetchControlNetModels,
+  fetchControlNetModules,
+  listSharedCandidates,
+  withLabel,
+  withoutHash,
+} from '@drawroid/backend-sdapi';
+import type { Candidate, CandidateKind } from '@drawroid/core';
 import { z } from 'zod';
 
 import type { ForgeClient } from './client.js';
@@ -34,9 +40,6 @@ export async function listForgeCandidates(
   }
 }
 
-const modelListSchema = z.object({ model_list: z.array(z.string()) });
-const moduleListSchema = z.object({ module_list: z.array(z.string()) });
-
 // 'None' を出さない: Forge の「指定なし」の名前で、中立の要求では欄を省くことで表すため
 const FORGE_NONE = 'None';
 
@@ -50,32 +53,16 @@ export async function listControlNetModels(
   client: ForgeClient,
   signal?: AbortSignal,
 ): Promise<string[]> {
-  const res = await getIfPresent(client, '/controlnet/model_list', modelListSchema, signal);
-  return (res?.model_list ?? []).filter((name) => name !== FORGE_NONE);
+  return ((await fetchControlNetModels(client, signal)) ?? []).filter(
+    (name) => name !== FORGE_NONE,
+  );
 }
 
 export async function listControlNetModules(
   client: ForgeClient,
   signal?: AbortSignal,
 ): Promise<string[]> {
-  const res = await getIfPresent(client, '/controlnet/module_list', moduleListSchema, signal);
-  return (res?.module_list ?? []).filter((name) => name !== FORGE_NONE);
-}
-
-async function getIfPresent<S extends z.ZodType>(
-  client: ForgeClient,
-  path: string,
-  schema: S,
-  signal: AbortSignal | undefined,
-): Promise<z.infer<S> | undefined> {
-  try {
-    return await client.getJson(path, schema, { signal });
-  } catch (error) {
-    if (error instanceof BackendError && error.kind === 'not_found') return undefined;
-    throw error;
-  }
-}
-
-function withoutHash(name: string): string {
-  return name.replace(/ \[[0-9a-f]+\]$/i, '');
+  return ((await fetchControlNetModules(client, signal)) ?? []).filter(
+    (name) => name !== FORGE_NONE,
+  );
 }

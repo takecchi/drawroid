@@ -16,6 +16,14 @@ const FIXTURE_ROUTES: Record<string, string> = {
   'GET /sdapi/v1/scripts': 'scripts.json',
 };
 
+// ControlNet の拡張（sd-webui-controlnet v1.1.455、56cec5b）が入った構成で増える口。雛形は拡張のソースから起こした
+const CONTROLNET_ROUTES: Record<string, string> = {
+  'GET /sdapi/v1/scripts': 'scripts-with-controlnet.json',
+  'GET /controlnet/model_list': 'controlnet-model-list.json',
+  'GET /controlnet/module_list': 'controlnet-module-list.json',
+  'GET /controlnet/settings': 'controlnet-settings.json',
+};
+
 export function fixture(name: string): unknown {
   return JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 }
@@ -66,10 +74,12 @@ export const fakeTxt2img: MockHandler = (req, res) => {
   })(req, res);
 };
 
-// 試験のための偽の A1111。雛形（fixtures/）の応答を返し、受けた要求を記録する
-export async function startMockA1111(): Promise<MockA1111> {
+// 試験のための偽の A1111。雛形（fixtures/）の応答を返し、受けた要求を記録する。
+// controlnet を true にすると、ControlNet の拡張が入った構成になる
+export async function startMockA1111({ controlnet = false } = {}): Promise<MockA1111> {
+  const files = { ...FIXTURE_ROUTES, ...(controlnet && CONTROLNET_ROUTES) };
   const routes = new Map<string, MockHandler>(
-    Object.entries(FIXTURE_ROUTES).map(([key, file]) => [key, json(200, fixture(file))]),
+    Object.entries(files).map(([key, file]) => [key, json(200, fixture(file))]),
   );
   routes.set('POST /sdapi/v1/txt2img', fakeTxt2img);
   // img2img の応答は txt2img と同じ形（modules/api/models.py の ImageToImageResponse）
