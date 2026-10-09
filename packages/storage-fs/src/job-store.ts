@@ -233,7 +233,7 @@ export class FsJobStore implements JobStore {
     intervention: NewIntervention,
     now: Date,
   ): Promise<InterventionRecord> {
-    const files = this.paths.jobFiles(jobId);
+    const files = this.jobFiles(jobId);
     await mkdir(files.interventions, { recursive: true });
     for (;;) {
       // jobId と同じ形の名前にする: 名前の順がそのまま受けた順になり、連番を数える読み書きが要らないため
@@ -251,7 +251,7 @@ export class FsJobStore implements JobStore {
   }
 
   async listInterventions(jobId: string): Promise<InterventionRecord[]> {
-    const files = this.paths.jobFiles(jobId);
+    const files = this.jobFiles(jobId);
     const names = (await listNames(files.interventions)).filter((name) => name.endsWith('.json'));
     const records: InterventionRecord[] = [];
     for (const name of names) {
@@ -265,7 +265,9 @@ export class FsJobStore implements JobStore {
     interventionId: string,
     iteration: number,
   ): Promise<void> {
-    const path = this.paths.jobFiles(jobId).intervention(interventionId);
+    // interventionId も jobId と同じ形なので、同じ検査を通してからパスを組む
+    if (!isJobId(interventionId)) throw new Error(`interventionId の形ではない: ${interventionId}`);
+    const path = this.jobFiles(jobId).intervention(interventionId);
     const record = await readValid(path, interventionRecordSchema);
     if (record.kind !== 'instruction') {
       throw new StoredFileError(path, new Error('人間の指示ではないので、取り込んだ回を持たない'));
