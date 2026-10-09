@@ -851,7 +851,8 @@ describe('plan.json records what was left out of the AI choices', () => {
 
   it.each([
     ['auto', { mode: 'auto' }],
-    ['fixed', { mode: 'fixed', value: {} }],
+    // 固定の値は、要求の controlnet の欄と同じ形（ユニットの配列）にする
+    ['fixed', { mode: 'fixed', value: [{ image: 'refs/r1.png', model: 'canny' }] }],
   ] as const)(
     'keeps controlnet the backend cannot do, with what the human wanted (%s)',
     async (wanted, permission) => {
