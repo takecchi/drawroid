@@ -197,3 +197,4 @@ export * from './conversation/recovery.js';
 export * from './conversation/memory-tools.js';
 export * from './conversation/drawing.js';
 export * from './conversation/drawing-tools.js';
+export * from './conversation/review-tools.js';
