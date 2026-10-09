@@ -5,6 +5,7 @@ import { autoJobsRoutes } from './routes/auto-jobs.js';
 import { backendRoutes } from './routes/backend.js';
 import { filesRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
+import { interventionsRoutes } from './routes/interventions.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { llmSettingsRoutes } from './routes/llm-settings.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
@@ -19,6 +20,7 @@ export function createApi(deps: ApiDeps) {
     .route('/backend', backendRoutes(deps))
     .route('/jobs/manual', manualJobsRoutes(deps))
     .route('/jobs/auto', autoJobsRoutes(deps))
+    .route('/jobs/auto', interventionsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps));

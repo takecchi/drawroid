@@ -75,10 +75,22 @@ class StopJob extends Error {
 
 const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
 
-export class StopConditionsNotChangeableError extends Error {
-  constructor(jobId: string, why: string) {
-    super(`ジョブ ${jobId} の止める条件は変えられない: ${why}`);
-    this.name = 'StopConditionsNotChangeableError';
+/** 口出しを断った理由。manual は口出しを受けない手動のジョブ、unstoppable は重ねると止まらなくなる変更 */
+export type InterventionRejection = 'manual' | 'stopped' | 'unstoppable';
+
+const REJECTION_MESSAGES: Record<InterventionRejection, string> = {
+  manual: '口出しを受けない手動のジョブ',
+  stopped: 'もう止まっている',
+  unstoppable: '重ねると AI の判断も上限も無くなり、ジョブが止まらなくなる',
+};
+
+export class InterventionRejectedError extends Error {
+  constructor(
+    jobId: string,
+    readonly reason: InterventionRejection,
+  ) {
+    super(`ジョブ ${jobId} への口出しは受けられない: ${REJECTION_MESSAGES[reason]}`);
+    this.name = 'InterventionRejectedError';
   }
 }
 
@@ -130,28 +142,32 @@ export class JobRunner {
    * 変更を重ねたあとの、実際の止める条件を返す。
    */
   async changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions> {
-    const { store } = this.deps;
     const parsed = stopConditionsChangeSchema.parse(change);
-    const spec = await store.readJob(jobId);
-    if (spec.kind !== 'auto') {
-      throw new StopConditionsNotChangeableError(jobId, '止める条件の無い手動のジョブ');
-    }
-    if ((await store.readState(jobId)).status === 'stopped') {
-      throw new StopConditionsNotChangeableError(jobId, 'もう止まっている');
-    }
+    const spec = await this.acceptingJob(jobId);
     const changed = effectiveStopConditions(await this.stopConditions(spec), [parsed]);
-    if (!hasAnyStopCondition(changed)) {
-      throw new StopConditionsNotChangeableError(
-        jobId,
-        '重ねると AI の判断も上限も無くなり、ジョブが止まらなくなる',
-      );
-    }
-    await store.addIntervention(
+    if (!hasAnyStopCondition(changed)) throw new InterventionRejectedError(jobId, 'unstoppable');
+    await this.deps.store.addIntervention(
       jobId,
       { kind: 'stopConditions', stopConditions: parsed },
       this.now(),
     );
     return changed;
+  }
+
+  /** 走行中・待ち行列のジョブに人間の指示を置く。走っている段には触れず、次の回の「考える」から効く */
+  async addInstruction(jobId: string, text: string): Promise<InterventionRecord> {
+    await this.acceptingJob(jobId);
+    return this.deps.store.addIntervention(jobId, { kind: 'instruction', text }, this.now());
+  }
+
+  /** 口出しを受けられる自動ジョブ（止まっていないもの）を返す */
+  private async acceptingJob(jobId: string): Promise<AutoJobSpec> {
+    const spec = await this.deps.store.readJob(jobId);
+    if (spec.kind !== 'auto') throw new InterventionRejectedError(jobId, 'manual');
+    if ((await this.deps.store.readState(jobId)).status === 'stopped') {
+      throw new InterventionRejectedError(jobId, 'stopped');
+    }
+    return spec;
   }
 
   private async stopConditions(spec: AutoJobSpec): Promise<StopConditions> {

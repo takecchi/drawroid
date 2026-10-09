@@ -11,9 +11,18 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
     backend,
     store,
     manualRunner: new ManualGenerationRunner({ backend, store }),
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
   };
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('サーバの試験では使わない口');
 }

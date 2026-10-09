@@ -28,7 +28,12 @@ function makeApp(env: Record<string, string | undefined>) {
     backend: {} as ImageBackend,
     store: {} as JobStore,
     manualRunner: {} as ManualGenerationRunner,
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: {
       read: async () => saved,
@@ -139,3 +144,7 @@ describe('API key values', () => {
     expect(written).toEqual([]);
   });
 });
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
+}

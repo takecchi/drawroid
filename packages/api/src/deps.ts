@@ -1,8 +1,23 @@
-import type { Budget, ImageBackend, JobStore, ManualGenerationRunner } from '@drawroid/core';
+import type {
+  Budget,
+  ImageBackend,
+  InterventionRecord,
+  JobStore,
+  ManualGenerationRunner,
+  StopConditions,
+  StopConditionsChange,
+} from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
 
 /** 自動ジョブの待ち行列。JobRunner をそのまま渡せる形にしてある */
-export type AutoJobQueue = { kick(): void; stop(jobId: string): Promise<void> };
+export type AutoJobQueue = {
+  kick(): void;
+  stop(jobId: string): Promise<void>;
+  /** 断るときは InterventionRejectedError を投げる */
+  addInstruction(jobId: string, text: string): Promise<InterventionRecord>;
+  /** 重ねたあとの実際の止める条件を返す。断るときは InterventionRejectedError を投げる */
+  changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
+};
 
 export type LlmSettingsStore = {
   read(): Promise<unknown | undefined>;

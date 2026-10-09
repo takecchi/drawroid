@@ -17,6 +17,11 @@ export function notFound(c: Context, message: string) {
   return c.json(errorBody('not_found', message), 404);
 }
 
+/** 要求は正しいが、対象の今の状態では受けられない（止まったジョブへの口出しなど） */
+export function conflict(c: Context, message: string) {
+  return c.json(errorBody('conflict', message), 409);
+}
+
 // kind はバックエンドのエラーの種類をそのまま返す: 画面が「落ちている」のか「URL が違う」のかを見分けられるようにするため
 export function backendFailure(c: Context, error: unknown) {
   if (!isBackendError(error)) throw error;

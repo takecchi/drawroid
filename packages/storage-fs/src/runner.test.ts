@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_BUDGET,
   JobRunner,
-  StopConditionsNotChangeableError,
+  InterventionRejectedError,
   THINK_PARAM_KEYS,
   type AutoJobSpec,
   type GenerationRequest,
@@ -483,7 +483,10 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     await runner.idle();
 
     await expect(runner.changeStopConditions(spec.jobId, { maxIterations: 3 })).rejects.toThrow(
-      StopConditionsNotChangeableError,
+      InterventionRejectedError,
+    );
+    await expect(runner.addInstruction(spec.jobId, '逆光にして')).rejects.toThrow(
+      InterventionRejectedError,
     );
     expect(await store.listInterventions(spec.jobId)).toEqual([]);
   });
