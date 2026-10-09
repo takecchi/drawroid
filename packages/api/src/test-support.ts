@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  basicPermissions,
   DEFAULT_BUDGET,
   generationRequestSchema,
   ManualGenerationRunner,
@@ -14,7 +15,21 @@ import { StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 
+import type { CandidateNotesStore, PermissionSettingsStore } from './deps.js';
 import { createApi } from './index.js';
+
+/** 許可の設定を使わない試験のための、何も書かれていない置き場所 */
+export const noPermissionSettings: PermissionSettingsStore = {
+  base: basicPermissions({ width: 64, height: 64 }),
+  read: async () => undefined,
+  write: async () => undefined,
+};
+
+/** 候補の説明を使わない試験のための、何も書かれていない置き場所 */
+export const noCandidateNotes: CandidateNotesStore = {
+  read: async () => ({ notes: new Map() }),
+  write: async () => undefined,
+};
 
 export async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'drawroid-api-'));
@@ -35,6 +50,8 @@ export async function setup() {
     },
     budget: DEFAULT_BUDGET,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
     backendSettings: {

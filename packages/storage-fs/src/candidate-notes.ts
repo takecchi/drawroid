@@ -4,6 +4,16 @@ import { basename } from 'node:path';
 import type { CandidateNotes } from '@drawroid/core';
 import { z } from 'zod';
 
+import { writeJsonAtomic } from './atomic.js';
+
+/** 候補の説明を、「候補の名前 → 説明」の JSON として丸ごと書く。検証は呼び手（API）が行う */
+export async function writeCandidateNotes(
+  path: string,
+  notes: Readonly<Record<string, string>>,
+): Promise<void> {
+  await writeJsonAtomic(path, notes);
+}
+
 // 候補の名前 → 説明（architecture の配置の candidate-notes.json）
 const candidateNotesSchema = z.record(z.string().min(1), z.string().trim().min(1));
 

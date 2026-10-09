@@ -1,5 +1,6 @@
 import type {
   Budget,
+  CandidateNotes,
   ImageBackend,
   InterventionRecord,
   JobStore,
@@ -8,6 +9,7 @@ import type {
   MaskIntervention,
   NewMask,
   NewReference,
+  Permissions,
   ReferenceRecord,
   StopConditions,
   StopConditionsChange,
@@ -36,6 +38,21 @@ export type LlmSettingsStore = {
   write(config: LlmConfig): Promise<void>;
 };
 
+/** config.json の permissions（全体の既定の許可のうち、書いたパラメータだけ） */
+export type PermissionSettingsStore = {
+  /** 設定に何も書かないときの土台。書いた欄はこれに重なる */
+  base: Permissions;
+  /** 無ければ undefined。中身は検証していない（人間が手で直したものを含む） */
+  read(): Promise<unknown | undefined>;
+  write(overrides: Partial<Permissions>): Promise<void>;
+};
+
+/** candidate-notes.json（候補の名前 → 人間の短い説明） */
+export type CandidateNotesStore = {
+  read(): Promise<CandidateNotes>;
+  write(notes: Readonly<Record<string, string>>): Promise<void>;
+};
+
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
@@ -47,6 +64,8 @@ export type ApiDeps = {
   budget: Budget;
   llmSettings: LlmSettingsStore;
   stopConditionParser: StopConditionParser;
+  permissionSettings: PermissionSettingsStore;
+  candidateNotes: CandidateNotesStore;
   /** API キーの環境変数が入っているかを確かめるため。値は応答に出さない */
   env: Readonly<Record<string, string | undefined>>;
   now?: () => Date;

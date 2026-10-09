@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BackendBusyError, type BackendSettingsView } from '../backend-settings.js';
 import { createApi } from '../index.js';
+import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
 
 function setup(initial: BackendSettingsView, { busy = false } = {}) {
   let view = initial;
@@ -36,6 +37,8 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
       addMask: notUsed,
     },
     budget: DEFAULT_BUDGET,
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     env: {},

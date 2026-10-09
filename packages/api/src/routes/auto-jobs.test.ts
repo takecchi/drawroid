@@ -8,6 +8,7 @@ import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
+import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -40,6 +41,8 @@ beforeEach(async () => {
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     env: {},
     now,
     backendSettings: {
