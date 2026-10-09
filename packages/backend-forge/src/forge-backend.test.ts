@@ -191,4 +191,16 @@ describe('ForgeBackend default time limits', () => {
       await generating.catch(() => undefined);
     }
   });
+
+  // 生成の上限を渡さない: 候補の一覧・進み具合・止める呼び出しは短く答えるはずで、生成の上限では止まったバックエンドを長く待ってしまう
+  it.each([
+    ['listing candidates', (b: ForgeBackend) => b.listCandidates('checkpoint')],
+    ['reading the progress', (b: ForgeBackend) => b.progress(new AbortController().signal)],
+    ['interrupting', (b: ForgeBackend) => b.interrupt()],
+  ])('limits %s to 30 seconds', async (_, call) => {
+    const limits = vi.spyOn(AbortSignal, 'timeout');
+    await call(new ForgeBackend({ baseUrl: forge.url }));
+    expect(limits.mock.calls.length).toBeGreaterThan(0);
+    expect(limits.mock.calls.map(([ms]) => ms)).toEqual(limits.mock.calls.map(() => 30_000));
+  });
 });

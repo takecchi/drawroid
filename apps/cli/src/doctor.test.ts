@@ -256,12 +256,23 @@ describe('runDoctor', () => {
   });
 
   // 本番と同じ大きさで確かめる: 見る役に渡る縮小版の長辺は、設定した予算（budgets.imageLongEdge）で決まる。
-  // 読めない値なら、起動と同じく既定（512）で動く
+  // 読めない値なら、起動と同じく既定（512）で動く。ほかの欄だけが読めないときは、読めた長辺をそのまま使う（起動と同じ）
   it.each([
     ['no budget', undefined, 512],
     ['a long edge of 256', { imageLongEdge: 256 }, 256],
     ['a long edge of 1024', { imageLongEdge: 1024 }, 1024],
     ['an unreadable long edge', { imageLongEdge: 5 }, 512],
+    ['a long edge written as a string', { imageLongEdge: '256' }, 512],
+    ['a negative long edge', { imageLongEdge: -256 }, 512],
+    ['a long edge of 0', { imageLongEdge: 0 }, 512],
+    ['a null long edge', { imageLongEdge: null }, 512],
+    ['a fractional long edge', { imageLongEdge: 256.5 }, 512],
+    ['a huge long edge', { imageLongEdge: 1e9 }, 512],
+    [
+      'a long edge of 256 next to an unreadable field',
+      { imageLongEdge: 256, text: { prompt: -1 } },
+      256,
+    ],
   ])('shows the judge an image as large as the budget says, with %s', async (_, budgets, edge) => {
     const llm = await startLlm({ rejectWebp: false });
     await setup({
