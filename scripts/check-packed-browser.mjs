@@ -150,6 +150,21 @@ try {
     (await page.locator('details#budgets').getAttribute('open')) === null,
     '予算は「詳しい設定」として畳んである',
   );
+  // 狭い画面（390 幅）でも、provider の欄（接続先など）が provider の枠からはみ出さない
+  const wideViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const overflowing = await page.evaluate(`(() => {
+    const box = document.querySelector('[aria-label="provider 1番目 の名前"]').closest('fieldset').getBoundingClientRect();
+    return [...document.querySelectorAll('fieldset input, fieldset select')]
+      .filter((el) => el.closest('fieldset').contains(document.querySelector('[aria-label="provider 1番目 の名前"]')))
+      .filter((el) => el.getBoundingClientRect().right > box.right + 0.5)
+      .map((el) => el.getAttribute('aria-label') ?? el.name);
+  })()`);
+  expect(
+    Array.isArray(overflowing) && overflowing.length === 0,
+    `狭い画面でも、provider の欄が provider の枠からはみ出さない（はみ出し: ${JSON.stringify(overflowing)}）`,
+  );
+  if (wideViewport !== null) await page.setViewportSize(wideViewport);
   await page.getByLabel('provider 1番目 の名前').fill('local');
   await page.getByLabel('provider local の接続先（baseURL）').fill(llm.url);
   await page.getByLabel('考える役の provider').fill('local');
