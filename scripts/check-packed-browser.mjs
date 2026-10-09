@@ -2,42 +2,16 @@
 // （M0 の受け入れ基準「ブラウザで Web UI が開ける」）。HTTP の確かめ（check-packed-install）では見えない、JS が動いて画面が描かれること・
 // CSS が効いていること・コンソールにエラーが出ないことを見る。
 // 前提: `pnpm build` 済み（web の build/client が要る）。
-// ブラウザは取得しない: PLAYWRIGHT_CHROMIUM_PATH があればそれを、無ければ入っている Chrome（CI の ubuntu-latest にある）を、
-// それも無ければ playwright の cache にある Chromium を使う。
+// ブラウザは取得しない（scripts/packed-browser-core.mjs の launchBrowser）。
 import { mkdtemp, rm } from 'node:fs/promises';
-import console from 'node:console';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 
-import { chromium } from 'playwright-core';
-
+import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
 import { freePort, packAndInstall, startDrawroid } from './packed-install-core.mjs';
 
 const STEP_TIMEOUT_MS = 15_000;
-
-/** @returns {Promise<import('playwright-core').Browser>} */
-async function launch() {
-  const path = process.env.PLAYWRIGHT_CHROMIUM_PATH;
-  if (path !== undefined && path !== '') return chromium.launch({ executablePath: path });
-  try {
-    return await chromium.launch({ channel: 'chrome' });
-  } catch (error) {
-    console.log(
-      `Chrome を起動できなかったので、playwright の Chromium を使う: ${String(error).split('\n')[0]}`,
-    );
-    return chromium.launch();
-  }
-}
-
-/**
- * @param {boolean} ok
- * @param {string} message
- */
-function expect(ok, message) {
-  if (!ok) throw new Error(message);
-  console.log(`ok: ${message}`);
-}
 
 const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-packed-browser-'));
 /** @type {import('node:child_process').ChildProcess | undefined} */
@@ -60,23 +34,10 @@ try {
     await created.json()
   );
 
-  browser = await launch();
+  browser = await launchBrowser();
   const page = await browser.newPage();
   page.setDefaultTimeout(STEP_TIMEOUT_MS);
-  /** @type {string[]} */
-  const problems = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') problems.push(`コンソールのエラー: ${message.text()}`);
-  });
-  page.on('pageerror', (error) => problems.push(`ページの例外: ${error.message}`));
-  page.on('response', (response) => {
-    if (response.url().startsWith(base) && response.status() >= 400) {
-      problems.push(`${response.status()} ${response.url()}`);
-    }
-  });
-  page.on('requestfailed', (request) => {
-    if (request.url().startsWith(base)) problems.push(`読めなかった: ${request.url()}`);
-  });
+  const problems = collectProblems(page, base);
 
   const response = await page.goto(`${base}/`);
   expect(response?.status() === 200, '`/` が 200 を返す');

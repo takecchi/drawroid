@@ -20,7 +20,8 @@
     "check:duplicate-json-keys": "node ./scripts/check-duplicate-json-keys.mjs",
     "check:packed-install": "node ./scripts/check-packed-install.mjs",
     "check:packed-conversation": "node ./scripts/check-packed-conversation.mjs",
-    "check:packed-browser": "node ./scripts/check-packed-browser.mjs"
+    "check:packed-browser": "node ./scripts/check-packed-browser.mjs",
+    "check:packed-browser-conversation": "node ./scripts/check-packed-browser-conversation.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
