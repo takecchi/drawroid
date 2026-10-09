@@ -4,11 +4,19 @@ import { cn } from '@/lib/utils';
 
 import { STATUS_TEXT, type ChatStatus } from './cards';
 
+/**
+ * 行の数がこれを超えた会話だけ、画面の外の行の配置と描画を飛ばす（LogRow）。
+ * 短い会話では飛ばさない: 飛ばすと、画面に入るたびに行を描き起こすぶん、速いスクロールが重くなる（CPU 4x で、フレームの p95 が
+ * 16.8 → 33.4 ms）。線は CPU 4x で測って決めた: 飛ばさない場合、流れている間に 20 ms を超えるフレームは 300 行で 3〜10%（困らない）、
+ * 350 行で 14〜21%、400 行で 33〜36%。飛ばすと 350 行で 2〜8%、400 行で 8〜15% に下がる。得が損を上回るのは 300 行より長い会話だった
+ */
+export const SKIP_OFFSCREEN_AFTER_ROWS = 300;
+
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
 
 /**
- * ログの1行の入れ物。画面の外にある間は、配置と描画を飛ばす（content-visibility: auto）:
+ * ログの1行の入れ物。会話が長い間（ChatLog の `rowCount` が SKIP_OFFSCREEN_AFTER_ROWS を超える間）は、画面の外にある間の配置と描画を飛ばす（content-visibility: auto）:
  * 長い会話では、増分のたびに数千行ぶんの配置と描画が走り、描き直し1回の大半を占めるため。
  * 行は DOM に残るので、ページの中の検索（Ctrl+F）と読み上げは、画面の外の古い発言にも届く。
  *
@@ -28,7 +36,10 @@ export function LogRow({
 }) {
   return (
     <div
-      className="[contain-intrinsic-size:auto_var(--row-estimate)] [content-visibility:auto] md:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
+      // 飛ばすかは、ログの側の印（data-skip-offscreen）で切り替える: 行ごとに渡すと、長さの線を越えたときに全部の行を作り直すことになるため。
+      // 背の見積もり（contain-intrinsic-size）も飛ばす間だけ付ける: 短い会話でも付けると、描いた背を覚える手間が毎フレーム全部の行に掛かり、
+      // 流れている間に 20 ms を超えるフレームが CPU 4x・200 行で 12% → 50% に増えたため
+      className="group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate)] group-data-[skip-offscreen]/log:[content-visibility:auto] md:group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
       style={
         {
           '--row-estimate': `${Math.round(estimate)}px`,
@@ -47,10 +58,13 @@ export function LogRow({
  */
 export function ChatLog({
   followKey,
+  rowCount = 0,
   className,
   children,
 }: {
   followKey: unknown;
+  /** ログの行（LogRow）の数。SKIP_OFFSCREEN_AFTER_ROWS を超えたら、画面の外の行の描画を飛ばす */
+  rowCount?: number;
   className?: string;
   children: ReactNode;
 }) {
@@ -58,7 +72,14 @@ export function ChatLog({
   const contentRef = useRef<HTMLDivElement>(null);
   // 描き直しを起こさない値で持つ: 背が伸びたときの観測の中から読むため
   const following = useRef(true);
+  // 画面の外の描画を飛ばし始めるのは、線を越えて、かつ末尾を追っているときだけ。一度始めたら、線より短くなるまで続ける。
+  // 上を読んでいる間に越えても始めない: 飛ばし始めた瞬間、描いた背を覚えていない上の行が見積もりの背に縮み、読んでいる行が大きくずれるため
+  // （末尾を追っている間なら、末尾へ寄せ直すので画面は動かない）
+  const skipping = useRef(false);
+  if (rowCount <= SKIP_OFFSCREEN_AFTER_ROWS) skipping.current = false;
+  else if (following.current) skipping.current = true;
   const lastTop = useRef(0);
+  const lastHeight = useRef(0);
   useEffect(() => {
     const element = ref.current;
     if (element !== null && following.current) element.scrollTop = element.scrollHeight;
@@ -84,14 +105,32 @@ export function ChatLog({
         const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
         // 末尾から遠いだけでは追うのをやめない: 末尾へ動かした出来事が届くまでに画像の背が伸びると、
         // 人が何もしていなくても遠く見えるため。やめるのは、人が上へ戻した（位置が上に動いた）ときだけ
+        // 下へ動かしたときは、前に見たときの末尾までの距離でも見る: 末尾へ戻した出来事が届くまでに、画面に入った行が
+        // 見積もりの背より高く描かれると（長い会話で画面の外の描画を飛ばしているとき）、末尾まで戻したのに遠く見えるため
+        const grown = element.scrollHeight - lastHeight.current;
+        const movedDown = element.scrollTop > lastTop.current;
         if (distance < FOLLOW_THRESHOLD_PX) following.current = true;
-        else if (element.scrollTop < lastTop.current) following.current = false;
+        else if (movedDown && distance - grown < FOLLOW_THRESHOLD_PX) {
+          following.current = true;
+          // 伸びた知らせ（ResizeObserver）はこの出来事より先に来ていて、もう来ないことがあるので、ここで末尾まで寄せる
+          element.scrollTop = element.scrollHeight;
+          // 上へ動いても、背が縮んだときは人が戻したとみなさない: 上の行が縮むと、位置もそのぶん上へ引かれるため
+        } else if (
+          element.scrollTop < lastTop.current &&
+          element.scrollHeight >= lastHeight.current
+        )
+          following.current = false;
         lastTop.current = element.scrollTop;
+        lastHeight.current = element.scrollHeight;
       }}
       // スクロールの錨止めを切る: 上の行の背が伸びるとブラウザが位置をずらし、その出来事を人が上へ戻ったと読んでしまうため
       className={cn('min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]', className)}
     >
-      <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
+      <div
+        ref={contentRef}
+        data-skip-offscreen={skipping.current ? '' : undefined}
+        className="group/log mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6"
+      >
         {children}
       </div>
     </div>

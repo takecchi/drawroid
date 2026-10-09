@@ -495,6 +495,7 @@ export function ConversationView({
       status={currentStatus(chat)}
       log={
         <ChatLog
+          rowCount={items.length}
           followKey={`${items.length}:${last?.kind === 'assistant' || last?.kind === 'reasoning' ? last.text.length : ''}`}
         >
           <SetupNotice />
