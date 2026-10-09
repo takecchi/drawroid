@@ -175,6 +175,22 @@ describe('streaming parts', () => {
     ]);
   });
 
+  it('replaces the text with the snapshot sent when the subscription starts again', () => {
+    const before = live(EMPTY_CHAT_STATE, {
+      type: 'delta.text',
+      partId: 'm1',
+      turn: 1,
+      text: '描き',
+    });
+    const reconnected = live(
+      before,
+      { type: 'delta.text', partId: 'm1', turn: 1, text: '描きます', replace: true },
+      { type: 'delta.text', partId: 'm1', turn: 1, text: '。' },
+    );
+
+    expect(chatItems(reconnected)).toMatchObject([{ kind: 'assistant', text: '描きます。' }]);
+  });
+
   it('ignores a delta that arrives after its part was confirmed', () => {
     const confirmed = confirmAll([
       { type: 'assistant.message', turn: 1, partId: 'm1', text: '済み', interrupted: true },
