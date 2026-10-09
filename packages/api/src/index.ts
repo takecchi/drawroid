@@ -16,7 +16,7 @@ import { iterationsRoutes } from './routes/iterations.js';
 import { interventionsRoutes } from './routes/interventions.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { llmSettingsRoutes } from './routes/llm-settings.js';
-import { llmCallsRoutes } from './routes/llm-calls.js';
+import { llmCallsRoutes, unattachedLlmCallsRoutes } from './routes/llm-calls.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
 import { memoryRoutes } from './routes/memory.js';
 import { permissionSettingsRoutes } from './routes/permission-settings.js';
@@ -60,6 +60,7 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs/auto', autoJobsRoutes(deps))
     .route('/jobs/:jobId/iterations', iterationsRoutes(deps))
     .route('/jobs/:jobId/llm-calls', llmCallsRoutes(deps))
+    .route('/llm-calls', unattachedLlmCallsRoutes(deps))
     .route('/jobs/auto', interventionsRoutes(deps))
     .route('/jobs/auto', stopConditionsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))

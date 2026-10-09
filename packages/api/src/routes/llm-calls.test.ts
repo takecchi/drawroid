@@ -121,3 +121,63 @@ describe('GET /jobs/:jobId/llm-calls/:callId', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ジョブに属さない呼び出し（止める条件の変換など）。PRD:140 の「全ての LLM 呼び出し…UI で見られる」
+describe('GET /llm-calls', () => {
+  const unattached = (callId: string, overrides: Parameters<typeof llmRecord>[3] = {}) =>
+    llmRecord('', callId, null, {
+      jobId: null,
+      role: 'think',
+      purpose: 'stop-parse',
+      ...overrides,
+    });
+
+  it('lists the calls that belong to no job, newest first, without those of the jobs', async () => {
+    await env.store.writeLlmCall(unattached('20261009T000001Z-a'));
+    await env.store.writeLlmCall(
+      unattached('20261009T000002Z-b', { usage: { inputTokens: 30, outputTokens: 4 } }),
+    );
+
+    const res = await env.api.request('/llm-calls');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ListBody;
+    expect(body.calls.map((c) => c.callId)).toEqual(['20261009T000002Z-b', '20261009T000001Z-a']);
+    expect(body.calls[0]).toMatchObject({ purpose: 'stop-parse', iteration: null, ok: true });
+    expect(body.total).toEqual({ calls: 2, inputTokens: 40, outputTokens: 9, durationMs: 200 });
+    // 一覧には中身を載せない
+    expect(JSON.stringify(body)).not.toContain('USER-TEXT');
+  });
+
+  it('answers an empty list before any such call was made', async () => {
+    const res = await env.api.request('/llm-calls');
+    expect(await res.json()).toEqual({
+      calls: [],
+      total: { calls: 0, inputTokens: 0, outputTokens: 0, durationMs: 0 },
+      invalid: [],
+    });
+  });
+
+  it('returns the whole record of one call, and 404 for a call of a job or an unknown one', async () => {
+    await env.store.writeLlmCall(unattached('20261009T000001Z-a'));
+
+    const res = await env.api.request('/llm-calls/20261009T000001Z-a');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      input: { system: 'SYSTEM-PROMPT' },
+      purpose: 'stop-parse',
+    });
+    for (const callId of ['0001', 'missing', '..%2Fconfig']) {
+      expect((await env.api.request(`/llm-calls/${callId}`)).status, callId).toBe(404);
+    }
+  });
+
+  it('reports a broken record as invalid and answers 422 for it', async () => {
+    await env.store.writeLlmCall(unattached('20261009T000001Z-a'));
+    await writeFile(`${env.paths.llmCalls}/20261009T000002Z-x.json`, '{ broken');
+
+    const list = (await (await env.api.request('/llm-calls')).json()) as ListBody;
+    expect(list.calls.map((c) => c.callId)).toEqual(['20261009T000001Z-a']);
+    expect(list.invalid.map((i) => i.callId)).toEqual(['20261009T000002Z-x']);
+    expect((await env.api.request('/llm-calls/20261009T000002Z-x')).status).toBe(422);
+  });
+});

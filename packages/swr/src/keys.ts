@@ -18,6 +18,9 @@ export const keys = {
   stopConditions: (jobId: string) => `/api/jobs/auto/${jobId}/stop-conditions`,
   llmCalls: (jobId: string) => `/api/jobs/${jobId}/llm-calls`,
   llmCall: (jobId: string, callId: string) => `/api/jobs/${jobId}/llm-calls/${callId}`,
+  /** ジョブに属さない LLM 呼び出し（止める条件の変換など） */
+  unattachedLlmCalls: '/api/llm-calls',
+  unattachedLlmCall: (callId: string) => `/api/llm-calls/${callId}`,
   conversations: '/api/conversations',
   conversationEvents: (conversationId: string, after: number) =>
     `/api/conversations/${conversationId}/events?after=${after}`,
