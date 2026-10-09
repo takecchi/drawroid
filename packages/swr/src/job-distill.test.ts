@@ -200,3 +200,56 @@ describe('useJobDistill, in seconds', () => {
     expect(result.current.pending).toBe(false);
   });
 });
+
+// 選び直したあとの読み直しも、時間そのもので見る（#276: 同じ間隔 2・4・8・16・30・60 秒、押すたびに回数を数え直す）
+describe('useJobDistill after a reselection, in seconds', () => {
+  const onDefaultCache = ({ children }: { children: ReactNode }) =>
+    createElement(SWRConfig, { value: { dedupingInterval: 0 } }, children);
+  afterEach(async () => {
+    await mutate(keys.jobDistill('job-1'), undefined, { revalidate: false });
+    await mutate(keys.jobDistillWait('job-1'), undefined, { revalidate: false });
+  });
+  const oneEntry = () =>
+    json(200, {
+      entries: [{ kind: 'stopped', at: '2026-10-10T05:00:00.000Z', added: [], edited: [] }],
+    });
+
+  it('reads again after 2, 4, 8, 16, 30 and 60 seconds once an image is chosen', async () => {
+    fetchMock.mockImplementation(async () => oneEntry());
+    renderHook(() => useJobDistill('job-1'), { wrapper: onDefaultCache });
+    await passes(0);
+    await act(() => recheckJobDistill('job-1'));
+
+    let reads = 1;
+    for (const ms of [2_000, 4_000, 8_000, 16_000, 30_000, 60_000]) {
+      await passes(ms - 1);
+      expect(fetchMock).toHaveBeenCalledTimes(reads);
+      await passes(1);
+      reads += 1;
+      expect(fetchMock).toHaveBeenCalledTimes(reads);
+    }
+    await passes(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+  });
+
+  it('counts the reads again from the start each time an image is chosen', async () => {
+    fetchMock.mockImplementation(async () => oneEntry());
+    const { result } = renderHook(() => useJobDistill('job-1'), { wrapper: onDefaultCache });
+    await passes(0);
+    await act(() => recheckJobDistill('job-1'));
+    for (const ms of JOB_DISTILL_RETRY_MS) await passes(ms);
+    expect(result.current.exhausted).toBe(true);
+    const before = fetchMock.mock.calls.length;
+
+    // 尽きたあとにもう一度選ぶと、また最初の間隔から読み直す
+    // 印は押した時刻（Date.now()）で見分けるので、同じミリ秒に押さないよう、時計が進むのを待つ（Date は差し替えていない）
+    const pressedAt = Date.now();
+    while (Date.now() === pressedAt) {
+      // 1 ms も待たない
+    }
+    await act(() => recheckJobDistill('job-1'));
+    expect(result.current.pending).toBe(true);
+    await passes(2_000);
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+  });
+});
