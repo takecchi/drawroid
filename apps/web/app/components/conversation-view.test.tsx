@@ -202,6 +202,45 @@ describe('the stop card', () => {
     expect(inRows[0]!.className).toContain('whitespace-normal');
   });
 
+  // 折れてよいのは言葉のかたまりの境目だけ（実際に折れないことは、ブラウザの歯が行の数で見る）。
+  // 画像の枡は狭いので短い文にし、お気に入りになることは名前と title に残す
+  it('breaks the button text only between its phrases, and keeps the text short in the rows', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 2,
+        images: [
+          { index: 0, seed: 8 },
+          { index: 1, seed: 9 },
+        ],
+      }),
+    );
+    stream.emit(
+      confirmed({ type: 'job.stopped', jobId: JOB, reason: { kind: 'ai', detail: '止めてよい' } }),
+    );
+
+    const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
+    const inCard = within(card).getByRole('button', { name: CHOOSE });
+    const inRow = screen.getAllByRole('button', { name: CHOOSE }).find((b) => b !== inCard)!;
+    /** ボタンの文のかたまりと、その間の折り返しの機会（wbr）。かたまりは、どれもその中では折り返さない */
+    const phrases = (button: HTMLElement) =>
+      [...button.firstElementChild!.childNodes].map((node) => {
+        if (node.nodeName === 'WBR') return '<wbr>';
+        expect(node instanceof HTMLElement && node.className.includes('whitespace-nowrap')).toBe(
+          true,
+        );
+        return node.textContent;
+      });
+    expect(phrases(inCard)).toEqual(['この画像に決める', '<wbr>', '（お気に入りにする）']);
+    expect(phrases(inRow)).toEqual(['この画像に決める']);
+    expect(inRow.getAttribute('title')).toBe('お気に入りにする');
+  });
+
   it('says it is a favorite instead of the button when the best image already is', async () => {
     vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
     vi.mocked(useSelections).mockReturnValue({

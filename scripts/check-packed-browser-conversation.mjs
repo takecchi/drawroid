@@ -8,6 +8,8 @@
 // 6. 見る役が済む前に「この画像でいい」と言うと、会話に「選んだ」が出て（job.adopted）、待たせていたジョブはその画像で止まる
 // 7. 狭い画面（390×844）でも、流れる・止めるが同じように動き、入力欄が画面の外へ押し出されない
 // 8. 画像の行の「この画像で決める」で選ぶと、会話に「選んだ」が出て（job.adopted）、ジョブはその画像で止まる（adopt_image と同じ口）
+// 8a. 人が「止める」で止めたあとも、止まりのカードに最良の画像と「この画像に決める（お気に入りにする）」が出る。決めるボタンの文は、
+//     広い画面でも狭い画面でも、言葉の途中で折れない
 // 9. 偽の Forge が止まっているときに描くよう頼むと、描き始めずに、繋がらないことと次にすることが出る
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -180,6 +182,7 @@ async function api(base, method, path, body) {
 
 /**
  * 「この画像に決める（お気に入りにする）」のボタンが、どれも自分の入れ物（画像の枡・止まりのカード）と画面の幅の中に収まるか。
+ * ボタンの文字も、ボタンの中に収まるか（折り返さない文字は、ボタンの箱が収まっていても箱の外へ漏れるため）。
  * 収まらないボタンの名前と、はみ出した幅を返す（空なら収まっている）
  * @param {import('playwright-core').Page} page
  * @returns {Promise<string[]>}
@@ -191,8 +194,36 @@ async function chooseButtonsOverflowing(page) {
       const box = b.closest('figure, section') ?? document.body;
       const r = b.getBoundingClientRect();
       const c = box.getBoundingClientRect();
-      const over = Math.max(r.right - c.right, c.left - r.left, r.right - innerWidth, 0);
-      return over > 0.5 ? [b.getAttribute('aria-label') + '（' + Math.round(over) + 'px）'] : [];
+      const range = document.createRange();
+      range.selectNodeContents(b);
+      const t = range.getBoundingClientRect();
+      const over = Math.max(r.right - c.right, c.left - r.left, r.right - innerWidth, t.right - r.right, r.left - t.left, 0);
+      return over > 0.5
+        ? [b.getAttribute('aria-label') + '（' + Math.round(over) + 'px。ボタン ' + Math.round(r.width) + 'px・文字 ' + Math.round(t.width) + 'px・入れ物 ' + Math.round(c.width) + 'px）']
+        : [];
+    }))()`);
+  return /** @type {string[]} */ (found);
+}
+
+/**
+ * 「この画像に決める」のボタンの文が、言葉の途中で折れていないか。ボタンの中の文字のかたまり（テキストのノード）ごとに、
+ * 並んだ行の数を数え、2 行以上にまたがるものを返す（空なら折れていない）。かたまりの境目で折り返すのはよい
+ * @param {import('playwright-core').Page} page
+ * @returns {Promise<string[]>}
+ */
+async function chooseButtonsBreakingWords(page) {
+  const found = await page.evaluate(`(() => [...document.querySelectorAll('button')]
+    .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: '))
+    .flatMap((b) => {
+      const walker = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+      const broken = [];
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+        if (lines.size > 1) broken.push(b.getAttribute('aria-label') + '「' + node.textContent + '」が ' + lines.size + ' 行');
+      }
+      return broken;
     }))()`);
   return /** @type {string[]} */ (found);
 }
@@ -445,6 +476,52 @@ try {
     jobCount >= 2 && imageNames.length > 0 && new Set(imageNames).size === imageNames.length,
     `同じ会話に ${jobCount} 個のジョブがあっても、画像の名前は重ならない（${imageNames.length} 枚。例: ${imageNames[0] ?? 'なし'}）`,
   );
+  // 8a. 人が止めたあとも、止まりのカードに最良の画像と「この画像に決める（お気に入りにする）」が出る（途中の画像から選べる）。
+  // 覚えたことは添えない。見る役が止めてよいと言わないようにしておき、1 回目を見終えてから「止める」を押す
+  llm.restartJudge(1_000);
+  const judged = async () => (await events()).filter((e) => e.type === 'job.judge').length;
+  const judgedBefore = await judged();
+  const repliesBeforeHuman = await log.getByText(REPLY).count();
+  const bestCards = page.getByRole('region', { name: /^最良の画像: / });
+  const bestCardsBefore = await bestCards.count();
+  const learnedBefore = await page
+    .getByRole('region', { name: 'このジョブから覚えたこと' })
+    .count();
+  await say('夜の街を描いて');
+  await log.getByText(REPLY).nth(repliesBeforeHuman).waitFor();
+  const judgedBy = Date.now() + STEP_TIMEOUT_MS;
+  while ((await judged()) === judgedBefore) {
+    if (Date.now() > judgedBy) throw new Error('待ちきれなかった: 人が止める前の 1 回目の見る役');
+    await sleep(100);
+  }
+  const humanStopsBefore = await log.getByText('描くのを止めた: 人が止めた').count();
+  await stopButton.click();
+  await log.getByText('描くのを止めた: 人が止めた').nth(humanStopsBefore).waitFor();
+  await stopButton.waitFor({ state: 'hidden' });
+  const humanCard = bestCards.nth(bestCardsBefore);
+  // 出なければ、待ちの時間切れではなく、この段の赤として残す
+  await humanCard.waitFor().catch(() => undefined);
+  expect(
+    (await humanCard
+      .getByRole('button', {
+        name: /^この画像に決める（お気に入りにする）: .*1 回目の画像 \d+ 番$/,
+      })
+      .isVisible()) &&
+      (await humanCard.getByRole('img', { name: /^最良: / }).isVisible()) &&
+      (await humanCard
+        .getByText(/^最良: .*1 回目の画像 \d+ 番（見る役の点 [\d.]+）$/)
+        .isVisible()) &&
+      (await page.getByRole('region', { name: 'このジョブから覚えたこと' }).count()) ===
+        learnedBefore,
+    '人が止めたあとも、止まりのカードに最良の画像と決めるボタンが出て、覚えたことは添えない',
+  );
+  // 後の段のために、見る役はまた 1 回目で止めてよいと言う
+  llm.restartJudge(1);
+  const wideBroken = await chooseButtonsBreakingWords(page);
+  expect(
+    wideBroken.length === 0,
+    `広い画面で、「この画像に決める」の文は、画像の枡でもカードでも言葉の途中で折れない${wideBroken.length === 0 ? '' : `: ${wideBroken.join(', ')}`}`,
+  );
   const wideOverflow = await chooseButtonsOverflowing(page);
   expect(
     wideOverflow.length === 0,
@@ -567,6 +644,11 @@ try {
   expect(
     narrowOverflow.length === 0 && prominent.every((where) => where.startsWith('最良の画像: ')),
     `狭い画面で、「この画像に決める（お気に入りにする）」はどれも枠からはみ出さず、目立つ形は止まりのカードだけ${narrowOverflow.length === 0 ? '' : `: ${narrowOverflow.join(', ')}`}（目立つ形: ${prominent.join(', ')}）`,
+  );
+  const narrowBroken = await chooseButtonsBreakingWords(narrow);
+  expect(
+    narrowBroken.length === 0,
+    `狭い画面で、「この画像に決める」の文は、画像の枡でもカードでも言葉の途中で折れない${narrowBroken.length === 0 ? '' : `: ${narrowBroken.join(', ')}`}`,
   );
   const favoritesBefore = await favorites();
   // 押したあとに読まれる「覚えたこと」を数える（選び直しの蒸留で増える記録を、押したジョブだけ読み直す）
