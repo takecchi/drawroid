@@ -172,6 +172,11 @@ try {
     expect(true, `${label}: 右のキーで、回の端を越えて次の回の画像へ送る`);
 
     if (width < 768) {
+      // 測る・なぞる前に、送った先の画像の読み込みを待つ: 送った直後は新しい画像が読み込み中で幅が 0 のことがあり、
+      // そのまま測ると収まりの確かめが素通りし、画像の幅を基準になぞると動きが 0 になってスワイプにならない（遅い CI で当たる）
+      await page.waitForFunction(
+        `(() => { const img = document.querySelector('[role="dialog"] img'); return img !== null && img.complete && img.naturalWidth > 0 && img.getBoundingClientRect().width > 0; })()`,
+      );
       // 狭い画面: 窓と画像が画面に収まり、横にはみ出さない
       const fits = await page.evaluate(`(() => {
         const dialog = document.querySelector('[role="dialog"]');
