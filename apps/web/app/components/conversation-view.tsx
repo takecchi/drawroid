@@ -46,6 +46,7 @@ import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
+import { MaskSurface, MaskTools, useMaskPainting } from './mask-painter';
 import { SetupNotice } from './setup-notice';
 
 /** 発言と止めるの送り先。どちらも HTTP API（会話 C）に乗る。画面にだけある経路は作らない */
@@ -190,12 +191,15 @@ function ViewerImageDetails({
   image,
   stopped,
   chosen,
+  onPaint,
 }: {
   jobId: string;
   iteration: number;
   image: ChatImage;
   stopped: boolean;
   chosen: boolean;
+  /** 渡すと「マスクを塗る」を出す（止まっていないジョブの画像だけ） */
+  onPaint?: () => void;
 }) {
   const { data } = useSelections(jobId);
   const imageKey = formatImageKey({ iteration, index: image.index });
@@ -223,7 +227,103 @@ function ViewerImageDetails({
         stopped={stopped}
         chosen={chosen}
       />
+      {onPaint !== undefined && (
+        <Button className="h-7 px-2 text-xs" onClick={onPaint}>
+          マスクを塗る
+        </Button>
+      )}
     </div>
+  );
+}
+
+const PAINTING_LOCK = '塗っている間は前後へ送れません。';
+const PAINTING_HOLD =
+  '塗りかけがある間は、Esc や窓の外を押しても閉じません（閉じるボタンは、塗りかけを捨てて閉じます）。';
+
+/**
+ * 会話の画像を大きく見る窓。止まっていないジョブの画像には、窓の中でマスクを塗って送れる（ジョブの詳細と同じ口）。
+ * 塗っている間は前後へ送らない: 横に引いた筆が、なぞりとして次の画像への送りになるため。塗りかけがある間は、Esc と窓の外では閉じない。
+ * 塗る状態はここに置く: 筆を動かすたびに、会話のログまで描き直さないように
+ */
+function ConversationImageViewer({
+  images,
+  viewing,
+  onViewingChange,
+  stoppedJobs,
+  chosenImages,
+}: {
+  images: readonly (ViewerImage & { source: ViewerSource })[];
+  viewing: string | null;
+  onViewingChange: (key: string | null) => void;
+  stoppedJobs: ReadonlySet<string>;
+  chosenImages: ReadonlySet<string>;
+}) {
+  // 塗っている画像（窓の画像の key）。窓を閉じたら、塗りかけごと捨てる
+  const [paintingKey, setPaintingKey] = useState<string | null>(null);
+  const painted =
+    paintingKey === null || paintingKey !== viewing
+      ? undefined
+      : images.find((image) => image.key === paintingKey);
+  const painting = useMaskPainting(
+    painted === undefined
+      ? undefined
+      : {
+          jobId: painted.source.jobId,
+          iteration: painted.source.iteration,
+          index: painted.source.image.index,
+        },
+  );
+  const holding = painted !== undefined && painting.strokes.length > 0;
+  return (
+    <ImageViewer
+      images={images}
+      openKey={viewing}
+      onOpenKeyChange={(key) => {
+        setPaintingKey(null);
+        onViewingChange(key);
+      }}
+      keepOpen={holding}
+      {...(painted !== undefined && {
+        navigationLock: holding ? `${PAINTING_LOCK}${PAINTING_HOLD}` : PAINTING_LOCK,
+        stage: (
+          <MaskSurface
+            src={painted.fullSrc}
+            alt={painted.alt}
+            painting={painting}
+            imageClassName="block max-h-[50dvh] max-w-full"
+            loading={<p className="text-sm text-muted-foreground">原寸の画像を読み込んでいます…</p>}
+          />
+        ),
+      })}
+      details={(image) => {
+        if (painted !== undefined) {
+          return (
+            <div className="space-y-2">
+              <MaskTools
+                painting={painting}
+                onClose={() => setPaintingKey(null)}
+                closeLabel="塗るのをやめる"
+              />
+            </div>
+          );
+        }
+        const source = images.find((candidate) => candidate.key === image.key)?.source;
+        if (source === undefined) return null;
+        const imageKey = formatImageKey({
+          iteration: source.iteration,
+          index: source.image.index,
+        });
+        const stopped = stoppedJobs.has(source.jobId);
+        return (
+          <ViewerImageDetails
+            {...source}
+            stopped={stopped}
+            chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
+            {...(!stopped && { onPaint: () => setPaintingKey(image.key) })}
+          />
+        );
+      }}
+    />
   );
 }
 
@@ -773,25 +873,12 @@ export function ConversationView({
   const last = items.at(-1);
   return (
     <>
-      <ImageViewer
+      <ConversationImageViewer
         images={viewerImages}
-        openKey={viewing}
-        onOpenKeyChange={setViewing}
-        details={(image) => {
-          const source = viewerImages.find((candidate) => candidate.key === image.key)?.source;
-          if (source === undefined) return null;
-          const imageKey = formatImageKey({
-            iteration: source.iteration,
-            index: source.image.index,
-          });
-          return (
-            <ViewerImageDetails
-              {...source}
-              stopped={stoppedJobs.has(source.jobId)}
-              chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
-            />
-          );
-        }}
+        viewing={viewing}
+        onViewingChange={setViewing}
+        stoppedJobs={stoppedJobs}
+        chosenImages={chosenImages}
       />
       <ChatLayout
         header={title}

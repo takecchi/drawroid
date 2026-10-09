@@ -195,4 +195,64 @@ describe('ImageViewer', () => {
       expect(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ })).toBeTruthy();
     });
   });
+
+  describe('while the screen holds the view (painting a mask)', () => {
+    function Held({ keepOpen }: { keepOpen: boolean }) {
+      const [open, setOpen] = useState<string | null>('1-1');
+      return (
+        <ImageViewer
+          images={IMAGES}
+          openKey={open}
+          onOpenKeyChange={setOpen}
+          stage={<div aria-label="塗る面" />}
+          navigationLock="塗っている間は前後へ送れません"
+          keepOpen={keepOpen}
+        />
+      );
+    }
+
+    it('shows its stage in place of the image, and says why it does not move', () => {
+      render(<Held keepOpen={false} />);
+
+      const dialog = screen.getByRole('dialog');
+      expect(screen.getByLabelText('塗る面')).toBeTruthy();
+      expect(dialog.querySelector('img')).toBeNull();
+      expect(screen.getByRole('status').textContent).toBe('塗っている間は前後へ送れません');
+    });
+
+    it('does not move with the arrow keys, a swipe, or the buttons', async () => {
+      const user = userEvent.setup();
+      render(<Held keepOpen={false} />);
+
+      await user.keyboard('{ArrowRight}{ArrowLeft}');
+      const area = screen.getByLabelText('塗る面').parentElement;
+      if (area === null) throw new Error('区画が無い');
+      fireEvent.pointerDown(area, { clientX: 200, clientY: 200 });
+      fireEvent.pointerUp(area, { clientX: 60, clientY: 200 });
+
+      expect(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '前の画像' })).toHaveProperty('disabled', true);
+      expect(screen.getByRole('button', { name: '次の画像' })).toHaveProperty('disabled', true);
+    });
+
+    it('stays open on Escape when asked to, and still closes with the close button', async () => {
+      const user = userEvent.setup();
+      render(<Held keepOpen={true} />);
+
+      await user.keyboard('{Escape}');
+      expect(screen.getByRole('dialog')).toBeTruthy();
+
+      await user.click(screen.getByRole('button', { name: '閉じる' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('closes on Escape as usual when not asked to stay open', async () => {
+      const user = userEvent.setup();
+      render(<Held keepOpen={false} />);
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+  });
 });
