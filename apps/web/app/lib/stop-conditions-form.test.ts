@@ -152,6 +152,13 @@ describe('changedConditions', () => {
     ).toEqual([{ label: '時間の上限', submitted: '5 秒', current: 'なし' }]);
   });
 
+  // 走っている途中で、話す役や人が 1 分に満たない上限に変えたときも、今の側を同じ書き方にする
+  it('writes the current time limit the same way as the submitted one', () => {
+    expect(
+      changedConditions({ aiJudgement: true }, { aiJudgement: true, maxDurationMs: 100_000 }),
+    ).toEqual([{ label: '時間の上限', submitted: 'なし', current: '1.67 分' }]);
+  });
+
   it('returns only the fields whose value differs, with absent limits as none', () => {
     expect(
       changedConditions(
