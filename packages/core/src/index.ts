@@ -106,3 +106,4 @@ export {
   parseParams,
 } from './think/params-schema.js';
 export { toGenerationRequest } from './permissions/generation-request.js';
+export type { InvalidMemoryFile, MemoryListing, MemoryStore } from './memory/store.js';
