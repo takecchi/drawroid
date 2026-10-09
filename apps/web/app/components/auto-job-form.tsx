@@ -1,6 +1,6 @@
 import { PARAM_KEYS, type ParamKey, type Permission } from '@drawroid/core';
 import { createAutoJob, isApiError, usePermissionSettings } from '@drawroid/swr';
-import { Button, ErrorNote, Field, Input, Muted, Textarea } from '@drawroid/ui';
+import { Button, Disclosure, ErrorNote, Field, Input, Muted, Textarea } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import { buildOverrides, toRows, type Rows } from '../lib/permission-form';
@@ -85,8 +85,7 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
       </Field>
       <ReferenceAttacher items={references} onChange={setReferences} disabled={sending} />
       <StopConditionsEditor values={stopForm} onChange={setStopForm} />
-      <details className="space-y-2">
-        <summary className="cursor-pointer">このジョブだけの許可</summary>
+      <Disclosure summary="このジョブだけの許可" className="rounded-lg border border-border p-3">
         <Muted>
           書いた欄だけが、このジョブで全体の既定より優先される。投入したあとに全体の既定を変えても、ここで書いた欄は変わらない。
         </Muted>
@@ -101,7 +100,7 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
           defaults={{ option: '全体の既定のまま', note: '全体の既定' }}
           onChange={setPermissionRows}
         />
-      </details>
+      </Disclosure>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="1回の枚数（1〜8）">
           <Input
