@@ -4,10 +4,12 @@ import { Link } from 'react-router';
 
 import { groupJobsByStatus, JOB_STATUS_ORDER, type JobSummary } from '../lib/job-groups';
 import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
+import type { BackendKind } from '../lib/backend-error';
 import { summarizeStopReason } from '../lib/stop-reason';
+import { useBackendKind } from '../lib/use-backend-kind';
 import { JobStatusBadge } from './job-status-badge';
 
-function JobRow({ job }: { job: JobSummary }) {
+function JobRow({ job, backendKind }: { job: JobSummary; backendKind?: BackendKind }) {
   return (
     <Item>
       <Link to={`/jobs/${job.jobId}`} className="underline underline-offset-2">
@@ -16,7 +18,9 @@ function JobRow({ job }: { job: JobSummary }) {
       <Badge>{KIND_LABELS[job.kind]}</Badge>
       <span className="text-muted-foreground">{formatTime(job.createdAt)}</span>
       <JobStatusBadge status={job.state.status} />
-      {job.state.status === 'stopped' && <> ({summarizeStopReason(job.state.reason)})</>}
+      {job.state.status === 'stopped' && (
+        <> ({summarizeStopReason(job.state.reason, backendKind)})</>
+      )}
     </Item>
   );
 }
@@ -38,6 +42,7 @@ function InvalidJobs({ invalid }: { invalid: JobsResponse['invalid'] }) {
 
 export function JobList() {
   const { data, error } = useJobs();
+  const backendKind = useBackendKind();
   if (data === undefined) {
     return error === undefined ? null : <ErrorNote>一覧を読めない: {error.message}</ErrorNote>;
   }
@@ -50,7 +55,7 @@ export function JobList() {
         <Section key={status} title={`${STATUS_LABELS[status]}（${groups[status].length}）`}>
           <ItemList>
             {groups[status].map((job) => (
-              <JobRow key={job.jobId} job={job} />
+              <JobRow key={job.jobId} job={job} backendKind={backendKind} />
             ))}
           </ItemList>
         </Section>

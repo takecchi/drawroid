@@ -27,7 +27,6 @@ import {
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import sharp from 'sharp';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 import { FsJobStore } from './job-store.js';
 import { dataPaths } from './paths.js';
@@ -400,10 +399,6 @@ describe('a job runs with the budgets written in its job.json (Issue #63)', () =
       expect(call.messages.report.estimatedInputTokens).toBeLessThanOrEqual(
         call.messages.report.inputTokenLimit,
       );
-      const json = z.toJSONSchema(call.schema) as unknown as {
-        properties: { params: { properties: { prompt: { maxLength: number } } } };
-      };
-      expect(json.properties.params.properties.prompt.maxLength).toBe(60);
     }
     expect(Math.max(...sizesOf(small.llm))).toBeLessThan(Math.min(...sizesOf(roomy.llm)));
     // 既定の 5 秒にしない: 2 つのジョブぶんの画像の縮小をファイルの上で実際に回すため、遅い機械では超える

@@ -22,8 +22,25 @@ describe('summarizeStopReason', () => {
     expect(summarizeStopReason(reason)).toBe(describeBackendError('unreachable')?.summary);
   });
 
-  it('says the failure was outside Forge when there is no backend error kind', () => {
+  it('names the chosen backend in the backend error summary', () => {
+    const reason: StopReason = { kind: 'error', detail: 'x', backendErrorKind: 'unreachable' };
+    expect(summarizeStopReason(reason, 'a1111')).toBe('A1111 に繋がらない。');
+  });
+
+  it('says the failure was outside A1111 when A1111 is chosen', () => {
+    expect(summarizeStopReason({ kind: 'error', detail: 'disk full' }, 'a1111')).toBe(
+      'A1111 の外で失敗した',
+    );
+  });
+
+  it('says the failure was outside the backend, naming none, when the chosen one is unknown', () => {
     expect(summarizeStopReason({ kind: 'error', detail: 'disk full' })).toBe(
+      'バックエンド（Forge / A1111）の外で失敗した',
+    );
+  });
+
+  it('says the failure was outside Forge when there is no backend error kind', () => {
+    expect(summarizeStopReason({ kind: 'error', detail: 'disk full' }, 'forge')).toBe(
       'Forge の外で失敗した',
     );
   });

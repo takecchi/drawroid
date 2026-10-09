@@ -19,8 +19,9 @@ export const DEFAULT_REFERENCE_LIMITS: ReferenceLimits = {
 };
 
 /** ref-gist の出力スキーマ。要点だけを短く書かせる */
-export function buildRefGistOutputSchema(limits: ReferenceLimits) {
-  return z.object({ gist: z.string().min(1).max(limits.gistChars) });
+export function buildRefGistOutputSchema() {
+  // 文字数の上限を出力に付けない: 持ち回すときに gistChars で切るため
+  return z.object({ gist: z.string().min(1) });
 }
 export type RefGistOutput = z.infer<ReturnType<typeof buildRefGistOutputSchema>>;
 

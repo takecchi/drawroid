@@ -3,14 +3,8 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  DEFAULT_BUDGET,
-  DEFAULT_BUDGETS,
-  estimateMaxOutputTokens,
-  ManualGenerationRunner,
-  permissionOverridesSchema,
-} from '@drawroid/core';
-import { llmConfigSchema, outputLimitWarnings, type LlmConfig } from '@drawroid/llm';
+import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
+import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   createFsDistillLog,
   createFsMemoryStore,
@@ -88,17 +82,13 @@ async function main() {
     memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
     log,
   });
-  // 値は書き換えない: 保存済みの小さい上限（以前の既定 1024 など）に、利用者が気づけるようにするだけ
-  const budgetSettings = createBudgetSettings(configPath);
-  // 今の設定の予算で見積もる: これから投入するジョブは、この予算で回るため。予算の設定が壊れていれば既定で見積もる
-  const warnOutputLimits = async (llm: LlmConfig) => {
-    const budgets = await budgetSettings.read().then(
-      ({ effective }) => effective,
-      () => DEFAULT_BUDGETS,
-    );
-    for (const warning of outputLimitWarnings(llm, estimateMaxOutputTokens(budgets))) {
-      log(`drawroid: 警告: ${warning.message}`);
+  // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
+  const configureLlm = async (llm: LlmConfig) => {
+    const { config, detected } = await detectContextTokens(llm, { env: process.env });
+    for (const { role, contextTokens } of detected) {
+      log(`drawroid: ${role} の役の文脈の上限を LLM から読んだ: ${contextTokens}`);
     }
+    autoQueue.configure(config);
   };
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
@@ -108,8 +98,7 @@ async function main() {
   } else {
     const parsed = llmConfigSchema.safeParse(stored);
     if (parsed.success) {
-      await warnOutputLimits(parsed.data);
-      autoQueue.configure(parsed.data);
+      await configureLlm(parsed.data);
     } else {
       log(
         `drawroid: config.json の llm が不正なので未設定のまま進む: ${parsed.error.issues[0]?.message ?? ''}`,
@@ -122,8 +111,7 @@ async function main() {
     read: () => readLlmSettings(configPath),
     write: async (llm: LlmConfig) => {
       await writeLlmSettings(configPath, llm);
-      await warnOutputLimits(llm);
-      autoQueue.configure(llm);
+      await configureLlm(llm);
       autoQueue.kick();
     },
   };
@@ -138,7 +126,7 @@ async function main() {
       backendSettings,
       memoryStore,
       autoQueue,
-      budgetSettings,
+      budgetSettings: createBudgetSettings(configPath),
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,

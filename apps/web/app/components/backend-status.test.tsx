@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { useBackendStatus } from '@drawroid/swr';
+import { useBackendSettings, useBackendStatus } from '@drawroid/swr';
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BackendErrorMessage } from './backend-error-message';
 import { BackendStatus } from './backend-status';
@@ -10,9 +10,19 @@ import { StopReasonMessage } from './stop-reason-message';
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   useBackendStatus: vi.fn(),
+  useBackendSettings: vi.fn(),
 }));
 
 const status = vi.mocked(useBackendStatus);
+const settings = vi.mocked(useBackendSettings);
+
+function chosenBackend(kind: 'forge' | 'a1111' | undefined) {
+  settings.mockReturnValue({
+    data: kind === undefined ? undefined : { kind },
+  } as unknown as ReturnType<typeof useBackendSettings>);
+}
+
+beforeEach(() => chosenBackend('forge'));
 
 afterEach(() => {
   cleanup();
@@ -88,7 +98,54 @@ describe('BackendErrorMessage', () => {
   });
 });
 
+describe('BackendErrorMessage naming the chosen backend', () => {
+  it.each([
+    ['unreachable', 'A1111 に繋がらない。'],
+    ['not_found', '繋がったが A1111 の API が無い。'],
+  ])('names A1111 for %s when A1111 is chosen', (kind, summary) => {
+    chosenBackend('a1111');
+    render(<BackendErrorMessage kind={kind} message="m" />);
+
+    expect(screen.getByText(summary)).toBeTruthy();
+    expect(screen.queryByText(/Forge/)).toBeNull();
+  });
+
+  it('names A1111 in the unauthorized action when A1111 is chosen', () => {
+    chosenBackend('a1111');
+    render(<BackendErrorMessage kind="unauthorized" message="m" />);
+
+    expect(screen.getByText(/A1111 の --api-auth/)).toBeTruthy();
+    expect(screen.queryByText(/Forge/)).toBeNull();
+  });
+
+  it('names no specific backend while the chosen one is unknown', () => {
+    chosenBackend(undefined);
+    render(<BackendErrorMessage kind="unreachable" message="m" />);
+
+    expect(screen.getByText('バックエンド（Forge / A1111）に繋がらない。')).toBeTruthy();
+  });
+});
+
 describe('StopReasonMessage', () => {
+  it('explains a backend failure with the chosen backend name when A1111 is chosen', () => {
+    chosenBackend('a1111');
+    render(
+      <StopReasonMessage
+        reason={{ kind: 'error', detail: 'd', backendErrorKind: 'unreachable' }}
+      />,
+    );
+
+    expect(screen.getByText('A1111 に繋がらない。')).toBeTruthy();
+  });
+
+  it('reports a failure outside A1111 when A1111 is chosen', () => {
+    chosenBackend('a1111');
+    render(<StopReasonMessage reason={{ kind: 'error', detail: 'ENOSPC' }} />);
+
+    expect(screen.getByText(/A1111 の外で失敗した/)).toBeTruthy();
+    expect(screen.queryByText(/Forge/)).toBeNull();
+  });
+
   it('explains a backend failure that stopped the job, with the raw detail', () => {
     render(
       <StopReasonMessage

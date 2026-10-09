@@ -1,11 +1,4 @@
-import { DEFAULT_BUDGETS, estimateMaxOutputTokens, type Budgets } from '@drawroid/core';
-import {
-  createLlm,
-  LlmConfigError,
-  llmConfigSchema,
-  outputLimitWarnings,
-  type LlmConfig,
-} from '@drawroid/llm';
+import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
@@ -24,22 +17,7 @@ function apiKeyEnvStatus(config: LlmConfig, env: ApiDeps['env']) {
 }
 
 export function llmSettingsRoutes(deps: ApiDeps) {
-  // 予算の設定が壊れていても LLM の設定は読めるようにする: 警告のための見積もりに、LLM の設定の画面ごと巻き込まないため
-  const currentBudgets = (): Promise<Budgets> =>
-    deps.budgetSettings.read().then(
-      ({ effective }) => effective,
-      () => DEFAULT_BUDGETS,
-    );
-  // 今の設定の予算で見積もる: これから投入するジョブは、この予算で回るため
-  const view = async (config: LlmConfig) => ({
-    config,
-    apiKeyEnv: apiKeyEnvStatus(config, deps.env),
-    // 保存済みの値が小さいまま残っていても気づけるように、読むたびに見積もりと比べて返す
-    outputLimitWarnings: outputLimitWarnings(
-      config,
-      estimateMaxOutputTokens(await currentBudgets()),
-    ),
-  });
+  const view = (config: LlmConfig) => ({ config, apiKeyEnv: apiKeyEnvStatus(config, deps.env) });
 
   return (
     new Hono()
@@ -50,7 +28,7 @@ export function llmSettingsRoutes(deps: ApiDeps) {
         if (!parsed.success) {
           return invalidConfig(c, describeIssues(parsed.error));
         }
-        return c.json(await view(parsed.data), 200);
+        return c.json(view(parsed.data), 200);
       })
       // validator を通す: 送る本文の型を、画面の側が hono/client から引けるようにするため
       .put('/', jsonBody(llmConfigSchema), async (c) => {
@@ -63,7 +41,7 @@ export function llmSettingsRoutes(deps: ApiDeps) {
           return invalidRequest(c, reason);
         }
         await deps.llmSettings.write(config);
-        return c.json(await view(config), 200);
+        return c.json(view(config), 200);
       })
   );
 }
