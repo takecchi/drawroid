@@ -299,6 +299,37 @@ describe('conversations', () => {
     ]);
   });
 
+  it('shows the reply as the last message once the talk role has answered', async () => {
+    const id = await newConversation();
+    await say(id, '何ができますか？');
+    await hubs.get(id).confirm({ type: 'turn.started', turn: 1, messageSeqs: [1] });
+    await hubs.get(id).confirm({
+      type: 'assistant.message',
+      turn: 1,
+      partId: 'p1',
+      text: '描けます。縦長と横長のどちらにしますか？',
+      interrupted: false,
+    });
+    await hubs.get(id).confirm({
+      type: 'assistant.message',
+      turn: 1,
+      partId: 'p2',
+      text: '',
+      interrupted: true,
+    });
+
+    const listed = (await (await app.request('/conversations')).json()) as {
+      conversations: object[];
+    };
+
+    expect(listed.conversations).toEqual([
+      expect.objectContaining({
+        conversationId: id,
+        lastMessage: '描けます。縦長と横長のどちらにしますか？',
+      }),
+    ]);
+  });
+
   it('lets a human fix the title', async () => {
     const id = await newConversation();
     await say(id, '海辺の少女を描いて');

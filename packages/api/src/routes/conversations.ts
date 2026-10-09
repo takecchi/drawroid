@@ -50,7 +50,7 @@ const defaultHeartbeat = (beat: () => void) => {
   return () => clearInterval(timer);
 };
 
-/** 一覧の1行: 最後の発言の先頭と、ターンが走っているか（turn.started があって turn.ended が無い） */
+/** 一覧の1行: 最後の発言（人間か話す役か）の先頭と、ターンが走っているか（turn.started があって turn.ended が無い） */
 async function summarize(store: ConversationStore, conversationId: string) {
   let lastMessage = '';
   const open = new Set<number>();
@@ -58,7 +58,12 @@ async function summarize(store: ConversationStore, conversationId: string) {
   for (;;) {
     const page = await store.readEvents(conversationId, { after });
     for (const event of page.events) {
-      if (event.type === 'user.message') lastMessage = event.text.slice(0, LAST_MESSAGE_CHARS);
+      // 本文の無い返答（ツールだけ呼んで打ち切られたものなど）で、前の発言を消さない
+      if (
+        (event.type === 'user.message' || event.type === 'assistant.message') &&
+        event.text.trim() !== ''
+      )
+        lastMessage = event.text.slice(0, LAST_MESSAGE_CHARS);
       if (event.type === 'turn.started') open.add(event.turn);
       if (event.type === 'turn.ended') open.delete(event.turn);
     }
