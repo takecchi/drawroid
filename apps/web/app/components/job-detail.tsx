@@ -20,12 +20,14 @@ import {
 import { Link } from 'react-router';
 
 import { formatTime, KIND_LABELS } from '../lib/job-labels';
+import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
 import { InterventionList } from './intervention-view';
 import { IterationList } from './iteration-view';
 import { JobOperations } from './job-operations';
 import { JobStatusBadge } from './job-status-badge';
 import { LlmTotals } from './llm-call-view';
 import { ReferenceList } from './reference-list';
+import { SetupNotice } from './setup-notice';
 import { StopReasonMessage } from './stop-reason-message';
 
 function JobHeader({ job }: { job: JobDetailData }) {
@@ -140,6 +142,9 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const references = useReferences(data?.spec.kind === 'auto' ? jobId : undefined, { live });
   const llmCalls = useLlmCalls(data === undefined ? undefined : jobId, { live });
   const selections = useSelections(data === undefined ? undefined : jobId);
+  useRecheckBackendOnFailure(
+    data?.state.status === 'stopped' && stoppedByBackend(data.state.reason) ? jobId : undefined,
+  );
   // 外した選択（verdict が null）は入れない: 画像の側は「無い」を未選択として扱うため
   const verdicts = new Map(
     (selections.data?.selections ?? []).flatMap(({ imageKey, verdict }) =>
@@ -159,6 +164,8 @@ export function JobDetail({ jobId }: { jobId: string }) {
   return (
     <>
       <JobHeader job={data} />
+      {/* 止まった理由のすぐ下に、直し方への道を出す（会話の画面と同じ部品・同じ条件） */}
+      <SetupNotice />
       <JobRequest spec={data.spec} />
       <JobOperations job={data} />
       {selections.error !== undefined && (
