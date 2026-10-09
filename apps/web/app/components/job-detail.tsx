@@ -8,12 +8,22 @@ import {
   useSelections,
   type JobDetail as JobDetailData,
 } from '@drawroid/swr';
+import {
+  BulletList,
+  CodeBlock,
+  DescriptionList,
+  Disclosure,
+  ErrorNote,
+  Section,
+  SubSection,
+} from '@drawroid/ui';
 import { Link } from 'react-router';
 
-import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
+import { formatTime, KIND_LABELS } from '../lib/job-labels';
 import { InterventionList } from './intervention-view';
 import { IterationList } from './iteration-view';
 import { JobOperations } from './job-operations';
+import { JobStatusBadge } from './job-status-badge';
 import { LlmTotals } from './llm-call-view';
 import { ReferenceList } from './reference-list';
 import { StopReasonMessage } from './stop-reason-message';
@@ -21,17 +31,19 @@ import { StopReasonMessage } from './stop-reason-message';
 function JobHeader({ job }: { job: JobDetailData }) {
   const { spec, state } = job;
   return (
-    <section>
-      <h1>
+    <Section>
+      <h1 className="text-2xl font-semibold">
         <code>{spec.jobId}</code>
       </h1>
-      <dl>
+      <DescriptionList>
         <dt>種類</dt>
         <dd>{KIND_LABELS[spec.kind]}</dd>
         <dt>作成</dt>
         <dd>{formatTime(spec.createdAt)}</dd>
         <dt>状態</dt>
-        <dd>{STATUS_LABELS[state.status]}</dd>
+        <dd>
+          <JobStatusBadge status={state.status} />
+        </dd>
         {state.status !== 'queued' && state.startedAt !== undefined && (
           <>
             <dt>開始</dt>
@@ -50,42 +62,40 @@ function JobHeader({ job }: { job: JobDetailData }) {
             <dd>{state.imagesGenerated}</dd>
           </>
         )}
-      </dl>
+      </DescriptionList>
       {state.status === 'stopped' && <StopReasonMessage reason={state.reason} />}
-    </section>
+    </Section>
   );
 }
 
 function JobRequest({ spec }: { spec: JobDetailData['spec'] }) {
   if (spec.kind === 'manual') {
     return (
-      <section>
-        <h2>依頼</h2>
-        <details>
-          <summary>パラメータ</summary>
-          <pre>{JSON.stringify(spec.request, null, 2)}</pre>
-        </details>
-      </section>
+      <Section title="依頼">
+        <Disclosure summary="パラメータ">
+          <CodeBlock>{JSON.stringify(spec.request, null, 2)}</CodeBlock>
+        </Disclosure>
+      </Section>
     );
   }
   const { stopConditions } = spec;
   return (
-    <section>
-      <h2>依頼</h2>
+    <Section title="依頼">
       <p>{spec.request}</p>
-      <h3>止める条件</h3>
-      <ul>
-        {stopConditions.aiJudgement && <li>AI が意図どおりと判断したら</li>}
-        {stopConditions.maxIterations !== undefined && (
-          <li>{stopConditions.maxIterations} 回まで</li>
-        )}
-        {stopConditions.maxDurationMs !== undefined && (
-          <li>{stopConditions.maxDurationMs / 1000} 秒まで</li>
-        )}
-        {stopConditions.maxImages !== undefined && <li>{stopConditions.maxImages} 枚まで</li>}
-      </ul>
+      <SubSection title="止める条件">
+        <BulletList>
+          {stopConditions.aiJudgement && <li>AI が意図どおりと判断したら</li>}
+          {stopConditions.maxIterations !== undefined && (
+            <li>{stopConditions.maxIterations} 回まで</li>
+          )}
+          {stopConditions.maxDurationMs !== undefined && (
+            <li>{stopConditions.maxDurationMs / 1000} 秒まで</li>
+          )}
+          {stopConditions.maxImages !== undefined && <li>{stopConditions.maxImages} 枚まで</li>}
+        </BulletList>
+      </SubSection>
       <p>1回に {spec.batchSize} 枚</p>
-    </section>
+    </Section>
   );
 }
 
@@ -98,16 +108,17 @@ function InvalidList({
 }) {
   if (items.length === 0) return null;
   return (
-    <section role="alert">
-      <h2>{title}</h2>
-      <ul>
-        {items.map((item) => (
-          <li key={item.label}>
-            {item.label}: {item.reason}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Section title={title}>
+      <ErrorNote>
+        <BulletList>
+          {items.map((item) => (
+            <li key={item.label}>
+              {item.label}: {item.reason}
+            </li>
+          ))}
+        </BulletList>
+      </ErrorNote>
+    </Section>
   );
 }
 
@@ -134,7 +145,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
         そのジョブは無い。<Link to="/jobs">ジョブ一覧へ</Link>
       </p>
     ) : (
-      <p role="alert">読めない: {error.message}</p>
+      <ErrorNote>読めない: {error.message}</ErrorNote>
     );
   }
   return (
@@ -143,19 +154,19 @@ export function JobDetail({ jobId }: { jobId: string }) {
       <JobRequest spec={data.spec} />
       <JobOperations job={data} />
       {selections.error !== undefined && (
-        <p role="alert">お気に入り・却下を読めない: {selections.error.message}</p>
+        <ErrorNote>お気に入り・却下を読めない: {selections.error.message}</ErrorNote>
       )}
       {iterations.error !== undefined && (
-        <p role="alert">回を読めない: {iterations.error.message}</p>
+        <ErrorNote>回を読めない: {iterations.error.message}</ErrorNote>
       )}
       {interventions.error !== undefined && (
-        <p role="alert">人間の指示を読めない: {interventions.error.message}</p>
+        <ErrorNote>人間の指示を読めない: {interventions.error.message}</ErrorNote>
       )}
       {references.error !== undefined && (
-        <p role="alert">添えた参照画像を読めない: {references.error.message}</p>
+        <ErrorNote>添えた参照画像を読めない: {references.error.message}</ErrorNote>
       )}
       {llmCalls.error !== undefined && (
-        <p role="alert">LLM の記録を読めない: {llmCalls.error.message}</p>
+        <ErrorNote>LLM の記録を読めない: {llmCalls.error.message}</ErrorNote>
       )}
       {interventions.data !== undefined && (
         <InterventionList interventions={interventions.data.interventions} />

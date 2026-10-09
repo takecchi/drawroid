@@ -1,4 +1,5 @@
 import { isApiError, saveBackendSettings, useBackendSettings } from '@drawroid/swr';
+import { Button, ErrorNote, Input, Section } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 const SOURCE_LABELS = {
@@ -31,9 +32,8 @@ export function BackendUrlSettings() {
   }
 
   return (
-    <section>
-      <h2>バックエンドの URL</h2>
-      {error !== undefined && <p role="alert">設定を読めない: {error.message}</p>}
+    <Section title="バックエンドの URL">
+      {error !== undefined && <ErrorNote>設定を読めない: {error.message}</ErrorNote>}
       {data !== undefined && (
         <>
           <p>
@@ -51,20 +51,20 @@ export function BackendUrlSettings() {
           )}
         </>
       )}
-      <form onSubmit={(event) => void save(event)}>
-        <input
+      <form onSubmit={(event) => void save(event)} className="flex flex-wrap items-center gap-2">
+        <Input
           type="text"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder="http://127.0.0.1:7860"
           aria-label="バックエンドの URL"
-          size={40}
-        />{' '}
-        <button type="submit" disabled={saving || input.trim() === ''}>
+          className="w-80"
+        />
+        <Button type="submit" variant="primary" disabled={saving || input.trim() === ''}>
           保存
-        </button>
+        </Button>
       </form>
-      {saveError !== undefined && <p role="alert">保存できない: {saveError}</p>}
-    </section>
+      {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
+    </Section>
   );
 }
