@@ -5,10 +5,10 @@ Forge のアダプタ（`@drawroid/backend-forge`）と共通の部分は `@draw
 
 ## 選び方
 
-起動のときに `--backend a1111` を付けるか、`<データディレクトリ>/config.json` の `backend.kind` を `"a1111"` にする（どちらも無ければ Forge）。URL は Forge と同じく `--forge-url` か `backend.forgeUrl` に書く（名前は Forge のままで、改名は別の PR）。
+起動のときに `--backend a1111` を付けるか、`<データディレクトリ>/config.json` の `backend.kind` を `"a1111"` にする（どちらも無ければ Forge）。URL は Forge と同じく `--backend-url` か `backend.url` に書く（古い名前の `--forge-url`・`backend.forgeUrl` も読む）。
 
 ```json
-{ "backend": { "kind": "a1111", "forgeUrl": "http://127.0.0.1:7860" } }
+{ "backend": { "kind": "a1111", "url": "http://127.0.0.1:7860" } }
 ```
 
 ## 対応する版

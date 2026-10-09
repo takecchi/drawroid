@@ -2,14 +2,14 @@ import { isApiError, saveBackendSettings, useBackendSettings } from '@drawroid/s
 import { useState, type FormEvent } from 'react';
 
 const SOURCE_LABELS = {
-  cli: '--forge-url',
+  cli: '起動の引数',
   config: 'config.json',
   default: '既定値',
 } as const;
 
 const KIND_LABELS = { forge: 'Forge', a1111: 'A1111' } as const;
 
-export function ForgeUrlSettings() {
+export function BackendUrlSettings() {
   const { data, error } = useBackendSettings();
   const [input, setInput] = useState('');
   const [saveError, setSaveError] = useState<string | undefined>();
@@ -20,7 +20,7 @@ export function ForgeUrlSettings() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      await saveBackendSettings({ forgeUrl: input.trim() });
+      await saveBackendSettings({ url: input.trim() });
       setInput('');
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
@@ -41,12 +41,12 @@ export function ForgeUrlSettings() {
             で変える）
           </p>
           <p>
-            いまの URL: <code>{data.forgeUrl}</code>（{SOURCE_LABELS[data.forgeUrlSource]}）
+            いまの URL: <code>{data.url}</code>（{SOURCE_LABELS[data.urlSource]}）
           </p>
-          {data.forgeUrlSource === 'cli' && (
+          {data.urlSource === 'cli' && (
             <p>
-              注意: 起動時に --forge-url で指定されている。ここで保存した URL
-              はいまの起動中だけ効き、次に起動したときは --forge-url が勝つ。
+              注意: 起動時に --backend-url（古い名前 --forge-url）で指定されている。ここで保存した
+              URL はいまの起動中だけ効き、次に起動したときも同じ引数を付ければ、そちらが勝つ。
             </p>
           )}
         </>
