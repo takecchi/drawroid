@@ -1,5 +1,5 @@
 import type { SelectionVerdict } from '@drawroid/core';
-import { isApiError, setSelection } from '@drawroid/swr';
+import { isApiError, recheckJobDistill, setSelection } from '@drawroid/swr';
 import { Button } from '@drawroid/ui';
 import { useState } from 'react';
 
@@ -26,6 +26,8 @@ export function ChooseAsFavorite({
     setError(undefined);
     try {
       await setSelection(jobId, imageKey, 'favorite');
+      // 止まったジョブで選び直すと、選び直しの蒸留が裏で走る。そのジョブの「覚えたこと」を、開き直さずに読み直させる
+      void recheckJobDistill(jobId);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);

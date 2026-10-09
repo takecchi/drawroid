@@ -207,9 +207,13 @@ export function useConversationEvents(conversationId: string | undefined, after 
 /** 覚えたことの記録がまだ無い間に読み直す間隔。伸ばしながら、尽きたら止める（永遠には読まない） */
 export const JOB_DISTILL_RETRY_MS = [2_000, 4_000, 8_000, 16_000, 30_000, 60_000] as const;
 
+/** recheckJobDistill が置く印。baseline は押した時点の記録の件数、token は押すたびに変わる */
+export type JobDistillWait = { baseline: number; token: number };
+
 /**
  * ジョブから覚えたこと。止まったジョブの蒸留は裏で走るので、記録がまだ無い間だけ、JOB_DISTILL_RETRY_MS の間隔で読み直す。
  * 記録が出たら止める。読み直しが尽きても無ければ exhausted（蒸留が済んでいないか、記録を残せずに終わった）。
+ * 選び直したあと（recheckJobDistill）は、記録が押した時点より増えるまで、同じ間隔・同じ上限で読み直す。
  * jobId を渡さなければ読まない
  */
 export function useJobDistill(jobId: string | undefined) {
@@ -220,18 +224,27 @@ export function useJobDistill(jobId: string | undefined) {
         client.jobs[':jobId'].distill.$get({ param: { jobId: jobId ?? '' } }),
       ),
   );
-  const [attempt, setAttempt] = useState(0);
-  const empty = data !== undefined && data.entries.length === 0;
+  // 取りに行かない: 印は recheckJobDistill が置くだけ
+  const { data: wait } = useSWR<JobDistillWait>(
+    jobId === undefined ? null : keys.jobDistillWait(jobId),
+    null,
+  );
+  const baseline = wait?.baseline ?? 0;
+  const [attempt, setAttempt] = useState({ token: 0, count: 0 });
+  // 選び直すたびに、読み直しの回数を数え直す
+  const count = attempt.token === (wait?.token ?? 0) ? attempt.count : 0;
+  const waiting = data !== undefined && data.entries.length <= baseline;
   useEffect(() => {
-    const delay = JOB_DISTILL_RETRY_MS[attempt];
-    if (!empty || delay === undefined) return;
+    const delay = JOB_DISTILL_RETRY_MS[count];
+    if (!waiting || delay === undefined) return;
+    const token = wait?.token ?? 0;
     const timer = setTimeout(() => {
-      void mutate().finally(() => setAttempt((n) => n + 1));
+      void mutate().finally(() => setAttempt({ token, count: count + 1 }));
     }, delay);
     return () => clearTimeout(timer);
-  }, [empty, attempt, mutate]);
-  const exhausted = empty && attempt >= JOB_DISTILL_RETRY_MS.length;
-  return { data, error, pending: empty && !exhausted, exhausted };
+  }, [waiting, count, wait?.token, mutate]);
+  const exhausted = waiting && count >= JOB_DISTILL_RETRY_MS.length;
+  return { data, error, pending: waiting && !exhausted, exhausted };
 }
 
 export function useGenerationProgressSettings() {

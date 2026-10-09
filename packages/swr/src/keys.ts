@@ -13,6 +13,8 @@ export const keys = {
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
   jobDistill: (jobId: string) => `/api/jobs/${jobId}/distill`,
+  /** 選び直したあと、覚えたことの記録が増えるのを待つ印（取りに行かない、画面の中だけのキー） */
+  jobDistillWait: (jobId: string) => `local:job-distill-wait/${jobId}`,
   iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,
   selections: (jobId: string) => `/api/jobs/${jobId}/selections`,
   interventions: (jobId: string) => `/api/jobs/auto/${jobId}/interventions`,
