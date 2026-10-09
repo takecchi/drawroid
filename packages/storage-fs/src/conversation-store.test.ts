@@ -79,6 +79,21 @@ describe('FsConversationStore', () => {
     expect(await store.readEvents(id, { after: 5 })).toEqual({ events: [], last: 5, more: false });
   });
 
+  it('reads back from the end, newest first, in seq order', async () => {
+    const store = new FsConversationStore(root);
+    const { conversationId: id } = await store.createConversation(at);
+    for (const text of ['a', 'b', 'c', 'd', 'e']) await store.appendEvent(id, said(text), at);
+
+    expect((await store.readEventsBefore(id, { limit: 2 })).map((e) => e.seq)).toEqual([4, 5]);
+    expect((await store.readEventsBefore(id, { before: 4, limit: 2 })).map((e) => e.seq)).toEqual([
+      2, 3,
+    ]);
+    expect((await store.readEventsBefore(id, { before: 2, limit: 5 })).map((e) => e.seq)).toEqual([
+      1,
+    ]);
+    expect(await store.readEventsBefore(id, { before: 1, limit: 5 })).toEqual([]);
+  });
+
   it('numbers events added at the same time without gaps or duplicates', async () => {
     const store = new FsConversationStore(root);
     const { conversationId: id } = await store.createConversation(at);

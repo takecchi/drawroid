@@ -68,6 +68,14 @@ export interface ConversationStore {
     conversationId: string,
     options?: { after?: number; limit?: number },
   ): Promise<ConversationEventPage>;
+  /**
+   * before より前（省けば末尾まで）の確定したイベントのうち、新しい方から最大 limit 件を、seq の順に読む。
+   * 末尾だけを見れば足りるときに、会話を頭から全部読まないため
+   */
+  readEventsBefore(
+    conversationId: string,
+    options: { before?: number; limit: number },
+  ): Promise<ConversationEvent[]>;
   /** 話す役の LLM 呼び出しの記録を置く（conversations/<id>/llm-calls/<callId>.json）。ジョブには属さない */
   writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void>;
   /** 会話で人間が添えた画像を置く（uploads/）。描き始めるときに、ジョブの参照画像（refs/）へ写す */

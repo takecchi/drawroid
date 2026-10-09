@@ -1,5 +1,6 @@
 // 台本の LLM（OpenAI 互換 /v1/chat/completions、ストリーム対応）。役は model 名で見分ける: talk-model / think-model / judge-model。
 // 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing を呼び、結果が来たら短く返す。
+// toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
@@ -51,10 +52,13 @@ function generate(schema, hint = '') {
 
 /**
  * @param {{ stopAfterIterations: number }} options 見る役が何回目で止めてよいと言うか
- * @returns {Promise<{ url: string, close: () => Promise<void> }>}
+ * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number }, restartJudge: (stopAfter: number) => void }>}
  */
 export async function startFakeLlm({ stopAfterIterations }) {
   let judgeCalls = 0;
+  let stopAfter = stopAfterIterations;
+  // 話す役が、どの経路で呼ばれたか。native に倒れて通っただけ、を見分けるために数える
+  const stats = { nativeTalkCalls: 0, jsonTalkCalls: 0 };
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -70,10 +74,28 @@ export async function startFakeLlm({ stopAfterIterations }) {
         request.messages.some((/** @type {{ role: string }} */ m) => m.role === 'tool') ||
         JSON.stringify(request.messages).includes('で描き始めた');
       const format = request.response_format;
+      const toolArgs = JSON.stringify({
+        request: '夕焼けの海辺の少女',
+        stopConditions: { aiJudgement: true, maxIterations: stopAfter },
+      });
       /** @type {'tool' | 'text' | 'json'} */
       let kind;
       let content = '';
-      if (role === 'talk' && Array.isArray(request.tools) && request.tools.length > 0) {
+      const talkSchema = format?.json_schema?.schema ?? format?.schema;
+      const isJsonTalk =
+        role === 'talk' &&
+        !(Array.isArray(request.tools) && request.tools.length > 0) &&
+        JSON.stringify(talkSchema ?? {}).includes('"start_drawing"');
+      if (isJsonTalk) {
+        stats.jsonTalkCalls++;
+        kind = 'json';
+        content = JSON.stringify(
+          hasToolResult
+            ? { kind: 'reply', text: '描き始めました。少しお待ちください。' }
+            : { kind: 'tool', name: 'start_drawing', input: JSON.parse(toolArgs) },
+        );
+      } else if (role === 'talk' && Array.isArray(request.tools) && request.tools.length > 0) {
+        stats.nativeTalkCalls++;
         if (hasToolResult) {
           kind = 'text';
           content = '描き始めました。少しお待ちください。';
@@ -86,7 +108,7 @@ export async function startFakeLlm({ stopAfterIterations }) {
         let out = generate(schema);
         if (schema?.properties?.canStop) {
           const n = judgeCalls++;
-          const last = n + 1 >= stopAfterIterations;
+          const last = n + 1 >= stopAfter;
           const count = schema.properties.images?.minItems ?? 1;
           out = {
             images: Array.from({ length: count }, () => ({
@@ -102,10 +124,6 @@ export async function startFakeLlm({ stopAfterIterations }) {
         }
         content = JSON.stringify(out);
       }
-      const toolArgs = JSON.stringify({
-        request: '夕焼けの海辺の少女',
-        stopConditions: { aiJudgement: true, maxIterations: stopAfterIterations },
-      });
       const base = {
         id: 'chatcmpl-fake',
         object: 'chat.completion.chunk',
@@ -181,6 +199,11 @@ export async function startFakeLlm({ stopAfterIterations }) {
   if (address === null || typeof address === 'string')
     throw new Error('偽の LLM のポートを取れなかった');
   return {
+    stats,
+    restartJudge: (/** @type {number} */ next) => {
+      judgeCalls = 0;
+      stopAfter = next;
+    },
     url: `http://127.0.0.1:${address.port}/v1`,
     close: () =>
       new Promise((resolve) => {
