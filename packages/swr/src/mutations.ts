@@ -8,6 +8,7 @@ import { mutate } from 'swr';
 
 import { unwrap, unwrapEmpty } from './api-error.js';
 import { client } from './client.js';
+import type { JobDistillWait } from './hooks.js';
 import { keys } from './keys.js';
 import type {
   AddInstructionResponse,
@@ -35,6 +36,7 @@ import type {
   AdoptImageResponse,
   DoctorResponse,
   GenerationProgressSettingsResponse,
+  JobDistillResponse,
   StopConditionsDraftResponse,
 } from './types.js';
 
@@ -385,4 +387,27 @@ export async function saveGenerationProgressSettings(
   // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
   await mutate(keys.generationProgressSettings, saved, { revalidate: false });
   return saved;
+}
+
+/**
+ * 選び直したあと、そのジョブから覚えたことを読み直させる。止まったジョブで選択が変わると、選び直しの蒸留が裏で走り、
+ * 記録が増えるので、useJobDistill は記録が押した時点より増えるまで、上限付きで読み直す。
+ * 呼ばれなかったジョブは読み直さない
+ */
+export async function recheckJobDistill(jobId: string): Promise<void> {
+  let baseline = 0;
+  // 今の記録の件数を、取りに行かずに読む
+  await mutate<JobDistillResponse>(
+    keys.jobDistill(jobId),
+    (current) => {
+      baseline = current?.entries.length ?? 0;
+      return current;
+    },
+    { revalidate: false },
+  );
+  await mutate<JobDistillWait>(
+    keys.jobDistillWait(jobId),
+    { baseline, token: Date.now() },
+    { revalidate: false },
+  );
 }

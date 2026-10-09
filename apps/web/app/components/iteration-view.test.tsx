@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { adoptImage, setSelection } from '@drawroid/swr';
+import { adoptImage, recheckJobDistill, setSelection } from '@drawroid/swr';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { IterationList, type Iteration } from './iteration-view';
@@ -9,6 +9,7 @@ import { IterationList, type Iteration } from './iteration-view';
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   adoptImage: vi.fn(),
+  recheckJobDistill: vi.fn(),
   setSelection: vi.fn(),
 }));
 
@@ -166,6 +167,7 @@ describe('IterationList and the large view of an image', () => {
     );
     expect(setSelection).toHaveBeenCalledWith('job-1', '1-0', 'favorite');
     expect(adoptImage).not.toHaveBeenCalled();
+    expect(recheckJobDistill).toHaveBeenCalledWith('job-1');
   });
 });
 

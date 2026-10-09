@@ -470,9 +470,9 @@ function LearnedFromJob({ jobId }: { jobId: string }) {
       <p className="font-medium">このジョブから覚えたこと</p>
       {error !== undefined ? (
         <p className="text-destructive">覚えたことを読めない: {error.message}</p>
-      ) : data === undefined || pending ? (
+      ) : data === undefined || (entries.length === 0 && pending) ? (
         <p className="text-muted-foreground">覚えたことを整理しています</p>
-      ) : exhausted ? (
+      ) : entries.length === 0 && exhausted ? (
         <p className="text-muted-foreground">
           覚えたことは、まだ出ていない。あとで
           <Link to="/memory" className="text-primary underline-offset-4 hover:underline">
@@ -490,6 +490,19 @@ function LearnedFromJob({ jobId }: { jobId: string }) {
             </li>
           ))}
         </BulletList>
+      )}
+      {/* 選び直したあと（記録がすでにある）: 増えるまでの間と、増えずに読み直しが尽きたとき */}
+      {entries.length > 0 && pending && (
+        <p className="text-muted-foreground">選び直したことを整理しています</p>
+      )}
+      {entries.length > 0 && exhausted && (
+        <p className="text-muted-foreground">
+          選び直したことは、まだ出ていない。あとで
+          <Link to="/memory" className="text-primary underline-offset-4 hover:underline">
+            記憶
+          </Link>
+          で確かめられる。
+        </p>
       )}
     </section>
   );

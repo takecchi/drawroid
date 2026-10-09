@@ -4,6 +4,7 @@ import {
   addMask,
   adoptImage,
   recheckBackendStatus,
+  recheckJobDistill,
   setSelection,
   useJob,
   useJobDistill,
@@ -23,6 +24,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   addMask: vi.fn(),
   adoptImage: vi.fn(),
   recheckBackendStatus: vi.fn(),
+  recheckJobDistill: vi.fn(),
   setSelection: vi.fn(),
   useJob: vi.fn(),
   useJobDistill: vi.fn(),
@@ -156,6 +158,8 @@ describe('the stop card', () => {
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
     // 止まったジョブは採る口を断る（409）ので、採る口は呼ばない
     expect(adoptImage).not.toHaveBeenCalled();
+    // 選び直しの蒸留で増える記録を、開き直さずに読み直させる
+    await waitFor(() => expect(recheckJobDistill).toHaveBeenCalledWith(JOB));
   });
 
   it('says it is a favorite instead of the button when the best image already is', async () => {
@@ -263,6 +267,29 @@ describe('what the job taught, on the stop card', () => {
     expect(within(learned()).getByRole('link', { name: '記憶' }).getAttribute('href')).toBe(
       '/memory',
     );
+  });
+
+  it('keeps what it learned and says it is sorting out the reselection, then that nothing came out yet', async () => {
+    const first = [
+      {
+        kind: 'stopped',
+        at: '2026-10-10T05:00:00.000Z',
+        added: [{ id: 'm-2', body: '指の崩れは許容しない' }],
+        edited: [],
+      },
+    ];
+    vi.mocked(useJobDistill).mockReturnValue(distilled(first, { pending: true }));
+    await stopWith({ kind: 'ai', detail: '止めてよい' });
+
+    expect(within(learned()).getByText('覚えた: 指の崩れは許容しない')).toBeTruthy();
+    expect(within(learned()).getByText('選び直したことを整理しています')).toBeTruthy();
+    expect(within(learned()).queryByText('覚えたことを整理しています')).toBeNull();
+
+    vi.mocked(useJobDistill).mockReturnValue(distilled(first, { exhausted: true }));
+    cleanup();
+    await stopWith({ kind: 'ai', detail: '止めてよい' });
+    expect(within(learned()).getByText('覚えた: 指の崩れは許容しない')).toBeTruthy();
+    expect(within(learned()).getByText(/選び直したことは、まだ出ていない/)).toBeTruthy();
   });
 
   it('says nothing new was learned when the distill changed nothing', async () => {
