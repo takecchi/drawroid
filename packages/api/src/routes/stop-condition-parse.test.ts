@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
 import { LlmNotConfiguredError } from '../stop-condition-parse.js';
+import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
 
 function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
   return createApi({
@@ -25,6 +26,8 @@ function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
       addMask: () => Promise.reject(new Error('この試験では使わない')),
     },
     budget: DEFAULT_BUDGET,
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: (text) => parse(text) },
     env: {},

@@ -14,6 +14,7 @@ import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
+import { noCandidateNotes, noPermissionSettings } from './test-support.js';
 
 const GIST = '白いワンピースの裾が風になびく構図';
 
@@ -80,6 +81,8 @@ beforeEach(async () => {
     budget: DEFAULT_BUDGET,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     env: {},
   });
 });
