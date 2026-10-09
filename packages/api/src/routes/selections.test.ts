@@ -10,9 +10,10 @@ import {
 } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
+import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createApi } from '../index.js';
+import { createApi, type AppType } from '../index.js';
 
 let root: string;
 let store: FsJobStore;
@@ -33,6 +34,7 @@ beforeEach(async () => {
       stop: async () => undefined,
       addInstruction: notUsed,
       changeStopConditions: notUsed,
+      addReference: notUsed,
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
@@ -157,6 +159,27 @@ describe('selections of the images of a job', () => {
     expect((await put(jobId, '10-1', { verdict: 'love' })).status).toBe(400);
     expect((await put(jobId, '10-1', {})).status).toBe(400);
     expect(await selections(jobId)).toEqual([]);
+  });
+
+  it('gives the hono client a typed body for a selection', async () => {
+    const jobId = await jobWithImages();
+    const client = hc<AppType>('http://localhost', { fetch: app.request });
+    const select = client.jobs[':jobId'].selections[':imageKey'];
+
+    const res = await select.$put({
+      param: { jobId, imageKey: '10-1' },
+      json: { verdict: 'favorite' },
+    });
+    expect(res.status).toBe(200);
+
+    // 選択の形が違えば、送る前に型で弾かれる
+    const wrong = () =>
+      select.$put({
+        param: { jobId, imageKey: '10-1' },
+        // @ts-expect-error verdict は favorite・rejected・null のどれか
+        json: { verdict: 'love' },
+      });
+    expect((await wrong()).status).toBe(400);
   });
 
   it('answers 404 for a job that does not exist', async () => {
