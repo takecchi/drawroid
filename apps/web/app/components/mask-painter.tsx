@@ -1,31 +1,111 @@
 import { addMask, isApiError } from '@drawroid/swr';
 import { Button, CheckboxField, ErrorNote, Field, Input, OkNote } from '@drawroid/ui';
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 
 import { encodeMaskPng } from '../lib/mask-png';
 import { drawMask, toImagePoint, type MaskSize, type Stroke } from '../lib/mask-strokes';
 
 const DEFAULT_RADIUS = 32;
 
-/**
- * 回の画像1枚の上に inpaint のマスクを塗り、口出しとして送る。白く塗った所が、次の回の inpaint で描き直される。
- */
-export function MaskPainter({
-  jobId,
-  image,
-}: {
+/** マスクを塗る先の画像1枚 */
+export interface MaskTarget {
   jobId: string;
-  image: { iteration: number; index: number; url: string };
-}) {
-  const [open, setOpen] = useState(false);
+  iteration: number;
+  index: number;
+}
+
+/** 塗っている間の状態。塗る面（MaskSurface）と道具（MaskTools）を別の場所に置けるように、状態は1つにまとめて渡す */
+export interface MaskPainting {
+  size: MaskSize | undefined;
+  setSize: (size: MaskSize) => void;
+  strokes: Stroke[];
+  setStrokes: (update: (current: Stroke[]) => Stroke[]) => void;
+  radius: number;
+  setRadius: (radius: number) => void;
+  erase: boolean;
+  setErase: (erase: boolean) => void;
+  sending: boolean;
+  error: string | undefined;
+  sent: boolean;
+  setSent: (sent: boolean) => void;
+  send: () => Promise<void>;
+}
+
+/**
+ * 塗っている間の状態を持つ。塗る先が変わったら、塗りかけと読んだ大きさを捨てる: 別の画像の上に、前の画像の筆が残らないように
+ */
+export function useMaskPainting(target: MaskTarget | undefined): MaskPainting {
+  const identity =
+    target === undefined ? '' : `${target.jobId}:${target.iteration}-${target.index}`;
+  const [owner, setOwner] = useState(identity);
   const [size, setSize] = useState<MaskSize | undefined>();
   const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [drawing, setDrawing] = useState(false);
   const [radius, setRadius] = useState(DEFAULT_RADIUS);
   const [erase, setErase] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [sent, setSent] = useState(false);
+  if (owner !== identity) {
+    setOwner(identity);
+    setSize(undefined);
+    setStrokes([]);
+    setError(undefined);
+    setSent(false);
+  }
+
+  async function send() {
+    if (size === undefined || target === undefined) return;
+    setSending(true);
+    setError(undefined);
+    try {
+      const png = await encodeMaskPng(strokes, size);
+      await addMask(target.jobId, { iteration: target.iteration, index: target.index }, png);
+      setStrokes([]);
+      setSent(true);
+    } catch (caught) {
+      if (!isApiError(caught)) throw caught;
+      setError(caught.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return {
+    size,
+    setSize,
+    strokes,
+    setStrokes,
+    radius,
+    setRadius,
+    erase,
+    setErase,
+    sending,
+    error,
+    sent,
+    setSent,
+    send,
+  };
+}
+
+/**
+ * 画像の上に canvas を重ねた、塗る面。`loading` を渡すと、画像が読み込まれるまで面を出さずに、それを出す
+ * （大きく見る窓では、塗り始めてから原寸を読み込むので、読み込む前の面に塗れないように）
+ */
+export function MaskSurface({
+  src,
+  alt,
+  painting,
+  imageClassName = 'block max-w-full',
+  loading,
+}: {
+  src: string;
+  alt: string;
+  painting: MaskPainting;
+  imageClassName?: string;
+  loading?: ReactNode;
+}) {
+  const { size, setSize, strokes, setStrokes, radius, erase, setSent } = painting;
+  const [drawing, setDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // 画面の canvas にも、送るものと同じマスクを描く: 見えている塗りと送るマスクがずれないように
@@ -34,14 +114,6 @@ export function MaskPainter({
     if (size === undefined || context == null) return;
     drawMask(context, strokes, size);
   }, [strokes, size]);
-
-  if (!open) {
-    return (
-      <Button className="h-7 px-2 text-xs" onClick={() => setOpen(true)}>
-        マスクを塗る
-      </Button>
-    );
-  }
 
   function pointOf(event: PointerEvent<HTMLCanvasElement>) {
     if (size === undefined) return undefined;
@@ -69,31 +141,15 @@ export function MaskPainter({
     });
   }
 
-  async function send() {
-    if (size === undefined) return;
-    setSending(true);
-    setError(undefined);
-    try {
-      const png = await encodeMaskPng(strokes, size);
-      await addMask(jobId, { iteration: image.iteration, index: image.index }, png);
-      setStrokes([]);
-      setSent(true);
-    } catch (caught) {
-      if (!isApiError(caught)) throw caught;
-      setError(caught.message);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  const alt = `${image.iteration} 回目の画像 ${image.index}`;
+  const waiting = loading !== undefined && size === undefined;
   return (
-    <div className="space-y-2">
-      <div className="relative inline-block max-w-full">
+    <>
+      {waiting && loading}
+      <div className={waiting ? 'hidden' : 'relative inline-block max-w-full'}>
         <img
-          src={image.url}
+          src={src}
           alt={alt}
-          className="block max-w-full"
+          className={imageClassName}
           onLoad={(event) =>
             setSize({
               width: event.currentTarget.naturalWidth,
@@ -114,6 +170,23 @@ export function MaskPainter({
           onPointerLeave={() => setDrawing(false)}
         />
       </div>
+    </>
+  );
+}
+
+/** 塗る道具（筆の太さ・消しゴム・戻す・送る）と、送ったか・送れなかったかの知らせ */
+export function MaskTools({
+  painting,
+  onClose,
+  closeLabel = '閉じる',
+}: {
+  painting: MaskPainting;
+  onClose: () => void;
+  closeLabel?: string;
+}) {
+  const { size, strokes, setStrokes, radius, setRadius, erase, setErase, sending } = painting;
+  return (
+    <>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="筆の太さ（px）">
           <Input
@@ -141,26 +214,60 @@ export function MaskPainter({
         <Button
           className="h-7 px-2 text-xs"
           disabled={strokes.length === 0}
-          onClick={() => setStrokes([])}
+          onClick={() => setStrokes(() => [])}
         >
           全部消す
         </Button>
         <Button
           className="h-7 px-2 text-xs"
           disabled={sending || strokes.length === 0 || size === undefined}
-          onClick={() => void send()}
+          onClick={() => void painting.send()}
         >
           マスクを送る
         </Button>
-        <Button className="h-7 px-2 text-xs" onClick={() => setOpen(false)}>
-          閉じる
+        <Button className="h-7 px-2 text-xs" onClick={onClose}>
+          {closeLabel}
         </Button>
       </div>
       <p className="text-xs">
         白く塗った所を、次の回の inpaint で描き直す。マスクは1回使うか、新しいマスクを送ると切れる。
       </p>
-      {sent && <OkNote>送った。次の回の境目から inpaint に使える。</OkNote>}
-      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+      {painting.sent && <OkNote>送った。次の回の境目から inpaint に使える。</OkNote>}
+      {painting.error !== undefined && <ErrorNote>送れない: {painting.error}</ErrorNote>}
+    </>
+  );
+}
+
+/**
+ * 回の画像1枚の上に inpaint のマスクを塗り、口出しとして送る。白く塗った所が、次の回の inpaint で描き直される。
+ * ジョブの詳細の画像の枡に置く（大きく見る窓では、塗る面と道具を分けて置く）
+ */
+export function MaskPainter({
+  jobId,
+  image,
+}: {
+  jobId: string;
+  image: { iteration: number; index: number; url: string };
+}) {
+  const [open, setOpen] = useState(false);
+  const painting = useMaskPainting({ jobId, iteration: image.iteration, index: image.index });
+
+  if (!open) {
+    return (
+      <Button className="h-7 px-2 text-xs" onClick={() => setOpen(true)}>
+        マスクを塗る
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <MaskSurface
+        src={image.url}
+        alt={`${image.iteration} 回目の画像 ${image.index}`}
+        painting={painting}
+      />
+      <MaskTools painting={painting} onClose={() => setOpen(false)} />
     </div>
   );
 }

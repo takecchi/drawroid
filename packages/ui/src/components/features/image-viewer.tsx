@@ -39,6 +39,9 @@ export function ImageViewer({
   openKey,
   onOpenKeyChange,
   details,
+  stage,
+  navigationLock,
+  keepOpen = false,
 }: {
   images: readonly ViewerImage[];
   /** 開いている画像の key。閉じているなら null */
@@ -46,6 +49,15 @@ export function ImageViewer({
   onOpenKeyChange: (key: string | null) => void;
   /** 画像の下に添えるもの（評価・選ぶボタンなど）。画面が渡す */
   details?: (image: ViewerImage) => ReactNode;
+  /** 渡すと、画像の代わりに出す（マスクを塗る面など）。画面が渡す */
+  stage?: ReactNode;
+  /**
+   * 渡すと、前後へ送らない（左右のキー・なぞり・前へ／次へのボタン）。渡した文は、画像の区画のすぐ上に出す:
+   * 押しても動かない理由が、人に分かるように
+   */
+  navigationLock?: string;
+  /** Esc と窓の外を押しても閉じない（塗りかけがある間など）。閉じるボタンでは閉じる */
+  keepOpen?: boolean;
 }) {
   const index = openKey === null ? -1 : images.findIndex((image) => image.key === openKey);
   const image = index < 0 ? undefined : images[index];
@@ -54,7 +66,9 @@ export function ImageViewer({
   if (image !== undefined) lastKey.current = image.key;
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
+  const locked = navigationLock !== undefined;
   const go = (step: -1 | 1) => {
+    if (locked) return;
     const next = images[index + step];
     if (next !== undefined) onOpenKeyChange(next.key);
   };
@@ -95,6 +109,8 @@ export function ImageViewer({
           aria-describedby={undefined}
           // 閉じるボタンは自前で置く: 既定のボタンは英語の名前（Close）を持つため
           showCloseButton={false}
+          onEscapeKeyDown={(event) => keepOpen && event.preventDefault()}
+          onInteractOutside={(event) => keepOpen && event.preventDefault()}
           onCloseAutoFocus={(event) => {
             const key = lastKey.current;
             const thumbnail =
@@ -120,29 +136,41 @@ export function ImageViewer({
               </Button>
             </DialogClose>
           </div>
+          {locked && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {navigationLock}
+            </p>
+          )}
           <div
             className="relative flex min-h-0 flex-1 touch-pan-y items-center justify-center select-none"
             onPointerDown={onPointerDown}
             onPointerUp={onPointerUp}
             onPointerCancel={() => (swipeStart.current = null)}
           >
-            <img
-              key={image.key}
-              src={image.src}
-              alt={image.alt}
-              draggable={false}
-              className="max-h-full max-w-full rounded-md object-contain"
-            />
+            {stage ?? (
+              <img
+                key={image.key}
+                src={image.src}
+                alt={image.alt}
+                draggable={false}
+                className="max-h-full max-w-full rounded-md object-contain"
+              />
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" aria-label="前の画像" disabled={index === 0} onClick={() => go(-1)}>
+            <Button
+              size="sm"
+              aria-label="前の画像"
+              disabled={locked || index === 0}
+              onClick={() => go(-1)}
+            >
               <ChevronLeft aria-hidden />
               前へ
             </Button>
             <Button
               size="sm"
               aria-label="次の画像"
-              disabled={index === images.length - 1}
+              disabled={locked || index === images.length - 1}
               onClick={() => go(1)}
             >
               次へ
