@@ -77,6 +77,8 @@ export type ConversationsPort = {
   hubs: ConversationHubs;
   /** beat を一定の間隔で呼び、止める関数を返す。省けば15秒ごと */
   heartbeat?: (beat: () => void) => () => void;
+  /** 発言を受けたことを話す役の実行器へ知らせる。省けば発言を置くだけで、ターンは始めない */
+  turns?: { kick(conversationId: string): void };
 };
 
 export type ApiDeps = {

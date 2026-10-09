@@ -10,6 +10,7 @@ import {
   type ConversationEventPage,
   type ConversationStore,
 } from '../conversation/store.js';
+import type { LlmCallRecord } from '../llm/record.js';
 
 /**
  * 試験のための、メモリに置く ConversationStore。ファイルの実装（storage-fs）と同じく、seq を欠けなく振る。
@@ -17,6 +18,8 @@ import {
 export class MemoryConversationStore implements ConversationStore {
   private readonly conversations = new Map<string, Conversation>();
   private readonly events = new Map<string, ConversationEvent[]>();
+  /** 会話ごとの LLM 呼び出しの記録。試験が「何を渡したか」をここで見る */
+  readonly llmCalls = new Map<string, LlmCallRecord[]>();
   private nextId = 1;
 
   async createConversation(now: Date): Promise<Conversation> {
@@ -71,6 +74,11 @@ export class MemoryConversationStore implements ConversationStore {
     const later = this.listOf(conversationId).filter((event) => event.seq > after);
     const events = later.slice(0, limit);
     return { events, last: events.at(-1)?.seq ?? after, more: later.length > limit };
+  }
+
+  async writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void> {
+    this.listOf(conversationId);
+    this.llmCalls.set(conversationId, [...(this.llmCalls.get(conversationId) ?? []), record]);
   }
 
   private listOf(conversationId: string): ConversationEvent[] {

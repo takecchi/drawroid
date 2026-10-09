@@ -54,6 +54,8 @@ export const llmConfigSchema = z
       think: roleConfigSchema,
       /** 省略したら考える役と同じモデルを使う */
       judge: roleConfigSchema.optional(),
+      /** 会話で人間と話す役（ツールを呼ぶ）。省略したら考える役と同じモデルを使う */
+      talk: roleConfigSchema.optional(),
     }),
     /** スキーマに合わない出力を出し直させる回数 */
     validationRetries: z.number().int().min(0).default(2),
@@ -61,7 +63,7 @@ export const llmConfigSchema = z
     networkRetries: z.number().int().min(0).default(2),
   })
   .superRefine((config, ctx) => {
-    for (const role of ['think', 'judge'] as const) {
+    for (const role of ['think', 'judge', 'talk'] as const) {
       const provider = config.roles[role]?.provider;
       if (provider !== undefined && !(provider in config.providers)) {
         ctx.addIssue({
@@ -74,8 +76,12 @@ export const llmConfigSchema = z
   });
 export type LlmConfig = z.infer<typeof llmConfigSchema>;
 
-export type ResolvedRoles = { think: RoleConfig; judge: RoleConfig };
+export type ResolvedRoles = { think: RoleConfig; judge: RoleConfig; talk: RoleConfig };
 
 export function resolveRoles(config: LlmConfig): ResolvedRoles {
-  return { think: config.roles.think, judge: config.roles.judge ?? config.roles.think };
+  return {
+    think: config.roles.think,
+    judge: config.roles.judge ?? config.roles.think,
+    talk: config.roles.talk ?? config.roles.think,
+  };
 }

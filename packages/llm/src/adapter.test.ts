@@ -83,8 +83,12 @@ const role = (overrides: Partial<RoleConfig> = {}): RoleConfig =>
 function adapter(model: MockLanguageModelV4, config: RoleConfig = role(), validationRetries = 2) {
   let clock = 0;
   return new AiSdkLlm(
-    { think: config, judge: config },
-    { think: { providerName: 'local', model }, judge: { providerName: 'local', model } },
+    { think: config, judge: config, talk: config },
+    {
+      think: { providerName: 'local', model },
+      judge: { providerName: 'local', model },
+      talk: { providerName: 'local', model },
+    },
     { validationRetries, networkRetries: 0, now: () => (clock += 10) },
   );
 }
@@ -196,9 +200,17 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
     const model = new MockLanguageModelV4({ doStream: [cutAtLimit(half)] });
     const config = role({ maxOutputTokens: 1024 });
     const llm = new AiSdkLlm(
-      { think: config, judge: config },
-      { think: { providerName: 'local', model }, judge: { providerName: 'local', model } },
-      { validationRetries: 2, networkRetries: 0, configKeys: { think: 'think', judge: 'think' } },
+      { think: config, judge: config, talk: config },
+      {
+        think: { providerName: 'local', model },
+        judge: { providerName: 'local', model },
+        talk: { providerName: 'local', model },
+      },
+      {
+        validationRetries: 2,
+        networkRetries: 0,
+        configKeys: { think: 'think', judge: 'think', talk: 'think' },
+      },
     );
     const outcome = await llm.generateStructured(call({ role: 'judge' }));
 

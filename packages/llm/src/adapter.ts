@@ -43,7 +43,7 @@ export type AdapterOptions = {
   now?: () => number;
 };
 
-const ROLE_LABELS: Record<LlmRole, string> = { think: '考える役', judge: '見る役' };
+const ROLE_LABELS: Record<LlmRole, string> = { think: '考える役', judge: '見る役', talk: '話す役' };
 
 // サーバが length を HTTP のエラーとして返すことがある（本文に finish_reason=length などと書く）。AI SDK の結果の
 // finishReason だけを見ると、その形を取りこぼす

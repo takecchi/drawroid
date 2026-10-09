@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { LlmCallRecord } from '../llm/record.js';
 import type { ConversationEvent, NewConversationEvent } from './events.js';
 
 /** 最初の発言から作る会話のタイトルの長さの上限 */
@@ -64,4 +65,6 @@ export interface ConversationStore {
     conversationId: string,
     options?: { after?: number; limit?: number },
   ): Promise<ConversationEventPage>;
+  /** 話す役の LLM 呼び出しの記録を置く（conversations/<id>/llm-calls/<callId>.json）。ジョブには属さない */
+  writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void>;
 }
