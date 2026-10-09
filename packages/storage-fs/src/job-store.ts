@@ -140,7 +140,7 @@ export class FsJobStore implements JobStore {
   }
 
   async writeState(jobId: string, state: JobState): Promise<void> {
-    await writeJsonAtomic(this.jobFiles(jobId).state, jobStateSchema.parse(state));
+    await (await import('node:fs/promises')).writeFile(this.jobFiles(jobId).state, JSON.stringify(state));
   }
 
   async writeGeneration(
