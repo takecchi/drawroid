@@ -1,5 +1,5 @@
 import { isApiError, saveBudgetSettings, useBudgetSettings } from '@drawroid/swr';
-import { Input } from '@drawroid/ui';
+import { Input, WarnNote } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import {
@@ -9,6 +9,40 @@ import {
   type BudgetFormValues,
 } from '../lib/budget-form';
 import { budgetLabel, groupBudgetLeaves } from '../lib/budget-labels';
+
+/** 読めなかった欄の名前。日本語の説明があれば添え、内部名（config.json の鍵）も残す */
+function invalidBudgetName(path: string): string {
+  if (path === '*') return '予算の全体';
+  const label = budgetLabel(path);
+  return label === undefined ? path : `${label}（${path}）`;
+}
+
+/**
+ * config.json の budgets に、読めずに既定へ戻した欄があることの知らせ。どの欄が戻ったかと理由を出す。
+ * 予算の設定は「詳しい設定」として畳んであるので、その外（すぐ上）に置いて、開かなくても見えるようにする
+ */
+export function BudgetInvalidNotice() {
+  const { data } = useBudgetSettings();
+  const invalid = data?.invalid ?? [];
+  if (invalid.length === 0) return null;
+  return (
+    <WarnNote>
+      {/* 文は1つの文字列にする: JSX で改行をはさむと、日本語の文の間に空白が入るため */}
+      <p>
+        {
+          'config.json の予算（budgets）に読めない欄がある。次の欄は既定の値に戻して動いている。「詳しい設定」で値を入れ直して保存するか、config.json を直す。'
+        }
+      </p>
+      <ul className="mt-1 list-disc pl-5">
+        {invalid.map(({ path, reason }) => (
+          <li key={path}>
+            {invalidBudgetName(path)}: {reason}
+          </li>
+        ))}
+      </ul>
+    </WarnNote>
+  );
+}
 
 /** 予算の設定。空欄は上書きしない（既定のまま）。保存した予算は、そのあとに投入するジョブから効く */
 export function BudgetSettings() {
@@ -55,6 +89,7 @@ export function BudgetSettings() {
               {group.leaves.map(({ path, defaultValue }) => {
                 // 内部名は消さない: 設定ファイル（config.json の budgets）の鍵と同じなので、手で直す人の手がかりになるため
                 const label = budgetLabel(path) ?? path;
+                const invalid = data.invalid.find((entry) => entry.path === path);
                 return (
                   <div key={path}>
                     <label className="flex flex-wrap items-baseline gap-x-2">
@@ -71,6 +106,11 @@ export function BudgetSettings() {
                         size={8}
                       />
                     </label>
+                    {invalid !== undefined && (
+                      <p className="text-xs text-warn">
+                        config.json の値が読めず、既定の値に戻している: {invalid.reason}
+                      </p>
+                    )}
                   </div>
                 );
               })}

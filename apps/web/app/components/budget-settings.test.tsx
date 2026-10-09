@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { ApiError, type BudgetSettingsResponse } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BudgetSettings } from './budget-settings';
+import { BudgetInvalidNotice, BudgetSettings } from './budget-settings';
 
 const mocks = vi.hoisted(() => ({
   saveBudgetSettings: vi.fn(),
@@ -28,6 +28,7 @@ const stored = {
   overrides: {},
   effective: defaults,
   defaults,
+  invalid: [],
 } as unknown as BudgetSettingsResponse;
 
 beforeEach(() => {
@@ -115,5 +116,62 @@ describe('BudgetSettings', () => {
     render(<BudgetSettings />);
 
     expect(screen.getByRole('alert').textContent).toContain('config.json の budgets が不正');
+  });
+});
+
+describe('BudgetInvalidNotice', () => {
+  it('shows nothing when every field of budgets was read', () => {
+    const { container } = render(<BudgetInvalidNotice />);
+
+    expect(container.textContent).toBe('');
+  });
+
+  it('names each field that went back to the default, with the reason', () => {
+    mocks.useBudgetSettings.mockReturnValue({
+      data: {
+        ...stored,
+        invalid: [
+          { path: 'text.prompt', reason: '1 以上にする' },
+          { path: 'text.unknownField', reason: '知らない欄' },
+        ],
+      },
+      error: undefined,
+    });
+    render(<BudgetInvalidNotice />);
+
+    const notice = screen.getByRole('status');
+    expect(notice.textContent).toContain('既定の値に戻して動いている');
+    const items = within(notice)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent);
+    expect(items).toEqual([
+      'プロンプトの文字数（text.prompt）: 1 以上にする',
+      'text.unknownField: 知らない欄',
+    ]);
+  });
+
+  it('says the whole budgets could not be read', () => {
+    mocks.useBudgetSettings.mockReturnValue({
+      data: { ...stored, invalid: [{ path: '*', reason: '予算が、欄の集まりになっていない' }] },
+      error: undefined,
+    });
+    render(<BudgetInvalidNotice />);
+
+    expect(screen.getByRole('listitem').textContent).toBe(
+      '予算の全体: 予算が、欄の集まりになっていない',
+    );
+  });
+
+  it('marks the field in the form that went back to the default', () => {
+    mocks.useBudgetSettings.mockReturnValue({
+      data: { ...stored, invalid: [{ path: 'text.prompt', reason: '1 以上にする' }] },
+      error: undefined,
+    });
+    render(<BudgetSettings />);
+
+    expect(
+      screen.getByText('config.json の値が読めず、既定の値に戻している: 1 以上にする'),
+    ).toBeTruthy();
+    expect(screen.getAllByText(/既定の値に戻している/)).toHaveLength(1);
   });
 });
