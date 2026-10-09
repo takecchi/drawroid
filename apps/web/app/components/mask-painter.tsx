@@ -264,7 +264,7 @@ export function MaskPainter({
     <div className="space-y-2">
       <MaskSurface
         src={image.url}
-        alt={`${image.iteration} 回目の画像 ${image.index}`}
+        alt={`${image.iteration} 回目の画像 ${image.index + 1} 番`}
         painting={painting}
       />
       <MaskTools painting={painting} onClose={() => setOpen(false)} />

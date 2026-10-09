@@ -164,6 +164,7 @@ describe('JobDetail', () => {
     renderDetail();
 
     expect(screen.getByText('使わずに止まった')).toBeTruthy();
-    expect(screen.queryByText('まだ inpaint に使っていない')).toBeNull();
+    expect(screen.queryByText('まだ描き直しに使っていない')).toBeNull();
+    expect(screen.queryByText(/inpaint/)).toBeNull();
   });
 });

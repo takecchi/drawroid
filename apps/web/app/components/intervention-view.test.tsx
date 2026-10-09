@@ -42,7 +42,7 @@ describe('InterventionList', () => {
     expect(screen.getByText('まだ人間の指示は無い。')).toBeTruthy();
   });
 
-  it('shows which image a mask was painted on and whether inpaint has used it', () => {
+  it('shows which image a mask was painted on and whether a redraw has used it', () => {
     const mask = (id: string, usedInIteration?: number): Intervention => ({
       kind: 'mask',
       interventionId: id,
@@ -57,8 +57,10 @@ describe('InterventionList', () => {
       .map((label) => label.parentElement?.textContent);
     // 画像は 1 から数える（index 1 は 2 番）: ほかの画面の呼び方にそろえる
     expect(items[0]).toContain('2 回目の画像 2 番にマスクを塗った');
-    expect(items[0]).toContain('まだ inpaint に使っていない');
-    expect(items[1]).toContain('3 回目の inpaint に使った');
+    expect(items[0]).toContain('まだ描き直しに使っていない');
+    expect(items[1]).toContain('3 回目の描き直しに使った');
+    // 内部の言葉（inpaint）は人の画面に出さない
+    expect(items.join('')).not.toContain('inpaint');
   });
 
   it('says what was never taken in once the job stopped', () => {
