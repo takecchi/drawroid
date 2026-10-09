@@ -2,6 +2,12 @@ export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 export { createFsDistillLog } from './distill/log.js';
 export { readCandidateNotes, writeCandidateNotes } from './candidate-notes.js';
 export {
+  DEFAULT_EVENT_PAGE_SIZE,
+  FsConversationStore,
+  isConversationId,
+  type FsConversationStoreOptions,
+} from './conversation-store.js';
+export {
   formatJobId,
   FsJobStore,
   ImageAlreadySentError,

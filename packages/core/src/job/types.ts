@@ -99,6 +99,10 @@ export const autoJobSpecSchema = z.object({
   permissions: permissionOverridesSchema.optional(),
   /** 投入のときに解決した予算。走行中は読み直さない。無い古いジョブは runner の既定で回る */
   budgets: storedBudgetsSchema.optional(),
+  /** このジョブを作った会話。今の投入画面と API で作ったジョブには無い */
+  conversationId: z.string().min(1).optional(),
+  /** このジョブを作った、会話のターンの番号 */
+  turn: z.number().int().positive().optional(),
 });
 export type AutoJobSpec = z.infer<typeof autoJobSpecSchema>;
 
