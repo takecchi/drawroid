@@ -1,5 +1,5 @@
 {
-  "name": "@drawroid/api",
+  "name": "@drawroid/backend-forge",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,13 +18,10 @@
   },
   "dependencies": {
     "@drawroid/core": "workspace:*",
-    "hono": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@drawroid/storage-fs": "workspace:*",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "^5.0.0"
+    "typescript": "catalog:"
   }
 }

@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 
 import { generationRequestSchema, type GenerationRequest, type ImageBackend } from '../backend.js';
+import { BackendError } from '../backend-error.js';
 import type { ImageRef, JobStore } from '../job/store.js';
 import type { AutoJobSpec, JobState, StopReason } from '../job/types.js';
 import type {
@@ -12,7 +13,7 @@ import type {
 } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
 import type { Budget } from './budget.js';
-import { advanceCarry, type Carry } from './carry.js';
+import { advanceCarry, createCarry, type Carry } from './carry.js';
 import { buildJudgeInput, buildThinkInput } from './inputs.js';
 import {
   buildJudgeOutputSchema,
@@ -46,7 +47,7 @@ export type JobRunnerDeps = {
 };
 
 type Running = { jobId: string; controller: AbortController };
-type RunningState = Extract<JobState, { status: 'running' }>;
+type RunningState = Extract<JobState, { status: 'running' }> & { carry: Carry };
 
 /** ループを止めて、理由を state.json に残すための合図 */
 class StopJob extends Error {
@@ -130,16 +131,23 @@ export class JobRunner {
     try {
       const spec = await store.readJob(jobId);
       if (spec.kind !== 'auto' || state.status === 'stopped') return;
+      let running: RunningState;
       if (state.status === 'queued') {
-        state = {
+        running = {
           status: 'running',
-          carry: state.carry,
+          // 走る前の要約は依頼だけから決まるので、無ければここで作る
+          carry: state.carry ?? createCarry(spec.request, this.deps.budget).carry,
           startedAt: this.now().toISOString(),
           imagesGenerated: 0,
         };
-        await store.writeState(jobId, state);
+        state = running;
+        await store.writeState(jobId, running);
+      } else if (state.carry === undefined) {
+        throw new StopJob({ kind: 'error', detail: 'state.json に持ち回しの要約（carry）が無い' });
+      } else {
+        running = { ...state, carry: state.carry };
       }
-      await this.loop(spec, state, controller.signal);
+      await this.loop(spec, running, controller.signal);
     } catch (error) {
       const current = await store.readState(jobId);
       if (current.status === 'stopped') return;
@@ -224,7 +232,7 @@ export class JobRunner {
     return outcome.value;
   }
 
-  /** 生成して画像を置き、最後に request.json を置く。済んでいれば置いた枚数だけを返す */
+  /** 生成して画像と request.json を置く。済んでいれば置いた枚数だけを返す */
   private async generate(
     spec: AutoJobSpec,
     iteration: number,
@@ -232,26 +240,29 @@ export class JobRunner {
     signal: AbortSignal,
   ): Promise<number> {
     const { store, backend } = this.deps;
-    const done = (await store.readStage(spec.jobId, iteration, 'request')) as
-      GenerationRequest | undefined;
-    if (done !== undefined) return done.batchSize;
+    const done = await store.readGeneration(spec.jobId, iteration);
+    if (done !== undefined) return done.images.length;
 
     const request = this.toRequest(spec, think);
-    let images;
+    let result;
     try {
-      ({ images } = await backend.generate(request, signal));
+      result = await backend.generate(request, signal);
     } catch (error) {
       if (signal.aborted) throw error;
-      throw new StopJob({ kind: 'error', detail: `生成の段: ${messageOf(error)}` });
+      throw new StopJob({
+        kind: 'error',
+        detail: `生成の段: ${messageOf(error)}`,
+        ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
+      });
     }
     signal.throwIfAborted();
-    // 画像を先に置き、それを指す request.json を後に置く: request.json があることを「生成が済んだ」印にするため
-    await store.saveImages(spec.jobId, iteration, images);
-    await store.writeStage(spec.jobId, iteration, 'request', {
-      ...request,
-      batchSize: images.length,
-    });
-    return images.length;
+    await store.writeGeneration(
+      spec.jobId,
+      iteration,
+      { ...request, batchSize: result.images.length },
+      result,
+    );
+    return result.images.length;
   }
 
   private toRequest(spec: AutoJobSpec, think: ThinkOutput): GenerationRequest {
@@ -349,7 +360,7 @@ export class JobRunner {
   private stopped(state: JobState, reason: StopReason): JobState {
     return {
       status: 'stopped',
-      carry: state.carry,
+      ...(state.carry === undefined ? {} : { carry: state.carry }),
       ...(state.status === 'running' ? { startedAt: state.startedAt } : {}),
       stoppedAt: this.now().toISOString(),
       imagesGenerated: state.status === 'queued' ? 0 : state.imagesGenerated,
