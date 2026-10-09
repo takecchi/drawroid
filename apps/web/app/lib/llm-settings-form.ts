@@ -120,6 +120,25 @@ export function roleProviderOf(role: RoleValues, names: readonly string[]): stri
   return chosen === '' && names.length === 1 ? (names[0] ?? '') : chosen;
 }
 
+/**
+ * provider を1つ足した値。足す前に、既定で選んである provider（1つだけのときの名前）を役の値として持たせる。
+ * 持たせないと、2つ目を足した途端に既定が効かなくなり、選んで見えていた役が「選ぶ」に戻るため
+ */
+export function withProviderAdded(values: LlmSettingsFormValues): LlmSettingsFormValues {
+  const names = definedProviderNames(values.providers);
+  const pin = (role: RoleValues): RoleValues => ({
+    ...role,
+    provider: roleProviderOf(role, names),
+  });
+  return {
+    ...values,
+    providers: [...values.providers, emptyProviderRow()],
+    think: pin(values.think),
+    judge: pin(values.judge),
+    talk: pin(values.talk),
+  };
+}
+
 function buildRole(
   values: RoleValues,
   names: readonly string[],

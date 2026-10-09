@@ -109,7 +109,34 @@ describe('LlmSettings', () => {
     expect(saved.roles.judge.provider).toBe('local');
   });
 
-  it('does not choose for the person when two providers are defined and the role has none', () => {
+  it('keeps the provider each role showed as chosen when a second provider is added', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.type(input('provider local の接続先（baseURL）'), 'http://127.0.0.1:11434/v1');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+    await user.click(screen.getByLabelText('見る役も考える役と同じモデルを使う'));
+    await user.type(input('見る役のモデル'), 'qwen2.5vl');
+
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の名前'), 'cloud');
+
+    expect(input('考える役の provider').value).toBe('local');
+    expect(input('見る役の provider').value).toBe('local');
+    expect(
+      within(screen.getByRole('combobox', { name: '考える役の provider' }))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['local', 'cloud']);
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    const saved = mocks.saveLlmSettings.mock.calls[0]?.[0];
+    expect(saved.roles.think.provider).toBe('local');
+    expect(saved.roles.judge.provider).toBe('local');
+  });
+
+  it('does not choose for the person when two providers are defined and the role has none', async () => {
+    const user = userEvent.setup();
     mocks.useLlmSettings.mockReturnValue({
       data: {
         config: {
@@ -121,9 +148,16 @@ describe('LlmSettings', () => {
     });
     render(<LlmSettings />);
 
-    const think = screen.getByRole('combobox', { name: '考える役の provider' });
-    expect((think as HTMLSelectElement).value).toBe('');
-    expect(within(think).getByRole('option', { name: '選ぶ' })).toBeTruthy();
+    const think = () =>
+      screen.getByRole<HTMLSelectElement>('combobox', { name: '考える役の provider' });
+    expect(think().value).toBe('');
+    expect(within(think()).getByRole('option', { name: '選ぶ' })).toBeTruthy();
+
+    // 足しても、どれかを選んだことにはしない（既定が効くのは1つだけのときに限る）
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    expect(think().value).toBe('');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('');
   });
 
   it('keeps showing a role that points at a provider no longer defined, so saving can say why', async () => {
