@@ -118,7 +118,7 @@ let child;
 let drawroidOutput;
 /** @type {{ url: string, close: () => Promise<void> } | undefined} */
 let forge;
-/** @type {{ url: string, close: () => Promise<void> } | undefined} */
+/** @type {Awaited<ReturnType<typeof startFakeLlm>> | undefined} */
 let llm;
 /** @type {Sse[]} */
 const streams = [];
@@ -143,28 +143,44 @@ try {
     port,
     {
       cwd,
-      env: { ...process.env, FAKE_LLM_KEY: 'fake-key-not-real' },
+      env: {
+        ...process.env,
+        FAKE_LLM_KEY: 'fake-key-not-real',
+        FAKE_OPENAI_KEY: 'fake-key-not-real',
+        FAKE_ANTHROPIC_KEY: 'fake-key-not-real',
+      },
     },
   ));
   const base = `http://127.0.0.1:${port}`;
 
-  /** @param {string} model */
-  const role = (model) => ({
-    provider: 'fake',
+  /** @param {string} model @param {'native' | 'json'} toolCalling @param {string} [provider] */
+  const role = (model, toolCalling, provider = 'fake') => ({
+    provider,
     model,
     structuredOutput: 'native',
     reasoning: 'native',
-    toolCalling: 'native',
+    toolCalling,
     imageInput: true,
   });
-  const put = await api(base, 'PUT', '/api/settings/llm', {
-    providers: {
-      fake: { type: 'openai-compatible', baseURL: llm.url, apiKeyEnv: 'FAKE_LLM_KEY' },
-    },
-    roles: { think: role('think-model'), judge: role('judge-model'), talk: role('talk-model') },
-    validationRetries: 1,
-    networkRetries: 0,
-  });
+  const fakeLlmUrl = llm.url;
+  const fakeProvider = {
+    type: 'openai-compatible',
+    baseURL: fakeLlmUrl,
+    apiKeyEnv: 'FAKE_LLM_KEY',
+  };
+  /** @param {'native' | 'json'} toolCalling @param {Record<string, unknown>} [providers] @param {string} [provider] */
+  const putLlm = (toolCalling, providers = {}, provider = 'fake') =>
+    api(base, 'PUT', '/api/settings/llm', {
+      providers: { fake: fakeProvider, ...providers },
+      roles: {
+        think: role('think-model', 'native'),
+        judge: role('judge-model', 'native'),
+        talk: role('talk-model', toolCalling, provider),
+      },
+      validationRetries: 1,
+      networkRetries: 0,
+    });
+  const put = await putLlm('native');
   assert(put.status === 200, 'PUT /api/settings/llm が 200', `${put.status} ${put.text}`);
 
   const conversation = await api(base, 'POST', '/api/conversations', {});
@@ -317,6 +333,90 @@ try {
     'events/ の件数が SSE で確定した件数と一致する',
     `${names.length} / ${confirmed.length}`,
   );
+  assert(
+    llm.stats.nativeTalkCalls >= 1 && llm.stats.jsonTalkCalls === 0,
+    'native のとき、台本の LLM は native のツール呼び出しで呼ばれる',
+    JSON.stringify(llm.stats),
+  );
+
+  // toolCalling: json。会話を短く通す（見る役は 1 回目で止める）。native に倒れて通っただけ、を見逃さないよう、json の経路で呼ばれた数も見る
+  llm.restartJudge(1);
+  const nativeCallsBefore = llm.stats.nativeTalkCalls;
+  const putJson = await putLlm('json');
+  assert(
+    putJson.status === 200,
+    'toolCalling: json の設定の PUT が 200',
+    `${putJson.status} ${putJson.text}`,
+  );
+  const jsonConversation = await api(base, 'POST', '/api/conversations', {});
+  const jsonConversationId = String(jsonConversation.json?.conversation?.conversationId);
+  const jsonStream = await openSse(base, jsonConversationId, {});
+  streams.push(jsonStream);
+  const jsonSay = await api(base, 'POST', `/api/conversations/${jsonConversationId}/messages`, {
+    text: '夕焼けの海辺の少女を描いて',
+    clientMessageId: 'c2',
+  });
+  assert(
+    jsonSay.status === 202,
+    'toolCalling: json の発言が 202',
+    `${jsonSay.status} ${jsonSay.text}`,
+  );
+  await waitFor(
+    () => stopped(jsonStream) || (has(jsonStream, 'turn.ended') && !has(jsonStream, 'job.started')),
+    'toolCalling: json の job.stopped',
+  );
+  const jsonConfirmed = jsonStream.frames.filter((f) => f.id !== undefined);
+  const jsonTypes = jsonConfirmed.map((f) => f.event);
+  const jsonCall = jsonConfirmed.find((f) => f.event === 'tool.call');
+  const jsonResult = jsonConfirmed.find((f) => f.event === 'tool.result');
+  assert(
+    jsonCall?.data?.name === 'start_drawing',
+    'toolCalling: json で tool.call（start_drawing）が確定する',
+    JSON.stringify(jsonTypes),
+  );
+  assert(
+    jsonResult?.data?.ok === true,
+    'toolCalling: json で tool.result が ok で確定する',
+    JSON.stringify(jsonResult?.data),
+  );
+  assert(
+    jsonConfirmed.filter((f) => f.event === 'job.stopped').length === 1,
+    'toolCalling: json で job.stopped が 1 回確定する',
+    JSON.stringify(jsonTypes),
+  );
+  assert(
+    llm.stats.jsonTalkCalls >= 1 && llm.stats.nativeTalkCalls === nativeCallsBefore,
+    'toolCalling: json のとき、台本の LLM は json の経路で呼ばれ、native のツール呼び出しは使われない',
+    JSON.stringify(llm.stats),
+  );
+
+  // provider の openai・anthropic。設定の保存の時点で LLM を組み立てるので、固めたものの中でアダプタが読めることがここで分かる。
+  // 実 API は呼ばない: baseURL は 127.0.0.1 の使われないポート
+  const unusedUrl = 'http://127.0.0.1:9/v1';
+  /** @type {['openai' | 'anthropic', string][]} */
+  const providerTypes = [
+    ['openai', 'FAKE_OPENAI_KEY'],
+    ['anthropic', 'FAKE_ANTHROPIC_KEY'],
+  ];
+  for (const [type, keyEnv] of providerTypes) {
+    const result = await putLlm(
+      'native',
+      { [type]: { type, baseURL: unusedUrl, apiKeyEnv: keyEnv } },
+      type,
+    );
+    assert(
+      result.status === 200,
+      `provider ${type} の設定を PUT でき、固めたものの中でアダプタが読める`,
+      `${result.status} ${result.text}`,
+    );
+  }
+  const restored = await putLlm('native');
+  assert(
+    restored.status === 200,
+    '台本の LLM の設定に戻せる',
+    `${restored.status} ${restored.text}`,
+  );
+
   // 起動時に「LLM が未設定」と出したあと、設定を保存したことが端末から分かる
   assert(
     (drawroidOutput?.() ?? '').includes('LLM の設定を読み込んだ'),
