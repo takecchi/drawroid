@@ -1,0 +1,37 @@
+import type { StopConditions, StopReason } from '../job/types.js';
+
+export type StopCheck = {
+  conditions: StopConditions;
+  completedIterations: number;
+  imagesGenerated: number;
+  elapsedMs: number;
+  /** 直前の回の「見る」が「止めてよい」と言ったか。まだ回していなければ false */
+  judgeSaysStop: boolean;
+};
+
+/**
+ * 回の境目で、次の回へ進むかを決める。人間の停止とエラーはここを通らない（即座に止める）。
+ * 順は AI の判断 → 回数 → 枚数 → 時間。
+ */
+export function checkStopAtBoundary(check: StopCheck): StopReason | undefined {
+  const { conditions } = check;
+  if (conditions.aiJudgement && check.judgeSaysStop) {
+    return { kind: 'ai', detail: '見る役が意図どおりと判断した' };
+  }
+  if (
+    conditions.maxIterations !== undefined &&
+    check.completedIterations >= conditions.maxIterations
+  ) {
+    return { kind: 'limit:iterations', detail: `${conditions.maxIterations} 回に達した` };
+  }
+  if (conditions.maxImages !== undefined && check.imagesGenerated >= conditions.maxImages) {
+    return { kind: 'limit:images', detail: `${conditions.maxImages} 枚に達した` };
+  }
+  if (conditions.maxDurationMs !== undefined && check.elapsedMs >= conditions.maxDurationMs) {
+    return {
+      kind: 'limit:duration',
+      detail: `${Math.round(conditions.maxDurationMs / 1000)} 秒に達した`,
+    };
+  }
+  return undefined;
+}
