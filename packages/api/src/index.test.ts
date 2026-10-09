@@ -179,3 +179,31 @@ describe('not found', () => {
 async function notUsed(): Promise<never> {
   throw new Error('この試験では使わない口');
 }
+
+describe('errors outside the routes share the error shape', () => {
+  it('answers a body that is not JSON with invalid_request, like any other bad request', async () => {
+    const created = await post('/jobs/auto', { request: '夕暮れの海辺の少女' });
+    const { jobId } = (await created.json()) as { jobId: string };
+
+    // 口出しの本文は hono の validator が読む。読めないと、ルートに入る前に hono が例外を投げる
+    const res = await api.request(`/jobs/auto/${jobId}/interventions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ not json',
+    });
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { kind: string } }).error.kind).toBe('invalid_request');
+  });
+
+  it('answers an unexpected failure with internal_error, without its message', async () => {
+    vi.spyOn(backend, 'probe').mockRejectedValue(new Error('/home/someone/secret/config.json'));
+
+    const res = await api.request('/backend');
+
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: { kind: string; message: string } };
+    expect(body.error.kind).toBe('internal_error');
+    expect(body.error.message).not.toContain('secret');
+  });
+});
