@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
-import { setSelection, useSelections } from '@drawroid/swr';
+import { recheckBackendStatus, setSelection, useSelections } from '@drawroid/swr';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -11,6 +11,7 @@ import { ConversationView, type ConversationActions } from './conversation-view'
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
+  recheckBackendStatus: vi.fn(),
   setSelection: vi.fn(),
   useSelections: vi.fn(),
 }));
@@ -187,6 +188,42 @@ describe('ConversationView', () => {
         true,
       ),
     );
+  });
+
+  it('reads the backend again once when a job stops because the backend failed', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'error', detail: '生成の段: 繋がらない', backendErrorKind: 'unreachable' },
+      }),
+    );
+    await waitFor(() => expect(screen.getByText(/描くのを止めた/)).toBeTruthy());
+    // あとから届く発言や増分では、もう読み直さない
+    stream.emit(confirmed({ type: 'user.message', text: 'まだ？', attachments: [] }));
+    stream.emit({ type: 'delta.text', partId: 'm9', turn: 9, text: '確かめます' });
+    await waitFor(() => expect(screen.getByText('確かめます')).toBeTruthy());
+
+    expect(recheckBackendStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
+    ['it reached its limit', { kind: 'limit:iterations', detail: '3 回に達した' }],
+    ['it failed outside the backend', { kind: 'error', detail: '見る段: 形が合わない' }],
+  ])('does not read the backend again when a job stops because %s', async (_, reason) => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason }));
+    await waitFor(() => expect(screen.getByText(/描くのを止めた|止めた|達した/)).toBeTruthy());
+
+    expect(recheckBackendStatus).not.toHaveBeenCalled();
   });
 
   it('reads the selections of the job again when a person chose an image, so its button shows the favorite', async () => {

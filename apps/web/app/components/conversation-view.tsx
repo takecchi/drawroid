@@ -40,6 +40,7 @@ import {
 } from '../lib/chat-state';
 import { useConversationStream, type ConversationSource } from '../lib/conversation-stream';
 import { formatScore } from '../lib/format';
+import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
@@ -641,6 +642,9 @@ export function ConversationView({
   const stoppedJobs = useMemo(
     () => new Set(items.flatMap((item) => (item.kind === 'job-stopped' ? [item.jobId] : []))),
     [items],
+  );
+  useRecheckBackendOnFailure(
+    items.findLast((item) => item.kind === 'job-stopped' && stoppedByBackend(item.reason))?.key,
   );
   const chosenImages = useMemo(
     () =>

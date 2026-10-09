@@ -44,6 +44,15 @@ export async function startManualJob(params: GenerationRequestInput): Promise<{ 
   return started;
 }
 
+/**
+ * バックエンドの状態を、いま開いている画面のぶんだけ読み直す。描く途中でバックエンドが落ちたと分かったときに呼ぶ。
+ * 読めなければ、useBackendStatus の「繋がらない間の読み直し」が続く
+ */
+// 繋がっている間はポーリングしない（useBackendStatus）ので、落ちたと分かった時点で読み直させるため
+export async function recheckBackendStatus(): Promise<void> {
+  await mutate(keys.backend);
+}
+
 /** URL が不正なときは ApiError（kind: 'invalid_request'）を投げる */
 export async function saveBackendSettings(input: {
   url: string;
