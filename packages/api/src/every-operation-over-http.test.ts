@@ -152,7 +152,8 @@ describe('every M3 operation goes over HTTP (M3:98)', () => {
         list.some((i) => i.kind === 'instruction' && i.appliedInIteration !== undefined),
     );
     const takenIn = taken.find((i) => i.kind === 'instruction')?.appliedInIteration as number;
-    expect(taken.map((i) => i.kind).sort()).toEqual(['instruction', 'stopConditions']);
+    // 受けた順に並ぶ: 同じ秒に続けて受けても、指示 → 止める条件の変更の順のまま
+    expect(taken.map((i) => i.kind)).toEqual(['instruction', 'stopConditions']);
     // 取り込んだ回の次の回まで「見る」が済むのを待つ: 指示と変更が次の回から効いたかを、記録で確かめるため
     const last = takenIn + 1;
     await pollUntil(
