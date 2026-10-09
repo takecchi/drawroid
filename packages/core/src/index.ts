@@ -53,3 +53,34 @@ export {
 export { type MemoryRoleLimits, type MemorySelection, selectMemory } from './memory/select.js';
 export type { InvalidMemoryFile, MemoryListing, MemoryStore } from './memory/store.js';
 export { DEFAULT_MEMORY_LIMITS, type MemoryLimits } from './memory/limits.js';
+export { applyDistillOperations } from './memory/distill/apply.js';
+export { DEFAULT_DISTILL_BUDGET, type DistillBudget } from './memory/distill/budget.js';
+export {
+  buildReselectionDistillInput,
+  buildStoppedJobDistillInput,
+  type DistillInput,
+  type InterventionMaterial,
+  type ReselectionMaterial,
+  type SelectionMaterial,
+  type SelectionVerdict,
+  type StoppedJobMaterial,
+} from './memory/distill/input.js';
+export {
+  distillEntrySchema,
+  distillFileSchema,
+  type DistillEntry,
+  type DistillFile,
+  type DistillLog,
+} from './memory/distill/log.js';
+export {
+  distillReselection,
+  distillStoppedJob,
+  type DistillDeps,
+  type DistillResult,
+} from './memory/distill/run.js';
+export {
+  buildDistillOutputSchema,
+  type DistilledPreference,
+  type DistillOperation,
+  type DistillOutput,
+} from './memory/distill/schema.js';

@@ -67,9 +67,9 @@ const JUDGE_SYSTEM = [
 ].join('\n');
 
 /** 入力の1区画。必須でない区画は、入力の上限に入らなければ落とす */
-type Section = { name: string; text: string };
+export type Section = { name: string; text: string };
 
-class SectionWriter {
+export class SectionWriter {
   readonly notes: BudgetNote[] = [];
 
   clip(section: string, text: string, limit: number): string {
@@ -128,7 +128,7 @@ class SectionWriter {
 /**
  * 必須の区画は必ず入れ、任意の区画は渡した順を優先順位として、入力の上限に入るものだけを入れる。
  */
-function seal(args: {
+export function seal(args: {
   system: string;
   writer: SectionWriter;
   required: Section[];
