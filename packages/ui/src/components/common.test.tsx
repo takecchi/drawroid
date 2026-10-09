@@ -44,6 +44,14 @@ describe('Spinner', () => {
   });
 });
 
+describe('ErrorNote', () => {
+  it('is announced as an alert with its message', () => {
+    render(<ErrorNote>送れない: 依頼が長すぎる</ErrorNote>);
+
+    expect(screen.getByRole('alert').textContent).toContain('依頼が長すぎる');
+  });
+});
+
 describe('Field', () => {
   it('lets the control be found by its label', () => {
     render(
