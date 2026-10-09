@@ -42,6 +42,7 @@ beforeEach(async () => {
       addMask: notUsed,
     },
     budget: DEFAULT_BUDGET,
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
   });

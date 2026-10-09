@@ -37,6 +37,7 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     env: {},
   });
   const put = (body: unknown) =>

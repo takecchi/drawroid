@@ -15,6 +15,7 @@ import { llmCallsRoutes } from './routes/llm-calls.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
 import { memoryRoutes } from './routes/memory.js';
 import { selectionsRoutes } from './routes/selections.js';
+import { stopConditionParseRoutes } from './routes/stop-condition-parse.js';
 import { stopConditionsRoutes } from './routes/stop-conditions.js';
 
 export {
@@ -27,6 +28,7 @@ export {
   type BackendSettingsView,
   type UpdateBackendSettings,
 } from './backend-settings.js';
+export { LlmNotConfiguredError, type StopConditionParser } from './stop-condition-parse.js';
 export type { ApiDeps, AutoJobQueue, LlmSettingsStore } from './deps.js';
 export type { ApiErrorBody } from './errors.js';
 
@@ -47,6 +49,7 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs', selectionsRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps))
+    .route('/stop-conditions', stopConditionParseRoutes(deps))
     .onError(handleUncaught);
 }
 

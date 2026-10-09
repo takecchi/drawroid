@@ -39,6 +39,7 @@ function makeApp(env: Record<string, string | undefined>) {
       addMask: notUsed,
     },
     budget: DEFAULT_BUDGET,
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: {
       read: async () => saved,
       write: async (c) => {
