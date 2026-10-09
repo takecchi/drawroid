@@ -143,11 +143,14 @@ export function describeStopConditions(conditions: StopConditions): string {
     ...(conditions.aiJudgement ? ['AI の判断'] : []),
     ...(conditions.maxIterations === undefined ? [] : [`${conditions.maxIterations} 回まで`]),
     ...(conditions.maxImages === undefined ? [] : [`${conditions.maxImages} 枚まで`]),
-    ...(conditions.maxDurationMs === undefined
-      ? []
-      : [`${Math.round(conditions.maxDurationMs / 60_000)} 分まで`]),
+    ...(conditions.maxDurationMs === undefined ? [] : [durationLimit(conditions.maxDurationMs)]),
   ];
   return parts.join('・');
+}
+
+// 1 分に満たない上限は秒で書く: 分に丸めると「0 分まで」になり、人にも話す役にも意味が通らないため
+function durationLimit(ms: number): string {
+  return ms < 60_000 ? `${Math.round(ms / 1000)} 秒まで` : `${Math.round(ms / 60_000)} 分まで`;
 }
 
 /** 描くツール（副作用のあるもの）。会話の実行器に、副作用の無いツール（createReadOnlyTools）と並べて渡す */

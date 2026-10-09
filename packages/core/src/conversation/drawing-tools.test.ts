@@ -1,6 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_DRAWING_STOP_CONDITIONS, readDrawingStopConditions } from './drawing-tools.js';
+import {
+  DEFAULT_DRAWING_STOP_CONDITIONS,
+  describeStopConditions,
+  readDrawingStopConditions,
+} from './drawing-tools.js';
+
+// 本物の小さなローカル LLM が、頼まれていない止める条件（maxDurationMs: 5000）を入れたとき、知らせに「0 分まで」と出た。
+// 人と話す役が読む文なので、1 分に満たない上限は秒で書く
+describe('describeStopConditions', () => {
+  it.each([
+    [5_000, '5 秒まで'],
+    [59_000, '59 秒まで'],
+    [60_000, '1 分まで'],
+    [600_000, '10 分まで'],
+  ])('writes a time limit of %i ms as %s', (maxDurationMs, text) => {
+    expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toBe(text);
+  });
+
+  it('never says 0 minutes for a limit under a minute', () => {
+    expect(describeStopConditions({ aiJudgement: true, maxDurationMs: 1_000 })).not.toContain(
+      '0 分',
+    );
+  });
+});
 
 describe('readDrawingStopConditions', () => {
   it('uses the default when nothing is set', () => {
