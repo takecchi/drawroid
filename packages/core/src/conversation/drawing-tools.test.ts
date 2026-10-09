@@ -18,6 +18,16 @@ describe('describeStopConditions', () => {
     expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toBe(text);
   });
 
+  it.each([
+    [400, '400 ミリ秒まで'],
+    [59_500, '1 分まで'],
+  ])(
+    'writes a time limit of %i ms as %s, never as 0 seconds or 60 seconds',
+    (maxDurationMs, text) => {
+      expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toBe(text);
+    },
+  );
+
   it('never says 0 minutes for a limit under a minute', () => {
     expect(describeStopConditions({ aiJudgement: true, maxDurationMs: 1_000 })).not.toContain(
       '0 分',

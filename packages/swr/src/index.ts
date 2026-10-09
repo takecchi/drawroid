@@ -32,6 +32,7 @@ export {
   createAutoJob,
   deleteMemoryItem,
   parseStopConditionsText,
+  recheckBackendStatus,
   saveBackendSettings,
   saveBudgetSettings,
   saveCandidateNotes,

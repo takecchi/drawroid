@@ -1,0 +1,140 @@
+// @vitest-environment jsdom
+// ジョブの詳細の画面が、バックエンドの失敗で止まったジョブを見たら、バックエンドの状態を1回だけ読み直し、
+// 会話の画面と同じ「はじめに要る設定」の案内を、同じ条件で出すことを見る試験。データのフックは差し替える
+import type { StopReason } from '@drawroid/core';
+import {
+  ApiError,
+  recheckBackendStatus,
+  useBackendStatus,
+  useInterventions,
+  useIterations,
+  useJob,
+  useLlmCalls,
+  useLlmSettings,
+  useReferences,
+  useSelections,
+  useStopConditions,
+  type JobDetail as JobDetailData,
+} from '@drawroid/swr';
+import { cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { JobDetail } from './job-detail';
+
+vi.mock('@drawroid/swr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@drawroid/swr')>()),
+  recheckBackendStatus: vi.fn(),
+  useBackendStatus: vi.fn(),
+  useInterventions: vi.fn(),
+  useIterations: vi.fn(),
+  useJob: vi.fn(),
+  useLlmCalls: vi.fn(),
+  useLlmSettings: vi.fn(),
+  useReferences: vi.fn(),
+  useSelections: vi.fn(),
+  useStopConditions: vi.fn(),
+}));
+
+const JOB = 'job-7';
+
+function stopped(reason: StopReason): JobDetailData {
+  return {
+    spec: {
+      kind: 'auto',
+      jobId: JOB,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      request: '夕暮れの海',
+      stopConditions: { aiJudgement: true, maxIterations: 10 },
+      batchSize: 1,
+    },
+    state: {
+      status: 'stopped',
+      startedAt: '2026-01-01T00:00:01.000Z',
+      stoppedAt: '2026-01-01T00:01:00.000Z',
+      imagesGenerated: 1,
+      reason,
+    },
+    iterations: [],
+  } as unknown as JobDetailData;
+}
+
+const down = new ApiError('backend_unreachable', 'http://127.0.0.1:7860/ に繋がらない', 502);
+const backendFailed: StopReason = {
+  kind: 'error',
+  detail: '生成の段: 繋がらない',
+  backendErrorKind: 'unreachable',
+};
+
+function serve(job: JobDetailData, backendError?: ApiError) {
+  vi.mocked(useJob).mockReturnValue({ data: job } as never);
+  vi.mocked(useBackendStatus).mockReturnValue({ error: backendError } as never);
+}
+
+const renderDetail = () =>
+  render(
+    <MemoryRouter>
+      <JobDetail jobId={JOB} />
+    </MemoryRouter>,
+  );
+
+beforeEach(() => {
+  for (const hook of [
+    useInterventions,
+    useIterations,
+    useLlmCalls,
+    useReferences,
+    useSelections,
+    useStopConditions,
+  ]) {
+    vi.mocked(hook).mockReturnValue({} as never);
+  }
+  vi.mocked(useLlmSettings).mockReturnValue({ data: { config: { roles: {} } } } as never);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.resetAllMocks();
+});
+
+describe('JobDetail', () => {
+  it('reads the backend again once when the job stopped because the backend failed, however often the job is read', () => {
+    serve(stopped(backendFailed));
+    const { rerender } = renderDetail();
+    // ポーリングで同じジョブを読み直しても、もう読み直さない
+    serve(stopped(backendFailed));
+    rerender(
+      <MemoryRouter>
+        <JobDetail jobId={JOB} />
+      </MemoryRouter>,
+    );
+
+    expect(recheckBackendStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
+    ['it failed outside the backend', { kind: 'error', detail: '見る段: 形が合わない' }],
+  ] satisfies [string, StopReason][])(
+    'does not read the backend again when the job stopped because %s',
+    (_, reason) => {
+      serve(stopped(reason));
+      renderDetail();
+
+      expect(recheckBackendStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it('shows the same setup note as the conversation, under the same conditions', () => {
+    serve(stopped(backendFailed), down);
+    renderDetail();
+    expect(screen.getByRole('note', { name: 'はじめに要る設定' }).textContent).toContain(
+      'バックエンドを確かめる',
+    );
+    cleanup();
+
+    serve(stopped(backendFailed));
+    renderDetail();
+    expect(screen.queryByRole('note', { name: 'はじめに要る設定' })).toBeNull();
+  });
+});
