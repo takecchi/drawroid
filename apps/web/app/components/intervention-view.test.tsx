@@ -28,6 +28,7 @@ function iterationOf(n: number): Iteration {
   return {
     iteration: n,
     think: { params: { prompt: 'sunset' }, rationale: '光を足す' },
+    excluded: null,
     judge: { images: [], nextChange: '影を濃く', canStop: false },
     images: [],
     request: {},
