@@ -359,6 +359,17 @@ try {
   await page.reload();
   await log.getByText('やっぱり猫も入れて').waitFor();
   const after = await log.innerText();
+  if (after !== before) {
+    // 違った行を残す（赤の理由を追えるように）
+    const was = before.split('\n');
+    const now = after.split('\n');
+    console.error(
+      `再読み込みの前にだけあった行:\n${was.filter((line) => !now.includes(line)).join('\n')}`,
+    );
+    console.error(
+      `再読み込みの後にだけあった行:\n${now.filter((line) => !was.includes(line)).join('\n')}`,
+    );
+  }
   expect(after === before, 'ページを再読み込みしても、ログが同じに戻る');
 
   // 4b. サーバが落ちて、つながっていない間にイベントが書かれても、ブラウザがつなぎ直したあと（Last-Event-ID で続きから）に1度だけ出る。
