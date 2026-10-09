@@ -10,7 +10,6 @@ import {
   stopConditionsBlocker,
   stopConditionsToForm,
   type StopConditionsFormValues,
-  describeStopConditions,
 } from './stop-conditions-form';
 
 const empty: StopConditionsFormValues = {
