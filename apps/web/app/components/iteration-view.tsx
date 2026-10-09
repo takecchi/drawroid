@@ -2,6 +2,7 @@ import type { SelectionVerdict } from '@drawroid/core';
 import { formatImageKey } from '@drawroid/core';
 import type { IterationsResponse } from '@drawroid/swr';
 
+import { describeExcludedReason, describeWanted } from '../lib/excluded-reason';
 import { readJudge, readThink } from '../lib/stage-output';
 import { AuthorLabel, InterventionItem, markStyle, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
@@ -46,6 +47,21 @@ function ThinkSection({ think }: { think: unknown }) {
         ))}
       </dl>
       <p>理由: {read.rationale}</p>
+    </section>
+  );
+}
+
+function ExcludedSection({ excluded }: { excluded: NonNullable<Iteration['excluded']> }) {
+  return (
+    <section style={markStyle('ai')}>
+      <h4>この回に AI の選択肢から外したもの</h4>
+      <ul>
+        {excluded.map((item) => (
+          <li key={item.param}>
+            {item.param}（{describeWanted(item.wanted)}）: {describeExcludedReason(item.reason)}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -103,6 +119,9 @@ export function IterationView({
           showStatus={false}
         />
       ))}
+      {iteration.excluded !== null && iteration.excluded.length > 0 && (
+        <ExcludedSection excluded={iteration.excluded} />
+      )}
       {iteration.think !== null && <ThinkSection think={iteration.think} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {iteration.images.map((image) => {
