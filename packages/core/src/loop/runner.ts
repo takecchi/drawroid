@@ -8,6 +8,8 @@ import {
   type AutoJobSpec,
   type InterventionRecord,
   type JobState,
+  type NewReference,
+  type ReferenceRecord,
   type StopConditions,
   type StopConditionsChange,
   type StopReason,
@@ -42,7 +44,12 @@ import {
   type JudgeOutput,
   type ThinkOutput,
 } from './schemas.js';
-import { checkStopAtBoundary, effectiveStopConditions, hasAnyStopCondition } from './stop.js';
+import {
+  checkStopAtBoundary,
+  effectiveStopConditions,
+  hasAnyStopCondition,
+  readStopConditions,
+} from './stop.js';
 import type { BackendCapabilities, Candidate, CandidateKind } from '../backend.js';
 import type { PackLimits } from '../budget/pack.js';
 import type { ParamKey } from '../params/param-key.js';
@@ -183,6 +190,12 @@ export class JobRunner {
     return this.deps.store.addIntervention(jobId, { kind: 'instruction', text }, this.now());
   }
 
+  /** 走行中・待ち行列のジョブに参照画像を添える。次の回の境目で、見る役が1度だけ見て要点にする */
+  async addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord> {
+    await this.acceptingJob(jobId);
+    return this.deps.store.addReference(jobId, reference, this.now());
+  }
+
   /** 口出しを受けられる自動ジョブ（止まっていないもの）を返す */
   private async acceptingJob(jobId: string): Promise<AutoJobSpec> {
     const spec = await this.deps.store.readJob(jobId);
@@ -193,14 +206,8 @@ export class JobRunner {
     return spec;
   }
 
-  private async stopConditions(spec: AutoJobSpec): Promise<StopConditions> {
-    const interventions = await this.deps.store.listInterventions(spec.jobId);
-    return effectiveStopConditions(
-      spec.stopConditions,
-      interventions.flatMap((intervention) =>
-        intervention.kind === 'stopConditions' ? [intervention.stopConditions] : [],
-      ),
-    );
+  private stopConditions(spec: AutoJobSpec): Promise<StopConditions> {
+    return readStopConditions(this.deps.store, spec);
   }
 
   private async drain(): Promise<void> {
