@@ -49,7 +49,6 @@ export function interventionsRoutes({ store, autoQueue }: ApiDeps) {
       // 口出しと同じ読み方にする: 添えた参照画像も人間の口出しの一種で、画面がページを読み直しても残るようにするため（Issue #46）
       .get('/:jobId/references', async (c) => {
         const jobId = c.req.param('jobId');
-        if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
         const references = (await store.listReferences(jobId)).map((reference) => ({
           ...reference,
           previewUrl: referencePreviewUrl(jobId, reference.refId),
