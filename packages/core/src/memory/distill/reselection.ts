@@ -107,7 +107,11 @@ export class ReselectionDistiller {
     const state = await store.readState(jobId);
     if (state.status !== 'stopped') return;
 
-    const lastDistilledAt = (await log.read(jobId)).at(-1)?.at;
+    // 境目は、失敗しなかった最後の蒸留の時刻: 失敗した回は何も覚えていないので、その回に渡した選び直しを、
+    // 次の蒸留でもう一度渡す（失敗の記録は残すが、境目は進めない）
+    const lastDistilledAt = (await log.read(jobId)).findLast(
+      (entry) => entry.failure === undefined,
+    )?.at;
     const since = Math.max(
       Date.parse(state.stoppedAt),
       lastDistilledAt === undefined ? 0 : Date.parse(lastDistilledAt),
