@@ -872,14 +872,25 @@ function readWrittenToolCalls(
 
 /**
  * json の出し方で、{"kind": "tool", …} の代わりに {"name": …, "arguments": …} の形で書いてきたものを、ステップの形に読み替える。
- * 名前が渡したツールのときだけ読み替える
+ * 名前が渡したツールのときだけ読み替える。kind を落として {"text": …} だけを書いてきたものは、返答として読む
  */
+// {"text": …} を返答と読むのは、欄が text だけのときに限る: ほかの欄（name など）があれば、何を求めたのかが分からないため
 function asStepOutput(value: unknown, tools: readonly ToolSpec[]): unknown {
   if (value !== null && typeof value === 'object' && 'kind' in value) return value;
   const written = writtenCallOf(value, tools);
-  return written === undefined || written.input === INVALID_ARGUMENTS
-    ? value
-    : { kind: 'tool', name: written.name, input: written.input };
+  if (written !== undefined && written.input !== INVALID_ARGUMENTS) {
+    return { kind: 'tool', name: written.name, input: written.input };
+  }
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    typeof (value as { text?: unknown }).text === 'string'
+  ) {
+    return { kind: 'reply', text: (value as { text: string }).text };
+  }
+  return value;
 }
 
 /** json の出し方でスキーマに合わなかったとき、ツールを名指した理由にする（変種の和の誤りは「全体」としか言わないため） */

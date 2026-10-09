@@ -381,6 +381,32 @@ describe('tags written in any case', () => {
   });
 });
 
+// 本物の小さなローカル LLM（Qwen2.5-1.5B-Instruct の Q4、llama.cpp）で実際に出た崩れ方: json の出し方で、返答の
+// kind を落として {"text": …} だけを返す。続けると出し直しが尽き、JSON の文字列がそのまま人への返答になっていた
+describe('a reply written without its kind (json)', () => {
+  it('reads {"text": …} as the reply, after a tool call', async () => {
+    const { events, searches } = await talk('json', [
+      jsonTool('search_candidates', { kind: 'lora', query: 'ミク' }),
+      textStream(JSON.stringify({ text: REPLY })),
+    ]);
+
+    expect(searches).toBe(1);
+    expect(messages(events)).toEqual([REPLY]);
+    expect(ended(events)).toMatchObject({ type: 'turn.ended', outcome: 'done' });
+  });
+
+  it('does not read {"text": …} as the reply when it also names a tool', async () => {
+    const { events, searches } = await talk('json', [
+      textStream(JSON.stringify({ text: REPLY, name: 'search_candidates' })),
+      textStream(JSON.stringify({ text: REPLY, name: 'search_candidates' })),
+      textStream(JSON.stringify({ text: REPLY, name: 'search_candidates' })),
+    ]);
+
+    expect(searches).toBe(0);
+    expect(ended(events)).toMatchObject({ type: 'turn.ended', outcome: 'error' });
+  });
+});
+
 describe('thinking tags and empty text', () => {
   it('keeps the thinking out of the reply, with native tool calling', async () => {
     const { events } = await talk('native', [
