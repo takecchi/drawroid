@@ -207,6 +207,7 @@ describe('the loop applies the permissions of the job', () => {
     expect(dropped).toHaveLength(490);
   });
 
+<<<<<<< HEAD
   it('keeps the LoRA list within 20 names and 600 characters when no limits are given (M4:119)', async () => {
     const loras = Array.from({ length: 500 }, (_, n) => ({
       name: `lora-${String(n).padStart(3, '0')}`,
@@ -230,5 +231,96 @@ describe('the loop applies the permissions of the job', () => {
     const { report } = thinkCall(llm).messages;
     const dropped = report.notes.filter((n) => n.section.startsWith('candidates.lora['));
     expect(dropped.length).toBe(500 - shown.length);
+=======
+  it.each([
+    { kind: 'checkpoint', key: 'checkpoint' },
+    { kind: 'controlnetModel', key: 'controlnet' },
+    { kind: 'controlnetModule', key: 'controlnet' },
+  ] as const)(
+    'keeps the $kind list within the budget with hundreds of candidates, recording the ones left out (M4:119)',
+    async ({ kind, key }) => {
+      const candidates = Array.from({ length: 500 }, (_, n) => ({
+        name: `${kind}-${String(n).padStart(3, '0')}`,
+      }));
+      const permissions = mergePermissions(base, { [key]: { mode: 'auto' } });
+      const { store, llm, runner } = setup({
+        think: thinkWith(),
+        permissions,
+        backend: { candidates: { [kind]: candidates } },
+        candidateLimits: { maxCount: 10, maxSize: 300 },
+      });
+
+      await runOne(store, runner);
+
+      const { report } = thinkCall(llm).messages;
+      expect(report.estimatedInputTokens).toBeLessThanOrEqual(report.inputTokenLimit);
+      const dropped = report.notes.filter((n) => n.section.startsWith(`candidates.${kind}[`));
+      expect(dropped).toHaveLength(490);
+    },
+  );
+
+  describe('with every kind of candidate in the hundreds', () => {
+    const limits = { maxCount: 20, maxSize: 600 };
+    const candidateKinds = [
+      'checkpoint',
+      'vae',
+      'lora',
+      'sampler',
+      'scheduler',
+      'upscaler',
+      'controlnetModel',
+      'controlnetModule',
+    ] as const;
+    const everything = mergePermissions(base, {
+      checkpoint: { mode: 'auto' },
+      vae: { mode: 'auto' },
+      loras: { mode: 'auto' },
+      sampler: { mode: 'auto' },
+      scheduler: { mode: 'auto' },
+      hiresFix: { mode: 'auto' },
+      controlnet: { mode: 'auto' },
+    });
+    const listsOf = (count: number) =>
+      Object.fromEntries(
+        candidateKinds.map((kind) => [
+          kind,
+          Array.from({ length: count }, (_, n) => ({
+            name: `${kind}-${'x'.repeat(50)}-${String(n).padStart(4, '0')}`,
+          })),
+        ]),
+      );
+
+    async function inputBudgetWith(candidates: ReturnType<typeof listsOf>) {
+      const { store, llm, runner } = setup({
+        think: thinkWith(),
+        permissions: everything,
+        backend: { candidates },
+        candidateLimits: limits,
+      });
+      await runOne(store, runner);
+      return thinkCall(llm).messages.report;
+    }
+
+    it('keeps the whole input of the thinking role within the limit (M4:119)', async () => {
+      const report = await inputBudgetWith(listsOf(500));
+
+      expect(report.estimatedInputTokens).toBeLessThanOrEqual(report.inputTokenLimit);
+    });
+
+    it('grows the input by the budgets of the kinds, not by the number of candidates', async () => {
+      const without = await inputBudgetWith({
+        ...listsOf(500),
+        controlnetModel: [],
+        controlnetModule: [],
+      });
+      const hundreds = await inputBudgetWith(listsOf(500));
+      const thousands = await inputBudgetWith(listsOf(2000));
+
+      const growth = hundreds.estimatedInputTokens - without.estimatedInputTokens;
+      expect(growth).toBeGreaterThan(0);
+      expect(growth).toBeLessThanOrEqual(2 * (limits.maxSize + 60));
+      expect(thousands.estimatedInputTokens).toBe(hundreds.estimatedInputTokens);
+    });
+>>>>>>> origin/main
   });
 });
