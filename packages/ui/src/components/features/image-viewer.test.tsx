@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -137,5 +137,62 @@ describe('ImageViewer', () => {
     await user.keyboard('{ArrowRight}');
 
     expect(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ })).toBeTruthy();
+  });
+
+  it('leaves the arrow keys to a text field in the view, to move between its letters', async () => {
+    const user = userEvent.setup();
+    function WithField() {
+      const [open, setOpen] = useState<string | null>('1-0');
+      return (
+        <ImageViewer
+          images={IMAGES}
+          openKey={open}
+          onOpenKeyChange={setOpen}
+          details={() => <input aria-label="ひとこと" defaultValue="夕焼け" />}
+        />
+      );
+    }
+    render(<WithField />);
+
+    await user.click(screen.getByRole('textbox', { name: 'ひとこと' }));
+    await user.keyboard('{ArrowLeft}{ArrowRight}');
+
+    expect(screen.getByRole('dialog', { name: /1 回目の画像 1 番/ })).toBeTruthy();
+  });
+
+  describe('swiping on a narrow screen', () => {
+    function openAt(key: string) {
+      function Opened() {
+        const [open, setOpen] = useState<string | null>(key);
+        return <ImageViewer images={IMAGES} openKey={open} onOpenKeyChange={setOpen} />;
+      }
+      render(<Opened />);
+      const image = screen.getByRole('dialog').querySelector('img');
+      if (image?.parentElement == null) throw new Error('画像が無い');
+      return image.parentElement;
+    }
+    const swipe = (area: HTMLElement, dx: number, dy: number) => {
+      fireEvent.pointerDown(area, { clientX: 200, clientY: 200 });
+      fireEvent.pointerUp(area, { clientX: 200 + dx, clientY: 200 + dy });
+    };
+
+    it('moves to the next image when swiped to the left, and back when swiped to the right', () => {
+      const area = openAt('1-1');
+
+      swipe(area, -120, 10);
+      expect(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ })).toBeTruthy();
+
+      swipe(area, 120, -10);
+      expect(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ })).toBeTruthy();
+    });
+
+    it('does not move for a short slide, nor for a slide that is more up and down than sideways', () => {
+      const area = openAt('1-1');
+
+      swipe(area, -20, 0);
+      swipe(area, -60, 140);
+
+      expect(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ })).toBeTruthy();
+    });
   });
 });
