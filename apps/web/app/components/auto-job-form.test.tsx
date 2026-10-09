@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
-import { createAutoJob } from '@drawroid/swr';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  createAutoJob,
+  useBackendStatus,
+  useCandidates,
+  usePermissionSettings,
+} from '@drawroid/swr';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +15,9 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   createAutoJob: vi.fn(),
   parseStopConditionsText: vi.fn(),
+  usePermissionSettings: vi.fn(),
+  useBackendStatus: vi.fn(),
+  useCandidates: vi.fn(),
 }));
 
 const create = vi.mocked(createAutoJob);
@@ -18,6 +26,29 @@ beforeEach(() => {
   // jsdom には object URL が無い
   URL.createObjectURL = vi.fn(() => 'blob:preview');
   URL.revokeObjectURL = vi.fn();
+  // 全体の既定の許可。ジョブの許可の欄の「いま」に出す
+  vi.mocked(usePermissionSettings).mockReturnValue({
+    data: {
+      overrides: {},
+      permissions: {
+        prompt: { mode: 'auto' },
+        steps: { mode: 'auto' },
+        cfgScale: { mode: 'auto' },
+        width: { mode: 'fixed', value: 512 },
+        height: { mode: 'fixed', value: 512 },
+        vae: { mode: 'off' },
+      },
+    },
+    error: undefined,
+  } as unknown as ReturnType<typeof usePermissionSettings>);
+  vi.mocked(useBackendStatus).mockReturnValue({
+    data: { capabilities: { unavailable: [] } },
+    error: undefined,
+  } as unknown as ReturnType<typeof useBackendStatus>);
+  vi.mocked(useCandidates).mockReturnValue({
+    data: { candidates: [] },
+    error: undefined,
+  } as unknown as ReturnType<typeof useCandidates>);
 });
 
 afterEach(() => {
@@ -134,5 +165,53 @@ describe('AutoJobForm', () => {
     expect(create).not.toHaveBeenCalled();
     const alerts = screen.getAllByRole('alert').map((alert) => alert.textContent);
     expect(alerts.some((text) => text?.includes('送れない: この条件では止まらない'))).toBe(true);
+  });
+});
+
+describe('AutoJobForm with permissions for this job only', () => {
+  const created = { jobId: 'job-1' } as Awaited<ReturnType<typeof createAutoJob>>;
+
+  async function openPermissions() {
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+    await user.click(screen.getByText('このジョブだけの許可'));
+    return user;
+  }
+
+  it('shows the global default in effect for each parameter', async () => {
+    await openPermissions();
+
+    const width = within(screen.getByRole('row', { name: /^幅/ }));
+    expect(width.getByText('固定: 512（全体の既定）')).toBeTruthy();
+  });
+
+  it('sends only the permissions changed for this job', async () => {
+    create.mockResolvedValue(created);
+    const user = await openPermissions();
+
+    await user.selectOptions(screen.getByLabelText('steps の許可'), 'fixed');
+    await user.type(screen.getByLabelText('steps の固定の値'), '30');
+    await user.selectOptions(screen.getByLabelText('VAE の許可'), 'auto');
+    await user.click(screen.getByRole('button', { name: '投入する' }));
+
+    expect(create).toHaveBeenCalledWith({
+      request: '夕暮れの海',
+      stopConditions: { aiJudgement: true, maxIterations: 10 },
+      batchSize: 1,
+      permissions: { vae: { mode: 'auto' }, steps: { mode: 'fixed', value: 30 } },
+    });
+  });
+
+  it('does not create the job when a permission for it is of the wrong shape', async () => {
+    create.mockResolvedValue(created);
+    const user = await openPermissions();
+
+    await user.selectOptions(screen.getByLabelText('steps の許可'), 'fixed');
+    await user.type(screen.getByLabelText('steps の固定の値'), '二十');
+    await user.click(screen.getByRole('button', { name: '投入する' }));
+
+    expect(create).not.toHaveBeenCalled();
+    expect((await screen.findByText(/送れない/)).textContent).toContain('steps: 数を入れる');
   });
 });
