@@ -36,6 +36,9 @@ export interface LlmSettingsFormValues {
   /** 見る役も考える役と同じモデルを使う（roles.judge を省く） */
   judgeSameAsThink: boolean;
   judge: RoleValues;
+  /** 話す役も考える役と同じモデルを使う（roles.talk を省く） */
+  talkSameAsThink: boolean;
+  talk: RoleValues;
 }
 
 export function emptyProviderRow(): ProviderRow {
@@ -71,6 +74,8 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
       think: roleToValues(undefined),
       judgeSameAsThink: true,
       judge: roleToValues(undefined),
+      talkSameAsThink: true,
+      talk: roleToValues(undefined),
     };
   }
   return {
@@ -80,6 +85,8 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
     think: roleToValues(config.roles.think),
     judgeSameAsThink: config.roles.judge === undefined,
     judge: roleToValues(config.roles.judge ?? config.roles.think),
+    talkSameAsThink: config.roles.talk === undefined,
+    talk: roleToValues(config.roles.talk ?? config.roles.think),
   };
 }
 
@@ -133,6 +140,10 @@ export function buildLlmSettings(
           networkRetries: previous.networkRetries,
         }),
     providers,
-    roles: values.judgeSameAsThink ? { think } : { think, judge: buildRole(values.judge) },
+    roles: {
+      think,
+      ...(values.judgeSameAsThink ? {} : { judge: buildRole(values.judge) }),
+      ...(values.talkSameAsThink ? {} : { talk: buildRole(values.talk) }),
+    },
   };
 }

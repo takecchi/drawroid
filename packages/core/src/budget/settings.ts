@@ -9,6 +9,7 @@ import {
   type InterventionLimits,
 } from '../intervention/intervention.js';
 import { DEFAULT_REFERENCE_LIMITS, type ReferenceLimits } from '../reference/reference.js';
+import { DEFAULT_TALK_LIMITS, type TalkLimits } from '../conversation/talk/limits.js';
 import type { PackLimits } from './pack.js';
 
 /**
@@ -20,6 +21,8 @@ export type Budgets = Budget & {
   references: ReferenceLimits;
   memory: MemoryLimits;
   distill: DistillBudget;
+  /** 会話の話す役。ジョブには効かない */
+  talk: TalkLimits;
 };
 
 export const DEFAULT_BUDGETS: Budgets = {
@@ -29,6 +32,7 @@ export const DEFAULT_BUDGETS: Budgets = {
   references: DEFAULT_REFERENCE_LIMITS,
   memory: DEFAULT_MEMORY_LIMITS,
   distill: DEFAULT_DISTILL_BUDGET,
+  talk: DEFAULT_TALK_LIMITS,
 };
 
 export type BudgetOverrides = DeepPartial<Budgets>;

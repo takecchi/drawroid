@@ -36,7 +36,7 @@ const API_KEY_ENV_PLACEHOLDERS: Record<ProviderType, string> = {
   'openai-compatible': '鍵が要らなければ空',
 };
 
-const ROLE_LABELS = { think: '考える役', judge: '見る役' } as const;
+const ROLE_LABELS = { think: '考える役', judge: '見る役', talk: '話す役' } as const;
 
 function providerName(row: ProviderRow, index: number): string {
   return row.key.trim() === '' ? `${index + 1}番目` : row.key.trim();
@@ -301,6 +301,14 @@ export function LlmSettings() {
                 values={values.judge}
                 onChange={(judge) => change({ judge })}
               />
+            )}
+            <CheckboxField
+              label="話す役（会話）も考える役と同じモデルを使う"
+              checked={values.talkSameAsThink}
+              onChange={(event) => change({ talkSameAsThink: event.target.checked })}
+            />
+            {!values.talkSameAsThink && (
+              <RoleFields role="talk" values={values.talk} onChange={(talk) => change({ talk })} />
             )}
           </SubSection>
           <Button type="submit" variant="primary" disabled={saving}>

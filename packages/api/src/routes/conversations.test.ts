@@ -21,12 +21,15 @@ import {
 
 let hubs: ConversationHubs;
 let beats: (() => void)[];
+/** 話す役の実行器へ知らせた会話 */
+let kicks: string[];
 let app: ReturnType<typeof createApi>;
 
 beforeEach(() => {
   const store = new MemoryConversationStore();
   hubs = new ConversationHubs({ store });
   beats = [];
+  kicks = [];
   const notUsed = () => Promise.reject(new Error('この試験では使わない'));
   app = createApi({
     // 会話の口はジョブとバックエンドを使わない
@@ -52,6 +55,7 @@ beforeEach(() => {
     conversations: {
       store,
       hubs,
+      turns: { kick: (id) => void kicks.push(id) },
       heartbeat: (beat) => {
         beats.push(beat);
         return () => undefined;
@@ -244,6 +248,16 @@ describe('posting a message', () => {
       'm-1',
       'm-2',
     ]);
+  });
+
+  it('tells the talk runner once per message taken, and not for a resend', async () => {
+    const id = await newConversation();
+
+    await say(id, '描いて', 'm-1');
+    await say(id, '描いて', 'm-1');
+    await say(id, '別の発言', 'm-2');
+
+    expect(kicks).toEqual([id, id]);
   });
 
   it('takes resends that arrive at the same time only once', async () => {
