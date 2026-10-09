@@ -9,9 +9,9 @@ import {
   type ImagePart,
   type TextPart,
 } from '../llm/port.js';
+import type { ParamKey } from '../params/param-key.js';
 import type { Budget, ModelWindow } from './budget.js';
 import type { CarriedResult, Carry } from './carry.js';
-import type { ThinkParamKey } from './schemas.js';
 
 export type Progress = {
   /** これから回す回（1始まり） */
@@ -94,7 +94,7 @@ class SectionWriter {
           `negativePrompt: ${this.clip(`${name}.negativePrompt`, p.negativePrompt, budget.text.negativePrompt)}`,
         );
       }
-      const numbers = (['seed', 'steps', 'cfg'] as const)
+      const numbers = (['seed', 'steps', 'cfgScale'] as const)
         .filter((k) => p[k] !== undefined)
         .map((k) => `${k}=${p[k]}`);
       if (numbers.length > 0) lines.push(numbers.join(' '));
@@ -204,7 +204,7 @@ function intentSection(w: SectionWriter, carry: Carry, budget: Budget): Section 
 export function buildThinkInput(args: {
   carry: Carry;
   progress: Progress;
-  allowed: readonly ThinkParamKey[];
+  allowed: readonly ParamKey[];
   budget: Budget;
   window: ModelWindow;
   /** planInterventions の結果。載せた口出しは必須の区画にする */

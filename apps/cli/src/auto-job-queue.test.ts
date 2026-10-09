@@ -24,7 +24,13 @@ afterEach(async () => {
 });
 
 const think: Script = (_call, n) => ({
-  params: { prompt: `girl, take ${n + 1}`, negativePrompt: 'lowres', seed: -1, steps: 20, cfg: 7 },
+  params: {
+    prompt: `girl, take ${n + 1}`,
+    negativePrompt: 'lowres',
+    seed: 1,
+    steps: 20,
+    cfgScale: 7,
+  },
   rationale: 'next',
 });
 const judge: Script = (call) => ({

@@ -1,20 +1,36 @@
 export {
   BACKEND_FEATURES,
+  CANDIDATE_KIND_FEATURE,
   CANDIDATE_KINDS,
   candidateKindSchema,
   candidateSchema,
+  CONTROL_MODES,
+  controlNetUnitSchema,
   generationRequestSchema,
   hiresFixSchema,
+  inputImageRefSchema,
+  inputImageRefsOf,
+  img2imgSchema,
+  INPAINT_FILLS,
+  inpaintSchema,
   loraSchema,
+  RESIZE_MODES,
+  resizeModeSchema,
   type BackendCapabilities,
   type BackendFeature,
+  type BackendLimits,
   type Candidate,
   type CandidateKind,
+  type ControlNetUnit,
   type GeneratedImage,
+  type GenerationImages,
   type GenerationRequest,
   type GenerationRequestInput,
   type GenerationResult,
   type ImageBackend,
+  type InputImage,
+  type InputImageRef,
+  type ResizeMode,
 } from './backend.js';
 export {
   BACKEND_ERROR_KINDS,
@@ -55,3 +71,35 @@ export * from './intervention/integrate.js';
 export * from './intervention/intervention.js';
 export * from './intervention/plan.js';
 export * from './reference/reference.js';
+export {
+  MEMORY_SCOPES,
+  memoryItemSchema,
+  memoryScopeSchema,
+  type MemoryItem,
+  type MemoryScope,
+} from './memory/item.js';
+export { type MemorySelection, selectMemory } from './memory/select.js';
+export {
+  type CandidateSelection,
+  selectCandidates,
+  type ShownCandidate,
+} from './candidates/select.js';
+export { PARAM_KEYS, type ParamKey } from './params/param-key.js';
+export {
+  type DisabledReason,
+  type EffectivePermissions,
+  effectivePermissions,
+  type IterationConditions,
+  mergePermissions,
+  type Permission,
+  permissionSchema,
+  type Permissions,
+} from './permissions/permission.js';
+export {
+  buildParamsSchema,
+  type OmittedReason,
+  type ParamsSchema,
+  type ParamsSchemaContext,
+  type ParsedParams,
+  parseParams,
+} from './think/params-schema.js';
