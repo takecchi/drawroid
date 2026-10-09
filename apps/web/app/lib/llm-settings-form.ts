@@ -11,6 +11,9 @@ export type StructuredOutputMode = (typeof STRUCTURED_OUTPUT_MODES)[number];
 /** native = サーバが分けて返す思考 / think-tag = 本文の <think> を思考に分ける / none = 受け取らない */
 export const REASONING_MODES = ['native', 'think-tag', 'none'] as const;
 export type ReasoningMode = (typeof REASONING_MODES)[number];
+/** native = モデルのツール呼び出し / json = ツールの呼び出しを構造化出力で代える（呼び出しに弱いモデルの逃げ道） */
+export const TOOL_CALLING_MODES = ['native', 'json'] as const;
+export type ToolCallingMode = (typeof TOOL_CALLING_MODES)[number];
 
 // 文字列で持つ: 入力の途中の空欄や数字でない文字を、数に直すと消えてしまうため
 export interface ProviderRow {
@@ -27,6 +30,7 @@ export interface RoleValues {
   maxOutputTokens: string;
   structuredOutput: StructuredOutputMode;
   reasoning: ReasoningMode;
+  toolCalling: ToolCallingMode;
   imageInput: boolean;
 }
 
@@ -53,6 +57,7 @@ function roleToValues(role: StoredRole | undefined): RoleValues {
     maxOutputTokens: role?.maxOutputTokens === undefined ? '' : String(role.maxOutputTokens),
     structuredOutput: role?.structuredOutput ?? 'native',
     reasoning: role?.reasoning ?? 'native',
+    toolCalling: role?.toolCalling ?? 'native',
     imageInput: role?.imageInput ?? true,
   };
 }
@@ -106,6 +111,7 @@ function buildRole(values: RoleValues): LlmSettingsInput['roles']['think'] {
     ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     structuredOutput: values.structuredOutput,
     reasoning: values.reasoning,
+    toolCalling: values.toolCalling,
     imageInput: values.imageInput,
   };
 }

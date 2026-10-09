@@ -15,6 +15,7 @@ import { DEFAULT_MODEL_WINDOW } from '@drawroid/core';
 import {
   jsonSchema,
   Output,
+  parsePartialJson,
   streamText,
   tool,
   type FinishReason,
@@ -366,6 +367,71 @@ export class AiSdkLlm implements LlmPort {
       };
       return;
     }
+    yield* config.toolCalling === 'json'
+      ? this.streamStepAsJson(call, config)
+      : this.streamStepWithTools(call, config);
+  }
+
+  /**
+   * 1回の呼び出しを流し、増分をそのまま yield する。終わったら流し終えた中身を返す。
+   * 流れの途中のエラーは投げる。
+   */
+  // ストリームの読みと yield を交互に進める: streamOnce は増分を callback で渡すので、溜めて順に出す
+  private async *pumpStream(
+    role: LlmRole,
+    config: RoleConfig,
+    request: Omit<Parameters<AiSdkLlm['streamOnce']>[2], 'onEvent'>,
+  ): AsyncGenerator<StreamEvent, Streamed> {
+    const queue: StreamEvent[] = [];
+    let wake: (() => void) | undefined;
+    let settled: { ok: true; value: Streamed } | { ok: false; error: unknown } | undefined;
+    void this.streamOnce(role, config, {
+      ...request,
+      onEvent: (event) => {
+        queue.push(event);
+        wake?.();
+      },
+    }).then(
+      (value) => {
+        settled = { ok: true, value };
+        wake?.();
+      },
+      (error: unknown) => {
+        settled = { ok: false, error };
+        wake?.();
+      },
+    );
+    for (;;) {
+      const event = queue.shift();
+      if (event !== undefined) {
+        yield event;
+        continue;
+      }
+      if (settled !== undefined) break;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+      wake = undefined;
+    }
+    const outcome = settled as NonNullable<typeof settled>;
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  }
+
+  /** 呼び出しの失敗を finish の部品にする。中断なら投げる */
+  private callFailure(call: TalkStepCall, error: unknown): string {
+    if (call.signal.aborted) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    return LENGTH_IN_MESSAGE.test(message)
+      ? this.cutAtLimitReason(call.role, message)
+      : `LLM の呼び出しに失敗した: ${clip(message, ERROR_SUMMARY_LIMIT)}`;
+  }
+
+  /** モデルのツール呼び出し（OpenAI 互換の tools / tool_calls など）で1ステップを回す */
+  private async *streamStepWithTools(
+    call: TalkStepCall,
+    config: RoleConfig,
+  ): AsyncIterable<TalkStepPart> {
     const tools = toToolSet(call.tools);
     const attempts: LlmAttempt[] = [];
     let previousError: string | undefined;
@@ -379,65 +445,37 @@ export class AiSdkLlm implements LlmPort {
         });
       }
       const started = this.now();
-      // 流れてきた増分を、そのまま呼び手へ流す（ストリームの読みと yield を交互に進める）
-      const queue: StreamEvent[] = [];
-      let wake: (() => void) | undefined;
-      let settled: { ok: true; value: Streamed } | { ok: false; error: unknown } | undefined;
-      void this.streamOnce(call.role, config, {
-        instructions: call.messages.system,
-        content,
-        signal: call.signal,
-        tools,
-        onEvent: (event) => {
-          queue.push(event);
-          wake?.();
-        },
-      }).then(
-        (value) => {
-          settled = { ok: true, value };
-          wake?.();
-        },
-        (error: unknown) => {
-          settled = { ok: false, error };
-          wake?.();
-        },
-      );
-      for (;;) {
-        const event = queue.shift();
-        if (event !== undefined) {
+      let streamed: Streamed;
+      try {
+        const stream = this.pumpStream(call.role, config, {
+          instructions: call.messages.system,
+          content,
+          signal: call.signal,
+          tools,
+        });
+        for (;;) {
+          const next = await stream.next();
+          if (next.done === true) {
+            streamed = next.value;
+            break;
+          }
+          const event = next.value;
           yield {
             type: event.kind === 'text' ? 'text-delta' : 'reasoning-delta',
             text: event.text,
           };
-          continue;
         }
-        if (settled !== undefined) break;
-        await new Promise<void>((resolve) => {
-          wake = resolve;
-        });
-        wake = undefined;
-      }
-      const durationMs = this.now() - started;
-      const outcome = settled as NonNullable<typeof settled>;
-      if (!outcome.ok) {
-        if (call.signal.aborted) throw outcome.error;
-        const message =
-          outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+      } catch (error) {
+        const failure = this.callFailure(call, error);
         attempts.push({
           rawOutput: '',
           usage: { inputTokens: null, outputTokens: null },
-          durationMs,
+          durationMs: this.now() - started,
         });
-        yield {
-          type: 'finish',
-          attempts,
-          failure: LENGTH_IN_MESSAGE.test(message)
-            ? this.cutAtLimitReason(call.role, message)
-            : `LLM の呼び出しに失敗した: ${clip(message, ERROR_SUMMARY_LIMIT)}`,
-        };
+        yield { type: 'finish', attempts, failure };
         return;
       }
-      const streamed = outcome.value;
+      const durationMs = this.now() - started;
       const rawOutput = rawOutputOf(streamed);
       if (streamed.finishReason === 'length') {
         attempts.push({ rawOutput, usage: streamed.usage, durationMs });
@@ -460,6 +498,137 @@ export class AiSdkLlm implements LlmPort {
       type: 'finish',
       attempts,
       failure: `ツールの呼び出しが ${attempts.length} 回続けてスキーマに合わなかった（最後: ${previousError}）`,
+    };
+  }
+
+  /**
+   * ツールの呼び出しに弱いモデルの逃げ道（toolCalling: json）。1ステップの出力を「reply か、ツールごとの tool」の
+   * 構造化出力にし、今の構造化出力の口（native / json / text・検証と再試行）の上で回す。
+   * 本文は、部分的な JSON から reply.text を取り出せる出し方のときだけ流し、取り出せなければ確定してから一度に出す。
+   * 再試行が尽きたら、ツールを使わずに生の本文を出して失敗にする（検証していない出力から、描く・止めるを推し量らない）。
+   */
+  private async *streamStepAsJson(
+    call: TalkStepCall,
+    config: RoleConfig,
+  ): AsyncIterable<TalkStepPart> {
+    const schema = stepOutputSchemaOf(call.tools);
+    const instructions =
+      config.structuredOutput === 'native'
+        ? call.messages.system
+        : `${call.messages.system}\n次の JSON Schema に合う JSON だけを出力する:\n${JSON.stringify(
+            z.toJSONSchema(schema),
+          )}`;
+    const output =
+      config.structuredOutput === 'native'
+        ? Output.object({ schema })
+        : config.structuredOutput === 'json'
+          ? Output.json()
+          : undefined;
+    const attempts: LlmAttempt[] = [];
+    let previousError: string | undefined;
+    let lastText = '';
+    for (let i = 0; i <= this.options.validationRetries; i += 1) {
+      const content = toContent(call.messages);
+      if (previousError !== undefined) {
+        content.push({
+          type: 'text',
+          text: `前の出力は受け付けられなかった（${previousError}）。JSON だけを出し直す。`,
+        });
+      }
+      const started = this.now();
+      let streamed: Streamed;
+      // 部分的な JSON から取り出して流した reply.text。確定したあとに、残りだけを出すため
+      let emitted = '';
+      try {
+        const stream = this.pumpStream(call.role, config, {
+          instructions,
+          content,
+          signal: call.signal,
+          ...(output === undefined ? {} : { output }),
+        });
+        let raw = '';
+        for (;;) {
+          const next = await stream.next();
+          if (next.done === true) {
+            streamed = next.value;
+            break;
+          }
+          const event = next.value;
+          if (event.kind === 'reasoning') {
+            yield { type: 'reasoning-delta', text: event.text };
+            continue;
+          }
+          raw += event.text;
+          const partial = replyTextOf((await parsePartialJson(stripThinking(raw))).value);
+          if (
+            partial !== undefined &&
+            partial.startsWith(emitted) &&
+            partial.length > emitted.length
+          ) {
+            yield { type: 'text-delta', text: partial.slice(emitted.length) };
+            emitted = partial;
+          }
+        }
+      } catch (error) {
+        const failure = this.callFailure(call, error);
+        attempts.push({
+          rawOutput: '',
+          usage: { inputTokens: null, outputTokens: null },
+          durationMs: this.now() - started,
+        });
+        yield { type: 'finish', attempts, failure };
+        return;
+      }
+      const durationMs = this.now() - started;
+      lastText = streamed.text;
+      if (streamed.finishReason === 'length') {
+        attempts.push({ rawOutput: streamed.text, usage: streamed.usage, durationMs });
+        yield { type: 'finish', attempts, failure: this.cutAtLimitReason(call.role, undefined) };
+        return;
+      }
+      let validationError: string;
+      try {
+        const parsed = schema.safeParse(extractJson(streamed.text));
+        if (parsed.success) {
+          attempts.push({ rawOutput: streamed.text, usage: streamed.usage, durationMs });
+          const value = parsed.data;
+          if (value.kind === 'reply') {
+            if (value.text.startsWith(emitted)) {
+              const rest = value.text.slice(emitted.length);
+              if (rest !== '') yield { type: 'text-delta', text: rest };
+            } else {
+              // 流した途中の本文と確定した本文が食い違うときは、流した分を捨てて確定した本文を出す
+              yield { type: 'retry', reason: '流した本文と確定した本文が食い違った' };
+              if (value.text !== '') yield { type: 'text-delta', text: value.text };
+            }
+          } else {
+            yield { type: 'tool-call', callId: `json-${i}`, name: value.name, input: value.input };
+          }
+          yield { type: 'finish', attempts };
+          return;
+        }
+        validationError = `スキーマに合わない: ${summarizeIssues(parsed.error)}`;
+      } catch (error) {
+        validationError = `JSON として読めない: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      validationError = clip(validationError, ERROR_SUMMARY_LIMIT);
+      attempts.push({
+        rawOutput: streamed.text,
+        usage: streamed.usage,
+        durationMs,
+        validationError,
+      });
+      previousError = validationError;
+      if (i < this.options.validationRetries) yield { type: 'retry', reason: validationError };
+    }
+    // 生の本文を、確定する返答として出す。流した途中の本文は捨てる
+    yield { type: 'retry', reason: '構造化出力の再試行が尽きた' };
+    const rawText = stripThinking(lastText).trim();
+    if (rawText !== '') yield { type: 'text-delta', text: rawText };
+    yield {
+      type: 'finish',
+      attempts,
+      failure: `ツールを呼べなかった（構造化出力が ${attempts.length} 回続けてスキーマに合わなかった。最後: ${previousError}）`,
     };
   }
 
@@ -519,4 +688,30 @@ function checkToolCalls(
     parts.push({ type: 'tool-call', callId: call.callId, name: call.name, input: parsed.data });
   }
   return { ok: true, parts };
+}
+
+/** 1ステップの出力のスキーマ。reply か、ツールごとの tool。ツールの説明は、それぞれの tool の変種に載せる */
+function stepOutputSchemaOf(tools: readonly ToolSpec[]) {
+  const reply = z
+    .object({ kind: z.literal('reply'), text: z.string() })
+    .describe('ツールを使わず、人間に返答する');
+  const calls = tools.map((spec) =>
+    z
+      .object({
+        kind: z.literal('tool'),
+        name: z.literal(spec.name),
+        input: spec.inputSchema,
+      })
+      .describe(spec.description),
+  );
+  return z.union([reply, ...calls]) as unknown as z.ZodType<
+    { kind: 'reply'; text: string } | { kind: 'tool'; name: string; input: unknown }
+  >;
+}
+
+/** 部分的な JSON が reply なら、そこまでの本文を返す */
+function replyTextOf(value: unknown): string | undefined {
+  if (value === null || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  return record.kind === 'reply' && typeof record.text === 'string' ? record.text : undefined;
 }
