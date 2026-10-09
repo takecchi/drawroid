@@ -109,6 +109,12 @@ describe('createFsDistillLog', () => {
 describe('distilling into the data directory', () => {
   it('writes the learned preference as a memory file that names the job, and the distillation into distill.json', async () => {
     const llm: LlmPort = {
+      describe: (role) => ({
+        provider: 'stub',
+        model: `stub-${role}`,
+        window: DEFAULT_MODEL_WINDOW,
+        imageInput: true,
+      }),
       async generateStructured<T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>> {
         const value = call.schema.parse({
           operations: [{ op: 'add', body: '指の崩れは許容しない', tags: [], scope: 'always' }],
