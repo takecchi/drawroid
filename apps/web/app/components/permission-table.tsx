@@ -133,11 +133,12 @@ function PermissionRow({
   const label = PARAM_LABELS[param];
   const kind = candidateKindOf(param);
   return (
+    // 上で揃え、文字の列は上の余白を選択欄（h-8）との差の半分だけ足す: 固定の値の欄が開いて行が高くなっても、名前が1行目の選択欄の横に留まるように
     <TableRow className="align-top">
-      <TableHead scope="row" className="align-top">
+      <TableHead scope="row" className="h-auto pt-3.5 pb-2 align-top">
         {label}
       </TableHead>
-      <TableCell className="align-top whitespace-normal">
+      <TableCell className="pt-3.5 align-top whitespace-normal">
         {effective !== undefined &&
           `${describePermission(effective)}${row.mode === 'default' ? `（${defaults.note}）` : ''}`}
         {unavailable !== undefined && (
