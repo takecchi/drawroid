@@ -24,7 +24,7 @@ import {
   StubBackend,
   type Script,
 } from '@drawroid/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FsJobStore } from './job-store.js';
 
@@ -33,6 +33,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-talk-draws-check-'));
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -131,6 +132,7 @@ describe('checking the backend before starting to draw', () => {
 
   // 待つ上限は 5 秒（#221 の約束）。定数から作る文の数だけでなく、実際に待った長さも絶対の数で見る
   it('says how long it waited when the backend does not answer', async () => {
+    const limits = vi.spyOn(AbortSignal, 'timeout');
     const started = Date.now();
     let waited = 0;
     const { result, jobIds } = await askToDraw(async (signal) => {
@@ -149,6 +151,8 @@ describe('checking the backend before starting to draw', () => {
     expect(result!.summary).toContain('5 秒待っても応答が無い');
     // 5 秒の手前では切らない（遅い CI でも切るのが早まることは無いので、下の端だけを見る）
     expect(waited).toBeGreaterThanOrEqual(4_950);
+    // 5 秒を過ぎても待ち続けないことは、上限として渡る値で見る（実際に待った長さの上の端は、遅い CI で揺れる）
+    expect(limits.mock.calls.map(([ms]) => ms)).toContain(5_000);
   }, 10_000);
 
   it('asks the backend once and starts the job when it can be reached', async () => {
