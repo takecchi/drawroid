@@ -27,6 +27,16 @@ export class LlmGate {
     };
   }
 
+  /**
+   * いま走っている LLM の呼び出しだけを abort し、その段を最初からやり直させる。待たせはしない（onHeld も呼ばない）。
+   * 走っている呼び出しが無ければ何もしない
+   */
+  // 人間が選んだ画像を、走っている見る役の呼び出しより先に効かせるため（やり直した段が、選択を見て見る役を飛ばす）
+  restartStage(): void {
+    if (this.closed) return;
+    this.stage?.abort();
+  }
+
   /** ジョブが終わった。待たせたままでも、抜けたことを知らせて以後の口を何もしないものにする */
   close(): void {
     if (this.closed) return;

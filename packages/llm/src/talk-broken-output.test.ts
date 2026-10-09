@@ -194,6 +194,28 @@ describe('a tool call written into the text instead of called', () => {
     expect(results).toEqual(calls);
   });
 
+  it('gives each native tool call its own id, even when the server returns the same id every step', async () => {
+    // ローカルの LLM のサーバには、ステップごとに同じ ID（call-0）を返すものがある
+    const { events, searches } = await talk('native', [
+      toolStream('search_candidates', JSON.stringify({ kind: 'lora', query: 'ミク' })),
+      toolStream('search_candidates', JSON.stringify({ kind: 'lora', query: '初音' })),
+      textStream(REPLY),
+    ]);
+
+    const calls = events.flatMap((e) =>
+      e.type === 'tool.call' ? [{ callId: e.callId, input: e.input }] : [],
+    );
+    const results = events.flatMap((e) => (e.type === 'tool.result' ? [e.callId] : []));
+    expect(searches).toBe(2);
+    expect(calls.map((c) => c.input)).toEqual([
+      { kind: 'lora', query: 'ミク' },
+      { kind: 'lora', query: '初音' },
+    ]);
+    expect(new Set(calls.map((c) => c.callId)).size).toBe(2);
+    // それぞれの結果が、それぞれの呼び出しに付く
+    expect(results).toEqual(calls.map((c) => c.callId));
+  });
+
   it('leaves a JSON object in the reply alone when it names no tool it was given', async () => {
     const text = JSON.stringify({ name: 'miku', arguments: { style: 'anime' } });
     const { events } = await talk('native', [textStream(text)]);
@@ -314,6 +336,49 @@ describe('the same tool called again and again with the same arguments', () => {
       expect(ended(events)).toMatchObject({ outcome: 'done' });
     });
   }
+});
+
+// 今の読み方を守る歯: タグは大文字小文字を問わずに読む（モデルによって <THINK>・<Tool_Call> と書くため）
+describe('tags written in any case', () => {
+  it('moves the thinking in upper-case tags to the reasoning (native)', async () => {
+    const { events } = await talk('native', [
+      textStream(`<THINK>LoRA を探すべきか</THINK>${REPLY}`),
+    ]);
+
+    expect(messages(events)).toEqual([REPLY]);
+    expect(events.find((e) => e.type === 'assistant.reasoning')).toMatchObject({
+      text: 'LoRA を探すべきか',
+    });
+  });
+
+  it('moves the text before a lone upper-case closing tag to the reasoning (native)', async () => {
+    const { events } = await talk('native', [textStream(`LoRA を探すべきか</Think>\n${REPLY}`)]);
+
+    expect(messages(events)).toEqual([REPLY]);
+    expect(events.find((e) => e.type === 'assistant.reasoning')).toMatchObject({
+      text: 'LoRA を探すべきか',
+    });
+  });
+
+  it('reads a tool call in mixed-case <tool_call> tags (native)', async () => {
+    const written = `<Tool_Call>${JSON.stringify(SEARCH)}</TOOL_CALL>`;
+    const { events, searches } = await talk('native', [textStream(written), textStream(REPLY)]);
+
+    expect(searches).toBe(1);
+    expect(messages(events).join('\n')).not.toMatch(/tool_call/i);
+    expect(messages(events)).toContain(REPLY);
+  });
+
+  it('skips the thinking in upper-case tags before the JSON (json)', async () => {
+    const { events } = await talk('json', [
+      textStream(
+        `<THINK>{"kind":"tool"} とすべきか</THINK>${JSON.stringify({ kind: 'reply', text: REPLY })}`,
+      ),
+    ]);
+
+    expect(messages(events)).toEqual([REPLY]);
+    expect(ended(events)).toMatchObject({ outcome: 'done' });
+  });
 });
 
 describe('thinking tags and empty text', () => {

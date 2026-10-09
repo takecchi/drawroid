@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  Badge,
   Button,
   CheckboxField,
   ErrorNote,
@@ -12,6 +13,7 @@ import {
   Input,
   Spinner,
   Textarea,
+  WarnNote,
 } from './common';
 
 afterEach(cleanup);
@@ -41,6 +43,54 @@ describe('Button', () => {
     expect(button).toHaveProperty('disabled', true);
     await userEvent.click(button);
     expect(pressed).toBe(0);
+  });
+
+  // jsdom は CSS を評価しないので、高さの段は class で見る
+  it('is tall enough to press with a finger on a narrow screen, in both sizes', () => {
+    render(
+      <>
+        <Button>送る</Button>
+        <Button size="sm">消す</Button>
+      </>,
+    );
+
+    expect(screen.getByRole('button', { name: '送る' }).className.split(' ')).toEqual(
+      expect.arrayContaining(['h-11', 'md:h-9']),
+    );
+    expect(screen.getByRole('button', { name: '消す' }).className.split(' ')).toEqual(
+      expect.arrayContaining(['h-11', 'md:h-7']),
+    );
+  });
+});
+
+describe('Badge', () => {
+  it('wraps a long name instead of running out of its place', () => {
+    render(<Badge>stable-diffusion-xl-base-1.0-very-long-model-name</Badge>);
+
+    const badge = screen.getByText('stable-diffusion-xl-base-1.0-very-long-model-name');
+    expect(badge.className.split(' ')).toEqual(
+      expect.arrayContaining(['whitespace-normal', 'break-words']),
+    );
+    expect(badge.className.split(' ')).not.toContain('whitespace-nowrap');
+  });
+});
+
+describe('WarnNote', () => {
+  it('holds paragraphs and lists without breaking the nesting of the page', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(
+      <WarnNote>
+        <p>長い依頼は切られる。</p>
+        <ul>
+          <li>短くする</li>
+        </ul>
+      </WarnNote>,
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('長い依頼は切られる。');
+    expect(screen.getByText('長い依頼は切られる。').parentElement?.tagName).toBe('DIV');
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 });
 

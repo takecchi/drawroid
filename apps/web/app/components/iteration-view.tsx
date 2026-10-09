@@ -16,6 +16,7 @@ import {
 import { describeExcludedReason, describeWanted } from '../lib/excluded-reason';
 import { formatScore } from '../lib/format';
 import { readJudge, readThink } from '../lib/stage-output';
+import { AdoptButton } from './adopt-button';
 import { InterventionItem, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
 import { MaskPainter } from './mask-painter';
@@ -118,6 +119,7 @@ export function IterationView({
   verdicts,
   interventions = [],
   canPaintMask = false,
+  adopt,
 }: {
   jobId: string;
   iteration: Iteration;
@@ -127,6 +129,8 @@ export function IterationView({
   interventions?: Intervention[];
   /** 画像にマスクを塗って送れるか。自動ジョブで、まだ止まっていないときだけ */
   canPaintMask?: boolean;
+  /** 画像を「この画像で決める」で採れるか。自動ジョブだけ。止まったジョブは押せない理由を添える */
+  adopt?: { disabledReason?: string };
 }) {
   const judge = readJudge(iteration.judge);
   const adopted = iteration.judge === null ? iteration.adopted : null;
@@ -181,6 +185,21 @@ export function IterationView({
               }
             >
               <SelectionControls jobId={jobId} imageKey={imageKey} verdict={verdict} />
+              {adopt !== undefined && (
+                <AdoptButton
+                  jobId={jobId}
+                  image={{ iteration: iteration.iteration, index: image.index }}
+                  imageLabel={`${iteration.iteration} 回目の画像 ${image.index + 1} 番`}
+                  chosen={
+                    iteration.adopted !== null &&
+                    iteration.adopted.image.iteration === iteration.iteration &&
+                    iteration.adopted.image.index === image.index
+                  }
+                  {...(adopt.disabledReason !== undefined && {
+                    disabledReason: adopt.disabledReason,
+                  })}
+                />
+              )}
               {canPaintMask && (
                 <MaskPainter
                   jobId={jobId}
@@ -209,6 +228,7 @@ export function IterationList({
   verdicts,
   interventions = [],
   canPaintMask = false,
+  adopt,
 }: {
   jobId: string;
   heading: string;
@@ -217,6 +237,7 @@ export function IterationList({
   verdicts: ReadonlyMap<string, SelectionVerdict>;
   interventions?: Intervention[];
   canPaintMask?: boolean;
+  adopt?: { disabledReason?: string };
 }) {
   return (
     <Section title={heading}>
@@ -228,6 +249,7 @@ export function IterationList({
           iteration={iteration}
           verdicts={verdicts}
           canPaintMask={canPaintMask}
+          {...(adopt !== undefined && { adopt })}
           interventions={interventions.filter(
             (intervention) =>
               intervention.kind === 'instruction' &&

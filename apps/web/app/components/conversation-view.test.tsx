@@ -440,6 +440,28 @@ describe('ConversationView', () => {
     expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('');
   });
 
+  it('does not send the same message twice while it is still being sent', async () => {
+    const { source, stream } = fakeSource([]);
+    let finishSending = () => {};
+    const given = actions();
+    given.send.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishSending = resolve;
+      }),
+    );
+    const { user } = renderView(source, given);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    await user.type(screen.getByLabelText('発言'), '海の絵{Enter}');
+    await user.type(screen.getByLabelText('発言'), '{Enter}');
+    await user.click(screen.getByRole('button', { name: /送る/ }));
+
+    expect(given.send).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: /送る/ }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finishSending());
+    expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('');
+  });
+
   it('keeps the draft and says why when sending fails', async () => {
     const { source, stream } = fakeSource([]);
     const given = actions();

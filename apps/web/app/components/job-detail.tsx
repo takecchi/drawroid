@@ -190,6 +190,9 @@ export function JobDetail({ jobId }: { jobId: string }) {
             verdicts={verdicts}
             interventions={interventions.data?.interventions ?? []}
             canPaintMask={data.spec.kind === 'auto' && live}
+            {...(data.spec.kind === 'auto' && {
+              adopt: live ? {} : { disabledReason: '描くのはもう止まっているので、決められない' },
+            })}
           />
           <InvalidList
             title="読めない回"

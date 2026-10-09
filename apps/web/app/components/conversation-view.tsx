@@ -32,6 +32,7 @@ import { useConversationStream, type ConversationSource } from '../lib/conversat
 import { formatScore } from '../lib/format';
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
+import { AdoptButton } from './adopt-button';
 
 /** 発言と止めるの送り先。どちらも HTTP API（会話 C）に乗る。画面にだけある経路は作らない */
 export interface ConversationActions {
@@ -104,7 +105,17 @@ function VerdictButtons({
   );
 }
 
-function ImagesItem({ item }: { item: Extract<ChatItem, { kind: 'images' }> }) {
+function ImagesItem({
+  item,
+  stopped,
+  chosenImages,
+}: {
+  item: Extract<ChatItem, { kind: 'images' }>;
+  /** ジョブが止まった。採る（この画像で決める）は押せない */
+  stopped: boolean;
+  /** 人が選んだ画像（<jobId>:<回>-<画像>） */
+  chosenImages: ReadonlySet<string>;
+}) {
   // 選択は今の API（selections）から読む: 会話のイベントには選択を写さないため
   const { data } = useSelections(item.jobId);
   const verdicts = new Map(
@@ -131,12 +142,21 @@ function ImagesItem({ item }: { item: Extract<ChatItem, { kind: 'images' }> }) {
           issues: image.issues,
           verdict,
           actions: (
-            <VerdictButtons
-              jobId={item.jobId}
-              imageKey={imageKey}
-              imageLabel={imageLabel}
-              verdict={verdict}
-            />
+            <div className="space-y-1">
+              <VerdictButtons
+                jobId={item.jobId}
+                imageKey={imageKey}
+                imageLabel={imageLabel}
+                verdict={verdict}
+              />
+              <AdoptButton
+                jobId={item.jobId}
+                image={{ iteration: item.iteration, index: image.index }}
+                imageLabel={imageLabel}
+                chosen={chosenImages.has(`${item.jobId}:${imageKey}`)}
+                {...(stopped && { disabledReason: '描くのはもう止まっているので、決められない' })}
+              />
+            </div>
           ),
         };
       })}
@@ -178,6 +198,10 @@ function describeParams(params: Record<string, unknown>): string[] {
 function renderItem(
   item: ChatItem,
   resend: { onResend: (text: string) => void; disabled: boolean },
+  /** 止まったジョブ。その画像は「採る」を押せない */
+  stoppedJobs: ReadonlySet<string>,
+  /** 人が選んだ画像（<jobId>:<回>-<画像>） */
+  chosenImages: ReadonlySet<string>,
 ): ReactNode {
   switch (item.kind) {
     case 'user':
@@ -260,7 +284,14 @@ function renderItem(
         />
       );
     case 'images':
-      return <ImagesItem key={item.key} item={item} />;
+      return (
+        <ImagesItem
+          key={item.key}
+          item={item}
+          stopped={stoppedJobs.has(item.jobId)}
+          chosenImages={chosenImages}
+        />
+      );
     case 'judge':
       return (
         <JudgeNote
@@ -303,6 +334,8 @@ function renderItem(
               : // 進みごとに URL を変える: 途中の画像の URL はジョブごとに1つで、同じ src のままではブラウザが取り直さないため
                 `${item.previewUrl}?progress=${item.step ?? Math.round(item.progress * 100)}`
           }
+          // 生成中の回はまだ採れない: 採れるのはできあがった画像だけ（JobRunner.adopt）
+          hint="できあがったら、画像の行で「この画像で決める」を選べます"
         />
       );
     case 'status':
@@ -363,9 +396,25 @@ export function ConversationView({
   const sendRef = useRef(send);
   sendRef.current = send;
   const resend = useCallback((text: string) => void sendRef.current(text), []);
+  const stoppedJobs = useMemo(
+    () => new Set(items.flatMap((item) => (item.kind === 'job-stopped' ? [item.jobId] : []))),
+    [items],
+  );
+  const chosenImages = useMemo(
+    () =>
+      new Set(
+        items.flatMap((item) =>
+          item.kind === 'adopted' ? [`${item.jobId}:${formatImageKey(item.image)}`] : [],
+        ),
+      ),
+    [items],
+  );
   const rows = useMemo(
-    () => items.map((item) => renderItem(item, { onResend: resend, disabled: sending })),
-    [items, resend, sending],
+    () =>
+      items.map((item) =>
+        renderItem(item, { onResend: resend, disabled: sending }, stoppedJobs, chosenImages),
+      ),
+    [items, resend, sending, stoppedJobs, chosenImages],
   );
 
   const last = items.at(-1);

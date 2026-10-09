@@ -36,6 +36,11 @@ export type AutoJobQueue = {
   addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
   /** 塗った画像があるかは呼び手が確かめる。断るときは InterventionRejectedError を投げる */
   addMask(jobId: string, mask: NewMask): Promise<MaskIntervention>;
+  /**
+   * 人間が選んだ画像を採らせる（JobRunner.adopt）。画像があるかは呼び手が確かめる。断るときは InterventionRejectedError を投げる。
+   * 省けば、画面の「採る」ボタンは断られる（会話の adopt_image だけが採れる）
+   */
+  adopt?(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord>;
 };
 
 export type LlmSettingsStore = {

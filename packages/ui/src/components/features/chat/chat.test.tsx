@@ -199,6 +199,20 @@ describe('ChatComposer', () => {
     expect(screen.getByRole('button', { name: /送る/ })).toHaveProperty('disabled', true);
   });
 
+  it('shows a ring on the send button only while the message is being sent', () => {
+    const ring = () =>
+      screen.getByRole('button', { name: /送る/ }).querySelector('[data-slot="spinner"]');
+    const { rerender } = render(
+      <ChatComposer value="海の絵" onChange={() => undefined} onSend={() => undefined} />,
+    );
+    expect(ring()).toBeNull();
+
+    rerender(
+      <ChatComposer value="海の絵" onChange={() => undefined} onSend={() => undefined} sending />,
+    );
+    expect(ring()).not.toBeNull();
+  });
+
   it('does not send an empty message', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
