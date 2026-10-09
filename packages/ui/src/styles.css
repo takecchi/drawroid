@@ -137,12 +137,14 @@
   --chart-3: oklch(0.47 0.2 345);
   --chart-4: oklch(0.62 0.12 230);
   --chart-5: oklch(0.6 0.02 276);
-  /* 明るい面の上で読める濃さ */
-  --ok: oklch(0.56 0.12 175);
+  /*
+   * 明るい面の上で読める濃さ。ok・warn・human・ai は文字にも使うので、card・background・1割まで薄く塗った地の上で
+   * WCAG のコントラスト比 4.5 以上にしてある（`-foreground` との組も同じ）
+   */
+  --ok: oklch(0.48 0.105 175);
   --ok-foreground: oklch(0.985 0.01 285);
-  --warn: oklch(0.6 0.14 65);
+  --warn: oklch(0.52 0.13 65);
   --warn-foreground: oklch(0.985 0.01 285);
-  /* human・ai は文字にも使うので、card・background・薄く塗った地の上で WCAG のコントラスト比 4.5 以上にしてある（測った値は 5.3〜5.7） */
   --human: oklch(0.5 0.13 125);
   --human-foreground: oklch(0.985 0.01 285);
   --ai: oklch(0.5 0.12 235);
