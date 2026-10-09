@@ -61,6 +61,8 @@ export async function buildTxt2imgPayload(
       hr_scale: req.hiresFix.scale,
       hr_second_pass_steps: req.hiresFix.steps,
       denoising_strength: req.hiresFix.denoisingStrength,
+      // 省かない: Forge は省いた hr_additional_modules を None のまま「含むか」を調べて落ちる。[] は「内蔵のものだけ」の意味になり、指定した VAE が二段目で外れる
+      hr_additional_modules: ['Use same choices'],
     }),
     // /sdapi/v1/options で全体の設定を書き換えない: 人間が同じ Forge を画面から使っていても、その状態を汚さないため
     override_settings: overrideSettings,
@@ -127,7 +129,8 @@ export function readTxt2imgResponse(
   if (encoded.length !== batchSize) {
     throw new BackendError(
       'bad_response',
-      `txt2img が ${batchSize} 枚を返すはずが ${encoded.length} 枚だった`,
+      // Forge は interrupt されても失敗を返さず、そこまでに描けた画像だけを返す
+      `txt2img が ${batchSize} 枚を返すはずが ${encoded.length} 枚だった。Forge の画面などで生成が中断された可能性がある`,
     );
   }
   const images = encoded.map((b64, i) => {
