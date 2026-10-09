@@ -1,8 +1,15 @@
-import { isApiError, useJob, type JobDetail as JobDetailData } from '@drawroid/swr';
+import {
+  isApiError,
+  useIterations,
+  useJob,
+  useLlmCalls,
+  type JobDetail as JobDetailData,
+} from '@drawroid/swr';
 import { Link } from 'react-router';
 
 import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
 import { IterationList } from './iteration-view';
+import { LlmTotals } from './llm-call-view';
 import { StopReasonMessage } from './stop-reason-message';
 
 function JobHeader({ job }: { job: JobDetailData }) {
@@ -76,8 +83,34 @@ function JobRequest({ spec }: { spec: JobDetailData['spec'] }) {
   );
 }
 
+function InvalidList({
+  title,
+  items,
+}: {
+  title: string;
+  items: { label: string; reason: string }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section role="alert">
+      <h2>{title}</h2>
+      <ul>
+        {items.map((item) => (
+          <li key={item.label}>
+            {item.label}: {item.reason}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function JobDetail({ jobId }: { jobId: string }) {
   const { data, error } = useJob(jobId);
+  // useJob の応答を待たずに取り始めない: 止まったかどうかが分かるまで、ポーリングするかを決められないため
+  const live = data !== undefined && data.state.status !== 'stopped';
+  const iterations = useIterations(data === undefined ? undefined : jobId, { live });
+  const llmCalls = useLlmCalls(data === undefined ? undefined : jobId, { live });
   if (data === undefined) {
     if (error === undefined) return null;
     return isApiError(error) && error.status === 404 ? (
@@ -92,7 +125,40 @@ export function JobDetail({ jobId }: { jobId: string }) {
     <>
       <JobHeader job={data} />
       <JobRequest spec={data.spec} />
-      <IterationList iterations={data.iterations} />
+      {iterations.error !== undefined && (
+        <p role="alert">回を読めない: {iterations.error.message}</p>
+      )}
+      {llmCalls.error !== undefined && (
+        <p role="alert">LLM の記録を読めない: {llmCalls.error.message}</p>
+      )}
+      {iterations.data !== undefined && (
+        <>
+          <IterationList
+            jobId={jobId}
+            heading={`回（${data.iterations.length}）`}
+            iterations={iterations.data.iterations}
+            calls={llmCalls.data?.calls ?? []}
+          />
+          <InvalidList
+            title="読めない回"
+            items={iterations.data.invalid.map((i) => ({
+              label: `${i.iteration} 回目`,
+              reason: i.reason,
+            }))}
+          />
+        </>
+      )}
+      {llmCalls.data !== undefined && (
+        <>
+          {llmCalls.data.total.calls > 0 && (
+            <LlmTotals total={llmCalls.data.total} byIteration={llmCalls.data.byIteration} />
+          )}
+          <InvalidList
+            title="読めない記録"
+            items={llmCalls.data.invalid.map((i) => ({ label: i.callId, reason: i.reason }))}
+          />
+        </>
+      )}
     </>
   );
 }
