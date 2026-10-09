@@ -411,30 +411,20 @@ export function ConversationView({
   );
   // 行が変わらなければ、前に作った行の要素をそのまま渡す: 同じ要素なら React はその行を描き直さない。
   // 書きかけの増分のたびに、確定した数千行まで描き直すと、長い会話で増分1回が重くなるため（確定した行は chatItems が同じオブジェクトで返す）。
-  // 画像の行は、ジョブが止まったか・どの画像が選ばれたかでも描き方が変わるので、それも見て使い回す
-  const rowCache = useRef(new WeakMap<ChatItem, { inputs: string; row: ReactNode }>());
+  // ジョブが止まった・画像が選ばれたは確定したイベントで届き、そのとき確定した行は作り直される（使い回されない）ので、ここでは見なくてよい
+  const rowCache = useRef(new WeakMap<ChatItem, { sending: boolean; row: ReactNode }>());
   const rows = useMemo(
     () =>
       items.map((item) => {
-        const inputs =
-          item.kind === 'images'
-            ? `${sending}|${stoppedJobs.has(item.jobId)}|${item.images
-                .map((image) =>
-                  chosenImages.has(
-                    `${item.jobId}:${formatImageKey({ iteration: item.iteration, index: image.index })}`,
-                  ),
-                )
-                .join(',')}`
-            : String(sending);
         const cached = rowCache.current.get(item);
-        if (cached !== undefined && cached.inputs === inputs) return cached.row;
+        if (cached !== undefined && cached.sending === sending) return cached.row;
         const row = renderItem(
           item,
           { onResend: resend, disabled: sending },
           stoppedJobs,
           chosenImages,
         );
-        rowCache.current.set(item, { inputs, row });
+        rowCache.current.set(item, { sending, row });
         return row;
       }),
     [items, resend, sending, stoppedJobs, chosenImages],
