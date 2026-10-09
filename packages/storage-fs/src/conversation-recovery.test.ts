@@ -249,6 +249,42 @@ describe('filling in the job events a restart left out', () => {
     expect(adoptedEvents).toHaveLength(1);
   });
 
+  it('adds the mark of a choice taken in after its iteration once, and not again when the bridge confirmed it', async () => {
+    const conversations = new FsConversationStore(root);
+    const hubs = new ConversationHubs({ store: conversations });
+    const { conversationId } = await conversations.createConversation(new Date());
+    const files = new FsJobStore(root);
+    const bridged = bridgeJobEvents(files, { hubs });
+    const spec = await runJob(bridged, conversationId);
+    const choose = (index: number) =>
+      files.addIntervention(
+        spec.jobId,
+        { kind: 'adopt', image: { iteration: 1, index } },
+        new Date(),
+      );
+    const adoptMarks = async () =>
+      (await conversations.readEvents(conversationId)).events.filter(
+        (e) => e.type === 'job.intervention' && e.kind === 'adopt',
+      );
+
+    // 1回目のあとの境目で取り込み、印は書けたが、イベントを書く前に落ちたつもり
+    const lost = await choose(0);
+    await files.markInterventionApplied(spec.jobId, lost.interventionId, 1);
+    expect(await backfillJobEvents({ jobs: files, conversations, hubs })).toBe(1);
+    expect(await backfillJobEvents({ jobs: files, conversations, hubs })).toBe(0);
+    expect(await adoptMarks()).toEqual([
+      expect.objectContaining({ interventionId: lost.interventionId, iteration: 1 }),
+    ]);
+
+    // 橋渡しが確定したものは、書き足さない
+    const confirmed = await choose(0);
+    await bridged.markInterventionApplied(spec.jobId, confirmed.interventionId, 1);
+    expect(await backfillJobEvents({ jobs: files, conversations, hubs })).toBe(0);
+    expect(
+      (await adoptMarks()).map((e) => e.type === 'job.intervention' && e.interventionId),
+    ).toEqual([lost.interventionId, confirmed.interventionId]);
+  });
+
   it('writes every event of a job whose events were never written at all, in the order they happened', async () => {
     const conversations = new FsConversationStore(root);
     const hubs = new ConversationHubs({ store: conversations });

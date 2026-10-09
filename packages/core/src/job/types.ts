@@ -63,7 +63,8 @@ export const interventionRecordSchema = z.discriminatedUnion('kind', [
     /** inpaint に使った回。1回使うと切れる。使われる前に新しいマスクが来ても切れる */
     usedInIteration: z.number().int().positive().optional(),
   }),
-  // adopt は人間がその回の画像を「これでいい」と選んだ印。取り込んだかは、その回の adopted.json の有無で決まる
+  // adopt は人間がその回の画像を「これでいい」と選んだ印。見る役がまだ見ていない回なら、見る役の代わりに adopted.json を書く。
+  // 取り込んだかは、回の境目で付ける takenAfterIteration で決まる（見る役が済んだ回への選択は adopted.json を書かないため）
   z.object({
     kind: z.literal('adopt'),
     ...interventionIdentity,
@@ -71,6 +72,8 @@ export const interventionRecordSchema = z.discriminatedUnion('kind', [
       iteration: z.number().int().positive(),
       index: z.number().int().nonnegative(),
     }),
+    /** 取り込んだ境目の、直前の回。取り込む前は無い */
+    takenAfterIteration: z.number().int().positive().optional(),
   }),
 ]);
 export type InterventionRecord = z.infer<typeof interventionRecordSchema>;

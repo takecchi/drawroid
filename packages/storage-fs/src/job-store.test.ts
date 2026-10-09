@@ -255,6 +255,18 @@ describe('FsJobStore interventions', () => {
     expect(await jobs.listInterventions(a.jobId)).toEqual([{ ...said, appliedInIteration: 4 }]);
   });
 
+  it('writes back after which iteration a choice of an image was taken in, keeping the image', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const chosen = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'adopt', image: { iteration: 2, index: 1 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.markInterventionApplied(a.jobId, chosen.interventionId, 3);
+    expect(await jobs.listInterventions(a.jobId)).toEqual([{ ...chosen, takenAfterIteration: 3 }]);
+  });
+
   it('refuses to mark a stop condition change as taken into a think', async () => {
     const jobs = store();
     const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
