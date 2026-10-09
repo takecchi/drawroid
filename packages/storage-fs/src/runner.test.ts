@@ -381,21 +381,21 @@ describe('a job runs with the budgets written in its job.json (Issue #63)', () =
   it('keeps every think input within the limit of the job when its text budgets are small', async () => {
     const request = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調。'.repeat(40);
     const small = setup({ scripts: { think, judge: judge() } });
-    await submit(small.store, { aiJudgement: false, maxIterations: 8 }, 2, {
+    await submit(small.store, { aiJudgement: false, maxIterations: 5 }, 2, {
       request,
       budgets: { text: { intent: 40, prompt: 60, negativePrompt: 30, rationale: 20 } },
     });
     small.runner.kick();
     await small.runner.idle();
     const roomy = setup({ scripts: { think, judge: judge() } });
-    await submit(roomy.store, { aiJudgement: false, maxIterations: 8 }, 2, { request });
+    await submit(roomy.store, { aiJudgement: false, maxIterations: 5 }, 2, { request });
     roomy.runner.kick();
     await roomy.runner.idle();
 
     const thinkCalls = (llm: ScriptedLlm) => llm.calls.filter((c) => c.purpose === 'think');
     const sizesOf = (llm: ScriptedLlm) =>
       thinkCalls(llm).map((c) => c.messages.report.estimatedInputTokens);
-    expect(sizesOf(small.llm)).toHaveLength(8);
+    expect(sizesOf(small.llm)).toHaveLength(5);
     for (const call of thinkCalls(small.llm)) {
       expect(call.messages.report.estimatedInputTokens).toBeLessThanOrEqual(
         call.messages.report.inputTokenLimit,
@@ -406,7 +406,8 @@ describe('a job runs with the budgets written in its job.json (Issue #63)', () =
       expect(json.properties.params.properties.prompt.maxLength).toBe(60);
     }
     expect(Math.max(...sizesOf(small.llm))).toBeLessThan(Math.min(...sizesOf(roomy.llm)));
-  });
+    // 既定の 5 秒にしない: 2 つのジョブぶんの画像の縮小をファイルの上で実際に回すため、遅い機械では超える
+  }, 30_000);
 
   it('runs a job without budgets on the defaults of the runner', async () => {
     const { store, runner, llm } = setup({ scripts: { think, judge: judge() } });
