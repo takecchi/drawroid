@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ChatComposer,
+  ChatLayout,
   GenerationProgress,
   JudgeNote,
   MessageRow,
   ReasoningBlock,
+  StatusLine,
   StopNotice,
   ToolCallCard,
 } from './index';
@@ -204,5 +206,36 @@ describe('ChatComposer', () => {
     render(<Composer onSend={() => undefined} />);
 
     expect(screen.queryByRole('button', { name: '止める' })).toBeNull();
+  });
+});
+
+describe('ChatLayout status', () => {
+  const layout = (status?: 'waiting-llm' | 'job.held') => (
+    <ChatLayout
+      log={<div>{status !== undefined && <StatusLine status={status} />}</div>}
+      composer={<div />}
+      status={status}
+    />
+  );
+
+  it('tells a screen reader of each change of state in one place that is always there', () => {
+    const { rerender } = render(layout());
+    const region = screen.getByRole('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.textContent).toBe('');
+
+    rerender(layout('waiting-llm'));
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('考えています');
+
+    rerender(layout('job.held'));
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('話を聞いています（描くのは待たせています）');
+  });
+
+  it('keeps the visible status line out of what is read aloud, so it is not read twice', () => {
+    render(layout('waiting-llm'));
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
   });
 });

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
+import { STATUS_TEXT, type ChatStatus } from './cards';
+
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
 
@@ -49,10 +51,13 @@ export function ChatLayout({
   header,
   log,
   composer,
+  status,
 }: {
   header?: ReactNode;
   log: ReactNode;
   composer: ReactNode;
+  /** 今の状態。見えない場所で読み上げに知らせる（見える1行は StatusLine） */
+  status?: ChatStatus;
 }) {
   return (
     <div className="flex h-[calc(100dvh-3.25rem)] flex-col">
@@ -62,6 +67,10 @@ export function ChatLayout({
         </div>
       )}
       {log}
+      {/* 状態が無い間も置いておく: 読み上げは、すでにある場所の中身の変化だけを確実に伝えるため */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {status === undefined ? '' : STATUS_TEXT[status]}
+      </div>
       <div className="border-t border-border bg-background">
         <div className="mx-auto max-w-3xl px-4 py-3">{composer}</div>
       </div>
