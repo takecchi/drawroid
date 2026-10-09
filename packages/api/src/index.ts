@@ -3,12 +3,21 @@ import { Hono } from 'hono';
 import type { ApiDeps } from './deps.js';
 import { autoJobsRoutes } from './routes/auto-jobs.js';
 import { backendRoutes } from './routes/backend.js';
+import { backendSettingsRoutes } from './routes/backend-settings.js';
 import { filesRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { llmSettingsRoutes } from './routes/llm-settings.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
 
+export {
+  BackendBusyError,
+  backendSettingsViewSchema,
+  updateBackendSettingsSchema,
+  type BackendSettingsPort,
+  type BackendSettingsView,
+  type UpdateBackendSettings,
+} from './backend-settings.js';
 export type { ApiDeps, AutoJobQueue, LlmSettingsStore } from './deps.js';
 export type { ApiErrorBody } from './errors.js';
 
@@ -17,6 +26,7 @@ export function createApi(deps: ApiDeps) {
   return new Hono()
     .route('/health', healthRoutes)
     .route('/backend', backendRoutes(deps))
+    .route('/settings/backend', backendSettingsRoutes(deps))
     .route('/jobs/manual', manualJobsRoutes(deps))
     .route('/jobs/auto', autoJobsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))
