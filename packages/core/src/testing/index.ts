@@ -9,3 +9,9 @@ export {
   StubBackend,
   type StubBackendOptions,
 } from './stub-backend.js';
+export {
+  SCRIPTED_USAGE,
+  ScriptedLlm,
+  type Script,
+  type ScriptedLlmOptions,
+} from './scripted-llm.js';
