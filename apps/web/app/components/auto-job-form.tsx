@@ -1,11 +1,13 @@
 import { createAutoJob, isApiError } from '@drawroid/swr';
 import { useState, type FormEvent } from 'react';
 
+import { buildReferenceUploads, type AttachedReference } from '../lib/reference-upload';
 import {
   buildStopConditions,
   DEFAULT_STOP_CONDITIONS_FORM,
   stopConditionsBlocker,
 } from '../lib/stop-conditions-form';
+import { ReferenceAttacher } from './reference-attacher';
 import { StopConditionsEditor } from './stop-conditions-editor';
 
 const DEFAULT_BATCH_SIZE = '1';
@@ -14,6 +16,7 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
   const [request, setRequest] = useState('');
   const [stopForm, setStopForm] = useState(DEFAULT_STOP_CONDITIONS_FORM);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
+  const [references, setReferences] = useState<AttachedReference[]>([]);
   const [error, setError] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
 
@@ -33,10 +36,17 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
     setSending(true);
     setError(undefined);
     try {
+      const uploads = await buildReferenceUploads(references);
+      if (!uploads.ok) {
+        setError(uploads.reason);
+        return;
+      }
       const { jobId } = await createAutoJob({
         request,
         stopConditions: stopConditions.value,
         batchSize: batch,
+        // 空のときは載せない: 参照画像の無い投入の body を、これまでと同じ形に保つため
+        ...(uploads.value.length === 0 ? {} : { references: uploads.value }),
       });
       onCreated(jobId);
     } catch (caught) {
@@ -62,6 +72,7 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
           />
         </label>
       </p>
+      <ReferenceAttacher items={references} onChange={setReferences} disabled={sending} />
       <StopConditionsEditor values={stopForm} onChange={setStopForm} />
       <p>
         <label>

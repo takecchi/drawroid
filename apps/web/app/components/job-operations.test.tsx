@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
   addInstruction,
+  addReference,
   changeStopConditions,
   stopJob,
   type JobDetail,
@@ -8,7 +9,7 @@ import {
 } from '@drawroid/swr';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { JobOperations } from './job-operations';
 
@@ -16,13 +17,20 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   stopJob: vi.fn(),
   addInstruction: vi.fn(),
+  addReference: vi.fn(),
   changeStopConditions: vi.fn(),
   parseStopConditionsText: vi.fn(),
 }));
 
 const stop = vi.mocked(stopJob);
 const instruct = vi.mocked(addInstruction);
+const reference = vi.mocked(addReference);
 const change = vi.mocked(changeStopConditions);
+
+beforeEach(() => {
+  URL.createObjectURL = vi.fn(() => 'blob:preview');
+  URL.revokeObjectURL = vi.fn();
+});
 
 afterEach(() => {
   cleanup();
@@ -160,6 +168,70 @@ describe('JobOperations', () => {
         '止まったジョブには送れない',
       );
       expect(screen.getByLabelText('人間の指示')).toHaveProperty('value', 'もっと明るく');
+    });
+  });
+
+  describe('reference images', () => {
+    const png = () =>
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'ref.png', { type: 'image/png' });
+
+    it('sends each attached image to the job one at a time and says when it is looked at', async () => {
+      reference.mockResolvedValue({} as Awaited<ReturnType<typeof addReference>>);
+      render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
+
+      await user.upload(screen.getByLabelText(/参照画像を選ぶ/), [png(), png()]);
+      await user.click(screen.getByRole('button', { name: '参照画像を送る' }));
+
+      expect(reference).toHaveBeenCalledTimes(2);
+      expect(reference).toHaveBeenCalledWith('job-7', { mediaType: 'image/png', data: 'iVBORw==' });
+      expect((await screen.findByText(/2 枚送った/)).textContent).toContain(
+        '次の回の境目で見る役が1度だけ見て要点にする',
+      );
+    });
+
+    it('shows the reason and keeps the image when the API answers 409', async () => {
+      reference.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
+      render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
+
+      await user.upload(screen.getByLabelText(/参照画像を選ぶ/), png());
+      await user.click(screen.getByRole('button', { name: '参照画像を送る' }));
+
+      expect((await screen.findByText(/送れない/)).textContent).toContain(
+        '止まったジョブには送れない',
+      );
+      expect(screen.getByRole('button', { name: 'ref.png を外す' })).toBeTruthy();
+    });
+
+    it('shows the reason when the API answers 400', async () => {
+      reference.mockRejectedValue(
+        await apiError('invalid_request', 'image/png の画像ではない', 400),
+      );
+      render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
+
+      await user.upload(screen.getByLabelText(/参照画像を選ぶ/), png());
+      await user.click(screen.getByRole('button', { name: '参照画像を送る' }));
+
+      expect((await screen.findByText(/送れない/)).textContent).toContain('画像ではない');
+    });
+
+    it('does not call the API for an image of a refused type', async () => {
+      render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup({ applyAccept: false });
+
+      await user.upload(
+        screen.getByLabelText(/参照画像を選ぶ/),
+        new File([new Uint8Array([1])], 'a.gif', { type: 'image/gif' }),
+      );
+
+      expect((await screen.findByText(/添えられない/)).textContent).toContain('a.gif');
+      expect(screen.getByRole('button', { name: '参照画像を送る' })).toHaveProperty(
+        'disabled',
+        true,
+      );
+      expect(reference).not.toHaveBeenCalled();
     });
   });
 

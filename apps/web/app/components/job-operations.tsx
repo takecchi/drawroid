@@ -1,6 +1,7 @@
 import type { StopConditions } from '@drawroid/core';
 import {
   addInstruction,
+  addReference,
   changeStopConditions,
   isApiError,
   stopJob,
@@ -8,11 +9,13 @@ import {
 } from '@drawroid/swr';
 import { useState } from 'react';
 
+import { buildReferenceUpload, type AttachedReference } from '../lib/reference-upload';
 import {
   buildStopConditionsChange,
   stopConditionsToForm,
   type StopConditionsFormValues,
 } from '../lib/stop-conditions-form';
+import { ReferenceAttacher } from './reference-attacher';
 import { StopConditionsEditor } from './stop-conditions-editor';
 
 type AutoSpec = Extract<JobDetail['spec'], { kind: 'auto' }>;
@@ -83,6 +86,55 @@ function InstructionForm({ jobId }: { jobId: string }) {
         送る
       </button>
       {sent && <p>送った。次の回の「考える」から反映される</p>}
+      {error !== undefined && <p role="alert">送れない: {error}</p>}
+    </section>
+  );
+}
+
+function ReferenceForm({ jobId }: { jobId: string }) {
+  const [items, setItems] = useState<AttachedReference[]>([]);
+  const [pending, setPending] = useState(false);
+  const [sent, setSent] = useState(0);
+  const [error, setError] = useState<string | undefined>();
+
+  // 1枚ずつ送る: 口出しの API が1回に1枚で、途中で断られても送れた分は外し、残りだけを直して送り直せるため
+  async function send() {
+    setPending(true);
+    setError(undefined);
+    setSent(0);
+    let rest = items;
+    try {
+      for (const item of items) {
+        const upload = await buildReferenceUpload(item);
+        if (!upload.ok) {
+          setError(upload.reason);
+          return;
+        }
+        await addReference(jobId, upload.value);
+        rest = rest.filter((it) => it.id !== item.id);
+        setItems(rest);
+        setSent((count) => count + 1);
+      }
+    } catch (caught) {
+      if (!isApiError(caught)) throw caught;
+      setError(caught.message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section>
+      <h3>参照画像を添える</h3>
+      <ReferenceAttacher items={items} onChange={setItems} disabled={pending} />
+      <button type="button" disabled={pending || items.length === 0} onClick={() => void send()}>
+        参照画像を送る
+      </button>
+      {sent > 0 && (
+        <p>
+          {sent} 枚送った。次の回の境目で見る役が1度だけ見て要点にする（原寸の画像は毎回は渡さない）
+        </p>
+      )}
       {error !== undefined && <p role="alert">送れない: {error}</p>}
     </section>
   );
@@ -160,6 +212,7 @@ export function JobOperations({ job }: { job: JobDetail }) {
       <h2>操作</h2>
       <StopButton jobId={spec.jobId} />
       <InstructionForm jobId={spec.jobId} />
+      <ReferenceForm jobId={spec.jobId} />
       <StopConditionsChanger spec={spec} />
     </section>
   );
