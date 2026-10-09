@@ -14,7 +14,7 @@ export function distillRoutes({ store, distillLog }: ApiDeps) {
     const jobId = c.req.param('jobId');
     // 一覧に在るものだけを通す: 外から来た文字列をそのまま置き場所へ渡さないため
     if (!(await store.listJobIds()).includes(jobId)) return notFound(c, `ジョブ ${jobId} は無い`);
-    let entries: DistillEntry[] = [];
+    let entries: DistillEntry[];
     try {
       entries = (await distillLog?.read(jobId)) ?? [];
     } catch (error) {
