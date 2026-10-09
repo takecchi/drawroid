@@ -233,6 +233,12 @@ describe('distilling in the background after a stopped job is reselected', () =>
     t.distiller.notify(JOB);
     t.timers.advance(QUIET);
     release();
+    // 走り終えたあと、時間が進めばもう1回走る（idle は待ちを前倒しで走らせるので、idle より先に見る）。
+    // 続けてすぐ走るか、もう一度待ってから走るかは約束していないので、見るたびに待ちの時間ぶん進める
+    await vi.waitFor(() => {
+      t.timers.advance(QUIET);
+      expect(llm.calls).toHaveLength(2);
+    });
     await t.distiller.idle();
 
     expect(llm.calls).toHaveLength(2);
@@ -312,6 +318,9 @@ describe('distilling in the background after a stopped job is reselected', () =>
     t.select('3-0', 'rejected', '2026-10-09T10:45:00Z');
     t.distiller.notify(JOB);
     t.timers.advance(QUIET);
+    // 前に走ったジョブでも、次の知らせは待ちの時間で走る（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(t.llm!.calls).toHaveLength(2);
     await t.distiller.idle();
 
     expect(t.log.entries.map((e) => e.shown.selections)).toEqual([['2-0'], ['3-0']]);
@@ -371,6 +380,9 @@ describe('distilling in the background after a stopped job is reselected', () =>
 
     t.distiller.notify(JOB);
     t.timers.advance(QUIET);
+    // 失敗したジョブでも、次の知らせは待ちの時間で走る（idle は待ちを前倒しで走らせるので、idle より先に見る）
+    await flush();
+    expect(llm.calls).toHaveLength(2);
     await t.distiller.idle();
 
     expect(llm.calls).toHaveLength(2);
