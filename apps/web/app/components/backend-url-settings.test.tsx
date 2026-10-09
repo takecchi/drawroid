@@ -49,6 +49,49 @@ describe('BackendUrlSettings', () => {
     expect(screen.getByText(/次に起動したときも同じ引数を付ければ、そちらが勝つ/)).toBeTruthy();
   });
 
+  it.each(['config', 'default'] as const)(
+    'does not warn about the start-up argument when the URL comes from %s',
+    (urlSource) => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: { kind: 'forge', url: 'http://127.0.0.1:7860', urlSource },
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(screen.queryByText(/次に起動したときも同じ引数を付ければ、そちらが勝つ/)).toBeNull();
+    },
+  );
+
+  // 起動の引数で決まっている URL を、そのまま保存し直せる: config.json に残り、次は引数なしで起動できる
+  it('saves the URL given at start-up as it is, without retyping it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useBackendSettings).mockReturnValue({
+      data: { kind: 'forge', url: 'http://gpu:7860', urlSource: 'cli' },
+      error: undefined,
+    } as never);
+    render(<BackendUrlSettings />);
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860' });
+  });
+
+  // 打っている途中に設定を読み直しても（SWR の再検証）、打った値を上書きしない
+  it('keeps what a person typed when the settings are read again', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<BackendUrlSettings />);
+    await user.clear(field());
+    await user.type(field(), 'http://127.0.0.1:78');
+
+    vi.mocked(useBackendSettings).mockReturnValue({
+      data: { kind: 'forge', url: 'http://127.0.0.1:7860', urlSource: 'default' },
+      error: undefined,
+    } as never);
+    rerender(<BackendUrlSettings />);
+
+    expect(field().value).toBe('http://127.0.0.1:78');
+  });
+
   // 保存しても欄の見た目は変わらないので、知らせが無いと、押した人には効いたかが分からない
   it('says it saved the URL, and shows the URL it is connected to in the field', async () => {
     const user = userEvent.setup();
@@ -75,6 +118,16 @@ describe('BackendUrlSettings', () => {
     render(<BackendUrlSettings />);
 
     await user.clear(field());
+
+    expect(screen.getByRole('button', { name: '保存' })).toHaveProperty('disabled', true);
+  });
+
+  it('cannot save a field of spaces only', async () => {
+    const user = userEvent.setup();
+    render(<BackendUrlSettings />);
+
+    await user.clear(field());
+    await user.type(field(), '   ');
 
     expect(screen.getByRole('button', { name: '保存' })).toHaveProperty('disabled', true);
   });

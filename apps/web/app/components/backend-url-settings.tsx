@@ -70,7 +70,7 @@ export function BackendUrlSettings() {
           aria-label="バックエンドの URL"
           className="w-80"
         />
-        <Button type="submit" variant="primary" disabled={saving || input.trim() === ''}>
+        <Button type="submit" variant="primary" disabled={saving || input === '' || (data?.urlSource === 'cli' && edited === undefined)}>
           保存
         </Button>
       </form>
