@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@drawroid/api": "workspace:*",
+    "@drawroid/backend-a1111": "workspace:*",
     "@drawroid/backend-forge": "workspace:*",
     "@drawroid/core": "workspace:*",
     "@drawroid/llm": "workspace:*",

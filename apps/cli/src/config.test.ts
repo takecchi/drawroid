@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DEFAULT_FORGE_URL, readConfig, resolveForgeUrl } from './config.js';
+import {
+  DEFAULT_BACKEND_KIND,
+  DEFAULT_FORGE_URL,
+  readConfig,
+  resolveBackendKind,
+  resolveForgeUrl,
+} from './config.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -22,6 +28,7 @@ describe('readConfig', () => {
   it('reads the backend settings', async () => {
     const path = join(dir, 'config.json');
     const backend = {
+      kind: 'a1111',
       forgeUrl: 'http://gpu:7860',
       auth: { username: 'u', password: 'p' },
       generateTimeoutMs: 120000,
@@ -41,6 +48,7 @@ describe('readConfig', () => {
     for (const bad of [
       { backend: { forgeUrl: 'not a url' } },
       { backend: { generateTimeoutMs: 0 } },
+      { backend: { kind: 'comfyui' } },
     ]) {
       await writeFile(path, JSON.stringify(bad));
       await expect(readConfig(path)).rejects.toThrow(/config\.json/);
@@ -54,5 +62,15 @@ describe('resolveForgeUrl', () => {
     expect(resolveForgeUrl('http://from-arg:7860', config)).toBe('http://from-arg:7860');
     expect(resolveForgeUrl(undefined, config)).toBe('http://from-config:7860');
     expect(resolveForgeUrl(undefined, {})).toBe(DEFAULT_FORGE_URL);
+  });
+});
+
+describe('resolveBackendKind', () => {
+  it('prefers the CLI argument, then config.json, then Forge', () => {
+    const config = { backend: { kind: 'a1111' as const } };
+    expect(resolveBackendKind('forge', config)).toBe('forge');
+    expect(resolveBackendKind(undefined, config)).toBe('a1111');
+    expect(resolveBackendKind(undefined, {})).toBe(DEFAULT_BACKEND_KIND);
+    expect(DEFAULT_BACKEND_KIND).toBe('forge');
   });
 });
