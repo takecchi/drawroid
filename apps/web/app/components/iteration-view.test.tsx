@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { adoptImage, setSelection } from '@drawroid/swr';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { IterationList, type Iteration } from './iteration-view';
 
-afterEach(cleanup);
+vi.mock('@drawroid/swr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@drawroid/swr')>()),
+  adoptImage: vi.fn(),
+  setSelection: vi.fn(),
+}));
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 const iteration = {
   iteration: 1,
@@ -109,7 +119,7 @@ describe('IterationList and the large view of an image', () => {
         ]}
         calls={[]}
         verdicts={new Map()}
-        adopt={{}}
+        adopt={{ stopped: false }}
       />,
     );
 
@@ -126,7 +136,7 @@ describe('IterationList and the large view of an image', () => {
     ).toBeTruthy();
   });
 
-  it('in the large view, does not let a stopped job be settled, and says why', async () => {
+  it('in the large view, lets a stopped job be settled through the favorite only, without a reason it cannot', async () => {
     const user = userEvent.setup();
     render(
       <IterationList
@@ -135,7 +145,7 @@ describe('IterationList and the large view of an image', () => {
         iterations={[iteration]}
         calls={[]}
         verdicts={new Map()}
-        adopt={{ disabledReason: '描くのはもう止まっているので、決められない' }}
+        adopt={{ stopped: true }}
       />,
     );
 
@@ -144,10 +154,18 @@ describe('IterationList and the large view of an image', () => {
     );
     const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 1 番/ }));
 
+    // 止まったジョブは採る口を受けないので、「この画像に決める（お気に入りにする）」になる。押せない理由は出さない
     expect(
-      dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
-    ).toHaveProperty('disabled', true);
-    expect(dialog.getByText('描くのはもう止まっているので、決められない')).toBeTruthy();
+      dialog.queryByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+    ).toBeNull();
+    expect(dialog.queryByText(/決められない/)).toBeNull();
+    await user.click(
+      dialog.getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番',
+      }),
+    );
+    expect(setSelection).toHaveBeenCalledWith('job-1', '1-0', 'favorite');
+    expect(adoptImage).not.toHaveBeenCalled();
   });
 });
 
