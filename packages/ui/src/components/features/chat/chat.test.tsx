@@ -78,6 +78,24 @@ describe('ToolCallCard', () => {
     const card = screen.getByRole('group', { name: 'ツール describe_backend: 失敗' });
     expect(card.textContent).toContain('繋がらない');
   });
+
+  it('uses the human title for its heading and name, and folds the details', () => {
+    render(
+      <ToolCallCard
+        name="start_drawing"
+        title="描き始める"
+        state="ok"
+        result="ジョブで描き始めた。"
+        details={<code>{'{"request":"猫"}'}</code>}
+      />,
+    );
+
+    const card = screen.getByRole('group', { name: 'ツール 描き始める: 済み' });
+    expect(card.textContent).toContain('ジョブで描き始めた。');
+    const folded = screen.getByText('{"request":"猫"}').closest('details');
+    expect(folded?.open).toBe(false);
+    expect(folded?.querySelector('summary')?.textContent).toBe('詳しく');
+  });
 });
 
 describe('GenerationProgress', () => {
