@@ -14,7 +14,8 @@ export function ChatComposer({
   onStop,
   running = false,
   sending = false,
-  placeholder = '話しかける（Enter で送る・Shift+Enter で改行）',
+  // 「Enter で送る」は書かない: 入力欄は案内文の長さまで伸びるので、狭い幅で止めるボタンと並ぶと4段になる。送るのは Enter と見込める
+  placeholder = '話しかける（Shift+Enter で改行）',
   notice,
 }: {
   value: string;
