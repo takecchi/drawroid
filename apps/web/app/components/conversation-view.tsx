@@ -46,6 +46,7 @@ import { formatScore } from '../lib/format';
 import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
+import { summarizeToolResult, toolTitle } from '../lib/tool-rows';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
 import { ChooseAsFavorite } from './choose-as-favorite';
@@ -573,6 +574,37 @@ function AdoptedItem({ item }: { item: Extract<ChatItem, { kind: 'adopted' }> })
   );
 }
 
+/**
+ * ツールの行。見出しは人の言葉の呼び方、本文は結果の短い要約にする。ツールの名前・生の引数・結果の全文は「詳しく」に畳んで残す:
+ * 生の JSON や作り手向けの断りの文を、人が会話の中で読まなくて済むように
+ */
+function ToolRow({ item }: { item: Extract<ChatItem, { kind: 'tool' }> }) {
+  const title = toolTitle(item.name);
+  const short = summarizeToolResult(item.state, item.summary);
+  const args = describeInput(item.input);
+  return (
+    <ToolCallCard
+      name={item.name}
+      {...(title !== undefined && { title })}
+      state={item.state}
+      result={short}
+      details={
+        <>
+          <div>
+            ツール: <code>{item.name}</code>
+          </div>
+          {args !== undefined && (
+            <div className="font-mono break-all text-muted-foreground">{args}</div>
+          )}
+          {item.summary !== undefined && item.summary !== short && (
+            <div className="break-words whitespace-pre-wrap">{item.summary}</div>
+          )}
+        </>
+      }
+    />
+  );
+}
+
 function describeInput(input: unknown): string | undefined {
   if (input === undefined || input === null) return undefined;
   if (typeof input !== 'object') return String(input);
@@ -751,15 +783,7 @@ function renderItem(
         </ReasoningBlock>
       );
     case 'tool':
-      return (
-        <ToolCallCard
-          key={item.key}
-          name={item.name}
-          args={describeInput(item.input)}
-          state={item.state}
-          result={item.summary}
-        />
-      );
+      return <ToolRow key={item.key} item={item} />;
     case 'turn-error':
       return (
         <StopNotice

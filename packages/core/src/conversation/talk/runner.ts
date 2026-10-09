@@ -15,6 +15,12 @@ import { TalkWindowReader } from './window.js';
 export const LLM_NOT_CONFIGURED_REASON =
   'LLM が未設定。設定の画面の「LLM の設定」で、provider と考える役のモデルを入れる';
 
+/**
+ * 同じターンで同じ引数のツールをもう一度呼んだときの断りの理由。画面はこの文を見て、人の言葉の要約に置き換える
+ */
+export const REPEATED_TOOL_CALL_REASON =
+  'このターンで同じ引数ですでに呼んだので、もう一度は走らせなかった。結果は前のとおり';
+
 export type TalkRunnerDeps = {
   store: ConversationStore;
   hubs: ConversationHubs;
@@ -428,9 +434,7 @@ export class TalkRunner {
             if (tool === undefined) throw new Error(`知らないツール ${call.name}`);
             if (called.has(key)) {
               repeated = true;
-              throw new Error(
-                'このターンで同じ引数ですでに呼んだので、もう一度は走らせなかった。結果は前のとおり',
-              );
+              throw new Error(REPEATED_TOOL_CALL_REASON);
             }
             called.add(key);
             result = await tool.run(call.input, {

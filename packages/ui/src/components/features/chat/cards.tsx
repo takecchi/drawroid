@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
-import { BulletList } from '../../common';
+import { BulletList, Disclosure } from '../../common';
 import { AuthorMark, ImageCard, ImageGrid, type ImageVerdict } from '../record';
 
 /** ログの中のカードの共通の枠。発言より一段控えめにする: 主役は発言で、カードはその裏で起きたことの記録のため */
@@ -52,11 +52,17 @@ const TOOL_STATE = {
 /** ツールの呼び出しと結果。結果が来るまでは「実行中」 */
 export function ToolCallCard({
   name,
+  title,
   args,
   state,
   result,
+  details,
 }: {
   name: string;
+  /** 人が読む呼び方（「描き始める」など）。渡すと、ツールの名前の代わりに見出しにする */
+  title?: string;
+  /** 「詳しく」に畳んで残すもの（ツールの名前・生の引数・結果の全文など）。画面が渡す */
+  details?: ReactNode;
   /** 引数の要約（1行） */
   args?: string;
   state: ToolCallState;
@@ -67,8 +73,8 @@ export function ToolCallCard({
   return (
     <LogCard
       icon={<Wrench />}
-      title={<span className="font-mono text-xs">{name}</span>}
-      label={`ツール ${name}: ${label}`}
+      title={title ?? <span className="font-mono text-xs">{name}</span>}
+      label={`ツール ${title ?? name}: ${label}`}
       aside={
         <span
           className={cn('flex shrink-0 items-center gap-1 text-xs [&_svg]:size-3.5', className)}
@@ -82,6 +88,11 @@ export function ToolCallCard({
         <div className="font-mono text-xs break-all text-muted-foreground">{args}</div>
       )}
       {result !== undefined && <div className="break-words whitespace-pre-wrap">{result}</div>}
+      {details !== undefined && (
+        <Disclosure summary="詳しく" className="text-xs">
+          <div className="space-y-1 pt-1">{details}</div>
+        </Disclosure>
+      )}
     </LogCard>
   );
 }

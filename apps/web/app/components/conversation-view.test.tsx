@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
+import {
+  LLM_NOT_CONFIGURED_REASON,
+  REPEATED_TOOL_CALL_REASON,
+  type ConversationEvent,
+  type LiveEvent,
+} from '@drawroid/core';
 import {
   addMask,
   adoptImage,
@@ -546,6 +551,42 @@ describe('ConversationView', () => {
     // 走っている部品の写しから、続きが出る
     stream.emit({ type: 'delta.text', partId: 'm2', turn: 2, text: '続きの本文' });
     expect(screen.getByText('続きの本文')).toBeTruthy();
+  });
+
+  // ツールの行は人が読む形にする: 生の JSON と作り手向けの断りの文は「詳しく」に畳んで残す
+  it('shows a tool row with a human title and a short summary, folding the raw call', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(
+      confirmed({
+        type: 'tool.call',
+        turn: 1,
+        callId: 'c1',
+        name: 'start_drawing',
+        input: { request: '猫', stopConditions: { aiJudgement: true } },
+      }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'tool.result',
+        turn: 1,
+        callId: 'c1',
+        ok: false,
+        summary: REPEATED_TOOL_CALL_REASON,
+      }),
+    );
+
+    const card = await screen.findByRole('group', { name: 'ツール 描き始める: 失敗' });
+    expect(
+      within(card).getByText('同じ呼び出しはこのターンで済んでいたので、もう一度はしなかった。'),
+    ).toBeTruthy();
+    const raw = within(card)
+      .getByText(/stopConditions/)
+      .closest('details');
+    expect(raw?.open).toBe(false);
+    expect(within(card).getByText(REPEATED_TOOL_CALL_REASON).closest('details')).toBe(raw);
   });
 
   it('shows a row for each kind of streamed event', async () => {
