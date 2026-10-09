@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { FsJobStore } from './job-store.js';
+import { dataPaths } from './paths.js';
 
 let root: string;
 
@@ -131,6 +132,25 @@ describe('inpaint follows the mask the human painted (M4:121)', () => {
     expect(backend.requests.every((request) => request.inpaint === undefined)).toBe(true);
   });
 
+  it('goes on without a mask even when ControlNet is left to the AI too', async () => {
+    const { store, llm, backend, runner } = setup(
+      // ControlNet を任せた回は、使わないことを null で答える（#87）
+      { think: think({ inpaint: 0.6, controlnet: null }), judge: judge() },
+      mergePermissions(permissions, { controlnet: { mode: 'auto' } }),
+    );
+    const spec = await submit(store, 3);
+
+    runner.kick();
+    await runner.idle();
+
+    expect(await store.readState(spec.jobId)).toMatchObject({
+      status: 'stopped',
+      reason: { kind: 'limit:iterations' },
+    });
+    expect(thinkCalls(llm)).toHaveLength(3);
+    expect(backend.requests.every((request) => request.inpaint === undefined)).toBe(true);
+  });
+
   it('repaints the painted image with the mask once it arrives, then lets the mask go', async () => {
     let jobId = '';
     const set = setup(
@@ -168,6 +188,39 @@ describe('inpaint follows the mask the human painted (M4:121)', () => {
     expect(mask).toMatchObject({ usedInIteration: 2 });
   });
 
+  it('does not offer inpaint for a mask whose image was never written, and goes on', async () => {
+    let jobId = '';
+    const set = setup(
+      {
+        think: think({ inpaint: 0.6 }),
+        // マスクの記録だけが置かれて、PNG は置かれないまま落ちた跡
+        judge: judge(async (n) => {
+          if (n === 0) {
+            const mask = await set.store.addMask(
+              jobId,
+              { image: { iteration: 1, index: 0 }, data: STUB_PNG },
+              new Date(),
+            );
+            await rm(dataPaths(root).jobFiles(jobId).mask(mask.interventionId));
+          }
+        }),
+      },
+      permissions,
+    );
+    const spec = await submit(set.store, 3);
+    jobId = spec.jobId;
+
+    set.runner.kick();
+    await set.runner.idle();
+
+    expect(await set.store.readState(spec.jobId)).toMatchObject({
+      status: 'stopped',
+      reason: { kind: 'limit:iterations' },
+    });
+    for (const call of thinkCalls(set.llm)) expect(paramKeysOf(call)).not.toContain('inpaint');
+    expect(set.backend.requests.every((request) => request.inpaint === undefined)).toBe(true);
+  });
+
   it('uses only the newest mask when the human paints again before it is used', async () => {
     let jobId = '';
     const set = setup(
@@ -191,6 +244,25 @@ describe('inpaint follows the mask the human painted (M4:121)', () => {
     const masks = (await set.store.listInterventions(spec.jobId)).filter((i) => i.kind === 'mask');
     expect(set.backend.requests[1]?.inpaint?.mask).toBe(`mask:${masks[1]!.interventionId}`);
     expect(set.backend.requests.filter((r) => r.inpaint !== undefined)).toHaveLength(1);
+  });
+});
+
+describe('image source keys are shown only when img2img is left to the AI (Issue #5 G)', () => {
+  it('shows no source image keys to the thinking role while img2img is not allowed', async () => {
+    const { store, llm, runner } = setup({ think: think(), judge: judge() }, base);
+    await submit(store, 3);
+
+    runner.kick();
+    await runner.idle();
+
+    const calls = thinkCalls(llm);
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
+      expect(paramKeysOf(call)).not.toContain('img2img');
+      expect(textOf(call)).not.toContain('元画像のキー');
+    }
+    // 最良は載っている。キーだけが無い
+    expect(textOf(calls[1]!)).toContain('最良');
   });
 });
 

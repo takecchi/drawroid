@@ -96,6 +96,24 @@ describe('buildThinkInput', () => {
     expect(text?.type === 'text' && text.text.includes('直近')).toBe(false);
   });
 
+  it('writes the source image keys only when img2img is left to the AI', () => {
+    const text = (withImageSourceKeys: boolean) =>
+      buildThinkInput({
+        carry: carryAfter(2),
+        progress: { iteration: 3 },
+        allowed: THINK_PARAM_KEYS,
+        budget,
+        window,
+        withImageSourceKeys,
+      })
+        .user.map((part) => (part.type === 'text' ? part.text : ''))
+        .join('\n');
+    expect(text(true)).toContain('最良（元画像のキー best）');
+    expect(text(true)).toContain('直近（元画像のキー latest）');
+    expect(text(false)).toContain('最良');
+    expect(text(false)).not.toContain('元画像のキー');
+  });
+
   it('drops optional sections that do not fit and records them', () => {
     const tight = { contextTokens: 2400, maxOutputTokens: 400 };
     const messages = buildThinkInput({
