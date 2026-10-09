@@ -38,6 +38,7 @@ beforeEach(async () => {
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     env: {},
     now,
     backendSettings: {

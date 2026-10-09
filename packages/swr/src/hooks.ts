@@ -8,6 +8,7 @@ import type {
   BackendSettingsResponse,
   BackendStatus,
   CandidatesResponse,
+  InterventionsResponse,
   IterationsResponse,
   JobDetail,
   JobsResponse,
@@ -15,6 +16,8 @@ import type {
   LlmCallsResponse,
   MemoryItemDetail,
   MemoryList,
+  SelectionsResponse,
+  StopConditionsResponse,
 } from './types.js';
 
 const JOBS_POLL_MS = 2000;
@@ -65,6 +68,17 @@ export function useIterations(jobId: string | undefined, { live }: { live: boole
   );
 }
 
+export function useInterventions(jobId: string | undefined, { live }: { live: boolean }) {
+  return useSWR<InterventionsResponse, ApiError>(
+    jobId === undefined ? null : keys.interventions(jobId),
+    () =>
+      unwrap<InterventionsResponse>(() =>
+        client.jobs.auto[':jobId'].interventions.$get({ param: { jobId: jobId ?? '' } }),
+      ),
+    { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
+  );
+}
+
 export function useLlmCalls(jobId: string | undefined, { live }: { live: boolean }) {
   return useSWR<LlmCallsResponse, ApiError>(
     jobId === undefined ? null : keys.llmCalls(jobId),
@@ -104,5 +118,28 @@ export function useMemoryList() {
 export function useMemoryItem(id: string | undefined) {
   return useSWR<MemoryItemDetail, ApiError>(id === undefined ? null : keys.memoryItem(id), () =>
     unwrap<MemoryItemDetail>(() => client.memory[':id'].$get({ param: { id: id ?? '' } })),
+  );
+}
+
+// 変更の関数が mutate で取り直すので、ポーリングはしない: 選択を書き換えるのは人間の操作だけのため
+export function useSelections(jobId: string | undefined) {
+  return useSWR<SelectionsResponse, ApiError>(
+    jobId === undefined ? null : keys.selections(jobId),
+    () =>
+      unwrap<SelectionsResponse>(() =>
+        client.jobs[':jobId'].selections.$get({ param: { jobId: jobId ?? '' } }),
+      ),
+  );
+}
+
+// live を呼び手から受ける: 走行中は別の口出し（別タブ・API）でも変わるので取り直し、止まったら変わらないため止める
+export function useStopConditions(jobId: string | undefined, { live }: { live: boolean }) {
+  return useSWR<StopConditionsResponse, ApiError>(
+    jobId === undefined ? null : keys.stopConditions(jobId),
+    () =>
+      unwrap<StopConditionsResponse>(() =>
+        client.jobs.auto[':jobId']['stop-conditions'].$get({ param: { jobId: jobId ?? '' } }),
+      ),
+    { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
   );
 }

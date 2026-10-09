@@ -71,6 +71,11 @@ export class AutoJobQueue implements AutoJobQueuePort {
     }
   }
 
+  /** 今設定されている LLM。未設定なら undefined */
+  currentLlm(): LlmPort | undefined {
+    return this.llm;
+  }
+
   kick(): void {
     if (this.llm === undefined) return;
     this.runner.kick();

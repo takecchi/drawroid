@@ -22,6 +22,7 @@ import { backendOptions, createBackendSettings } from './backend-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
+import { createStopConditionParser } from './stop-condition-parser.js';
 import { pickWebRoot } from './web-root.js';
 
 // tsc の出力（dist）へは apps/web の成果物を写さず、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため。
@@ -108,6 +109,10 @@ async function main() {
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,
+      stopConditionParser: createStopConditionParser({
+        store,
+        currentLlm: () => autoQueue.currentLlm(),
+      }),
       env: process.env,
     },
   });
