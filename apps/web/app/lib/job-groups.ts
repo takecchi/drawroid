@@ -8,7 +8,7 @@ export const JOB_STATUS_ORDER = ['running', 'queued', 'stopped'] as const satisf
 
 function compareNewestFirst(a: JobSummary, b: JobSummary): number {
   // 文字列比較にしない: createdAt は offset 付きで、offset が違うと辞書順が時刻の順にならないため
-  const byTime = Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  const byTime = Date.parse(a.createdAt) - Date.parse(b.createdAt);
   return byTime !== 0 ? byTime : b.jobId.localeCompare(a.jobId);
 }
 
