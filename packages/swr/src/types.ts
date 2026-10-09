@@ -15,6 +15,10 @@ export type MemoryList = InferResponseType<typeof client.memory.$get, 200>;
 export type MemoryItemDetail = InferResponseType<(typeof client.memory)[':id']['$get'], 200>;
 export type SaveMemoryInput = InferRequestType<(typeof client.memory)[':id']['$put']>['json'];
 export type SavedMemoryItem = InferResponseType<(typeof client.memory)[':id']['$put'], 200>;
+/** config が null なら、まだ設定されていない。apiKeyEnv は環境変数の名前と、入っているかだけ（値は返らない） */
+export type LlmSettingsResponse = InferResponseType<typeof client.settings.llm.$get, 200>;
+/** 保存するときに送る LLM の設定（既定値のある欄は省ける） */
+export type LlmSettingsInput = InferRequestType<typeof client.settings.llm.$put>['json'];
 export type IterationsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['iterations']['$get'],
   200
