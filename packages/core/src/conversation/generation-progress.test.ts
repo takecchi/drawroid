@@ -128,3 +128,30 @@ describe('generation progress to a conversation', () => {
     expect(previews.get('job-1')).toBeUndefined();
   });
 });
+
+describe('generation progress when the hub cannot be reached', () => {
+  it('does not throw from start, so the generation goes on, and reports the error', async () => {
+    const errors: unknown[] = [];
+    const port = createGenerationProgress({
+      backend: { progress: async () => undefined },
+      hubs: {
+        get: () => {
+          throw new Error('no hub');
+        },
+      },
+      previews: new ProgressPreviews(),
+      settings: async () => ({ includePreview: false }),
+      onError: (error) => errors.push(error),
+    });
+
+    const polling = await port.start({
+      jobId: 'job-1',
+      conversationId: 'conv-1',
+      iteration: 1,
+      signal: new AbortController().signal,
+    });
+    await polling.stop();
+
+    expect(errors).toHaveLength(1);
+  });
+});

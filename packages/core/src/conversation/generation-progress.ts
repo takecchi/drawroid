@@ -44,7 +44,14 @@ export function createGenerationProgress(deps: GenerationProgressDeps): Generati
         // 読めない設定のときは、途中の画像を流さない側へ倒す
         deps.onError?.(error);
       }
-      const hub = deps.hubs.get(conversationId);
+      let hub: { live(event: LiveEvent): void };
+      try {
+        hub = deps.hubs.get(conversationId);
+      } catch (error) {
+        // ハブが引けなくても生成は止めない: 進み具合は付け足しで、ジョブの失敗の理由にしないため
+        deps.onError?.(error);
+        return NOT_POLLING;
+      }
       const polling = startProgressPolling({
         backend: deps.backend,
         jobId,
