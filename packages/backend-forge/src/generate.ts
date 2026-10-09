@@ -1,4 +1,9 @@
-import { generationResponseSchema, readGenerationResponse } from '@drawroid/backend-sdapi';
+import {
+  generationResponseSchema,
+  img2imgFields,
+  readGenerationResponse,
+  resolveImages,
+} from '@drawroid/backend-sdapi';
 import {
   BackendError,
   type GenerationImages,
@@ -8,8 +13,6 @@ import {
 
 import type { ForgeClient } from './client.js';
 import { controlNetScript } from './controlnet.js';
-import { img2imgFields } from './img2img.js';
-import { resolveImages } from './images.js';
 import { buildTxt2imgPayload } from './txt2img.js';
 
 /**

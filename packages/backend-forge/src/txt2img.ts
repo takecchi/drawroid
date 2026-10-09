@@ -1,10 +1,13 @@
-import { assertKnownSamplersAndSchedulers, withLoras } from '@drawroid/backend-sdapi';
+import {
+  assertKnownSamplersAndSchedulers,
+  resolveCheckpoint,
+  withLoras,
+} from '@drawroid/backend-sdapi';
 import { BackendError, type GenerationRequest } from '@drawroid/core';
 import { z } from 'zod';
 
 import type { ForgeClient } from './client.js';
 
-const sdModelsSchema = z.array(z.object({ title: z.string(), model_name: z.string() }));
 const sdModulesSchema = z.array(z.object({ model_name: z.string(), filename: z.string() }));
 
 /** txt2img と img2img に共通の欄と、txt2img だけの Hires. fix の欄 */
@@ -69,20 +72,6 @@ async function hiresFixFields(
     ...(hires.prompt !== undefined && { hr_prompt: withLoras(hires.prompt, req.loras) }),
     ...(hires.negativePrompt !== undefined && { hr_negative_prompt: hires.negativePrompt }),
   };
-}
-
-// Forge は見つからないチェックポイントの指定を黙って捨て、いま読み込まれているモデルで生成する。先に引き当てて、違うモデルで描かれるのを防ぐ
-async function resolveCheckpoint(
-  client: ForgeClient,
-  name: string,
-  signal: AbortSignal,
-): Promise<string> {
-  const models = await client.getJson('/sdapi/v1/sd-models', sdModelsSchema, { signal });
-  const found = models.find((m) => m.title === name || m.model_name === name);
-  if (found === undefined) {
-    throw new BackendError('failed', `チェックポイント ${name} が Forge に無い`);
-  }
-  return found.title;
 }
 
 // Forge の forge_additional_modules はファイルのパスで指定する
