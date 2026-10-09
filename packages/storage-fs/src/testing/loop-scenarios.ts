@@ -494,6 +494,42 @@ export function describeLoopScenarios(name: string, target: LoopBackendTarget): 
         ]);
       });
 
+      // M4:84「固定」にしたパラメータは、AI が何を返してもその値で生成される。固定の値がバックエンドへの本文まで届くかは、アダプタの写し方しだい
+      it('generates with the values the job fixed, whatever the thinking role returned', async () => {
+        const running = await open({ generatedImage: generatedPng });
+        const { llm, runner } = runnerOn(
+          running.backend,
+          {
+            // 固定した欄も返す: AI が何を返しても、固定の値で生成されることを見るため
+            think: () => ({
+              params: { ...decided, steps: 50, checkpoint: 'animagine-xl-4.0.safetensors' },
+              rationale: '案',
+            }),
+            judge: judge(),
+          },
+          {
+            permissions: mergePermissions(base, {
+              steps: { mode: 'fixed', value: 28 },
+              checkpoint: { mode: 'fixed', value: 'real/juggernaut-xl.safetensors' },
+            }),
+          },
+        );
+        await submitOnce(1);
+        runner.kick();
+        await runner.idle();
+
+        const [think] = thinkCalls(llm);
+        if (think === undefined) throw new Error('考える役が呼ばれていない');
+        expect(paramKeysOf(think)).not.toContain('steps');
+        expect(paramKeysOf(think)).not.toContain('checkpoint');
+        expect(posted(running, '/sdapi/v1/txt2img')).toMatchObject([
+          {
+            steps: 28,
+            override_settings: { sd_model_checkpoint: 'real/juggernaut-xl.safetensors' },
+          },
+        ]);
+      });
+
       it('starts img2img from the best image so far, sending that image as init_images', async () => {
         const running = await open({ generatedImage: generatedPng });
         const { llm, runner } = runnerOn(
