@@ -84,6 +84,49 @@ afterEach(() => {
 });
 
 describe('ConversationView', () => {
+  it('draws the restored log once, after every page has been read', async () => {
+    let releaseSecond: (page: EventPage) => void = () => {};
+    const first = [confirmed({ type: 'user.message', text: '一つ目のページ', attachments: [] })];
+    const pages: Promise<EventPage>[] = [
+      Promise.resolve({ events: first, last: 1, more: true }),
+      new Promise((resolve) => {
+        releaseSecond = resolve;
+      }),
+    ];
+    const source: ConversationSource = {
+      loadEvents: () => pages.shift() ?? Promise.resolve({ events: [], last: 2, more: false }),
+      openStream: () => new FakeStream(),
+    };
+    renderView(source);
+    await act(async () => {});
+
+    expect(screen.queryByText('一つ目のページ')).toBeNull();
+
+    await act(async () => {
+      releaseSecond({
+        events: [confirmed({ type: 'user.message', text: '二つ目のページ', attachments: [] })],
+        last: 2,
+        more: false,
+      });
+    });
+    expect(screen.getByText('一つ目のページ')).toBeTruthy();
+    expect(screen.getByText('二つ目のページ')).toBeTruthy();
+  });
+
+  it('does not draw the log rows again while a person types', async () => {
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    const drawn = vi.mocked(useSelections).mock.calls.length;
+
+    await user.type(screen.getByLabelText('発言'), 'もう少し');
+
+    expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+  });
+
   it('restores the log from every page of confirmed events, then subscribes after the last one', async () => {
     const first = [confirmed({ type: 'user.message', text: '描けますか？', attachments: [] })];
     const second = [

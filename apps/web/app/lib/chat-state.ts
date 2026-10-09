@@ -136,8 +136,12 @@ const sameJobRole = (
 
 /** 確定したイベントを1件取り込む。読み直しと SSE の継ぎ目で同じ seq が二度来ても、二重にしない */
 export function applyConfirmed(state: ChatState, event: ConversationEvent): ChatState {
-  if (state.confirmed.some((existing) => existing.seq === event.seq)) return state;
-  const confirmed = [...state.confirmed, event].sort((a, b) => a.seq - b.seq);
+  // ふつうは末尾に足すだけ: 毎回全件から同じ seq を探すと、長い会話の読み込みがイベントの数の二乗で重くなるため
+  const appends = event.seq > lastSeq(state);
+  if (!appends && state.confirmed.some((existing) => existing.seq === event.seq)) return state;
+  const confirmed = appends
+    ? [...state.confirmed, event]
+    : [...state.confirmed, event].sort((a, b) => a.seq - b.seq);
   const live = new Map(state.live);
   const progress = new Map(state.progress);
   const held = new Set(state.held);

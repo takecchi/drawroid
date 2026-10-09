@@ -18,7 +18,7 @@ import {
   ThinkNote,
   ToolCallCard,
 } from '@drawroid/ui';
-import { useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import {
@@ -324,8 +324,9 @@ export function ConversationView({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | undefined>();
-  const items = chatItems(chat);
-  const running = isRunning(chat);
+  // 会話が変わったときだけ作り直す: 入力欄に1文字打つたびに数千行を組み直すと、長い会話で打鍵が重くなるため
+  const items = useMemo(() => chatItems(chat), [chat]);
+  const running = useMemo(() => isRunning(chat), [chat]);
 
   async function send(text: string) {
     setSending(true);
@@ -349,6 +350,15 @@ export function ConversationView({
     }
   }
 
+  // 行に渡す「送り直す」は変わらない関数にする: 変わると、下書きのたびに全部の行を作り直すことになるため
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const resend = useCallback((text: string) => void sendRef.current(text), []);
+  const rows = useMemo(
+    () => items.map((item) => renderItem(item, { onResend: resend, disabled: sending })),
+    [items, resend, sending],
+  );
+
   const last = items.at(-1);
   return (
     <ChatLayout
@@ -364,9 +374,7 @@ export function ConversationView({
               描いてほしいものや、聞きたいことを書いてください。
             </Muted>
           )}
-          {items.map((item) =>
-            renderItem(item, { onResend: (text) => void send(text), disabled: sending }),
-          )}
+          {rows}
         </ChatLog>
       }
       composer={
