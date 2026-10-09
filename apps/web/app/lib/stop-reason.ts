@@ -1,6 +1,6 @@
 import type { StopReason } from '@drawroid/core';
 
-import { describeBackendError } from './backend-error';
+import { backendSubject, describeBackendError, type BackendKind } from './backend-error';
 
 // Record にする: 止まった理由の種類が増えたとき、言葉を足し忘れると型で落ちるため
 const SUMMARIES: Record<Exclude<StopReason['kind'], 'error'>, string> = {
@@ -11,13 +11,12 @@ const SUMMARIES: Record<Exclude<StopReason['kind'], 'error'>, string> = {
   human: '人が止めた',
 };
 
-const OUTSIDE_BACKEND = 'Forge の外で失敗した';
-
-export function summarizeStopReason(reason: StopReason): string {
+// ジョブの記録には繋いでいたバックエンドの種類が残らないので、いま使っている種類で言う
+export function summarizeStopReason(reason: StopReason, backendKind?: BackendKind): string {
   if (reason.kind !== 'error') return SUMMARIES[reason.kind];
-  if (reason.backendErrorKind === undefined) return OUTSIDE_BACKEND;
+  if (reason.backendErrorKind === undefined) return `${backendSubject(backendKind)}の外で失敗した`;
   return (
-    describeBackendError(reason.backendErrorKind)?.summary ??
+    describeBackendError(reason.backendErrorKind, backendKind)?.summary ??
     `失敗した（${reason.backendErrorKind}）`
   );
 }
