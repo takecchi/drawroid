@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router';
 
 import { BackendStatus } from '../components/backend-status';
 import { BackendUrlSettings } from '../components/backend-url-settings';
+import { BudgetSettings } from '../components/budget-settings';
 import { GenerationForm } from '../components/generation-form';
 import { LlmSettings } from '../components/llm-settings';
 
@@ -13,6 +14,7 @@ export default function Home() {
       <BackendStatus />
       <BackendUrlSettings />
       <LlmSettings />
+      <BudgetSettings />
       <GenerationForm onStarted={(jobId) => void navigate(`/jobs/${jobId}`)} />
     </main>
   );

@@ -85,6 +85,14 @@ function JobRequest({ spec }: { spec: JobDetailData['spec'] }) {
         {stopConditions.maxImages !== undefined && <li>{stopConditions.maxImages} 枚まで</li>}
       </ul>
       <p>1回に {spec.batchSize} 枚</p>
+      <details>
+        <summary>このジョブの予算</summary>
+        {spec.budgets === undefined ? (
+          <p>job.json に予算が無い（古いジョブ。既定の予算で回る）</p>
+        ) : (
+          <pre>{JSON.stringify(spec.budgets, null, 2)}</pre>
+        )}
+      </details>
     </section>
   );
 }

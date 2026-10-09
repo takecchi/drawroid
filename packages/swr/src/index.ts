@@ -1,6 +1,7 @@
 export { ApiError, isApiError, readApiError } from './api-error.js';
 export {
   useBackendSettings,
+  useBudgetSettings,
   useBackendStatus,
   useCandidateNotes,
   useCandidates,
@@ -27,6 +28,7 @@ export {
   deleteMemoryItem,
   parseStopConditionsText,
   saveBackendSettings,
+  saveBudgetSettings,
   saveCandidateNotes,
   saveLlmSettings,
   saveMemoryItem,
@@ -41,6 +43,8 @@ export type {
   AddReferenceResponse,
   BackendSettingsResponse,
   BackendStatus,
+  BudgetOverridesInput,
+  BudgetSettingsResponse,
   CandidateNotesInput,
   CandidateNotesResponse,
   CandidatesResponse,
