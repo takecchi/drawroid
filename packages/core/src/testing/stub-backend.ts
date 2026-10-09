@@ -3,9 +3,11 @@ import {
   type Candidate,
   type CandidateKind,
   type GeneratedImage,
+  type GenerationImages,
   type GenerationRequest,
   type GenerationResult,
   type ImageBackend,
+  inputImageRefsOf,
 } from '../backend.js';
 import { BackendError } from '../backend-error.js';
 
@@ -23,6 +25,9 @@ export const DEFAULT_STUB_CANDIDATES: Record<CandidateKind, Candidate[]> = {
   lora: [{ name: 'stub-lora-a' }, { name: 'stub-lora-b' }],
   sampler: [{ name: 'Euler a' }, { name: 'DPM++ 2M' }],
   scheduler: [{ name: 'Automatic' }, { name: 'Karras' }],
+  upscaler: [{ name: 'Latent' }, { name: 'R-ESRGAN 4x+' }],
+  controlnetModel: [{ name: 'stub-canny [0123abcd]', label: 'stub-canny' }],
+  controlnetModule: [{ name: 'canny' }, { name: 'depth' }],
 };
 
 export interface StubBackendOptions {
@@ -70,8 +75,16 @@ export class StubBackend implements ImageBackend {
     return structuredClone(this.candidates[kind]);
   }
 
-  async generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
+  async generate(
+    req: GenerationRequest,
+    signal: AbortSignal,
+    inputs: GenerationImages = new Map(),
+  ): Promise<GenerationResult> {
     this.ensureCallable(signal);
+    const missing = inputImageRefsOf(req).filter((ref) => !inputs.has(ref));
+    if (missing.length > 0) {
+      throw new BackendError('failed', `画像の中身が渡されていない: ${missing.join(', ')}`);
+    }
     this.requests.push(structuredClone(req));
     const failure = this.pendingFailures.shift();
     if (failure !== undefined) throw failure;

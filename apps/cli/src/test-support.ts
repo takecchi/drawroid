@@ -1,4 +1,4 @@
-import { ManualGenerationRunner } from '@drawroid/core';
+import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import type { ApiDeps } from '@drawroid/api';
 import { FsJobStore } from '@drawroid/storage-fs';
@@ -7,5 +7,17 @@ import { FsJobStore } from '@drawroid/storage-fs';
 export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
   const backend = new StubBackend();
   const store = new FsJobStore(root);
-  return { backend, store, manualRunner: new ManualGenerationRunner({ backend, store }) };
+  return {
+    backend,
+    store,
+    manualRunner: new ManualGenerationRunner({ backend, store }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
+    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    budget: DEFAULT_BUDGET,
+    llmSettings: { read: async () => undefined, write: async () => undefined },
+    env: {},
+  };
 }
