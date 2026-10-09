@@ -28,6 +28,10 @@ export async function setup() {
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
   return { root, store, api, paths: dataPaths(root) };
 }
