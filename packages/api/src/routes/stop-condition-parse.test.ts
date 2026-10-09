@@ -8,6 +8,7 @@ import {
   noCandidateNotes,
   noPermissionSettings,
   memoryBudgetSettings,
+  memoryProgressDeps,
   memoryConversations,
 } from '../test-support.js';
 
@@ -31,6 +32,7 @@ function makeApp(parse: (text: string) => Promise<StopConditionsDraft>) {
       addMask: () => Promise.reject(new Error('この試験では使わない')),
     },
     budgetSettings: memoryBudgetSettings(),
+    ...memoryProgressDeps(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },

@@ -17,6 +17,7 @@ import {
   noCandidateNotes,
   noPermissionSettings,
   memoryBudgetSettings,
+  memoryProgressDeps,
   memoryConversations,
 } from '../test-support.js';
 
@@ -48,6 +49,7 @@ beforeEach(async () => {
       addMask: notUsed,
     },
     budgetSettings: memoryBudgetSettings(),
+    ...memoryProgressDeps(),
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     llmSettings: { read: async () => undefined, write: async () => undefined },
