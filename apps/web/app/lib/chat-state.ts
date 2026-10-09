@@ -194,7 +194,8 @@ export function applyLive(state: ChatState, event: LiveEvent): ChatState {
       live.set(event.partId, {
         kind: event.type === 'delta.text' ? 'assistant' : 'reasoning',
         source: event.type === 'delta.reasoning' ? event.source : undefined,
-        text: (current?.text ?? '') + event.text,
+        // replace は購読を始めたときの写し（ここまでの全文）。つなぎ直した画面には途中の本文が残っているので、継ぎ足すと二重になる
+        text: event.replace === true ? event.text : (current?.text ?? '') + event.text,
       });
       const status = state.status === 'waiting-llm' ? undefined : state.status;
       return { ...state, live, status };
