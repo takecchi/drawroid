@@ -549,6 +549,49 @@ describe('ConversationView', () => {
     ).toBeTruthy();
   });
 
+  it('in the large view, does not let a stopped job be settled, and shows the chosen image as chosen', async () => {
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 2,
+        images: [
+          { index: 0, seed: 8 },
+          { index: 1, seed: 9 },
+        ],
+      }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: JOB,
+        iteration: 2,
+        image: { iteration: 2, index: 0 },
+      }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'adopted', detail: '人間が画像を選んだ' },
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 2 番/ }));
+    const second = within(screen.getByRole('dialog', { name: /2 回目の画像 2 番/ }));
+    expect(
+      second.getByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
+    ).toHaveProperty('disabled', true);
+    expect(second.getByText('描くのはもう止まっているので、決められない')).toBeTruthy();
+
+    await user.click(second.getByRole('button', { name: '前の画像' }));
+    const first = within(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ }));
+    expect(first.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+  });
+
   it('names each image button after its image, so that they can be told apart when read aloud', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);
