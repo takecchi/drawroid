@@ -138,6 +138,22 @@ describe('chatItems', () => {
     ]);
   });
 
+  it('stops offering to resend once the same message has been sent again', () => {
+    const cut = confirmAll([
+      { type: 'user.message', text: '続けて', attachments: [] },
+      { type: 'turn.started', turn: 1, messageSeqs: [1] },
+      { type: 'turn.ended', turn: 1, outcome: 'interrupted', reason: 'プロセスの再起動' },
+      { type: 'user.message', text: '別の話', attachments: [] },
+    ]);
+    const resent = confirmAll([{ type: 'user.message', text: '続けて', attachments: [] }], cut);
+
+    expect(chatItems(cut)[0]).not.toHaveProperty('resent');
+    expect(chatItems(resent)[0]).toMatchObject({
+      turnInterrupted: 'プロセスの再起動',
+      resent: true,
+    });
+  });
+
   it('does not add the same confirmed event twice', () => {
     const once = confirmAll([{ type: 'user.message', text: '一度だけ', attachments: [] }]);
     const again = applyConfirmed(once, once.confirmed[0]!);
