@@ -76,8 +76,8 @@ export function InterventionItem({
               {intervention.usedInIteration === undefined
                 ? stopped
                   ? '使わずに止まった'
-                  : 'まだ inpaint に使っていない'
-                : `${intervention.usedInIteration} 回目の inpaint に使った`}
+                  : 'まだ描き直しに使っていない'
+                : `${intervention.usedInIteration} 回目の描き直しに使った`}
             </p>
           )}
         </>
