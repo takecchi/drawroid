@@ -193,6 +193,125 @@ describe('FsJobStore jobs', () => {
   });
 });
 
+describe('FsJobStore interventions', () => {
+  it('lists interventions in the order they were received, from the files alone', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await jobs.addIntervention(
+      a.jobId,
+      { kind: 'stopConditions', stopConditions: { maxIterations: 3 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.addIntervention(
+      a.jobId,
+      { kind: 'instruction', text: '逆光にして' },
+      new Date('2026-10-09T06:32:00Z'),
+    );
+
+    const listed = await jobs.listInterventions(a.jobId);
+    expect(listed).toEqual([
+      expect.objectContaining({ kind: 'stopConditions', stopConditions: { maxIterations: 3 } }),
+      expect.objectContaining({ kind: 'instruction', text: '逆光にして' }),
+    ]);
+    expect(listed[1]).not.toHaveProperty('appliedInIteration');
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).interventions)).toHaveLength(2);
+  });
+
+  it('has no interventions for a job nobody has spoken to', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.listInterventions(a.jobId)).toEqual([]);
+  });
+
+  it('refuses a stop condition change that changes nothing', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(
+      jobs.addIntervention(
+        a.jobId,
+        { kind: 'stopConditions', stopConditions: {} },
+        new Date('2026-10-09T06:31:00Z'),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('refuses an empty instruction', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(
+      jobs.addIntervention(a.jobId, { kind: 'instruction', text: '' }, new Date()),
+    ).rejects.toThrow();
+  });
+
+  it('writes back which think took an instruction in, keeping its original text', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const said = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'instruction', text: '逆光にして' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.markInterventionApplied(a.jobId, said.interventionId, 4);
+    expect(await jobs.listInterventions(a.jobId)).toEqual([{ ...said, appliedInIteration: 4 }]);
+  });
+
+  it('refuses to mark a stop condition change as taken into a think', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const change = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'stopConditions', stopConditions: { maxIterations: 3 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await expect(jobs.markInterventionApplied(a.jobId, change.interventionId, 1)).rejects.toThrow(
+      StoredFileError,
+    );
+  });
+
+  it('lists interventions in the order they were received, even within the same second', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const sameSecond = new Date('2026-10-09T06:31:00Z');
+    const said: string[] = [];
+    for (let n = 1; n <= 10; n += 1) {
+      said.push(
+        (await jobs.addIntervention(a.jobId, { kind: 'instruction', text: `指示${n}` }, sameSecond))
+          .interventionId,
+      );
+    }
+
+    const listed = await jobs.listInterventions(a.jobId);
+    expect(listed.map((i) => i.interventionId)).toEqual(said);
+    expect(listed.map((i) => (i.kind === 'instruction' ? i.text : ''))).toEqual(
+      Array.from({ length: 10 }, (_, i) => `指示${i + 1}`),
+    );
+  });
+
+  it('keeps every intervention received at once, none overwriting another', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const sameSecond = new Date('2026-10-09T06:31:00Z');
+
+    const added = await Promise.all(
+      Array.from({ length: 10 }, (_, n) =>
+        jobs.addIntervention(a.jobId, { kind: 'instruction', text: `指示${n}` }, sameSecond),
+      ),
+    );
+
+    expect(new Set(added.map((i) => i.interventionId)).size).toBe(10);
+    expect(await jobs.listInterventions(a.jobId)).toHaveLength(10);
+  });
+
+  it('refuses a job or intervention id that could point outside the data directory', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const said = { kind: 'instruction' as const, text: '逆光にして' };
+    await expect(jobs.addIntervention('../../x', said, new Date())).rejects.toThrow();
+    await expect(jobs.listInterventions('../../x')).rejects.toThrow();
+    await expect(jobs.markInterventionApplied(a.jobId, '../../state', 1)).rejects.toThrow();
+  });
+});
+
 describe('FsJobStore generations', () => {
   it('lists a saved generation with its request and seeds, and reads the images back', async () => {
     const jobs = store();

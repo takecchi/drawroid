@@ -1,4 +1,53 @@
-import type { StopConditions, StopReason } from '../job/types.js';
+import type { JobStore } from '../job/store.js';
+import type {
+  AutoJobSpec,
+  StopConditions,
+  StopConditionsChange,
+  StopReason,
+} from '../job/types.js';
+
+/** 今そのジョブに効いている止める条件。job.json の条件に、interventions/ の変更を受けた順に重ねる */
+export async function readStopConditions(
+  store: JobStore,
+  spec: AutoJobSpec,
+): Promise<StopConditions> {
+  const interventions = await store.listInterventions(spec.jobId);
+  return effectiveStopConditions(
+    spec.stopConditions,
+    interventions.flatMap((intervention) =>
+      intervention.kind === 'stopConditions' ? [intervention.stopConditions] : [],
+    ),
+  );
+}
+
+/**
+ * 実際に効いている止める条件。job.json の条件に、走行中の変更を受けた順に重ねる。
+ */
+export function effectiveStopConditions(
+  base: StopConditions,
+  changes: readonly StopConditionsChange[],
+): StopConditions {
+  const conditions: StopConditions = { ...base };
+  for (const change of changes) {
+    if (change.aiJudgement !== undefined) conditions.aiJudgement = change.aiJudgement;
+    for (const key of ['maxIterations', 'maxDurationMs', 'maxImages'] as const) {
+      const value = change[key];
+      if (value === null) delete conditions[key];
+      else if (value !== undefined) conditions[key] = value;
+    }
+  }
+  return conditions;
+}
+
+/** AI の判断か、上限（回数・時間・枚数）のどれか1つ以上を持つか。持たないジョブは止まらない */
+export function hasAnyStopCondition(conditions: StopConditions): boolean {
+  return (
+    conditions.aiJudgement ||
+    conditions.maxIterations !== undefined ||
+    conditions.maxDurationMs !== undefined ||
+    conditions.maxImages !== undefined
+  );
+}
 
 export type StopCheck = {
   conditions: StopConditions;

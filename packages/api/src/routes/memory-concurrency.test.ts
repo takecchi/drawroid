@@ -55,7 +55,12 @@ beforeEach(async () => {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
@@ -122,3 +127,7 @@ describe('editing a preference while the distiller writes it', () => {
     expect((await store.get(item.id))?.body).toBe('指と手の崩れは許容しない');
   });
 });
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
+}

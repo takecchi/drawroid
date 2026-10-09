@@ -52,12 +52,16 @@ export function iterationDirName(iteration: number): string {
 function jobFiles(dir: string) {
   const iterations = join(dir, 'iterations');
   const llmCalls = join(dir, 'llm-calls');
+  const interventions = join(dir, 'interventions');
   return {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
     /** ジョブが止まったときと選び直したときの蒸留の記録 */
     distill: join(dir, 'distill.json'),
+    interventions,
+    /** 口出し1件 */
+    intervention: (interventionId: string) => join(interventions, `${interventionId}.json`),
     llmCalls,
     llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
     iterations,

@@ -2,6 +2,7 @@ import { clipText, estimateImageTokens, estimateTextTokens } from '../budget/est
 import { packWithinBudget } from '../budget/pack.js';
 import type { MemoryItem } from '../memory/item.js';
 import { describeMemoryDrop, type MemoryRoleLimits, selectMemory } from '../memory/select.js';
+import type { InterventionPlan } from '../intervention/plan.js';
 import {
   sealMessages,
   type BudgetNote,
@@ -188,6 +189,15 @@ function memorySections(
   return selected.map((item) => ({ name: `memory[${item.id}]`, text: `好み: ${item.body}` }));
 }
 
+/** 口出しの原文。AI の判断の区画とは見出しで分け、人間の指示として渡す */
+function interventionSection(w: SectionWriter, plan: InterventionPlan | undefined): Section[] {
+  if (plan === undefined) return [];
+  w.notes.push(...plan.notes);
+  if (plan.included.length === 0) return [];
+  const lines = plan.included.map((planned) => `- ${planned.text}`);
+  return [{ name: 'interventions', text: `人間の指示:\n${lines.join('\n')}` }];
+}
+
 function intentSection(w: SectionWriter, carry: Carry, budget: Budget): Section {
   return {
     name: 'intent',
@@ -206,8 +216,10 @@ export function buildThinkInput(args: {
   budget: Budget;
   window: ModelWindow;
   memory?: MemoryInput;
+  /** planInterventions の結果。載せた口出しは必須の区画にする */
+  interventions?: InterventionPlan;
 }): BudgetedMessages {
-  const { carry, progress, allowed, budget, window, memory } = args;
+  const { carry, progress, allowed, budget, window, memory, interventions } = args;
   const w = new SectionWriter();
   const remaining =
     progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
@@ -217,6 +229,8 @@ export function buildThinkInput(args: {
       name: 'progress',
       text: `これから ${progress.iteration} 回目${remaining}。決めてよいパラメータ: ${allowed.join(', ')}`,
     },
+    // 口出しは入力の上限で削らない: 人間の指示が黙って消えないように。量は planInterventions の上限で締めてある
+    ...interventionSection(w, interventions),
   ];
   const optional: Section[] = [];
   if (carry.best !== undefined) optional.push(w.result('best', '最良', carry.best, budget, true));

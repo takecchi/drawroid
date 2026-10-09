@@ -4,15 +4,18 @@ import { join, relative } from 'node:path';
 
 import {
   generationRequestSchema,
+  interventionRecordSchema,
   jobSpecSchema,
   jobStateSchema,
   type GenerationRequest,
   type GenerationResult,
   type ImageRef,
+  type InterventionRecord,
   type JobSpec,
   type JobState,
   type JobStore,
   type LlmCallRecord,
+  type NewIntervention,
   type NewJobSpec,
   type PreviewImage,
   type StageName,
@@ -21,7 +24,7 @@ import {
 import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
 
-import { writeFileAtomic, writeJsonAtomic } from './atomic.js';
+import { createJsonExclusive, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 import { dataPaths, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
 
 export class ImageAlreadySentError extends Error {
@@ -116,6 +119,20 @@ const JOB_ID_PATTERN = /^\d{8}-\d{6}-[0-9a-z]+$/;
 /** パスに使ってよい jobId の形か。外から来た文字列を、ディレクトリを抜ける形のままパスにしないための門 */
 export function isJobId(value: string): boolean {
   return JOB_ID_PATTERN.test(value);
+}
+
+// 0 で埋める: 名前の順で並べても番号の順になり、人間がディレクトリを開いて読めるように
+const SEQUENCE_DIGITS = 6;
+const SEQUENCE_ID_PATTERN = /^\d{6,}$/;
+
+/** ジョブの中で受けた順に振る番号（口出しの ID） */
+export function formatSequenceId(sequence: number): string {
+  return String(sequence).padStart(SEQUENCE_DIGITS, '0');
+}
+
+/** パスに使ってよい連番の形か */
+export function isSequenceId(value: string): boolean {
+  return SEQUENCE_ID_PATTERN.test(value);
 }
 
 export type FsJobStoreOptions = {
@@ -243,6 +260,66 @@ export class FsJobStore implements JobStore {
       if (isNotFound(error)) return undefined;
       throw error;
     }
+  }
+
+  async addIntervention(
+    jobId: string,
+    intervention: NewIntervention,
+    now: Date,
+  ): Promise<InterventionRecord> {
+    const files = this.jobFiles(jobId);
+    await mkdir(files.interventions, { recursive: true });
+    // 受けた順の連番にする: 時刻と乱数の名前だと、同じ秒に受けた2件の名前の順が受けた順にならず、
+    // 止める条件の変更を重ねる順や人間の指示の順が入れ替わるため。
+    // 同じ番号を同時に取りに来たら、排他的に置けなかった側が次の番号を取り直す
+    for (;;) {
+      const interventionId = formatSequenceId((await this.lastSequence(files.interventions)) + 1);
+      const record = interventionRecordSchema.parse({
+        ...intervention,
+        interventionId,
+        receivedAt: now.toISOString(),
+      });
+      if (await createJsonExclusive(files.intervention(interventionId), record)) return record;
+    }
+  }
+
+  async listInterventions(jobId: string): Promise<InterventionRecord[]> {
+    const files = this.jobFiles(jobId);
+    const records: InterventionRecord[] = [];
+    for (const name of await this.sequenceNames(files.interventions)) {
+      records.push(await readValid(join(files.interventions, name), interventionRecordSchema));
+    }
+    return records;
+  }
+
+  /** 連番の名前のファイルを、番号の順に返す */
+  private async sequenceNames(dir: string): Promise<string[]> {
+    return (await listNames(dir))
+      .filter((name) => name.endsWith('.json') && isSequenceId(name.slice(0, -'.json'.length)))
+      .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
+  }
+
+  private async lastSequence(dir: string): Promise<number> {
+    const names = await this.sequenceNames(dir);
+    const last = names.at(-1);
+    return last === undefined ? 0 : Number.parseInt(last, 10);
+  }
+
+  async markInterventionApplied(
+    jobId: string,
+    interventionId: string,
+    iteration: number,
+  ): Promise<void> {
+    // 連番の形かを確かめてからパスを組む: 外から来た ID でジョブのディレクトリの外を指させないため
+    if (!isSequenceId(interventionId)) {
+      throw new Error(`interventionId の形ではない: ${interventionId}`);
+    }
+    const path = this.jobFiles(jobId).intervention(interventionId);
+    const record = await readValid(path, interventionRecordSchema);
+    if (record.kind !== 'instruction') {
+      throw new StoredFileError(path, new Error('人間の指示ではないので、取り込んだ回を持たない'));
+    }
+    await writeJsonAtomic(path, { ...record, appliedInIteration: iteration });
   }
 
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown> {

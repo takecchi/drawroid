@@ -1,7 +1,7 @@
 import type { GenerationRequest, GenerationResult } from '../backend.js';
 import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
-import type { JobSpec, JobState } from './types.js';
+import type { InterventionRecord, JobSpec, JobState, NewIntervention } from './types.js';
 
 export type ImageRef = { jobId: string; iteration: number; index: number };
 
@@ -28,6 +28,17 @@ export interface JobStore {
   writeJob(spec: JobSpec): Promise<void>;
   readState(jobId: string): Promise<JobState>;
   writeState(jobId: string, state: JobState): Promise<void>;
+
+  /** 口出しを置く。interventionId は置き場所が決め、その名前の順が受けた順になる */
+  addIntervention(
+    jobId: string,
+    intervention: NewIntervention,
+    now: Date,
+  ): Promise<InterventionRecord>;
+  /** 受けた順 */
+  listInterventions(jobId: string): Promise<InterventionRecord[]>;
+  /** 人間の指示を「考える」に取り込んだ回を書き戻す。原文には触れない */
+  markInterventionApplied(jobId: string, interventionId: string, iteration: number): Promise<void>;
 
   /** 画像とそのメタデータを置いてから request を置く。request があることが、その回の生成と保存が済んだことを表す */
   writeGeneration(

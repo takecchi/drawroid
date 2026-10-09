@@ -12,6 +12,53 @@ export const stopConditionsSchema = z.object({
 });
 export type StopConditions = z.infer<typeof stopConditionsSchema>;
 
+const limitChange = z.number().int().positive().nullable().optional();
+
+/** 走行中の止める条件の変更。書いた欄だけを変え、上限の欄の null はその上限を外す */
+export const stopConditionsChangeSchema = z
+  .object({
+    aiJudgement: z.boolean().optional(),
+    maxIterations: limitChange,
+    maxDurationMs: limitChange,
+    maxImages: limitChange,
+  })
+  .strict()
+  .refine((change) => Object.keys(change).length > 0, { message: '変える欄が無い' });
+export type StopConditionsChange = z.infer<typeof stopConditionsChangeSchema>;
+
+const interventionIdentity = {
+  interventionId: z.string().min(1),
+  receivedAt: z.iso.datetime({ offset: true }),
+};
+
+/**
+ * interventions/<interventionId>.json の中身。人間の口出し1件。
+ * instruction は「考える」に取り込む人間の指示で、原文は書き換えず、取り込んだ回だけを書き戻す。
+ * stopConditions は止める条件の変更で、LLM を通さず回の境目で job.json の条件に重ねる。
+ */
+// 止める条件の変更を job.json に書き込まない: job.json は依頼の原文の記録で、実際の条件と二重に持つことになるため（Issue #5 の E）
+export const interventionRecordSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('instruction'),
+    ...interventionIdentity,
+    text: z.string().min(1),
+    /** 「考える」に取り込んだ回。未反映の間は無い */
+    appliedInIteration: z.number().int().positive().optional(),
+  }),
+  z.object({
+    kind: z.literal('stopConditions'),
+    ...interventionIdentity,
+    stopConditions: stopConditionsChangeSchema,
+  }),
+]);
+export type InterventionRecord = z.infer<typeof interventionRecordSchema>;
+export type InstructionIntervention = Extract<InterventionRecord, { kind: 'instruction' }>;
+export type StopConditionsIntervention = Extract<InterventionRecord, { kind: 'stopConditions' }>;
+/** addIntervention に渡す形（interventionId と receivedAt は置き場所が決め、受けたときは未反映） */
+export type NewIntervention =
+  | { kind: 'instruction'; text: string }
+  | { kind: 'stopConditions'; stopConditions: StopConditionsChange };
+
 const jobSpecBase = {
   jobId: z.string().min(1),
   createdAt: z.iso.datetime({ offset: true }),
@@ -35,7 +82,10 @@ export const autoJobSpecSchema = z.object({
 });
 export type AutoJobSpec = z.infer<typeof autoJobSpecSchema>;
 
-/** job.json の中身。ジョブを作ったときに決まり、止める条件の変更のほかは書き換えない */
+/**
+ * job.json の中身。ジョブを作ったときに決まり、書き換えない。
+ * 走行中の止める条件の変更は interventions/ に置き、回の境目でここの止める条件に重ねる。
+ */
 export const jobSpecSchema = z.discriminatedUnion('kind', [manualJobSpecSchema, autoJobSpecSchema]);
 export type JobSpec = z.infer<typeof jobSpecSchema>;
 

@@ -25,7 +25,12 @@ export async function setup() {
     store,
     memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
@@ -90,4 +95,8 @@ export function llmRecord(
     outcome: { ok: true, value: { answer: 'OUTCOME-VALUE' } },
     ...overrides,
   };
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
 }
