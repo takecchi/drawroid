@@ -4,7 +4,7 @@
 // 3. Esc で閉じ、焦点は最後に見ていた画像の縮小版へ戻る
 // 4. 狭い画面（390×844）でも、窓と画像が画面の中に収まり、横にはみ出さない。横へなぞると次の画像へ送る
 // 5. ジョブの詳細の画像も、同じ窓で大きく見られる
-// 6. 窓の中で、見る役の点と言葉が読め、お気に入り・却下と「この画像で決める」が使える（画像の枡と同じ口）
+// 6. 窓の中で、見る役の点と言葉が読め、お気に入り・却下が使え、止まったジョブでは「この画像に決める（お気に入りにする）」が出る（画像の枡と同じ口）
 // 会話は、組み立てた @drawroid/storage-fs で置き場所へ直に書いてから起動する（画像を生成せずに画像の行を作るため）。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -237,7 +237,18 @@ try {
     // ジョブの詳細の画像も、同じ窓で大きく見られる
     await page.goto(`${base}/jobs/${jobId}`);
     await page.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 0）' }).click();
-    await page.getByRole('dialog', { name: /1 回目の画像 1 番/ }).waitFor();
+    const jobDialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
+    await jobDialog.waitFor();
+    // ジョブの詳細でも、止まったジョブの画像には採る口も押せない理由も出ず、「この画像に決める（お気に入りにする）」が出る（会話と同じ部品）
+    await jobDialog
+      .getByRole('button', { name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番' })
+      .waitFor();
+    expect(
+      (await jobDialog
+        .getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' })
+        .count()) === 0 && (await jobDialog.getByText(/決められない/).count()) === 0,
+      `${label}: ジョブの詳細でも、止まったジョブの窓には採る口も押せない理由も出ず、「この画像に決める（お気に入りにする）」が出る`,
+    );
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'detached' });
