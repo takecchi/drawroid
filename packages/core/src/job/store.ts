@@ -38,6 +38,8 @@ export interface JobStore {
   ): Promise<void>;
   /** 生成と保存が済んだ回だけを、回の順に返す */
   listGenerations(jobId: string): Promise<StoredGeneration[]>;
+  /** その回の生成と保存が済んでいなければ undefined */
+  readGeneration(jobId: string, iteration: number): Promise<StoredGeneration | undefined>;
   /** 無ければ undefined */
   readImage(image: ImageRef): Promise<Uint8Array | undefined>;
 

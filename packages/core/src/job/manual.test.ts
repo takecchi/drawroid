@@ -52,6 +52,9 @@ class MemoryJobStore implements JobStore {
   async listGenerations(jobId: string) {
     return this.generations.get(jobId) ?? [];
   }
+  async readGeneration(jobId: string, iteration: number) {
+    return this.generations.get(jobId)?.find((g) => g.iteration === iteration);
+  }
   async readImage() {
     return undefined;
   }

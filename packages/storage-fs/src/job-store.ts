@@ -192,24 +192,25 @@ export class FsJobStore implements JobStore {
       .sort((a, b) => a - b);
     const generations: StoredGeneration[] = [];
     for (const iteration of iterations) {
-      const dir = files.iteration(iteration);
-      if (!(await exists(dir.request))) continue;
-      const images: StoredGeneration['images'] = [];
-      const indexes = (await listNames(dir.images))
-        .flatMap((name) => /^(\d+)\.png$/.exec(name)?.[1] ?? [])
-        .map(Number)
-        .sort((a, b) => a - b);
-      for (const index of indexes) {
-        const meta = await readValid(dir.imageMeta(index), imageMetaSchema);
-        images.push({ index, seed: meta.seed });
-      }
-      generations.push({
-        iteration,
-        request: await readValid(dir.request, generationRequestSchema),
-        images,
-      });
+      const generation = await this.readGeneration(jobId, iteration);
+      if (generation !== undefined) generations.push(generation);
     }
     return generations;
+  }
+
+  async readGeneration(jobId: string, iteration: number): Promise<StoredGeneration | undefined> {
+    const dir = this.jobFiles(jobId).iteration(iteration);
+    if (!(await exists(dir.request))) return undefined;
+    const images: StoredGeneration['images'] = [];
+    const indexes = (await listNames(dir.images))
+      .flatMap((name) => /^(\d+)\.png$/.exec(name)?.[1] ?? [])
+      .map(Number)
+      .sort((a, b) => a - b);
+    for (const index of indexes) {
+      const meta = await readValid(dir.imageMeta(index), imageMetaSchema);
+      images.push({ index, seed: meta.seed });
+    }
+    return { iteration, request: await readValid(dir.request, generationRequestSchema), images };
   }
 
   async readImage(image: ImageRef): Promise<Uint8Array | undefined> {
