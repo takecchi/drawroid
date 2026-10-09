@@ -26,8 +26,8 @@ export type ChatItem =
       turnInterrupted?: string;
       /** 途切れたあと、同じ本文がもう送られた（「送り直す」を外す） */
       resent?: boolean;
-      /** 添えた画像の枚数 */
-      attachments: number;
+      /** 添えた画像（会話へ送り込んだ画像の ID）。添えた順 */
+      attachments: readonly string[];
     }
   | {
       kind: 'assistant';
@@ -309,7 +309,7 @@ function buildConfirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[
           seq: event.seq,
           at: event.at,
           text: event.text,
-          attachments: event.attachments.length,
+          attachments: event.attachments.map((attachment) => attachment.uploadId),
         });
         break;
       }
