@@ -30,6 +30,14 @@ function renderList(canPaintMask?: boolean, shown: Iteration = iteration) {
 }
 
 describe('IterationList and masks', () => {
+  it('says so when no image has been made yet', () => {
+    render(
+      <IterationList jobId="job-1" heading="回" iterations={[]} calls={[]} verdicts={new Map()} />,
+    );
+
+    expect(screen.getByText('まだ画像は無い。')).toBeTruthy();
+  });
+
   it('offers to paint a mask on each image while an automatic job can still take one', () => {
     renderList(true);
 

@@ -36,6 +36,12 @@ function iterationOf(n: number): Iteration {
 }
 
 describe('InterventionList', () => {
+  it('says so when no human has given an instruction yet', () => {
+    render(<InterventionList interventions={[]} />);
+
+    expect(screen.getByText('まだ人間の指示は無い。')).toBeTruthy();
+  });
+
   it('shows which image a mask was painted on and whether inpaint has used it', () => {
     const mask = (id: string, usedInIteration?: number): Intervention => ({
       kind: 'mask',

@@ -21,6 +21,17 @@ beforeEach(() => {
 });
 
 describe('JobList', () => {
+  it('says once that there is no job yet, instead of three empty sections', () => {
+    mocks.useJobs.mockReturnValue({ data: { jobs: [], invalid: [] }, error: undefined });
+    render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText('まだ無い。')).toHaveLength(1);
+  });
+
   it('shows the running section first, then the queued, then the stopped', () => {
     mocks.useJobs.mockReturnValue({
       data: {
