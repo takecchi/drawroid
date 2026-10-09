@@ -134,7 +134,8 @@ describe('inpaint follows the mask the human painted (M4:121)', () => {
 
   it('goes on without a mask even when ControlNet is left to the AI too', async () => {
     const { store, llm, backend, runner } = setup(
-      { think: think({ inpaint: 0.6 }), judge: judge() },
+      // ControlNet を任せた回は、使わないことを null で答える（#87）
+      { think: think({ inpaint: 0.6, controlnet: null }), judge: judge() },
       mergePermissions(permissions, { controlnet: { mode: 'auto' } }),
     );
     const spec = await submit(store, 3);
