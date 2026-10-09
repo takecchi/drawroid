@@ -45,8 +45,12 @@ export function MessageRow({
     >
       <div
         className={cn(
-          'max-w-[85%] text-sm leading-relaxed break-words whitespace-pre-wrap',
-          human ? 'rounded-2xl rounded-br-md bg-primary px-4 py-2 text-primary-foreground' : 'px-1',
+          'min-w-0 text-sm leading-relaxed break-words whitespace-pre-wrap',
+          // 人間の発言は読む幅の上限（46rem）を持つ吹き出し。AI の返答は地の上の本文なので、欄の幅いっぱいに置く
+          // `selection:` で反転色にする: 吹き出しが `bg-primary` なので、既定の選択の色だと選んだ範囲が地に溶けるため
+          human
+            ? 'max-w-[min(85%,46rem)] rounded-lg bg-primary px-3 py-2 text-primary-foreground selection:bg-primary-foreground selection:text-primary'
+            : 'w-full px-1 py-1',
         )}
       >
         {children}

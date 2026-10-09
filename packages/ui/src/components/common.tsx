@@ -1,5 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import {
+  useLayoutEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type ChangeEvent,
@@ -267,8 +269,54 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return <ShadcnInput className={className} {...props} />;
 }
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <ShadcnTextarea className={className} {...props} />;
+// `field-sizing: content` を使わず `scrollHeight` から決める: Firefox などが対応していないため
+function fitHeight(el: HTMLTextAreaElement): void {
+  el.style.height = 'auto';
+  if (el.scrollHeight === 0) return;
+  el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
+}
+
+/** `maxHeight` を渡すと、中身に合わせて縦に伸び、上限からは中でスクロールする */
+export function Textarea({
+  className,
+  style,
+  maxHeight,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { maxHeight?: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const grows = maxHeight !== undefined;
+  const value = props.value;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!grows || el === null) return;
+    fitHeight(el);
+    const refit = () => fitHeight(el);
+    window.addEventListener('resize', refit);
+    // 窓の大きさが変わらなくても欄の幅は変わる（脇の開け閉めなど）ので、幅の変化でも測り直す。
+    // 高さの変化では測り直さない: 自分で入れた高さでまた呼ばれるため
+    let width = el.clientWidth;
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(() => {
+            if (el.clientWidth === width) return;
+            width = el.clientWidth;
+            fitHeight(el);
+          });
+    observer?.observe(el);
+    return () => {
+      window.removeEventListener('resize', refit);
+      observer?.disconnect();
+    };
+  }, [grows, value]);
+  return (
+    <ShadcnTextarea
+      ref={ref}
+      className={cn(grows && 'field-sizing-fixed resize-none overflow-y-auto', className)}
+      style={grows ? { ...style, maxHeight } : style}
+      {...props}
+    />
+  );
 }
 
 // `size` を受けない: shadcn の `size`（高さの段）と名前が衝突するため

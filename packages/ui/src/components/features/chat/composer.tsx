@@ -55,17 +55,18 @@ export function ChatComposer({
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={keyDown}
           placeholder={placeholder}
-          rows={2}
-          className="max-h-48 min-h-10 flex-1 resize-none"
+          rows={1}
+          maxHeight="min(40dvh,15rem)"
+          className="min-h-11 flex-1 md:min-h-9"
         />
         {running && onStop !== undefined && (
-          <Button variant="danger" onClick={onStop} aria-label="止める" className="h-10">
+          <Button variant="danger" onClick={onStop} aria-label="止める">
             <Square className="size-3.5 fill-current" />
             止める
           </Button>
         )}
-        <Button type="submit" variant="primary" disabled={!canSend} className="h-10">
-          <Send className="size-4" />
+        <Button type="submit" variant="primary" disabled={!canSend} loading={sending}>
+          {!sending && <Send className="size-4" />}
           送る
         </Button>
       </div>
