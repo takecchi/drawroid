@@ -262,18 +262,40 @@ describe('runDoctor', () => {
     ['a long edge of 256', { imageLongEdge: 256 }, 256],
     ['a long edge of 1024', { imageLongEdge: 1024 }, 1024],
     ['an unreadable long edge', { imageLongEdge: 5 }, 512],
-  ])('shows the judge an image as large as the budget says, with %s', async (_, budgets, edge) => {
+    ['X string 256', { imageLongEdge: '256' }, 512],
+    ['X negative', { imageLongEdge: -256 }, 512],
+    ['X zero', { imageLongEdge: 0 }, 512],
+    ['X NaN(->null)', { imageLongEdge: NaN }, 512],
+    ['X 256.5', { imageLongEdge: 256.5 }, 512],
+    ['X 1e9', { imageLongEdge: 1e9 }, 512],
+    ['X 1537', { imageLongEdge: 1537 }, 512],
+    ['X 127', { imageLongEdge: 127 }, 512],
+    ['X 128', { imageLongEdge: 128 }, 128],
+    ['X 1536', { imageLongEdge: 1536 }, 1536],
+    ['X budgets string', 'x', 512],
+    ['X budgets array', [], 512],
+    ['X other field bad', { imageLongEdge: 256, text: { prompt: -1 } }, 256],
+    ['X RAW 1e400', '{"llm":LLM,"budgets":{"imageLongEdge":1e400}}', 512],
+    ['X RAW 256.0', '{"llm":LLM,"budgets":{"imageLongEdge":256.0}}', 256],
+    ['X RAW 2.56e2', '{"llm":LLM,"budgets":{"imageLongEdge":2.56e2}}', 256],
+  ] as [string, unknown, number][])('shows the judge an image as large as the budget says, with %s', async (label, budgets, edge) => {
     const llm = await startLlm({ rejectWebp: false });
-    await setup({
-      llm: {
-        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
-        roles: { think: { provider: 'a', model: 'm' } },
-      },
-      ...(budgets !== undefined && { budgets }),
-    });
+    const llmCfg = {
+      providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+      roles: { think: { provider: 'a', model: 'm' } },
+    };
+    await setup(
+      typeof budgets === 'string' && budgets.startsWith('{')
+        ? budgets.replace('LLM', JSON.stringify(llmCfg))
+        : {
+            llm: llmCfg,
+            ...(budgets !== undefined && { budgets }),
+          },
+    );
 
     expect(llm.images).toHaveLength(1);
     const { width, height } = await sharp(llm.images[0]).metadata();
+    console.log(`PX ${label} => ${Math.max(width ?? 0, height ?? 0)}`);
     expect(Math.max(width ?? 0, height ?? 0)).toBe(edge);
   });
 
