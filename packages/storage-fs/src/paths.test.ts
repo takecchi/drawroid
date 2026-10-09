@@ -37,3 +37,22 @@ describe('dataPaths', () => {
     expect(paths.job('20261009-153012-k3f9')).toBe(join('/d', 'jobs', '20261009-153012-k3f9'));
   });
 });
+
+describe('jobFiles', () => {
+  it('lays out a job and its iterations as described in architecture.md', () => {
+    const job = dataPaths('/d').jobFiles('j1');
+    const it1 = job.iteration(1);
+    expect(job.spec).toBe(join('/d', 'jobs', 'j1', 'job.json'));
+    expect(job.state).toBe(join('/d', 'jobs', 'j1', 'state.json'));
+    expect(job.llmCall('c1')).toBe(join('/d', 'jobs', 'j1', 'llm-calls', 'c1.json'));
+    expect(it1.think).toBe(join('/d', 'jobs', 'j1', 'iterations', '0001', 'think.json'));
+    expect(it1.image(0)).toBe(join('/d', 'jobs', 'j1', 'iterations', '0001', 'images', '0.png'));
+    expect(it1.preview(0, 512)).toBe(
+      join('/d', 'jobs', 'j1', 'iterations', '0001', 'images', '0.preview-512.webp'),
+    );
+    expect(it1.sent(0)).toBe(
+      join('/d', 'jobs', 'j1', 'iterations', '0001', 'images', '0.sent.json'),
+    );
+    expect(dataPaths('/d').llmCall('c2')).toBe(join('/d', 'llm-calls', 'c2.json'));
+  });
+});
