@@ -252,7 +252,9 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
     section: { title, items },
     backend: backend.success ? backend.data.backend : undefined,
     llm,
-    imageLongEdge: resolveBudgets(readBudgetOverrides(record.budgets).overrides).imageLongEdge,
+    imageLongEdge:
+      (record.budgets as { imageLongEdge?: number } | undefined)?.imageLongEdge ??
+      resolveBudgets(readBudgetOverrides(record.budgets).overrides).imageLongEdge,
   };
 }
 
