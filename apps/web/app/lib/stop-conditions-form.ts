@@ -4,6 +4,18 @@ import {
   type StopConditionsChange,
 } from '@drawroid/core';
 
+/** 止める条件を、人間が読む短い文の並びにする */
+export function describeStopConditions(conditions: StopConditions): string[] {
+  return [
+    ...(conditions.aiJudgement ? ['AI が意図どおりと判断したら'] : []),
+    ...(conditions.maxIterations === undefined ? [] : [`${conditions.maxIterations} 回まで`]),
+    ...(conditions.maxImages === undefined ? [] : [`${conditions.maxImages} 枚まで`]),
+    ...(conditions.maxDurationMs === undefined
+      ? []
+      : [`${conditions.maxDurationMs / 60_000} 分まで`]),
+  ];
+}
+
 // 入力欄の値は、すべて文字列で持つ: 数値の欄を number で持つと、入力途中の空欄や「-」を表せないため
 export interface StopConditionsFormValues {
   aiJudgement: boolean;
