@@ -70,6 +70,8 @@ describe('parseCliArgs', () => {
       [['--help'], '--help'],
       [['-h'], '-h'],
       [['doctor', '--verbose'], '--verbose'],
+      [['--version'], '--version'],
+      [['-v'], '-v'],
     ] as const) {
       expect(() => parseCliArgs([...args])).toThrow(
         `知らない指定: ${option}（使えるのは doctor と --port・--data-dir・--backend・--backend-url（古い名前 --forge-url））`,
@@ -81,6 +83,15 @@ describe('parseCliArgs', () => {
   it('says an option is missing its value in Japanese', () => {
     expect(() => parseCliArgs(['--port'])).toThrow('--port に値が無い（例: --port 7878）');
     expect(() => parseCliArgs(['--port'])).not.toThrow(/argument missing/);
+  });
+
+  it('names the option that is missing its value, whichever option it is, also when another option follows', () => {
+    expect(() => parseCliArgs(['--data-dir'])).toThrow('--data-dir に値が無い');
+    expect(() => parseCliArgs(['doctor', '--backend-url'])).toThrow('--backend-url に値が無い');
+    // 次の語が -- で始まっても、-- を挟んだ書き方の断りにはしない
+    const run = () => parseCliArgs(['--data-dir', '--port', '7878']);
+    expect(run).toThrow('--data-dir に値が無い');
+    expect(run).not.toThrow(/-- を挟まずに/);
   });
 
   it('tells to type the options without -- in between, instead of calling usable options unknown', () => {
