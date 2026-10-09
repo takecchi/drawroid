@@ -7,9 +7,9 @@ import {
   CodeBlock,
   DescriptionList,
   Disclosure,
+  EmptyState,
   ImageCard,
   ImageGrid,
-  Muted,
   Section,
 } from '@drawroid/ui';
 
@@ -220,7 +220,7 @@ export function IterationList({
 }) {
   return (
     <Section title={heading}>
-      {iterations.length === 0 && <Muted>まだ画像は無い。</Muted>}
+      {iterations.length === 0 && <EmptyState title="まだ画像は無い。" />}
       {iterations.map((iteration) => (
         <IterationView
           key={iteration.iteration}

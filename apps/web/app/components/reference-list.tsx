@@ -1,5 +1,5 @@
 import type { ReferencesResponse } from '@drawroid/swr';
-import { AuthorMark, Muted, Section } from '@drawroid/ui';
+import { AuthorMark, EmptyState, Section } from '@drawroid/ui';
 
 import { formatTime } from '../lib/job-labels';
 
@@ -33,7 +33,7 @@ export function ReferenceItem({ reference }: { reference: Reference }) {
 export function ReferenceList({ references }: { references: Reference[] }) {
   return (
     <Section title={`人間が添えた参照画像（${references.length}）`}>
-      {references.length === 0 && <Muted>まだ参照画像は無い。</Muted>}
+      {references.length === 0 && <EmptyState title="まだ参照画像は無い。" />}
       {references.map((reference) => (
         <ReferenceItem key={reference.refId} reference={reference} />
       ))}

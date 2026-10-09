@@ -2,6 +2,7 @@ import { useLlmCall, useUnattachedLlmCalls, type LlmCallsResponse } from '@drawr
 import {
   CodeBlock,
   Disclosure,
+  EmptyState,
   ErrorNote,
   Item,
   ItemList,
@@ -148,7 +149,7 @@ export function UnattachedLlmCalls() {
             {tokens(data.total.outputTokens)} トークン / {formatDuration(data.total.durationMs)}
           </p>
           {data.calls.length === 0 ? (
-            <Muted>まだ無い。</Muted>
+            <EmptyState title="まだ無い。" />
           ) : (
             <LlmCallList jobId={null} calls={data.calls} />
           )}

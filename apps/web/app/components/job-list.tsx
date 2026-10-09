@@ -1,5 +1,5 @@
 import { useJobs, type JobsResponse } from '@drawroid/swr';
-import { Badge, ErrorNote, Item, ItemList, Muted, Section } from '@drawroid/ui';
+import { Badge, EmptyState, ErrorNote, Item, ItemList, Section } from '@drawroid/ui';
 import { Link } from 'react-router';
 
 import { groupJobsByStatus, JOB_STATUS_ORDER, type JobSummary } from '../lib/job-groups';
@@ -50,7 +50,7 @@ export function JobList() {
   return (
     <>
       {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
-      {data.jobs.length === 0 && <Muted>まだ無い。</Muted>}
+      {data.jobs.length === 0 && <EmptyState title="まだ無い。" />}
       {JOB_STATUS_ORDER.map((status) => (
         <Section key={status} title={`${STATUS_LABELS[status]}（${groups[status].length}）`}>
           <ItemList>
