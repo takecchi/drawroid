@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
-import { recheckBackendStatus, setSelection, useSelections } from '@drawroid/swr';
+import { recheckBackendStatus, setSelection, useJob, useSelections } from '@drawroid/swr';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -13,6 +13,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   recheckBackendStatus: vi.fn(),
   setSelection: vi.fn(),
+  useJob: vi.fn(),
   useSelections: vi.fn(),
 }));
 
@@ -77,11 +78,99 @@ function renderView(source: ConversationSource, given = actions()) {
 beforeEach(() => {
   seq = 0;
   vi.mocked(useSelections).mockReturnValue({ data: { selections: [] } } as never);
+  vi.mocked(useJob).mockReturnValue({ data: undefined } as never);
 });
 
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
+});
+
+describe('the stop card', () => {
+  /** 止まったジョブの状態。best を省けば、最良の画像が無い（1枚もできずに止まった） */
+  const stoppedJob = (best?: { iteration: number; imageIndex: number; score: number }) =>
+    ({
+      data: {
+        state: {
+          status: 'stopped',
+          carry: { intent: '海辺', completedIterations: 2, ...(best !== undefined && { best }) },
+        },
+      },
+    }) as never;
+  const BEST = { iteration: 2, imageIndex: 1, score: 0.92 };
+  const CHOOSE = 'この画像に決める（お気に入りにする）: 2 回目の画像 2 番';
+
+  async function stopWith(reason: object) {
+    const { source, stream } = fakeSource([]);
+    const view = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason }));
+    await waitFor(() => expect(screen.getByText(/描くのを止めた/)).toBeTruthy());
+    return view;
+  }
+
+  it.each([
+    ['the judge said it is done', { kind: 'ai', detail: '見る役が止めてよいと言った' }],
+    ['it reached its limit', { kind: 'limit:iterations', detail: '3 回に達した' }],
+  ])('offers the best image to choose when %s', async (_, reason) => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    await stopWith(reason);
+
+    const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
+    expect(within(card).getByText('最良: 2 回目の画像 2 番（見る役の点 0.92）')).toBeTruthy();
+    expect(within(card).getByRole('img', { name: '最良: 2 回目の画像 2 番' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: CHOOSE })).toBeTruthy();
+    expect(within(card).getByText('続けるなら、話しかけて指示を出す。')).toBeTruthy();
+    expect(useJob).toHaveBeenCalledWith(JOB);
+  });
+
+  it('chooses the best image through the favorite, since a stopped job takes no adopt', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    const { user } = await stopWith({ kind: 'ai', detail: '止めてよい' });
+
+    await user.click(await screen.findByRole('button', { name: CHOOSE }));
+
+    expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
+  });
+
+  it('says it is a favorite instead of the button when the best image already is', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    vi.mocked(useSelections).mockReturnValue({
+      data: { selections: [{ imageKey: '2-1', verdict: 'favorite' }] },
+    } as never);
+    await stopWith({ kind: 'ai', detail: '止めてよい' });
+
+    const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
+    expect(within(card).getByText('お気に入り')).toBeTruthy();
+    expect(within(card).queryByRole('button')).toBeNull();
+  });
+
+  it('offers the best image when the job failed after making one', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    await stopWith({ kind: 'error', detail: '見る段: 形が合わない' });
+
+    expect(await screen.findByRole('button', { name: CHOOSE })).toBeTruthy();
+  });
+
+  it('gives only the reason when the job failed before making any image', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob());
+    await stopWith({ kind: 'error', detail: '生成の段: 繋がらない' });
+
+    expect(screen.getByText(/描くのを止めた/)).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
+  });
+
+  it.each([
+    ['a person stopped it', { kind: 'human', detail: '人が止めた' }],
+    ['a person chose an image', { kind: 'adopted', detail: '人間が画像を選んだ' }],
+  ])('adds nothing when %s, and does not even read the job', async (_, reason) => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    await stopWith(reason);
+
+    expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^この画像に決める/ })).toBeNull();
+    expect(useJob).not.toHaveBeenCalledWith(JOB);
+  });
 });
 
 describe('ConversationView', () => {
