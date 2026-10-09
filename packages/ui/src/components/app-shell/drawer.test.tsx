@@ -44,4 +44,16 @@ describe('Drawer', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(opener);
   });
+
+  it('offers a close button read aloud in Japanese', async () => {
+    render(<Opener />);
+    const opener = screen.getByRole('button', { name: 'メニューを開く' });
+    await userEvent.click(opener);
+
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
 });

@@ -384,7 +384,8 @@ function convert(tree: Root, idPrefix: string, options: MdastOptions): Out[] {
           {
             href: '#' + clobberPrefix + 'fnref-' + safeId + (re > 1 ? '-' + re : ''),
             'data-footnote-backref': '',
-            'aria-label': 'Back to reference ' + (referenceIndex + 1) + (re > 1 ? '-' + re : ''),
+            'aria-label':
+              '本文の参照 ' + (referenceIndex + 1) + (re > 1 ? '-' + re : '') + ' へ戻る',
             className: 'data-footnote-backref',
           },
           ['↩', ...(re > 1 ? [el('sup', {}, [String(re)])] : [])],
@@ -406,7 +407,7 @@ function convert(tree: Root, idPrefix: string, options: MdastOptions): Out[] {
     out.push(
       '\n',
       el('section', { 'data-footnotes': true, className: 'footnotes' }, [
-        el('h2', { className: 'sr-only', id: footnoteLabelId }, ['Footnotes']),
+        el('h2', { className: 'sr-only', id: footnoteLabelId }, ['脚注']),
         '\n',
         el('ol', {}, wrap(items, true)),
         '\n',

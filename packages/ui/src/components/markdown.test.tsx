@@ -152,6 +152,16 @@ describe('Markdown', () => {
     }
   });
 
+  it('reads the footnotes aloud in Japanese', () => {
+    const root = draw('注[^1]と[^1]\n\n[^1]: 脚注の中身');
+
+    expect(screen.getByRole('heading', { name: '脚注' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '本文の参照 1 へ戻る' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '本文の参照 1-2 へ戻る' })).toBeTruthy();
+    expect(root.textContent).not.toContain('Footnotes');
+    expect(root.innerHTML).not.toContain('Back to reference');
+  });
+
   it('does not load outside images, and offers them as links instead', () => {
     const root = draw(
       [
