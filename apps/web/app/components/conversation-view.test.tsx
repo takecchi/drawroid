@@ -1388,3 +1388,39 @@ describe('ConversationView', () => {
     });
   });
 });
+
+// 足した文は「〜する」の調子にそろえる（#284）
+describe('the wording of the conversation', () => {
+  it('asks to talk in the same tone as the rest, while the conversation is empty', async () => {
+    const { source } = fakeSource([]);
+    renderView(source);
+
+    expect(await screen.findByText('描いてほしいものや、聞きたいことを話しかける。')).toBeTruthy();
+  });
+
+  it('says where to choose an image in the same tone, while an image is being made', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.started',
+        jobId: JOB,
+        request: '夕暮れの海',
+        stopConditions: { aiJudgement: true, maxIterations: 3 },
+      }),
+    );
+    stream.emit({
+      type: 'generation.progress',
+      jobId: JOB,
+      iteration: 1,
+      progress: 0.35,
+      step: 7,
+      steps: 20,
+    });
+
+    expect(
+      await screen.findByText('できあがったら、画像の行の「この画像で決める」で選べる'),
+    ).toBeTruthy();
+  });
+});
