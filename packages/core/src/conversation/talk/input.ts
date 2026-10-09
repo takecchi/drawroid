@@ -39,6 +39,15 @@ export type TalkStepRecord = {
  * - このターンで読む人間の発言は落とさない。ほかの発言は、入力の上限に入らなければ古い方から落とす
  * - 会話のジョブの状態と、このターンのステップ（ツールの結果は文字数で切る）
  */
+/**
+ * 人間が発言に添えた画像の ID。画像そのものは話す役に見せない（トークンを最小にするため。画像は、描き始めたあとに見る役が1度だけ見て要点にする）。
+ * 話す役は、この ID を start_drawing・revise_drawing の attachments にそのまま写す
+ */
+function attachedOf(event: ConversationEvent): string {
+  if (event.type !== 'user.message' || event.attachments.length === 0) return '';
+  return `（添えた画像: ${event.attachments.map((attachment) => attachment.uploadId).join(', ')}）`;
+}
+
 export function buildTalkInput(args: {
   events: readonly ConversationEvent[];
   /** events は会話の末尾だけで、それより前にも発言がありうる（話す役の実行器は、会話を頭から全部は読まない） */
@@ -81,7 +90,7 @@ export function buildTalkInput(args: {
     return {
       seq: e.seq,
       name: `message[${e.seq}]`,
-      text: `${who}: ${w.clip(`message[${e.seq}]`, e.text, limits.messageChars)}`,
+      text: `${who}: ${w.clip(`message[${e.seq}]`, e.text, limits.messageChars)}${attachedOf(e)}`,
     };
   };
   // このターンで読む発言は、直近の件数から外れても必ず載せる: 答えるべき発言が黙って消えないように

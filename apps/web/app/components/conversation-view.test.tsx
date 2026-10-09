@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { LLM_NOT_CONFIGURED_REASON, type ConversationEvent, type LiveEvent } from '@drawroid/core';
 import { setSelection, useSelections } from '@drawroid/swr';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -528,9 +528,103 @@ describe('ConversationView', () => {
     await user.type(screen.getByLabelText('発言'), 'これでいいから次はこうして{Enter}');
     await user.click(screen.getByRole('button', { name: '止める' }));
 
-    expect(given.send).toHaveBeenCalledWith('これでいいから次はこうして', expect.any(String));
+    expect(given.send).toHaveBeenCalledWith('これでいいから次はこうして', expect.any(String), []);
     expect(given.stop).toHaveBeenCalled();
     expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  describe('attaching images', () => {
+    beforeEach(() => {
+      // jsdom は object URL を持たない
+      vi.stubGlobal(
+        'URL',
+        Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() }),
+      );
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+    const png = (name: string) =>
+      new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' });
+
+    it('uploads each attached image first, then sends their IDs with the message, and clears them', async () => {
+      const { source, stream } = fakeSource([]);
+      const given = {
+        ...actions(),
+        upload: vi.fn().mockResolvedValueOnce('u-1').mockResolvedValueOnce('u-2'),
+      };
+      const { user } = renderView(source, given);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+      await user.upload(screen.getByLabelText('添える画像を選ぶ'), [
+        png('beach.png'),
+        png('sky.png'),
+      ]);
+      const list = screen.getByRole('list', { name: '添える画像' });
+      expect(
+        within(list)
+          .getAllByRole('img')
+          .map((img) => img.getAttribute('alt')),
+      ).toEqual(['beach.png', 'sky.png']);
+      await user.type(screen.getByLabelText('発言'), 'この2枚で描いて{Enter}');
+
+      expect(given.upload).toHaveBeenCalledTimes(2);
+      expect(given.upload.mock.calls[0]![0]).toMatchObject({ mediaType: 'image/png' });
+      expect(given.send).toHaveBeenCalledWith('この2枚で描いて', expect.any(String), [
+        { uploadId: 'u-1' },
+        { uploadId: 'u-2' },
+      ]);
+      await waitFor(() => expect(screen.queryByRole('list', { name: '添える画像' })).toBeNull());
+    });
+
+    it('takes an attached image off by its name, and refuses what is not an image, saying why', async () => {
+      const { source, stream } = fakeSource([]);
+      const given = { ...actions(), upload: vi.fn().mockResolvedValue('u-1') };
+      const { user } = renderView(source, given);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+      await user.upload(screen.getByLabelText('添える画像を選ぶ'), [
+        png('beach.png'),
+        png('sky.png'),
+      ]);
+      await user.click(screen.getByRole('button', { name: 'beach.png を外す' }));
+      // 選ぶ口の accept を外して選ばれた場合（user.upload は accept に合わないファイルを渡さないので、直に渡す）
+      fireEvent.change(screen.getByLabelText('添える画像を選ぶ'), {
+        target: { files: [new File(['x'], 'note.txt', { type: 'text/plain' })] },
+      });
+      await user.type(screen.getByLabelText('発言'), '描いて{Enter}');
+
+      expect(screen.getByText(/添えられない: note.txt/)).toBeTruthy();
+      expect(given.upload).toHaveBeenCalledTimes(1);
+      expect(given.send).toHaveBeenCalledWith('描いて', expect.any(String), [{ uploadId: 'u-1' }]);
+    });
+
+    it('shows no way to attach when the actions cannot upload', async () => {
+      const { source, stream } = fakeSource([]);
+      renderView(source);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+      expect(screen.queryByRole('button', { name: '画像を添える' })).toBeNull();
+    });
+
+    it('says how many images a message carried', async () => {
+      const { source } = fakeSource([
+        {
+          events: [
+            confirmed({
+              type: 'user.message',
+              text: 'この2枚で描いて',
+              attachments: [{ uploadId: 'u-1' }, { uploadId: 'u-2' }],
+            }),
+          ],
+          last: 1,
+          more: false,
+        },
+      ]);
+      renderView(source);
+
+      expect(await screen.findByText('画像を 2 枚添えた')).toBeTruthy();
+    });
   });
 
   it('does not send the same message twice while it is still being sent', async () => {
@@ -584,7 +678,7 @@ describe('ConversationView', () => {
 
     await user.click(await screen.findByRole('button', { name: '送り直す' }));
 
-    expect(given.send).toHaveBeenCalledWith('続きを描いて', expect.any(String));
+    expect(given.send).toHaveBeenCalledWith('続きを描いて', expect.any(String), []);
   });
 
   it('lets a cut-off message be resent only once', async () => {

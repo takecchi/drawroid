@@ -20,6 +20,7 @@ import type {
   CandidateNotesResponse,
   ConversationEventsResponse,
   ConversationResponse,
+  ConversationUploadResponse,
   PostedMessageResponse,
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
@@ -168,21 +169,43 @@ export function conversationStreamUrl(conversationId: string, after: number): st
 }
 
 /**
- * 発言する。202 と確定した seq が返り、続きは購読（SSE）で届く。同じ clientMessageId の再送は二重に受けられない
+ * 発言する。202 と確定した seq が返り、続きは購読（SSE）で届く。同じ clientMessageId の再送は二重に受けられない。
+ * attachments は、先に uploadConversationImage で会話へ送り込んだ画像の ID
  */
 export async function postConversationMessage(
   conversationId: string,
   text: string,
   clientMessageId: string,
+  attachments: readonly { uploadId: string }[] = [],
 ): Promise<PostedMessageResponse> {
   const posted = await unwrap<PostedMessageResponse>(() =>
     client.conversations[':conversationId'].messages.$post({
       param: { conversationId },
-      json: { text, clientMessageId },
+      json: {
+        text,
+        clientMessageId,
+        ...(attachments.length > 0 && { attachments: [...attachments] }),
+      },
     }),
   );
   await mutate(keys.conversations);
   return posted;
+}
+
+/**
+ * 会話で添える画像を1枚送り込み、その ID を返す。発言の attachments に載せると、話す役が描き始めるとき・描いている絵に足すときに参照画像にする。
+ * 種類・大きさが合わなければ ApiError（kind: 'invalid_request'）を投げる
+ */
+export async function uploadConversationImage(
+  conversationId: string,
+  image: ReferenceUpload,
+): Promise<ConversationUploadResponse> {
+  return unwrap<ConversationUploadResponse>(() =>
+    client.conversations[':conversationId'].uploads.$post({
+      param: { conversationId },
+      json: image,
+    }),
+  );
 }
 
 /** 中断する。turn は話す役のターンだけ、all は会話のジョブも止める */
