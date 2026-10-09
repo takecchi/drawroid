@@ -293,7 +293,7 @@ async function checkBackend(
     section.items.push({
       ok: false,
       what: `繋がらない: ${where}: ${messageOf(error)}`,
-      todo: backendTodo(error, label),
+      todo: backendTodo(error, label, source),
     });
     return section;
   }
@@ -314,11 +314,17 @@ async function checkBackend(
   return section;
 }
 
-function backendTodo(error: unknown, label: string): string {
+function backendTodo(error: unknown, label: string, source: keyof typeof URL_SOURCES): string {
   const kind = isBackendError(error) ? error.kind : undefined;
   switch (kind) {
     case 'unreachable':
-      return `${label} を --api を付けて起動する。別の場所で動いているなら、--backend-url か画面の「設定」の「バックエンド」で URL を直す`;
+      return `${label} を --api を付けて起動する。別の場所で動いているなら、--backend-url か画面の「設定」の「バックエンド」で URL を直す${
+        // 既定の URL を見ているときだけ足す: drawroid doctor は待ち受け中の drawroid に聞かず、自分の引数と config.json から
+        // URL を決める。起動にだけ付けた --backend-url は見えず、言われたとおりに直しても同じ所に戻ってくる
+        source === 'default'
+          ? '。drawroid を --backend-url を付けて起動しているなら、drawroid doctor にも同じ --backend-url を付ける'
+          : ''
+      }`;
     case 'unauthorized':
       return `${label} を --api-auth を付けて起動しているなら、config.json の backend.auth に username と password を入れる`;
     case 'not_found':
