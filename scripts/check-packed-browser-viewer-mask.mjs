@@ -198,8 +198,8 @@ try {
       expect(
         (await dialog.getByLabel('マスクを塗る所').count()) === 0 &&
           (await dialog.getByText(/塗っている間は前後へ送れない/).count()) === 0 &&
-          (await dialog.getByRole('button', { name: '次の画像' }).isEnabled()),
-        `${label}: マスクを送ると見る形に戻り、送ったことが短く出て、前後へ送れる`,
+          (await dialog.getByRole('button', { name: 'マスクを塗る' }).isVisible()),
+        `${label}: マスクを送ると見る形に戻り（塗る面が消え、前後へ送れないという案内も消え、「マスクを塗る」に戻る）、送ったことが短く出る`,
       );
       // もう一度塗っておく（閉じるボタンが塗りかけを捨てるかを見るため）
       await dialog.getByRole('button', { name: 'マスクを塗る' }).click();
