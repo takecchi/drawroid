@@ -319,6 +319,12 @@ importers:
         specifier: 'catalog:'
         version: 4.6.5
     devDependencies:
+      '@drawroid/api':
+        specifier: workspace:*
+        version: link:../api
+      '@drawroid/storage-fs':
+        specifier: workspace:*
+        version: link:../storage-fs
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.5
