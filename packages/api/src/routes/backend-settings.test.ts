@@ -25,7 +25,12 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
         return view;
       },
     },
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: () => Promise.reject(new Error('この試験では使わない')),
+      changeStopConditions: () => Promise.reject(new Error('この試験では使わない')),
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},

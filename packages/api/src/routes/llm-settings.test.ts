@@ -32,7 +32,12 @@ function makeApp(env: Record<string, string | undefined>) {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: {
       read: async () => saved,
@@ -143,3 +148,7 @@ describe('API key values', () => {
     expect(written).toEqual([]);
   });
 });
+
+async function notUsed(): Promise<never> {
+  throw new Error('この試験では使わない口');
+}

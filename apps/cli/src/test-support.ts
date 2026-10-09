@@ -15,9 +15,18 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
-    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    autoQueue: {
+      kick: () => undefined,
+      stop: async () => undefined,
+      addInstruction: notUsed,
+      changeStopConditions: notUsed,
+    },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
   };
+}
+
+async function notUsed(): Promise<never> {
+  throw new Error('サーバの試験では使わない口');
 }

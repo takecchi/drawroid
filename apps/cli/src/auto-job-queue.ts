@@ -5,12 +5,15 @@ import {
   type Budget,
   type GenerationDefaults,
   type ImageBackend,
+  type InterventionRecord,
   type JobStore,
   type LlmCall,
   type LlmCallOutcome,
   type LlmPort,
   type LlmRole,
   type LlmRoleInfo,
+  type StopConditions,
+  type StopConditionsChange,
 } from '@drawroid/core';
 import { createLlm, type LlmConfig } from '@drawroid/llm';
 
@@ -76,6 +79,15 @@ export class AutoJobQueue implements AutoJobQueuePort {
 
   stop(jobId: string): Promise<void> {
     return this.runner.stop(jobId);
+  }
+
+  // LLM が未設定でも受ける: 口出しはファイルに置くだけで、LLM を使うのは次に回ったときなため
+  addInstruction(jobId: string, text: string): Promise<InterventionRecord> {
+    return this.runner.addInstruction(jobId, text);
+  }
+
+  changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions> {
+    return this.runner.changeStopConditions(jobId, change);
   }
 
   idle(): Promise<void> {

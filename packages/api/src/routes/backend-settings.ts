@@ -22,7 +22,7 @@ export function backendSettingsRoutes({ backendSettings }: ApiDeps) {
       try {
         return c.json(toView(await backendSettings.write(input.data)), 200);
       } catch (error) {
-        if (error instanceof BackendBusyError) return conflict(c, 'busy', error.message);
+        if (error instanceof BackendBusyError) return conflict(c, error.message, 'busy');
         throw error;
       }
     });

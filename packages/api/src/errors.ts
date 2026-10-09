@@ -13,12 +13,16 @@ export function invalidRequest(c: Context, message: string) {
   return c.json(errorBody('invalid_request', message), 400);
 }
 
-export function conflict(c: Context, kind: string, message: string) {
-  return c.json(errorBody(kind, message), 409);
-}
-
 export function notFound(c: Context, message: string) {
   return c.json(errorBody('not_found', message), 404);
+}
+
+/**
+ * 要求は正しいが、対象の今の状態では受けられない（止まったジョブへの口出し、生成中の繋ぎ直しなど）。
+ * 画面が理由を見分ける必要があるときだけ kind を渡す
+ */
+export function conflict(c: Context, message: string, kind = 'conflict') {
+  return c.json(errorBody(kind, message), 409);
 }
 
 // kind はバックエンドのエラーの種類をそのまま返す: 画面が「落ちている」のか「URL が違う」のかを見分けられるようにするため

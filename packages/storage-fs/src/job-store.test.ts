@@ -193,6 +193,82 @@ describe('FsJobStore jobs', () => {
   });
 });
 
+describe('FsJobStore interventions', () => {
+  it('lists interventions in the order they were received, from the files alone', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await jobs.addIntervention(
+      a.jobId,
+      { kind: 'stopConditions', stopConditions: { maxIterations: 3 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.addIntervention(
+      a.jobId,
+      { kind: 'instruction', text: '逆光にして' },
+      new Date('2026-10-09T06:32:00Z'),
+    );
+
+    const listed = await jobs.listInterventions(a.jobId);
+    expect(listed).toEqual([
+      expect.objectContaining({ kind: 'stopConditions', stopConditions: { maxIterations: 3 } }),
+      expect.objectContaining({ kind: 'instruction', text: '逆光にして' }),
+    ]);
+    expect(listed[1]).not.toHaveProperty('appliedInIteration');
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).interventions)).toHaveLength(2);
+  });
+
+  it('has no interventions for a job nobody has spoken to', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.listInterventions(a.jobId)).toEqual([]);
+  });
+
+  it('refuses a stop condition change that changes nothing', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(
+      jobs.addIntervention(
+        a.jobId,
+        { kind: 'stopConditions', stopConditions: {} },
+        new Date('2026-10-09T06:31:00Z'),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('refuses an empty instruction', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(
+      jobs.addIntervention(a.jobId, { kind: 'instruction', text: '' }, new Date()),
+    ).rejects.toThrow();
+  });
+
+  it('writes back which think took an instruction in, keeping its original text', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const said = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'instruction', text: '逆光にして' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.markInterventionApplied(a.jobId, said.interventionId, 4);
+    expect(await jobs.listInterventions(a.jobId)).toEqual([{ ...said, appliedInIteration: 4 }]);
+  });
+
+  it('refuses to mark a stop condition change as taken into a think', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const change = await jobs.addIntervention(
+      a.jobId,
+      { kind: 'stopConditions', stopConditions: { maxIterations: 3 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await expect(jobs.markInterventionApplied(a.jobId, change.interventionId, 1)).rejects.toThrow(
+      StoredFileError,
+    );
+  });
+});
+
 describe('FsJobStore generations', () => {
   it('lists a saved generation with its request and seeds, and reads the images back', async () => {
     const jobs = store();
@@ -428,6 +504,104 @@ describe('FsJobStore LLM call records', () => {
     const jobs = store();
     const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     expect(await jobs.listLlmCalls(a.jobId)).toEqual([]);
+  });
+});
+
+describe('FsJobStore selections', () => {
+  const favorite = {
+    imageKey: '2-1',
+    verdict: 'favorite' as const,
+    selectedAt: '2026-10-09T06:31:00.000Z',
+  };
+
+  it('keeps one selection per image under selections/, overwriting a reselection', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.readSelection(a.jobId, '2-1')).toBeUndefined();
+
+    await jobs.writeSelection(a.jobId, favorite);
+    const changed = { ...favorite, verdict: null, previous: 'favorite' as const };
+    await jobs.writeSelection(a.jobId, changed);
+
+    expect(await jobs.readSelection(a.jobId, '2-1')).toEqual(changed);
+    expect(await jobs.listSelections(a.jobId)).toEqual([changed]);
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).selections)).toEqual(['2-1.json']);
+  });
+
+  it('refuses an image key that could point outside the job', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(jobs.readSelection(a.jobId, '../../job')).rejects.toThrow();
+    await expect(
+      jobs.writeSelection(a.jobId, { ...favorite, imageKey: '../state' }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('FsJobStore references', () => {
+  async function reference(width: number, height: number): Promise<Uint8Array> {
+    return sharp({ create: { width, height, channels: 3, background: '#2266aa' } })
+      .png()
+      .toBuffer();
+  }
+
+  it('keeps references under refs/ in the order they arrived', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const first = await jobs.addReference(
+      a.jobId,
+      { data: await reference(64, 64), mediaType: 'image/png', note: 'この構図で' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    const second = await jobs.addReference(
+      a.jobId,
+      { data: await reference(64, 64), mediaType: 'image/png' },
+      new Date('2026-10-09T06:32:00Z'),
+    );
+
+    expect(await jobs.listReferences(a.jobId)).toEqual([first, second]);
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).refs)).toEqual(
+      expect.arrayContaining([`${first.refId}.png`, `${first.refId}.json`]),
+    );
+  });
+
+  it('shrinks a reference for the LLM and refuses to mark it sent twice', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const ref = await jobs.addReference(
+      a.jobId,
+      { data: await reference(1600, 900), mediaType: 'image/png' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    const image = { jobId: a.jobId, refId: ref.refId };
+
+    const preview = await jobs.loadPreview(image, 512);
+    expect(preview.longEdge).toBe(512);
+    expect(preview.sentInCall).toBeUndefined();
+
+    await jobs.markSent(image, 'c1', new Date('2026-10-09T06:32:00Z'));
+    expect((await jobs.loadPreview(image, 512)).sentInCall).toBe('c1');
+    await expect(jobs.markSent(image, 'c2', new Date())).rejects.toThrow(ImageAlreadySentError);
+  });
+
+  it('keeps the gist next to the reference', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const ref = await jobs.addReference(
+      a.jobId,
+      { data: await reference(64, 64), mediaType: 'image/png' },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.writeReferenceGist(a.jobId, ref.refId, '青い背景');
+    expect(await jobs.listReferences(a.jobId)).toEqual([{ ...ref, gist: '青い背景' }]);
+  });
+
+  it('refuses a reference or intervention id that could point outside the job', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(jobs.writeReferenceGist(a.jobId, '../../config', 'x')).rejects.toThrow();
+    await expect(jobs.loadPreview({ jobId: a.jobId, refId: '../x' }, 512)).rejects.toThrow();
+    await expect(jobs.markInterventionApplied(a.jobId, '../../state', 1)).rejects.toThrow();
   });
 });
 

@@ -1,4 +1,9 @@
-import { createCarry, stopConditionsSchema, type StopConditions } from '@drawroid/core';
+import {
+  createCarry,
+  stopConditionsSchema,
+  type JobStore,
+  type StopConditions,
+} from '@drawroid/core';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
@@ -24,15 +29,15 @@ const createBodySchema = z.object({
   batchSize: z.number().int().min(1).max(8).optional(),
 });
 
+export async function isAutoJob(store: JobStore, jobId: string): Promise<boolean> {
+  // 一覧に在るものだけを通す: 外から来た文字列をそのまま置き場所へ渡さないため
+  if (!(await store.listJobIds()).includes(jobId)) return false;
+  return (await store.readJob(jobId)).kind === 'auto';
+}
+
 // 一覧と取得は manual と共通の /jobs が持つ。ここには自動ジョブにしか無い口だけを置く
 export function autoJobsRoutes(deps: ApiDeps) {
   const { store, autoQueue } = deps;
-
-  async function isAutoJob(jobId: string): Promise<boolean> {
-    // 一覧に在るものだけを通す: 外から来た文字列をそのまま置き場所へ渡さないため
-    if (!(await store.listJobIds()).includes(jobId)) return false;
-    return (await store.readJob(jobId)).kind === 'auto';
-  }
 
   return new Hono()
     .post('/', async (c) => {
@@ -54,7 +59,7 @@ export function autoJobsRoutes(deps: ApiDeps) {
     })
     .post('/:jobId/stop', async (c) => {
       const jobId = c.req.param('jobId');
-      if (!(await isAutoJob(jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
+      if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
       await autoQueue.stop(jobId);
       return c.json({ jobId }, 202);
     });

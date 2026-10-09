@@ -31,20 +31,32 @@ function paramSchemas(budget: Budget) {
 export function buildThinkOutputSchema(
   allowed: readonly ThinkParamKey[],
   budget: Budget,
+  options: { withInterventions?: boolean } = {},
 ): z.ZodType<ThinkOutput> {
   const all = paramSchemas(budget);
   const params: Partial<Record<ThinkParamKey, z.ZodType>> = {};
   for (const key of allowed) params[key] = all[key];
   // パラメータの集まりが実行時に決まり zod が型を推論できないので、出力の型は ThinkOutput として宣言する
-  return z.object({
+  const output = z.object({
     params: z.object(params),
     rationale: z.string().max(budget.text.rationale),
+  });
+  // 口出しを載せた回だけ、統合した依頼の要点を出させる: 要点の更新のために専用の呼び出しを足さないため
+  if (!options.withInterventions) return output as z.ZodType<ThinkOutput>;
+  return output.extend({
+    intent: z
+      .string()
+      .min(1)
+      .max(budget.text.intent)
+      .describe('依頼の要点に、人間の指示を統合した新しい要点'),
   }) as z.ZodType<ThinkOutput>;
 }
 
 export type ThinkOutput = {
   params: ThinkParams;
   rationale: string;
+  /** 口出しを載せた回だけある。依頼の要点に人間の指示を統合したもの */
+  intent?: string;
 };
 
 /** 見る役の出力スキーマ。画像の枚数ぶんの評価をちょうど返させる */
