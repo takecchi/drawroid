@@ -84,8 +84,11 @@ export type JobRunnerDeps = {
   llm: LlmPort;
   backend: ImageBackend;
   budget: Budget;
-  /** 全体の既定の許可。ジョブごとの上書き（job.json の permissions）を重ねて使う */
-  permissions: Permissions;
+  /**
+   * 全体の既定の許可。ジョブごとの上書き（job.json の permissions）を重ねて使う。
+   * 読む関数を渡せば、回の境目ごとに読み直し、走行中のジョブにも次の回から効く
+   */
+  permissions: Permissions | (() => Promise<Permissions>);
   /** 候補の種類ごとに、考える役へ見せる候補の件数と文字数。省けば既定値 */
   candidateLimits?: PackLimits;
   /** 人間が候補に付けた短い説明を読む。ジョブの始めに1回呼ぶ。省けば説明なし */
@@ -301,25 +304,63 @@ export class JobRunner {
   }
 
   /**
-   * ジョブの間に使う、バックエンドの能力と候補の一覧。ジョブの始めに1回だけ取る。
+   * ジョブの間に使う、バックエンドの能力と候補の一覧。能力はジョブの始めに1回だけ取り、
+   * 候補の一覧は、AI に任せた種類を初めて使う回に1回だけ取る。
    */
-  // 回ごとに取り直さない: 候補の一覧（LoRA が数百個など）を毎回取るのは重く、ジョブの途中で変わることも稀なため
-  private async viewBackend(spec: AutoJobSpec, signal: AbortSignal): Promise<BackendView> {
-    const { backend } = this.deps;
+  // 回ごとに取り直さない: 候補の一覧（LoRA が数百個など）を毎回取るのは重く、ジョブの途中で変わることも稀なため。
+  // 始めに全部を取りもしない: 全体の既定の許可が走行中に変わり、任せる種類が後から増えることがあるため
+  private async viewBackend(
+    spec: AutoJobSpec,
+    defaults: Permissions,
+    signal: AbortSignal,
+  ): Promise<BackendView> {
+    let capabilities: BackendCapabilities;
     try {
-      const capabilities = await backend.probe(signal);
-      const permissions = this.jobPermissions(spec, capabilities, false);
-      const lists: Partial<Record<CandidateKind, readonly Candidate[]>> = {};
-      for (const kind of candidateKindsToList(permissions)) {
-        lists[kind] = await backend.listCandidates(kind, signal);
-      }
-      return { capabilities, lists, notes: await this.readCandidateNotes() };
+      capabilities = await this.deps.backend.probe(signal);
     } catch (error) {
-      if (signal.aborted) throw error;
+      throw this.backendStageError(error, signal);
+    }
+    const view = { capabilities, lists: {}, notes: await this.readCandidateNotes() };
+    await this.ensureCandidateLists(spec, view, defaults, signal);
+    return view;
+  }
+
+  private async ensureCandidateLists(
+    spec: AutoJobSpec,
+    view: BackendView,
+    defaults: Permissions,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const permissions = this.jobPermissions(spec, defaults, view.capabilities, false);
+    try {
+      for (const kind of candidateKindsToList(permissions)) {
+        view.lists[kind] ??= await this.deps.backend.listCandidates(kind, signal);
+      }
+    } catch (error) {
+      throw this.backendStageError(error, signal);
+    }
+  }
+
+  private backendStageError(error: unknown, signal: AbortSignal): unknown {
+    if (signal.aborted) return error;
+    return new StopJob({
+      kind: 'error',
+      detail: `バックエンドの能力と候補を取る段: ${messageOf(error)}`,
+      ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
+    });
+  }
+
+  /** 全体の既定の許可。読む関数を受けていれば、呼ぶたびに読み直す */
+  private async defaultPermissions(): Promise<Permissions> {
+    const { permissions } = this.deps;
+    if (typeof permissions !== 'function') return permissions;
+    try {
+      return await permissions();
+    } catch (error) {
+      // 古い許可のまま回さない: 人間が変えたはずの許可が効かないまま、気づかずに回り続けるため
       throw new StopJob({
         kind: 'error',
-        detail: `バックエンドの能力と候補を取る段: ${messageOf(error)}`,
-        ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
+        detail: `全体の既定の許可を読む段: ${messageOf(error)}`,
       });
     }
   }
@@ -340,10 +381,12 @@ export class JobRunner {
   /** 全体の既定にジョブの上書きを重ね、バックエンドで使えないものを「使わない」に落とした許可 */
   private jobPermissions(
     spec: AutoJobSpec,
+    defaults: Permissions,
     capabilities: BackendCapabilities,
     hasMask: boolean,
   ): Permissions {
-    const merged = mergePermissions(this.deps.permissions, spec.permissions ?? {});
+    // ジョブの上書きを後に重ねる: 全体の既定が走行中に変わっても、ジョブで決めた許可は変えないため
+    const merged = mergePermissions(defaults, spec.permissions ?? {});
     return effectivePermissions(merged, { capabilities, hasMask }).permissions;
   }
 
@@ -351,11 +394,12 @@ export class JobRunner {
   private planParams(
     spec: AutoJobSpec,
     view: BackendView,
+    defaults: Permissions,
     carry: Carry,
     mask: MaskIntervention | undefined,
   ): ParamsPlan {
     // マスクが無ければ inpaint は「使わない」になり、出力スキーマに現れない。ループはマスクを待たずに進む（M4:121）
-    const permissions = this.jobPermissions(spec, view.capabilities, mask !== undefined);
+    const permissions = this.jobPermissions(spec, defaults, view.capabilities, mask !== undefined);
     const candidates = shownCandidatesFor({
       permissions,
       lists: view.lists,
@@ -395,7 +439,7 @@ export class JobRunner {
 
   private async loop(spec: AutoJobSpec, initial: RunningState, signal: AbortSignal): Promise<void> {
     const { store } = this.deps;
-    const backendView = await this.viewBackend(spec, signal);
+    const backendView = await this.viewBackend(spec, await this.defaultPermissions(), signal);
     let state = initial;
     for (;;) {
       signal.throwIfAborted();
@@ -408,7 +452,10 @@ export class JobRunner {
       // 走っている段には触れず、境目で要点にする: 回の途中で届いた参照画像は、次の回の「考える」から効く（Issue #5 の I）
       const withReferences = await this.takeInReferences(spec, state.carry, iteration, signal);
       const mask = await this.usableMask(spec);
-      const paramsPlan = this.planParams(spec, backendView, withReferences, mask);
+      // 回の境目ごとに読み直す: API で変えた全体の既定の許可を、走っている段に触れずに次の回から効かせるため
+      const defaults = await this.defaultPermissions();
+      await this.ensureCandidateLists(spec, backendView, defaults, signal);
+      const paramsPlan = this.planParams(spec, backendView, defaults, withReferences, mask);
       const think = await this.think(
         spec,
         conditions,

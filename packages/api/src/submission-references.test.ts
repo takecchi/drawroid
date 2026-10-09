@@ -14,6 +14,7 @@ import { FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
+import { noCandidateNotes, noPermissionSettings } from './test-support.js';
 
 const GIST = '白いワンピースの裾が風になびく構図';
 
@@ -74,6 +75,8 @@ beforeEach(async () => {
     autoQueue: runner,
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     env: {},
   });
 });

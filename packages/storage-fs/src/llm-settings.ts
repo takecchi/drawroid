@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import { writeJsonAtomic } from './atomic.js';
 
-async function readConfigObject(configPath: string): Promise<Record<string, unknown>> {
+export async function readConfigObject(configPath: string): Promise<Record<string, unknown>> {
   let text: string;
   try {
     text = await readFile(configPath, 'utf8');

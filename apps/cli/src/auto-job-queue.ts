@@ -24,7 +24,7 @@ import {
 import { createLlm, type LlmConfig } from '@drawroid/llm';
 
 // 設定に許可を書かないときの土台。M2 の可動範囲（プロンプト・seed・steps・CFG を AI に任せ、大きさは固定）
-const BASE_PERMISSIONS = basicPermissions({ width: 1024, height: 1024 });
+export const BASE_PERMISSIONS = basicPermissions({ width: 1024, height: 1024 });
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -33,8 +33,8 @@ export type AutoJobQueueOptions = {
   backend: ImageBackend;
   env: Env;
   budget: Budget;
-  /** config.json の permissions。全体の既定の許可の土台に重ねる */
-  permissions?: Partial<Permissions>;
+  /** config.json の permissions を読む。回の境目ごとに呼ばれ、全体の既定の許可の土台に重ねる */
+  permissions?: () => Promise<Partial<Permissions>>;
   /** candidate-notes.json を読む。ジョブの始めに1回呼ばれる */
   candidateNotes?: () => Promise<CandidateNotes>;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
@@ -59,7 +59,8 @@ export class AutoJobQueue implements AutoJobQueuePort {
       llm: delegating,
       backend: options.backend,
       budget: options.budget,
-      permissions: mergePermissions(BASE_PERMISSIONS, options.permissions ?? {}),
+      permissions: async () =>
+        mergePermissions(BASE_PERMISSIONS, (await options.permissions?.()) ?? {}),
       ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
     });
   }

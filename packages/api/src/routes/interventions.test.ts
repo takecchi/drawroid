@@ -17,6 +17,7 @@ import { hc } from 'hono/client';
 
 import { createApi, type AppType } from '../index.js';
 import { MAX_REFERENCE_BYTES } from '../references.js';
+import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
 
 let root: string;
 let store: FsJobStore;
@@ -51,6 +52,8 @@ beforeEach(async () => {
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     env: {},
     now,
   });

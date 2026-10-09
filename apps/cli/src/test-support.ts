@@ -1,4 +1,4 @@
-import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import { basicPermissions, DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import type { ApiDeps } from '@drawroid/api';
 import { FsJobStore } from '@drawroid/storage-fs';
@@ -21,6 +21,12 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    permissionSettings: {
+      base: basicPermissions({ width: 64, height: 64 }),
+      read: async () => undefined,
+      write: async () => undefined,
+    },
+    candidateNotes: { read: async () => ({ notes: new Map() }), write: async () => undefined },
     env: {},
   };
 }

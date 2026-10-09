@@ -1,5 +1,5 @@
 export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
-export { readCandidateNotes } from './candidate-notes.js';
+export { readCandidateNotes, writeCandidateNotes } from './candidate-notes.js';
 export {
   formatJobId,
   FsJobStore,
@@ -10,6 +10,7 @@ export {
 } from './job-store.js';
 export { initDataDir, type InitializedDataDir } from './init.js';
 export { readLlmSettings, writeLlmSettings } from './llm-settings.js';
+export { readPermissionSettings, writePermissionSettings } from './permission-settings.js';
 export {
   dataPaths,
   iterationDirName,

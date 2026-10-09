@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 import { ForgeBackend } from '@drawroid/backend-forge';
-import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
 import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
   dataPaths,
@@ -11,12 +11,15 @@ import {
   initDataDir,
   readCandidateNotes,
   readLlmSettings,
+  readPermissionSettings,
   resolveDataDir,
+  writeCandidateNotes,
   writeLlmSettings,
+  writePermissionSettings,
 } from '@drawroid/storage-fs';
 
 import { parseCliArgs } from './args.js';
-import { AutoJobQueue } from './auto-job-queue.js';
+import { AutoJobQueue, BASE_PERMISSIONS } from './auto-job-queue.js';
 import { readConfig, resolveForgeUrl } from './config.js';
 import { listen } from './listen.js';
 
@@ -58,7 +61,9 @@ async function main() {
     backend,
     env: process.env,
     budget: DEFAULT_BUDGET,
-    ...(config.permissions !== undefined && { permissions: config.permissions }),
+    // 回の境目ごとに config.json を読み直す: API で変えた許可を、再起動せずに走行中のジョブの次の回から効かせるため
+    permissions: async () =>
+      permissionOverridesSchema.parse((await readPermissionSettings(configPath)) ?? {}),
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
     log,
   });
@@ -98,6 +103,15 @@ async function main() {
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,
+      permissionSettings: {
+        base: BASE_PERMISSIONS,
+        read: () => readPermissionSettings(configPath),
+        write: (overrides) => writePermissionSettings(configPath, overrides),
+      },
+      candidateNotes: {
+        read: () => readCandidateNotes(dataPaths(root).candidateNotes),
+        write: (notes) => writeCandidateNotes(dataPaths(root).candidateNotes, notes),
+      },
       env: process.env,
     },
   });

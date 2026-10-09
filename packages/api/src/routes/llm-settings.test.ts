@@ -8,6 +8,7 @@ import type { LlmConfig } from '@drawroid/llm';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
+import { noCandidateNotes, noPermissionSettings } from '../test-support.js';
 
 const SECRET = 'sk-should-not-leak';
 
@@ -44,6 +45,8 @@ function makeApp(env: Record<string, string | undefined>) {
         saved = c;
       },
     },
+    permissionSettings: noPermissionSettings,
+    candidateNotes: noCandidateNotes,
     env,
   });
 }
