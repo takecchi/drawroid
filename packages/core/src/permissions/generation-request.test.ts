@@ -121,3 +121,14 @@ describe('toGenerationRequest', () => {
     ).toThrow();
   });
 });
+
+describe('toGenerationRequest with choices', () => {
+  it('uses the value the AI picked for a parameter left to it with choices', () => {
+    const request = toGenerationRequest({
+      decided: { ...decidedByAi, sampler: 'DPM++ 2M' },
+      permissions: { ...allAuto(), sampler: { mode: 'auto', choices: ['Euler a', 'DPM++ 2M'] } },
+      batchSize: 1,
+    });
+    expect(request.sampler).toBe('DPM++ 2M');
+  });
+});

@@ -25,3 +25,5 @@ coverage
 .DS_Store
 .react-router
 build
+# packages/ui の見本帳（`storybook build`）の出力
+storybook-static

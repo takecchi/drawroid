@@ -1,4 +1,9 @@
-import type { GenerationRequest, JobStore } from '@drawroid/core';
+import {
+  type ExcludedParam,
+  type GenerationRequest,
+  iterationPlanSchema,
+  type JobStore,
+} from '@drawroid/core';
 import { z } from 'zod';
 
 export type ImageView = { index: number; seed: number | null; url: string; previewUrl: string };
@@ -6,6 +11,8 @@ export type ImageView = { index: number; seed: number | null; url: string; previ
 export type IterationView = {
   iteration: number;
   think: unknown;
+  /** その回に AI の選択肢から外したもの。plan.json が無い回は null */
+  excluded: ExcludedParam[] | null;
   request: GenerationRequest | null;
   judge: unknown;
   images: ImageView[];
@@ -24,14 +31,16 @@ export async function readIterationView(
   jobId: string,
   iteration: number,
 ): Promise<IterationView> {
-  const [think, judge, generation] = await Promise.all([
+  const [think, plan, judge, generation] = await Promise.all([
     store.readStage(jobId, iteration, 'think'),
+    store.readStage(jobId, iteration, 'plan'),
     store.readStage(jobId, iteration, 'judge'),
     store.readGeneration(jobId, iteration),
   ]);
   return {
     iteration,
     think: think ?? null,
+    excluded: plan === undefined ? null : iterationPlanSchema.parse(plan).excluded,
     request: generation?.request ?? null,
     judge: judge ?? null,
     images: (generation?.images ?? []).map(({ index, seed }) => ({

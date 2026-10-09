@@ -50,6 +50,32 @@ describe('GET /jobs/:jobId/iterations', () => {
     ]);
   });
 
+  it('returns what was excluded from the AI choices, or null for an iteration without plan.json', async () => {
+    const excluded = [
+      { param: 'loras', wanted: 'auto', reason: { kind: 'no-candidates-shown' } },
+      { param: 'controlnet', wanted: 'fixed', reason: { kind: 'backend', detail: 'no extension' } },
+    ];
+    await env.store.writeStage(jobId, 1, 'plan', { excluded });
+
+    const res = await env.api.request(`/jobs/${jobId}/iterations`);
+
+    const body = (await res.json()) as { iterations: { excluded: unknown }[] };
+    expect(body.iterations.map((i) => i.excluded)).toEqual([excluded, null]);
+  });
+
+  it('reports the iteration as invalid when plan.json does not match its shape', async () => {
+    await env.store.writeStage(jobId, 1, 'plan', { excluded: [{ param: 'nope' }] });
+
+    const res = await env.api.request(`/jobs/${jobId}/iterations`);
+
+    const body = (await res.json()) as {
+      iterations: { iteration: number }[];
+      invalid: { iteration: number }[];
+    };
+    expect(body.iterations.map((i) => i.iteration)).toEqual([2]);
+    expect(body.invalid.map((i) => i.iteration)).toEqual([1]);
+  });
+
   it('reports only the iteration with a broken file as invalid and still returns the others', async () => {
     await writeFile(env.paths.jobFiles(jobId).iteration(1).think, '{ broken');
 

@@ -108,6 +108,12 @@ describe('img2img and inpaint on Forge', () => {
     expect(sent('/sdapi/v1/img2img')).toMatchObject({ inpaint_full_res: true, inpainting_fill: 2 });
   });
 
+  it('sends the repaint strength asked for in an inpaint', async () => {
+    await generate({ inpaint: { image: SOURCE, mask: MASK, denoisingStrength: 0.35 } });
+
+    expect(sent('/sdapi/v1/img2img')).toMatchObject({ denoising_strength: 0.35 });
+  });
+
   it('refuses img2img with Hires. fix, which the img2img endpoint would silently ignore', async () => {
     await expect(
       generate({
@@ -125,6 +131,19 @@ describe('img2img and inpaint on Forge', () => {
       kind: 'failed',
       message: expect.stringContaining(SOURCE) as unknown,
     });
+    expect(forge.requests).toEqual([]);
+  });
+});
+
+describe('checking the images before asking Forge', () => {
+  it('asks Forge nothing when only the image of a ControlNet unit is missing', async () => {
+    const withoutRef: GenerationImages = new Map([...images].filter(([ref]) => ref !== REF));
+    await expect(
+      generate(
+        { controlnet: [{ image: REF, model: 'diffusers_xl_canny_full [2b69fca4]' }] },
+        withoutRef,
+      ),
+    ).rejects.toMatchObject({ kind: 'failed', message: expect.stringContaining(REF) as unknown });
     expect(forge.requests).toEqual([]);
   });
 });
@@ -197,6 +216,12 @@ describe('ControlNet on Forge', () => {
       pixel_perfect: false,
       save_detected_map: false,
     });
+  });
+
+  it('sends each unit its own image', async () => {
+    await generate({ controlnet: [unit, { ...unit, image: SOURCE }] });
+
+    expect(controlnetArgs().map((a) => a.image)).toEqual([b64(REF), b64(SOURCE), undefined]);
   });
 
   it('marks the unit slots it does not use as disabled', async () => {

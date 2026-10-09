@@ -14,10 +14,14 @@ import type {
   AddMaskResponse,
   AddReferenceResponse,
   BackendSettingsResponse,
+  CandidateNotesInput,
+  CandidateNotesResponse,
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
   LlmSettingsInput,
   LlmSettingsResponse,
+  PermissionOverridesInput,
+  PermissionSettingsResponse,
   ReferenceUpload,
   SavedMemoryItem,
   SaveMemoryInput,
@@ -71,6 +75,36 @@ export async function saveLlmSettings(config: LlmSettingsInput): Promise<LlmSett
   const saved = await unwrap<LlmSettingsResponse>(() => client.settings.llm.$put({ json: config }));
   // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
   await mutate(keys.llmSettings, saved, { revalidate: false });
+  return saved;
+}
+
+/**
+ * 全体の既定の許可を、書いた欄ごと置き換える。書いた許可は、走行中のジョブにも次の回の境目から効く。
+ * 形が違うとき（必須の欄に「使わない」など）は ApiError（kind: 'invalid_request'）を投げる
+ */
+export async function savePermissionSettings(
+  overrides: PermissionOverridesInput,
+): Promise<PermissionSettingsResponse> {
+  const saved = await unwrap<PermissionSettingsResponse>(() =>
+    client.settings.permissions.$put({ json: overrides }),
+  );
+  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
+  await mutate(keys.permissionSettings, saved, { revalidate: false });
+  return saved;
+}
+
+/**
+ * 候補の説明を、全部まとめて置き換える。書いた説明は、次のジョブから考える役に渡る。
+ * 長すぎる説明や多すぎる件数は ApiError（kind: 'invalid_request'）を投げる
+ */
+export async function saveCandidateNotes(
+  notes: CandidateNotesInput,
+): Promise<CandidateNotesResponse> {
+  const saved = await unwrap<CandidateNotesResponse>(() =>
+    client.backend['candidate-notes'].$put({ json: notes }),
+  );
+  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
+  await mutate(keys.candidateNotes, saved, { revalidate: false });
   return saved;
 }
 

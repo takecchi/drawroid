@@ -24,7 +24,7 @@ export function isReferenceImageRef(image: AnyImageRef): image is ReferenceImage
 }
 
 /** 回の中の LLM の段の出力。ファイルがあることが、その段が済んだことを表す（生成の段は writeGeneration の request） */
-export type StageName = 'think' | 'judge';
+export type StageName = 'think' | 'plan' | 'judge';
 
 // Omit は union に効かず分岐ごとの欄が消えるため、型引数に取って分岐ごとに外す
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

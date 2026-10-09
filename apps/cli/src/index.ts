@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
+  createFsDistillLog,
   createFsMemoryStore,
   dataPaths,
   FsJobStore,
@@ -67,6 +68,7 @@ async function main() {
   process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
 
   const log = (line: string) => process.stdout.write(`${line}\n`);
+  const memoryStore = createFsMemoryStore(dataPaths(root).memory);
   const autoQueue = new AutoJobQueue({
     store,
     backend,
@@ -76,6 +78,7 @@ async function main() {
     permissions: async () =>
       permissionOverridesSchema.parse((await readPermissionSettings(configPath)) ?? {}),
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
+    memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
     log,
   });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
@@ -120,7 +123,7 @@ async function main() {
       store,
       manualRunner,
       backendSettings,
-      memoryStore: createFsMemoryStore(dataPaths(root).memory),
+      memoryStore,
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,

@@ -113,6 +113,20 @@ describe('POST /jobs/auto', () => {
     expect(body.spec.batchSize).toBe(3);
   });
 
+  it('keeps the permissions given for the job in job.json', async () => {
+    const jobId = await create({
+      request: 'x',
+      permissions: { steps: { mode: 'fixed', value: 30 }, sampler: { mode: 'off' } },
+    });
+    const body = (await (await app.request(`/jobs/${jobId}`)).json()) as {
+      spec: { permissions?: unknown };
+    };
+    expect(body.spec.permissions).toEqual({
+      steps: { mode: 'fixed', value: 30 },
+      sampler: { mode: 'off' },
+    });
+  });
+
   it('lists auto and manual jobs together under /jobs, told apart by kind', async () => {
     const auto = await create();
     const manual = await createManual();

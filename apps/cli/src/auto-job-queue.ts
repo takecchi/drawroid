@@ -6,6 +6,7 @@ import {
   type Budget,
   type CandidateNotes,
   type ImageBackend,
+  type JobMemory,
   type InterventionRecord,
   type JobStore,
   type LlmCall,
@@ -37,6 +38,8 @@ export type AutoJobQueueOptions = {
   permissions?: () => Promise<Partial<Permissions>>;
   /** candidate-notes.json を読む。ジョブの始めに1回呼ばれる */
   candidateNotes?: () => Promise<CandidateNotes>;
+  /** 記憶の置き場所と蒸留の記録の置き場所。省けば記憶なしで回る */
+  memory?: JobMemory;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   log: (line: string) => void;
 };
@@ -62,6 +65,8 @@ export class AutoJobQueue implements AutoJobQueuePort {
       permissions: async () =>
         mergePermissions(BASE_PERMISSIONS, (await options.permissions?.()) ?? {}),
       ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
+      ...(options.memory !== undefined && { memory: options.memory }),
+      log: options.log,
     });
   }
 

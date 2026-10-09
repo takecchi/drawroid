@@ -13,6 +13,8 @@ export const CANDIDATE_PARAMS = {
   sampler: 'sampler',
   scheduler: 'scheduler',
   hiresFix: 'upscaler',
+  // 絞り込み（choices）はモデルにだけ効く。前処理は controlnetModule を併せて見せる（EXTRA_CANDIDATE_KINDS）
+  controlnet: 'controlnetModel',
 } as const satisfies Partial<Record<ParamKey, CandidateKind>>;
 
 // 値は仮置き。設定（config.json の budgets）の既定値として、実測で見直す
@@ -37,11 +39,20 @@ export function basicPermissions(size: { width: number; height: number }): Permi
   ) as Permissions;
 }
 
+// 1つのパラメータが2種類の候補から選ぶもの。choices は主の種類にだけ効かせる:
+// 名前の種類が違うので、モデル名の絞り込みを前処理の名前に当てると前処理が全部消えるため
+const EXTRA_CANDIDATE_KINDS: Partial<Record<ParamKey, CandidateKind>> = {
+  controlnet: 'controlnetModule',
+};
+
 /** AI に任せたパラメータのうち、候補から選ぶものの候補の種類 */
 export function candidateKindsToList(permissions: Permissions): CandidateKind[] {
   return (Object.entries(CANDIDATE_PARAMS) as [ParamKey, CandidateKind][])
     .filter(([key]) => permissions[key].mode === 'auto')
-    .map(([, kind]) => kind);
+    .flatMap(([key, kind]) => [
+      kind,
+      ...(EXTRA_CANDIDATE_KINDS[key] ? [EXTRA_CANDIDATE_KINDS[key]] : []),
+    ]);
 }
 
 /**
@@ -71,20 +82,29 @@ export function shownCandidatesFor(args: {
   for (const [key, kind] of Object.entries(CANDIDATE_PARAMS) as [ParamKey, CandidateKind][]) {
     const permission = args.permissions[key];
     if (permission.mode !== 'auto') continue;
-    const selection = selectCandidates(
-      args.lists[kind] ?? [],
-      permission.choices,
-      args.notes.notes,
-      args.requestGist,
-      args.limits,
-    );
-    result.shown[kind] = selection.shown;
-    result.dropped.push(
-      ...selection.droppedByBudget.map((d) => ({ kind, name: d.item, reason: d.reason })),
-    );
-    result.notesDropped.push(
-      ...selection.notesDroppedByBudget.map((d) => ({ kind, name: d.item })),
-    );
+    const extra = EXTRA_CANDIDATE_KINDS[key];
+    const kinds: [CandidateKind, readonly string[] | undefined][] = [[kind, permission.choices]];
+    if (extra !== undefined) kinds.push([extra, undefined]);
+    for (const [shownKind, choices] of kinds) {
+      const selection = selectCandidates(
+        args.lists[shownKind] ?? [],
+        choices,
+        args.notes.notes,
+        args.requestGist,
+        args.limits,
+      );
+      result.shown[shownKind] = selection.shown;
+      result.dropped.push(
+        ...selection.droppedByBudget.map((d) => ({
+          kind: shownKind,
+          name: d.item,
+          reason: d.reason,
+        })),
+      );
+      result.notesDropped.push(
+        ...selection.notesDroppedByBudget.map((d) => ({ kind: shownKind, name: d.item })),
+      );
+    }
   }
   return result;
 }
