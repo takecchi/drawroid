@@ -15,6 +15,7 @@ import {
   createDrawingTools,
   createMemoryTools,
   createReadOnlyTools,
+  createReviewTools,
   DEFAULT_BUDGET,
   jobSummaryFor,
   ManualGenerationRunner,
@@ -231,6 +232,13 @@ async function main() {
         // 投入の口と同じく、作るときに1度だけ読んでジョブへ写す
         budgets: async () => (await budgetSettings.read()).effective,
         now: () => new Date(),
+      }),
+      // 見る役を呼ぶ: 自動ジョブと同じ LLM・同じ記憶・同じ記録の口
+      ...createReviewTools({
+        jobs: store,
+        llm: () => autoQueue.currentLlm(),
+        budgets: async () => (await budgetSettings.read()).effective,
+        memory: memoryStore,
       }),
       ...createMemoryTools({ memory: memoryStore, now: () => new Date() }),
     ],
