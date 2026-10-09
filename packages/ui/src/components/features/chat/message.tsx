@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
+import { Markdown } from '../../markdown';
 import type { Author } from '../record';
 
 /** 流れている間だけ末尾に出す印 */
@@ -45,15 +46,16 @@ export function MessageRow({
     >
       <div
         className={cn(
-          'min-w-0 text-sm leading-relaxed break-words whitespace-pre-wrap',
+          'min-w-0 text-sm leading-relaxed break-words',
           // 人間の発言は読む幅の上限（46rem）を持つ吹き出し。AI の返答は地の上の本文なので、欄の幅いっぱいに置く
           // `selection:` で反転色にする: 吹き出しが `bg-primary` なので、既定の選択の色だと選んだ範囲が地に溶けるため
           human
-            ? 'max-w-[min(85%,46rem)] rounded-lg bg-primary px-3 py-2 text-primary-foreground selection:bg-primary-foreground selection:text-primary'
+            ? 'max-w-[min(85%,46rem)] rounded-lg bg-primary px-3 py-2 whitespace-pre-wrap text-primary-foreground selection:bg-primary-foreground selection:text-primary'
             : 'w-full px-1 py-1',
         )}
       >
-        {children}
+        {/* AI の返答の文字列だけを Markdown にする: 人間が打った文字が勝手に化けないため */}
+        {!human && typeof children === 'string' ? <Markdown>{children}</Markdown> : children}
         {streaming && <StreamingCaret />}
       </div>
       {(truncated || meta !== undefined || action !== undefined) && (
