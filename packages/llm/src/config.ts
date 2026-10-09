@@ -23,6 +23,16 @@ export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export const structuredOutputModeSchema = z.enum(['native', 'json', 'text']);
 export type StructuredOutputMode = z.infer<typeof structuredOutputModeSchema>;
 
+/**
+ * モデルが出す思考（reasoning）の受け取り方。
+ * - native: provider が分けて返す思考を使う（OpenAI 互換の reasoning_content・reasoning など）
+ * - think-tag: 本文に混ざる <think>…</think> を思考として切り出す（Qwen 系など）
+ * - none: 思考を受け取らない（画面にも出さない）
+ * どれでも、思考は次の入力に戻さない。
+ */
+export const reasoningModeSchema = z.enum(['native', 'think-tag', 'none']);
+export type ReasoningMode = z.infer<typeof reasoningModeSchema>;
+
 export const roleConfigSchema = z.object({
   /** providers の鍵 */
   provider: z.string().min(1),
@@ -32,6 +42,7 @@ export const roleConfigSchema = z.object({
   /** 省略したら上限を送らず、provider 側の設定に任せる */
   maxOutputTokens: z.number().int().positive().optional(),
   structuredOutput: structuredOutputModeSchema.default('native'),
+  reasoning: reasoningModeSchema.default('native'),
   imageInput: z.boolean().default(true),
 });
 export type RoleConfig = z.infer<typeof roleConfigSchema>;

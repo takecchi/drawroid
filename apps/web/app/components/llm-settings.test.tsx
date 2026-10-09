@@ -32,6 +32,7 @@ const stored: LlmSettingsResponse = {
         contextTokens: 8192,
         maxOutputTokens: 1024,
         structuredOutput: 'native',
+        reasoning: 'think-tag',
         imageInput: false,
       },
       judge: {
@@ -40,6 +41,7 @@ const stored: LlmSettingsResponse = {
         contextTokens: 32000,
         maxOutputTokens: 1024,
         structuredOutput: 'native',
+        reasoning: 'native',
         imageInput: true,
       },
     },
@@ -90,6 +92,25 @@ describe('LlmSettings', () => {
       roles: {
         think: { ...stored.config!.roles.think, model: 'qwen3' },
         judge: stored.config!.roles.judge,
+      },
+    });
+  });
+
+  it('saves how each role takes the thinking of the model', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    expect(screen.getByLabelText<HTMLSelectElement>('考える役の思考の受け取り方').value).toBe(
+      'think-tag',
+    );
+    await user.selectOptions(screen.getByLabelText('見る役の思考の受け取り方'), 'none');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(mocks.saveLlmSettings).toHaveBeenCalledWith({
+      ...stored.config,
+      roles: {
+        think: stored.config!.roles.think,
+        judge: { ...stored.config!.roles.judge, reasoning: 'none' },
       },
     });
   });

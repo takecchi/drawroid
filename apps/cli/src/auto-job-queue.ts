@@ -14,6 +14,8 @@ import {
   type LlmPort,
   type LlmRole,
   type LlmRoleInfo,
+  type TalkStepCall,
+  type TalkStepPart,
   type MaskIntervention,
   type NewMask,
   type NewReference,
@@ -56,6 +58,8 @@ export class AutoJobQueue implements AutoJobQueuePort {
       describe: (role: LlmRole): LlmRoleInfo => this.requireLlm().describe(role),
       generateStructured: <T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>> =>
         this.requireLlm().generateStructured(call),
+      streamStep: (call: TalkStepCall): AsyncIterable<TalkStepPart> =>
+        this.requireLlm().streamStep(call),
     };
     this.runner = new JobRunner({
       store: options.store,

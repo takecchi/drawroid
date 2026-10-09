@@ -7,6 +7,26 @@ const SECRET = 'sk-test-secret-value';
 
 type Captured = { url: string; headers: Headers; body: Record<string, unknown> };
 
+/** サーバが流す SSE。drawroid は LLM をストリームで呼ぶ（思考の増分を見せるため） */
+class Sse {
+  constructor(
+    readonly events: { event?: string; data: unknown }[],
+    readonly done = false,
+  ) {}
+
+  toResponse(): Response {
+    const lines = this.events.map(
+      ({ event, data }) =>
+        `${event === undefined ? '' : `event: ${event}\n`}data: ${JSON.stringify(data)}\n\n`,
+    );
+    if (this.done) lines.push('data: [DONE]\n\n');
+    return new Response(lines.join(''), {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    });
+  }
+}
+
 function fakeFetch(respond: (captured: Captured) => unknown, status = 200) {
   const calls: Captured[] = [];
   const fetch = async (input: string | URL | Request, init?: RequestInit) => {
@@ -16,7 +36,9 @@ function fakeFetch(respond: (captured: Captured) => unknown, status = 200) {
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
     };
     calls.push(captured);
-    return new Response(JSON.stringify(respond(captured)), {
+    const body = respond(captured);
+    if (body instanceof Sse) return body.toResponse();
+    return new Response(JSON.stringify(body), {
       status,
       headers: { 'content-type': 'application/json' },
     });
@@ -41,14 +63,31 @@ const judgeCall = {
   signal: new AbortController().signal,
 };
 
-const chatCompletion = (text: string) => ({
-  id: 'c1',
-  object: 'chat.completion',
-  created: 0,
-  model: 'qwen2.5vl:7b',
-  choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
-  usage: { prompt_tokens: 321, completion_tokens: 12, total_tokens: 333 },
-});
+/** OpenAI 互換の chat completions のストリーム。reasoning_content があれば思考として先に流す */
+const chatCompletion = (text: string, reasoning?: string) => {
+  const chunk = (delta: object, finish: string | null, extra: object = {}) => ({
+    data: {
+      id: 'c1',
+      object: 'chat.completion.chunk',
+      created: 0,
+      model: 'qwen2.5vl:7b',
+      choices: [{ index: 0, delta, finish_reason: finish }],
+      ...extra,
+    },
+  });
+  return new Sse(
+    [
+      ...(reasoning === undefined
+        ? []
+        : [chunk({ role: 'assistant', reasoning_content: reasoning }, null)]),
+      chunk({ role: 'assistant', content: text }, null),
+      chunk({}, 'stop', {
+        usage: { prompt_tokens: 321, completion_tokens: 12, total_tokens: 333 },
+      }),
+    ],
+    true,
+  );
+};
 
 describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
   const config = (structuredOutput: string) => ({
@@ -128,10 +167,7 @@ describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
             headers: { 'content-type': 'application/json', 'retry-after-ms': '1' },
           });
         }
-        return new Response(JSON.stringify(chatCompletion('{"canStop":true}')), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return chatCompletion('{"canStop":true}').toResponse();
       };
       const llm = createLlm(
         { ...config('native'), networkRetries: 1 },
@@ -143,6 +179,37 @@ describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
     },
   );
 
+  it('reads the reasoning the server sends in reasoning_content as thinking', async () => {
+    const { fetch } = fakeFetch(() => chatCompletion('{"canStop":true}', '光の向きを確かめた'));
+    const llm = createLlm(config('native'), { env: { LOCAL_KEY: SECRET }, fetch });
+    const thoughts: string[] = [];
+    const outcome = await llm.generateStructured({
+      ...judgeCall,
+      onReasoning: (text) => thoughts.push(text),
+    });
+    expect(outcome).toMatchObject({ ok: true, value: { canStop: true } });
+    expect(thoughts.join('')).toBe('光の向きを確かめた');
+  });
+
+  it('splits <think> in the text into thinking with reasoning: think-tag', async () => {
+    const { fetch } = fakeFetch(() =>
+      chatCompletion('<think>{"canStop":false} かな</think>{"canStop":true}'),
+    );
+    const base = config('json');
+    const llm = createLlm(
+      { ...base, roles: { think: { ...base.roles.think, reasoning: 'think-tag' } } },
+      { env: { LOCAL_KEY: SECRET }, fetch },
+    );
+    const thoughts: string[] = [];
+    const outcome = await llm.generateStructured({
+      ...judgeCall,
+      onReasoning: (text) => thoughts.push(text),
+    });
+    expect(outcome).toMatchObject({ ok: true, value: { canStop: true } });
+    expect(thoughts.join('')).toBe('{"canStop":false} かな');
+    expect(outcome.attempts[0]?.rawOutput).toBe('{"canStop":true}');
+  });
+
   it('names the missing environment variable without a value', () => {
     expect(() => createLlm(config('native'), { env: {} })).toThrow(/LOCAL_KEY/);
   });
@@ -150,23 +217,50 @@ describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
 
 describe('OpenAI provider', () => {
   it('sends the image to OpenAI and reads the structured output', async () => {
-    const { fetch, calls } = fakeFetch(() => ({
-      id: 'resp_1',
-      object: 'response',
-      created_at: 0,
-      status: 'completed',
-      model: 'gpt-5',
-      output: [
-        {
-          type: 'message',
-          id: 'msg_1',
-          role: 'assistant',
-          status: 'completed',
-          content: [{ type: 'output_text', text: '{"canStop":true}', annotations: [] }],
-        },
-      ],
-      usage: { input_tokens: 400, output_tokens: 9, total_tokens: 409 },
-    }));
+    const { fetch, calls } = fakeFetch(
+      () =>
+        new Sse([
+          {
+            data: {
+              type: 'response.created',
+              response: { id: 'resp_1', created_at: 0, model: 'gpt-5', service_tier: null },
+            },
+          },
+          {
+            data: {
+              type: 'response.output_item.added',
+              output_index: 0,
+              item: { type: 'message', id: 'msg_1' },
+            },
+          },
+          {
+            data: {
+              type: 'response.output_text.delta',
+              item_id: 'msg_1',
+              output_index: 0,
+              content_index: 0,
+              delta: '{"canStop":true}',
+            },
+          },
+          {
+            data: {
+              type: 'response.output_item.done',
+              output_index: 0,
+              item: { type: 'message', id: 'msg_1' },
+            },
+          },
+          {
+            data: {
+              type: 'response.completed',
+              response: {
+                incomplete_details: null,
+                usage: { input_tokens: 400, output_tokens: 9 },
+                service_tier: null,
+              },
+            },
+          },
+        ]),
+    );
     const llm = createLlm(
       {
         providers: { openai: { type: 'openai', apiKeyEnv: 'OPENAI_API_KEY' } },
@@ -185,16 +279,53 @@ describe('OpenAI provider', () => {
 
 describe('Anthropic provider', () => {
   it('sends the image to Anthropic and reads the structured output', async () => {
-    const { fetch, calls } = fakeFetch(() => ({
-      id: 'msg_1',
-      type: 'message',
-      role: 'assistant',
-      model: 'claude-haiku-5-5',
-      content: [{ type: 'text', text: '{"canStop":false}' }],
-      stop_reason: 'end_turn',
-      stop_sequence: null,
-      usage: { input_tokens: 500, output_tokens: 8 },
-    }));
+    const { fetch, calls } = fakeFetch(
+      () =>
+        new Sse([
+          {
+            event: 'message_start',
+            data: {
+              type: 'message_start',
+              message: {
+                id: 'msg_1',
+                type: 'message',
+                role: 'assistant',
+                model: 'claude-haiku-5-5',
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 500, output_tokens: 0 },
+              },
+            },
+          },
+          {
+            event: 'content_block_start',
+            data: {
+              type: 'content_block_start',
+              index: 0,
+              content_block: { type: 'text', text: '' },
+            },
+          },
+          {
+            event: 'content_block_delta',
+            data: {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: '{"canStop":false}' },
+            },
+          },
+          { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+          {
+            event: 'message_delta',
+            data: {
+              type: 'message_delta',
+              delta: { stop_reason: 'end_turn', stop_sequence: null },
+              usage: { output_tokens: 8 },
+            },
+          },
+          { event: 'message_stop', data: { type: 'message_stop' } },
+        ]),
+    );
     const llm = createLlm(
       {
         providers: { anthropic: { type: 'anthropic', apiKeyEnv: 'ANTHROPIC_API_KEY' } },

@@ -8,6 +8,9 @@ export const PROVIDER_TYPES = ['openai-compatible', 'openai', 'anthropic'] as co
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 export const STRUCTURED_OUTPUT_MODES = ['native', 'json', 'text'] as const;
 export type StructuredOutputMode = (typeof STRUCTURED_OUTPUT_MODES)[number];
+/** native = サーバが分けて返す思考 / think-tag = 本文の <think> を思考に分ける / none = 受け取らない */
+export const REASONING_MODES = ['native', 'think-tag', 'none'] as const;
+export type ReasoningMode = (typeof REASONING_MODES)[number];
 
 // 文字列で持つ: 入力の途中の空欄や数字でない文字を、数に直すと消えてしまうため
 export interface ProviderRow {
@@ -23,6 +26,7 @@ export interface RoleValues {
   contextTokens: string;
   maxOutputTokens: string;
   structuredOutput: StructuredOutputMode;
+  reasoning: ReasoningMode;
   imageInput: boolean;
 }
 
@@ -45,6 +49,7 @@ function roleToValues(role: StoredRole | undefined): RoleValues {
     contextTokens: role?.contextTokens === undefined ? '' : String(role.contextTokens),
     maxOutputTokens: role?.maxOutputTokens === undefined ? '' : String(role.maxOutputTokens),
     structuredOutput: role?.structuredOutput ?? 'native',
+    reasoning: role?.reasoning ?? 'native',
     imageInput: role?.imageInput ?? true,
   };
 }
@@ -93,6 +98,7 @@ function buildRole(values: RoleValues): LlmSettingsInput['roles']['think'] {
     ...(contextTokens === undefined ? {} : { contextTokens }),
     ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     structuredOutput: values.structuredOutput,
+    reasoning: values.reasoning,
     imageInput: values.imageInput,
   };
 }

@@ -53,7 +53,10 @@ export type {
   LlmRole,
   LlmRoleInfo,
   LlmUsage,
+  TalkStepCall,
+  TalkStepPart,
   TextPart,
+  ToolSpec,
 } from './llm/port.js';
 export * from './llm/record.js';
 export * from './loop/budget.js';

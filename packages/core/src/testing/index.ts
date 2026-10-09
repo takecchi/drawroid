@@ -14,4 +14,6 @@ export {
   ScriptedLlm,
   type Script,
   type ScriptedLlmOptions,
+  type ScriptedStep,
+  type TalkScript,
 } from './scripted-llm.js';
