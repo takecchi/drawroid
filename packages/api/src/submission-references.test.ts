@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  basicPermissions,
   DEFAULT_BUDGET,
   JobRunner,
   ManualGenerationRunner,
-  THINK_PARAM_KEYS,
   type LlmCall,
 } from '@drawroid/core';
 import { ScriptedLlm, STUB_PNG, StubBackend, type Script } from '@drawroid/core/testing';
@@ -64,8 +64,7 @@ beforeEach(async () => {
     llm,
     backend,
     budget: DEFAULT_BUDGET,
-    allowed: THINK_PARAM_KEYS,
-    defaults: { width: 64, height: 64, steps: 20, cfgScale: 7, negativePrompt: '' },
+    permissions: basicPermissions({ width: 64, height: 64 }),
   });
   store.onCreated = () => runner.kick();
   app = createApi({

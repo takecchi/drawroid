@@ -11,6 +11,8 @@ import {
   type ImagePart,
   type TextPart,
 } from '../llm/port.js';
+import type { CandidateKind } from '../backend.js';
+import type { ShownCandidate } from '../candidates/select.js';
 import type { ParamKey } from '../params/param-key.js';
 import type { Budget, ModelWindow } from './budget.js';
 import type { CarriedResult, Carry } from './carry.js';
@@ -226,6 +228,51 @@ function intentSection(w: SectionWriter, carry: Carry, budget: Budget): Section 
   };
 }
 
+/** 候補の種類ごとの、見せる候補と、予算で落とした候補・説明 */
+export type ShownCandidates = {
+  shown: Partial<Record<CandidateKind, readonly ShownCandidate[]>>;
+  dropped: { kind: CandidateKind; name: string; reason: 'count' | 'size' }[];
+  notesDropped: { kind: CandidateKind; name: string }[];
+};
+
+const CANDIDATE_LABELS: Record<CandidateKind, string> = {
+  checkpoint: 'チェックポイント',
+  vae: 'VAE',
+  lora: 'LoRA',
+  sampler: 'サンプラー',
+  scheduler: 'スケジューラ',
+  upscaler: 'Hires. fix の拡大の方式',
+  controlnetModel: 'ControlNet のモデル',
+  controlnetModule: 'ControlNet の前処理',
+};
+
+function candidateSections(w: SectionWriter, candidates: ShownCandidates | undefined): Section[] {
+  if (candidates === undefined) return [];
+  // 落とした候補と説明を記録に残す: 数百個の LoRA のうち何を見せなかったかを、後から追えるようにするため（M4:119）
+  for (const { kind, name, reason } of candidates.dropped) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `candidates.${kind}[${name}]`,
+      reason: reason === 'count' ? '候補の件数の予算に入らない' : '候補の文字数の予算に入らない',
+    });
+  }
+  for (const { kind, name } of candidates.notesDropped) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `candidates.${kind}[${name}].note`,
+      reason: '候補の説明が文字数の予算に入らない',
+    });
+  }
+  return (Object.entries(candidates.shown) as [CandidateKind, readonly ShownCandidate[]][])
+    .filter(([, shown]) => shown.length > 0)
+    .map(([kind, shown]) => ({
+      name: `candidates.${kind}`,
+      text: `${CANDIDATE_LABELS[kind]}の候補: ${shown
+        .map((c) => (c.note === undefined ? c.name : `${c.name}（${c.note}）`))
+        .join(' / ')}`,
+    }));
+}
+
 /**
  * 考える役への入力。持ち回す状態だけから組み立てる。
  */
@@ -239,8 +286,10 @@ export function buildThinkInput(args: {
   memory?: MemoryInput;
   /** planInterventions の結果。載せた口出しは必須の区画にする */
   interventions?: InterventionPlan;
+  /** 候補を持つパラメータごとに、予算で絞って見せる候補（selectCandidates の結果） */
+  candidates?: ShownCandidates;
 }): BudgetedMessages {
-  const { carry, progress, allowed, budget, window, memory, interventions } = args;
+  const { carry, progress, allowed, budget, window, memory, interventions, candidates } = args;
   const w = new SectionWriter();
   const remaining =
     progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
@@ -252,6 +301,9 @@ export function buildThinkInput(args: {
     },
     // 口出しは入力の上限で削らない: 人間の指示が黙って消えないように。量は planInterventions の上限で締めてある
     ...interventionSection(w, interventions),
+    // 候補は入力の上限で削らない: 出力スキーマの enum と同じものなので、削ると選べる名前と見えている名前がずれるため。
+    // 量は selectCandidates の予算で締めてある
+    ...candidateSections(w, candidates),
   ];
   const optional: Section[] = [...referenceSections(carry)];
   if (carry.best !== undefined) optional.push(w.result('best', '最良', carry.best, budget, true));

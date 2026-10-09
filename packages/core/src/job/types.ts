@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { generationRequestSchema } from '../backend.js';
 import { BACKEND_ERROR_KINDS } from '../backend-error.js';
+import { permissionOverridesSchema } from '../permissions/permission.js';
 
 export const stopConditionsSchema = z.object({
   /** 見る役が「意図どおり」と判断したら止める */
@@ -79,6 +80,8 @@ export const autoJobSpecSchema = z.object({
   stopConditions: stopConditionsSchema,
   /** 1回の生成で出す枚数 */
   batchSize: z.number().int().positive(),
+  /** 全体の既定の許可に重ねる、このジョブだけの上書き。書いたパラメータだけ */
+  permissions: permissionOverridesSchema.optional(),
 });
 export type AutoJobSpec = z.infer<typeof autoJobSpecSchema>;
 
