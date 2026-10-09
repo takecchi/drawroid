@@ -172,7 +172,7 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
           turn: false,
           job: undefined,
         };
-        return c.json({ scope, interruptedTurn: done.turn, stoppedJob: done.job ?? null }, 202);
+        return c.json({ scope, interruptedTurn: true, stoppedJob: done.job ?? null }, 202);
       })
   );
 }
