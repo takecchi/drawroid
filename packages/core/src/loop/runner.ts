@@ -1101,7 +1101,7 @@ export class JobRunner {
     if (chosen !== undefined && !taken) {
       const { iteration, index } = chosen.image;
       const best = state.carry.best;
-      const alreadyBest = best?.iteration === iteration && best.imageIndex === index;
+      const alreadyBest = false;
       if (
         !alreadyBest &&
         iteration <= done &&
