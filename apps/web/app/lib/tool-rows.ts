@@ -31,7 +31,6 @@ function withoutJobIds(text: string): string {
   return text
     .replace(new RegExp(`（ジョブ ${JOB_ID}）`, 'g'), '')
     .replace(new RegExp(`ジョブ ${JOB_ID} の`, 'g'), '')
-    .replace(new RegExp(`ジョブ ${JOB_ID} ?`, 'g'), 'ジョブ')
     .replace(new RegExp(` ?${JOB_ID} ?`, 'g'), '');
 }
 
