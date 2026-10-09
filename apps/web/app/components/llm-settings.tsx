@@ -19,6 +19,7 @@ import {
   emptyProviderRow,
   PROVIDER_TYPES,
   REASONING_MODES,
+  TOOL_CALLING_MODES,
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
   type LlmSettingsFormValues,
@@ -26,6 +27,7 @@ import {
   type ProviderType,
   type RoleValues,
   type ReasoningMode,
+  type ToolCallingMode,
   type StructuredOutputMode,
 } from '../lib/llm-settings-form';
 
@@ -110,6 +112,22 @@ function RoleFields({
             className="w-40"
           >
             {STRUCTURED_OUTPUT_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {mode}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="ツールの呼び出し方">
+          <Select
+            value={values.toolCalling}
+            onChange={(event) =>
+              onChange({ ...values, toolCalling: event.target.value as ToolCallingMode })
+            }
+            aria-label={`${label}のツールの呼び出し方`}
+            className="w-40"
+          >
+            {TOOL_CALLING_MODES.map((mode) => (
               <option key={mode} value={mode}>
                 {mode}
               </option>

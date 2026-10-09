@@ -60,6 +60,7 @@ describe('llmConfigSchema', () => {
       model: 'qwen2.5vl:7b',
       structuredOutput: 'native',
       reasoning: 'native',
+      toolCalling: 'native',
       imageInput: true,
     });
   });
