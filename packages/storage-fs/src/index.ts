@@ -3,11 +3,14 @@ export { createFsDistillLog } from './distill/log.js';
 export {
   formatJobId,
   FsJobStore,
+  ImageAlreadySentError,
   isJobId,
   StoredFileError,
   type FsJobStoreOptions,
 } from './job-store.js';
+export { readBackendSettings, writeBackendSettings } from './backend-settings.js';
 export { initDataDir, type InitializedDataDir } from './init.js';
+export { readLlmSettings, writeLlmSettings } from './llm-settings.js';
 export {
   formatMemoryFile,
   MEMORY_FILE_EXTENSION,

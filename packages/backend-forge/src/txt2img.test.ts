@@ -3,8 +3,8 @@ import { STUB_PNG } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ForgeClient } from './client.js';
+import { generateWithForge } from './generate.js';
 import { json, startMockForge, type MockForge } from './test-support/mock-forge.js';
-import { generateWithForge } from './txt2img.js';
 
 let forge: MockForge;
 let client: ForgeClient;
