@@ -52,3 +52,36 @@ describe('summarizeToolResult', () => {
     expect(summarizeToolResult('running', undefined)).toBeUndefined();
   });
 });
+
+// 人が読む要約には、ジョブの ID を出さない（結果の文は話す役に返すもので、ID を含む。全文は「詳しく」に残る）。
+// 文の形は core の描く道具・評価の道具が返すものと同じ
+describe('summarizeToolResult and job IDs', () => {
+  const ID = '20261009-215155-2b6f3e';
+
+  it.each([
+    ['ok', `ジョブ ${ID} で描き始めた。止める条件: 8 回まで`, 'ジョブで描き始めた。'],
+    [
+      'ok',
+      `ジョブ ${ID} に指示を伝えた（次の回の境目から効く）`,
+      'ジョブに指示を伝えた（次の回の境目から効く）',
+    ],
+    ['ok', `ジョブ ${ID} を止めた`, 'ジョブを止めた'],
+    [
+      'error',
+      `${TOOL_THREW_PREFIX}ジョブ ${ID} がまだ描いている。直すなら revise_drawing`,
+      'できなかった: ジョブがまだ描いている。',
+    ],
+    [
+      'error',
+      `2 回目の 5枚目の画像は無い（ジョブ ${ID}）`,
+      'できなかった: 2 回目の 5枚目の画像は無い',
+    ],
+    [
+      'error',
+      `2 回目の 1枚目はまだ評価中（ジョブ ${ID} の見る役が見ている）`,
+      'できなかった: 2 回目の 1枚目はまだ評価中（見る役が見ている）',
+    ],
+  ] as const)('leaves the job ID out of %s: %s', (state, summary, short) => {
+    expect(summarizeToolResult(state, summary)).toBe(short);
+  });
+});

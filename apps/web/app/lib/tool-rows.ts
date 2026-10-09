@@ -20,6 +20,21 @@ export function toolTitle(name: string): string | undefined {
 
 const SUMMARY_MAX = 80;
 
+// ジョブの ID（置き場所が付ける名前の形: 20261009-215155-2b6f3e）
+const JOB_ID = String.raw`\d{8}-\d{6}-[0-9a-z]+`;
+
+/**
+ * 要約からジョブの ID を省く。結果の文は話す役に返すためのもので ID を含むが、人が読む要約には要らないため（全文は「詳しく」に残す）。
+ * 「ジョブ <ID> で描き始めた」→「ジョブで描き始めた」、「（ジョブ <ID>）」→ 消す、「（ジョブ <ID> の見る役が…）」→「（見る役が…）」
+ */
+function withoutJobIds(text: string): string {
+  return text
+    .replace(new RegExp(`（ジョブ ${JOB_ID}）`, 'g'), '')
+    .replace(new RegExp(`ジョブ ${JOB_ID} の`, 'g'), '')
+    .replace(new RegExp(`ジョブ ${JOB_ID} ?`, 'g'), 'ジョブ')
+    .replace(new RegExp(` ?${JOB_ID} ?`, 'g'), '');
+}
+
 /** 最初の一文（「。」まで）。長ければ切る */
 function firstSentence(text: string): string {
   const end = text.indexOf('。');
@@ -43,7 +58,7 @@ export function summarizeToolResult(
       : summary;
     return reason === REPEATED_TOOL_CALL_REASON
       ? '同じ呼び出しはこのターンで済んでいたので、もう一度はしなかった。'
-      : `できなかった: ${firstSentence(reason)}`;
+      : `できなかった: ${firstSentence(withoutJobIds(reason))}`;
   }
-  return firstSentence(summary);
+  return firstSentence(withoutJobIds(summary));
 }
