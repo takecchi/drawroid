@@ -1,4 +1,4 @@
-import { ManualGenerationRunner } from '@drawroid/core';
+import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,11 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
         return view;
       },
     },
+    // 繋ぎ直しの経路は自動ジョブと LLM の設定を使わない
+    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    budget: DEFAULT_BUDGET,
+    llmSettings: { read: async () => undefined, write: async () => undefined },
+    env: {},
   });
   const put = (body: unknown) =>
     api.request('/settings/backend', {

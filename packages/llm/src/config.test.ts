@@ -34,6 +34,14 @@ describe('llmConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects a provider that carries an API key value instead of an env var name', () => {
+    const result = llmConfigSchema.safeParse({
+      ...base,
+      providers: { local: { ...base.providers.local, apiKey: 'sk-should-not-leak' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('fills the defaults of a role', () => {
     expect(llmConfigSchema.parse(base).roles.think).toEqual({
       provider: 'local',

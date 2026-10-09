@@ -21,7 +21,6 @@ function resolveApiKey(
   provider: ProviderConfig,
   environment: ModelEnvironment,
 ): string | undefined {
-  if (provider.apiKey !== undefined) return provider.apiKey;
   if (provider.apiKeyEnv === undefined) return undefined;
   const value = environment.env[provider.apiKeyEnv];
   // 値ではなく変数の名前だけを出す: エラーはログと UI に出るため
@@ -37,6 +36,12 @@ export function createLanguageModel(
   role: RoleConfig,
   environment: ModelEnvironment,
 ): LanguageModel {
+  // AI SDK の既定（OPENAI_API_KEY などを process.env から読む）に任せない: 保存の時点で確かめられず、呼び出すまで失敗が見えないため
+  if (provider.type !== 'openai-compatible' && provider.apiKeyEnv === undefined) {
+    throw new LlmConfigError(
+      `provider「${providerName}」（${provider.type}）は apiKeyEnv で API キーの環境変数を指す`,
+    );
+  }
   const apiKey = resolveApiKey(provider, environment);
   const fetch = environment.fetch;
   switch (provider.type) {
