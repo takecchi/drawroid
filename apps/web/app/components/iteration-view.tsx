@@ -20,6 +20,7 @@ import { describeExcludedReason, describeWanted } from '../lib/excluded-reason';
 import { formatScore } from '../lib/format';
 import { readJudge, readThink } from '../lib/stage-output';
 import { AdoptButton } from './adopt-button';
+import { ChooseAsFavorite } from './choose-as-favorite';
 import { InterventionItem, type Intervention } from './intervention-view';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
 import { MaskPainter } from './mask-painter';
@@ -134,7 +135,8 @@ export function IterationView({
   /** 画像にマスクを塗って送れるか。自動ジョブで、まだ止まっていないときだけ */
   canPaintMask?: boolean;
   /** 画像を「この画像で決める」で採れるか。自動ジョブだけ。止まったジョブは押せない理由を添える */
-  adopt?: { disabledReason?: string };
+  /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
+  adopt?: { stopped: boolean };
   /** 画像を大きく見る窓で開く（窓の画像の key）。渡さなければ、画像は原寸への link */
   open?: (viewerKey: string) => void;
 }) {
@@ -195,18 +197,12 @@ export function IterationView({
             >
               <SelectionControls jobId={jobId} imageKey={imageKey} verdict={verdict} />
               {adopt !== undefined && (
-                <AdoptButton
+                <ImageDecision
                   jobId={jobId}
-                  image={{ iteration: iteration.iteration, index: image.index }}
-                  imageLabel={`${iteration.iteration} 回目の画像 ${image.index + 1} 番`}
-                  chosen={
-                    iteration.adopted !== null &&
-                    iteration.adopted.image.iteration === iteration.iteration &&
-                    iteration.adopted.image.index === image.index
-                  }
-                  {...(adopt.disabledReason !== undefined && {
-                    disabledReason: adopt.disabledReason,
-                  })}
+                  iteration={iteration}
+                  index={image.index}
+                  verdict={verdict}
+                  stopped={adopt.stopped}
                 />
               )}
               {canPaintMask && (
@@ -247,6 +243,48 @@ function viewerImagesOf(iterations: readonly Iteration[]): ViewerImage[] {
   );
 }
 
+/**
+ * 1枚の画像の決め方。走っている自動ジョブでは採る口（この画像で決める。止めて決める）、止まったジョブではお気に入りの口
+ * （この画像に決める（お気に入りにする））。人が選んだ画像は「選んだ」と出す。画像の枡と大きく見る窓で同じものを使う
+ */
+function ImageDecision({
+  jobId,
+  iteration,
+  index,
+  verdict,
+  stopped,
+}: {
+  jobId: string;
+  iteration: Iteration;
+  index: number;
+  verdict: SelectionVerdict | null;
+  stopped: boolean;
+}) {
+  const chosen =
+    iteration.adopted !== null &&
+    iteration.adopted.image.iteration === iteration.iteration &&
+    iteration.adopted.image.index === index;
+  const imageLabel = imageTitle(iteration.iteration, index);
+  if (stopped && !chosen) {
+    return (
+      <ChooseAsFavorite
+        jobId={jobId}
+        imageKey={formatImageKey({ iteration: iteration.iteration, index })}
+        imageLabel={imageLabel}
+        verdict={verdict}
+      />
+    );
+  }
+  return (
+    <AdoptButton
+      jobId={jobId}
+      image={{ iteration: iteration.iteration, index }}
+      imageLabel={imageLabel}
+      chosen={chosen}
+    />
+  );
+}
+
 /** 大きく見る窓の画像の下: 見る役の点と言葉、お気に入り・却下、（自動ジョブなら）「この画像で決める」。画像の枡と同じ部品・同じ口 */
 function JobViewerDetails({
   jobId,
@@ -259,7 +297,8 @@ function JobViewerDetails({
   iteration: Iteration;
   index: number;
   verdicts: ReadonlyMap<string, SelectionVerdict>;
-  adopt?: { disabledReason?: string };
+  /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
+  adopt?: { stopped: boolean };
 }) {
   const evaluation = readJudge(iteration.judge)?.images[index];
   const imageKey = formatImageKey({ iteration: iteration.iteration, index });
@@ -283,16 +322,12 @@ function JobViewerDetails({
         verdict={verdicts.get(imageKey) ?? null}
       />
       {adopt !== undefined && (
-        <AdoptButton
+        <ImageDecision
           jobId={jobId}
-          image={{ iteration: iteration.iteration, index }}
-          imageLabel={imageTitle(iteration.iteration, index)}
-          chosen={
-            iteration.adopted !== null &&
-            iteration.adopted.image.iteration === iteration.iteration &&
-            iteration.adopted.image.index === index
-          }
-          {...(adopt.disabledReason !== undefined && { disabledReason: adopt.disabledReason })}
+          iteration={iteration}
+          index={index}
+          verdict={verdicts.get(imageKey) ?? null}
+          stopped={adopt.stopped}
         />
       )}
     </div>
@@ -316,7 +351,8 @@ export function IterationList({
   verdicts: ReadonlyMap<string, SelectionVerdict>;
   interventions?: Intervention[];
   canPaintMask?: boolean;
-  adopt?: { disabledReason?: string };
+  /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
+  adopt?: { stopped: boolean };
 }) {
   const [viewing, setViewing] = useState<string | null>(null);
   const viewerImages = useMemo(() => viewerImagesOf(iterations), [iterations]);

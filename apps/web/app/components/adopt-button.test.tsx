@@ -18,14 +18,9 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-function renderButton(disabledReason?: string) {
+function renderButton() {
   render(
-    <AdoptButton
-      jobId={JOB}
-      image={{ iteration: 2, index: 0 }}
-      imageLabel="2 回目の画像 1 番"
-      {...(disabledReason !== undefined && { disabledReason })}
-    />,
+    <AdoptButton jobId={JOB} image={{ iteration: 2, index: 0 }} imageLabel="2 回目の画像 1 番" />,
   );
   return userEvent.setup();
 }
@@ -63,21 +58,12 @@ describe('AdoptButton', () => {
         jobId={JOB}
         image={{ iteration: 2, index: 0 }}
         imageLabel="2 回目の画像 1 番"
-        disabledReason="描くのはもう止まっているので、決められない"
         chosen
       />,
     );
 
     expect(screen.getByText('この画像で決めた（選んだ）')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
-  });
-
-  it('cannot be pressed for a job that has stopped, and says why', () => {
-    renderButton('描くのはもう止まっているので、決められない');
-
-    const button = screen.getByRole('button', { name: 'この画像で決める: 2 回目の画像 1 番' });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('描くのはもう止まっているので、決められない')).toBeTruthy();
   });
 
   it('shows why the image could not be taken, and lets the person try again', async () => {

@@ -138,7 +138,10 @@ describe('the stop card', () => {
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
     expect(within(card).getByText('最良: 2 回目の画像 2 番（見る役の点 0.92）')).toBeTruthy();
-    expect(within(card).getByRole('img', { name: '最良: 2 回目の画像 2 番' })).toBeTruthy();
+    // 出す画像は、その最良の画像（2 回目の 2 番）の縮小版
+    expect(
+      within(card).getByRole('img', { name: '最良: 2 回目の画像 2 番' }).getAttribute('src'),
+    ).toBe(`/api/files/jobs/${JOB}/iterations/2/images/1.preview.webp`);
     expect(within(card).getByRole('button', { name: CHOOSE })).toBeTruthy();
     expect(within(card).getByText('続けるなら、話しかけて指示を出す。')).toBeTruthy();
     expect(useJob).toHaveBeenCalledWith(JOB);
@@ -151,6 +154,8 @@ describe('the stop card', () => {
     await user.click(await screen.findByRole('button', { name: CHOOSE }));
 
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
+    // 止まったジョブは採る口を断る（409）ので、採る口は呼ばない
+    expect(adoptImage).not.toHaveBeenCalled();
   });
 
   it('says it is a favorite instead of the button when the best image already is', async () => {
@@ -428,6 +433,25 @@ describe('ConversationView', () => {
     await waitFor(() => expect(screen.getByText('確かめます')).toBeTruthy());
 
     expect(recheckBackendStatus).toHaveBeenCalledTimes(1);
+  });
+
+  // 読み直すのは、いちばん新しいバックエンドの失敗ごと: 前に一度落ちた会話でも、また落ちたら気づけるように
+  it('reads the backend again when another job stops because the backend failed again', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    const failed = (jobId: string) =>
+      confirmed({
+        type: 'job.stopped',
+        jobId,
+        reason: { kind: 'error', detail: '生成の段: 繋がらない', backendErrorKind: 'unreachable' },
+      });
+
+    stream.emit(failed(JOB));
+    await waitFor(() => expect(recheckBackendStatus).toHaveBeenCalledTimes(1));
+    stream.emit(failed('20261009-160000-z9y8'));
+
+    await waitFor(() => expect(recheckBackendStatus).toHaveBeenCalledTimes(2));
   });
 
   it.each([
