@@ -147,6 +147,22 @@ describe('buildThinkInput', () => {
     ).toThrow(InputOverBudgetError);
   });
 
+  it('accepts required sections that fill the window exactly, and refuses one token more', () => {
+    // 任意の節の無い入力（最良も参照画像も記憶も無い）: 見積もりが、そのまま必須の部分の大きさになる
+    const judgeInput = (contextTokens: number) =>
+      buildJudgeInput({
+        carry: createCarry('海辺', budget).carry,
+        images: [preview('img-0')],
+        budget,
+        window: { contextTokens, maxOutputTokens: 100 },
+      });
+    const required = judgeInput(1_000_000).report.estimatedInputTokens;
+
+    // 上限ちょうどは「超えていない」ので通す
+    expect(judgeInput(required + 100).report.estimatedInputTokens).toBe(required);
+    expect(() => judgeInput(required + 99)).toThrow(InputOverBudgetError);
+  });
+
   it('clips a carried text that exceeds the current budget and records it', () => {
     const carry: Carry = { intent: full(budget.text.intent + 50), completedIterations: 0 };
     const messages = buildThinkInput({
