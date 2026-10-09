@@ -8,7 +8,12 @@ import type { LlmConfig } from '@drawroid/llm';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
-import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from '../test-support.js';
+import {
+  noCandidateNotes,
+  noPermissionSettings,
+  memoryBudgetSettings,
+  memoryConversations,
+} from '../test-support.js';
 
 const SECRET = 'sk-should-not-leak';
 
@@ -49,6 +54,7 @@ function makeApp(env: Record<string, string | undefined>) {
     },
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
+    conversations: memoryConversations(),
     env,
     backendSettings: {
       read: () => Promise.reject(new Error('この試験では使わない')),

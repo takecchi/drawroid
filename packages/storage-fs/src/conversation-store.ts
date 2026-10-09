@@ -117,6 +117,11 @@ export class FsConversationStore implements ConversationStore {
     return ids;
   }
 
+  async hasConversation(conversationId: string): Promise<boolean> {
+    if (!isConversationId(conversationId)) return false;
+    return exists(this.paths.conversationFiles(conversationId).meta);
+  }
+
   readConversation(conversationId: string): Promise<Conversation> {
     return readValid(this.files(conversationId).meta, conversationSchema);
   }

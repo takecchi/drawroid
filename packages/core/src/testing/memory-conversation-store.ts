@@ -35,6 +35,10 @@ export class MemoryConversationStore implements ConversationStore {
     return [...this.conversations.keys()];
   }
 
+  async hasConversation(conversationId: string): Promise<boolean> {
+    return this.conversations.has(conversationId);
+  }
+
   async readConversation(conversationId: string): Promise<Conversation> {
     const conversation = this.conversations.get(conversationId);
     if (conversation === undefined) throw new Error(`会話 ${conversationId} は無い`);

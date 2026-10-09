@@ -2,6 +2,8 @@ import type {
   BudgetOverrides,
   Budgets,
   CandidateNotes,
+  ConversationHubs,
+  ConversationStore,
   ImageBackend,
   InterventionRecord,
   JobStore,
@@ -61,6 +63,14 @@ export type CandidateNotesStore = {
   write(notes: Readonly<Record<string, string>>): Promise<void>;
 };
 
+/** 会話の置き場所とハブ。SSE のハートビートの時計も、試験で差し替えられるようにここで受ける */
+export type ConversationsPort = {
+  store: ConversationStore;
+  hubs: ConversationHubs;
+  /** beat を一定の間隔で呼び、止める関数を返す。省けば15秒ごと */
+  heartbeat?: (beat: () => void) => () => void;
+};
+
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
@@ -74,6 +84,7 @@ export type ApiDeps = {
   stopConditionParser: StopConditionParser;
   permissionSettings: PermissionSettingsStore;
   candidateNotes: CandidateNotesStore;
+  conversations: ConversationsPort;
   /** API キーの環境変数が入っているかを確かめるため。値は応答に出さない */
   env: Readonly<Record<string, string | undefined>>;
   now?: () => Date;

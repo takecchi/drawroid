@@ -8,13 +8,19 @@ import { join } from 'node:path';
 import { createApi } from '@drawroid/api';
 import {
   basicPermissions,
+  ConversationHubs,
   DEFAULT_BUDGET,
   JobRunner,
   ManualGenerationRunner,
   resolveBudgets,
   type LlmCall,
 } from '@drawroid/core';
-import { ScriptedLlm, STUB_PNG, type Script } from '@drawroid/core/testing';
+import {
+  MemoryConversationStore,
+  ScriptedLlm,
+  STUB_PNG,
+  type Script,
+} from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -76,6 +82,7 @@ beforeEach(async () => {
     budget: DEFAULT_BUDGET,
     permissions: base,
   });
+  const conversationStore = new MemoryConversationStore();
   const notUsed = () => Promise.reject(new Error('この試験では使わない'));
   app = createApi({
     backend,
@@ -92,6 +99,10 @@ beforeEach(async () => {
     llmSettings: { read: async () => undefined, write: async () => undefined },
     permissionSettings: { base, read: async () => undefined, write: notUsed },
     candidateNotes: { read: async () => ({ notes: new Map() }), write: notUsed },
+    conversations: {
+      store: conversationStore,
+      hubs: new ConversationHubs({ store: conversationStore }),
+    },
     env: {},
   });
 });

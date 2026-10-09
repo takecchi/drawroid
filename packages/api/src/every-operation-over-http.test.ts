@@ -18,7 +18,12 @@ import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { noCandidateNotes, noPermissionSettings, memoryBudgetSettings } from './test-support.js';
+import {
+  noCandidateNotes,
+  noPermissionSettings,
+  memoryBudgetSettings,
+  memoryConversations,
+} from './test-support.js';
 
 const INTEGRATED = '逆光で、夕暮れの海辺に立つ白いワンピースの少女';
 
@@ -77,6 +82,7 @@ beforeEach(async () => {
     candidateNotes: noCandidateNotes,
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    conversations: memoryConversations(),
     env: {},
   });
 });
@@ -237,5 +243,42 @@ describe('every M3 operation goes over HTTP (M3:98)', () => {
       { imageKey: '1-0', verdict: 'rejected', score: 0.5, issues: ['背景が暗い'] },
       { imageKey: '1-1', verdict: 'favorite', score: 0.6, issues: ['背景が暗い'] },
     ]);
+  });
+});
+
+describe('every conversation operation goes over HTTP (会話 C)', () => {
+  it('creates, says, renames, lists, reads back and interrupts without any route of its own on the screen', async () => {
+    const created = await call('POST', '/conversations', {});
+    expect(created.status).toBe(201);
+    const id = created.body.conversation.conversationId as string;
+
+    const said = await call('POST', `/conversations/${id}/messages`, {
+      text: '何ができますか？',
+      clientMessageId: 'm-1',
+    });
+    expect(said).toEqual({ status: 202, body: { seq: 1 } });
+
+    expect((await call('PATCH', `/conversations/${id}`, { title: '相談' })).status).toBe(200);
+    const listed = await call('GET', '/conversations');
+    expect(listed.body.conversations).toEqual([
+      expect.objectContaining({
+        conversationId: id,
+        title: '相談',
+        lastMessage: '何ができますか？',
+      }),
+    ]);
+
+    const events = await call('GET', `/conversations/${id}/events?after=0`);
+    expect(events.body).toMatchObject({ last: 1, more: false });
+    expect(events.body.events[0]).toMatchObject({ type: 'user.message', seq: 1 });
+
+    // SSE の口（GET …/stream）は、流す中身を conversations.test.ts が見る。ここでは開けることだけを見る
+    const stream = await app.request(`/conversations/${id}/stream`);
+    expect(stream.headers.get('content-type')).toContain('text/event-stream');
+    await stream.body?.cancel();
+
+    expect((await call('POST', `/conversations/${id}/interrupt`, { scope: 'all' })).status).toBe(
+      202,
+    );
   });
 });

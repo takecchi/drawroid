@@ -20,7 +20,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { noCandidateNotes, memoryBudgetSettings } from './test-support.js';
+import { noCandidateNotes, memoryBudgetSettings, memoryConversations } from './test-support.js';
 
 let dir: string;
 let configPath: string;
@@ -56,6 +56,7 @@ beforeEach(async () => {
       write: (overrides) => writePermissionSettings(configPath, overrides),
     },
     candidateNotes: noCandidateNotes,
+    conversations: memoryConversations(),
     env: {},
   });
 });
