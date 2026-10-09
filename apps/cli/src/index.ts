@@ -19,7 +19,7 @@ import { parseCliArgs } from './args.js';
 import { AutoJobQueue } from './auto-job-queue.js';
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions, createBackendSettings } from './backend-settings.js';
-import { readConfig, resolveBackendKind, resolveForgeUrlWithSource } from './config.js';
+import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
 import { pickWebRoot } from './web-root.js';
@@ -48,18 +48,18 @@ async function main() {
   const configPath = dataPaths(root).config;
   const config = await readConfig(configPath);
   const kind = resolveBackendKind(args.backend, config);
-  const { forgeUrl, source } = resolveForgeUrlWithSource(args.forgeUrl, config);
+  const { url, source } = resolveBackendUrlWithSource(args.backendUrl, config);
   const createBackend = backendFactory(kind);
-  const backend = new ReplaceableBackend(createBackend(backendOptions(forgeUrl, config.backend)));
+  const backend = new ReplaceableBackend(createBackend(backendOptions(url, config.backend)));
   const backendSettings = createBackendSettings({
     configPath,
     backend,
     createBackend,
-    initial: { kind, forgeUrl, source, config },
+    initial: { kind, url, source, config },
   });
   const store = new FsJobStore(root);
   const manualRunner = new ManualGenerationRunner({ backend, store });
-  process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${forgeUrl}\n`);
+  process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
 
   const log = (line: string) => process.stdout.write(`${line}\n`);
   const autoQueue = new AutoJobQueue({

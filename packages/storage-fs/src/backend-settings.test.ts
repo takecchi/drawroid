@@ -26,19 +26,16 @@ describe('backend settings in config.json', () => {
   });
 
   it('writes the backend key even when config.json does not exist yet', async () => {
-    await writeBackendSettings(configPath, { forgeUrl: 'http://gpu:7860' });
-    expect(await readBackendSettings(configPath)).toEqual({ forgeUrl: 'http://gpu:7860' });
+    await writeBackendSettings(configPath, { url: 'http://gpu:7860' });
+    expect(await readBackendSettings(configPath)).toEqual({ url: 'http://gpu:7860' });
   });
 
   it('keeps the other keys when it rewrites the backend key', async () => {
-    await writeFile(
-      configPath,
-      JSON.stringify({ llm: { model: 'x' }, backend: { forgeUrl: 'a' } }),
-    );
-    await writeBackendSettings(configPath, { forgeUrl: 'http://gpu:7860' });
+    await writeFile(configPath, JSON.stringify({ llm: { model: 'x' }, backend: { url: 'a' } }));
+    await writeBackendSettings(configPath, { url: 'http://gpu:7860' });
     expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
       llm: { model: 'x' },
-      backend: { forgeUrl: 'http://gpu:7860' },
+      backend: { url: 'http://gpu:7860' },
     });
   });
 
