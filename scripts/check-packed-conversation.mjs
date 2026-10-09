@@ -137,11 +137,10 @@ try {
   const dataDir = join(work, 'data');
   const cwd = join(work, 'cwd');
   await mkdir(cwd);
-  ({ child, output: drawroidOutput } = await startDrawroid(
-    bin,
-    ['--data-dir', dataDir, '--backend-url', forge.url],
-    port,
-    {
+  const forgeUrl = forge.url;
+  // 同じデータディレクトリ・同じポートで起動する。落としたあとの起動し直しにも使う
+  const launch = () =>
+    startDrawroid(bin, ['--data-dir', dataDir, '--backend-url', forgeUrl], port, {
       cwd,
       env: {
         ...process.env,
@@ -149,8 +148,8 @@ try {
         FAKE_OPENAI_KEY: 'fake-key-not-real',
         FAKE_ANTHROPIC_KEY: 'fake-key-not-real',
       },
-    },
-  ));
+    });
+  ({ child, output: drawroidOutput } = await launch());
   const base = `http://127.0.0.1:${port}`;
 
   /** @param {string} model @param {'native' | 'json'} toolCalling @param {string} [provider] */
@@ -783,6 +782,193 @@ try {
   assert(
     (drawroidOutput?.() ?? '').includes('LLM の設定を読み込んだ'),
     'LLM の設定を保存すると「LLM の設定を読み込んだ」と出る',
+  );
+
+  // 落として起動し直す。ターンの途中（話す役の応答待ち）で、ジョブが描いている途中（Forge の生成待ち）のときに、固めた drawroid を SIGKILL で落とす
+  // （片付けの処理が走らない落ち方）。同じデータディレクトリで起動し直し、途切れたターンが閉じられ、ジョブが再開し、会話を続けられることを見る。
+  // 偽の Forge・LLM は落とさない。待ちは合図（SSE・ファイル・偽物の数え）で決める
+  llm.restartJudge(1);
+  const crashConv = await startConversation('夕焼けの海辺の少女を描いて', 'k1');
+  await reachMidTurn(
+    crashConv.stream,
+    crashConv.say,
+    async () => {
+      const sent = await api(base, 'POST', `/api/conversations/${crashConv.id}/messages`, {
+        text: '空をもう少し赤く',
+        clientMessageId: 'k2',
+      });
+      assert(sent.status === 202, '落とす前の 2 つ目の発言（restart）が 202', `${sent.status}`);
+    },
+    'restart',
+  );
+  const crashFrames = crashConv.stream.frames;
+  assert(
+    has(crashConv.stream, 'job.started') &&
+      !has(crashConv.stream, 'job.images') &&
+      count(crashConv.stream, 'turn.started') === 2 &&
+      count(crashConv.stream, 'turn.ended') === 1,
+    'restart: 落とす時点で、2 つ目のターンは途中（話す役の応答待ち）、ジョブは Forge の生成の途中',
+    JSON.stringify(crashFrames.map((f) => f.event)),
+  );
+  const crashJobId = String(crashFrames.find((f) => f.event === 'job.started')?.data?.jobId);
+  const crashEventsDir = join(dataDir, 'conversations', crashConv.id, 'events');
+
+  const exited = new Promise((resolve) => child?.once('exit', (code, signal) => resolve(signal)));
+  child?.kill('SIGKILL');
+  assert((await exited) === 'SIGKILL', 'restart: 固めた drawroid が SIGKILL で落ちた');
+  crashConv.stream.close();
+
+  // 「段のファイルは書けたが、会話のイベントを書く前に落ちた」状態を作る。自然な落ち方ではジョブの段はすでに会話へ出ていて、書き足しは起きない
+  // （落ちる前の job.think は確定している）ので、落ちている間に、その job.think のイベントのファイルだけを消す
+  const crashNames = await readdir(crashEventsDir);
+  /** @type {string[]} */
+  const thinkNames = [];
+  for (const name of crashNames) {
+    const event = JSON.parse(await readFile(join(crashEventsDir, name), 'utf8'));
+    if (event.type === 'job.think' && event.jobId === crashJobId) thinkNames.push(name);
+  }
+  assert(
+    thinkNames.length === 1,
+    'restart: 落ちている間に消す job.think のイベントのファイルが 1 つ見つかる',
+    `${thinkNames.length} 件`,
+  );
+  for (const name of thinkNames) await rm(join(crashEventsDir, name));
+
+  // 起動し直したあと、ジョブが再開して生成をやり直す。それを合図まで止めて、起動直後の状態を決まった形で見る
+  forge.holdGeneration();
+  const heldBeforeRestart = forge.stats.heldGenerations;
+  ({ child, output: drawroidOutput } = await launch());
+  const restartOutput = drawroidOutput;
+
+  const restartedEvents = await api(
+    base,
+    'GET',
+    `/api/conversations/${crashConv.id}/events?after=0&limit=1000`,
+  );
+  /** @type {any[]} */
+  const restarted = restartedEvents.json?.events ?? [];
+  const closes = restarted.filter((e) => e.type === 'turn.ended' && e.turn === 2);
+  assert(
+    closes.length === 1 &&
+      closes[0].outcome === 'interrupted' &&
+      closes[0].reason === 'プロセスの再起動で途切れた',
+    'restart: 途切れた 2 つ目のターンが、outcome interrupted・再起動の理由で 1 回だけ閉じられる',
+    JSON.stringify(restarted.map((e) => `${e.seq}:${e.type}`)),
+  );
+  const firstEnd = restarted.find((e) => e.type === 'turn.ended' && e.turn === 1);
+  assert(
+    firstEnd?.outcome === 'done',
+    'restart: 落とす前に閉じていた 1 つ目のターンは done のまま変わらない',
+    JSON.stringify(firstEnd),
+  );
+  assert(
+    restartOutput().includes('再起動で途切れた会話のターンを閉じた: 1'),
+    'restart: 起動の出力に、閉じたターンの数（1）が出る',
+    restartOutput(),
+  );
+
+  // 書き足し: 消した job.think が、ジョブの段のファイルから 1 回だけ戻る（閉じたターンのあとに足される）
+  const thinks = restarted.filter((e) => e.type === 'job.think' && e.jobId === crashJobId);
+  assert(
+    thinks.length === 1 &&
+      thinks[0].iteration === 1 &&
+      closes[0] !== undefined &&
+      thinks[0].seq > closes[0].seq,
+    'restart: 会話に出ていなかったジョブの job.think が、段のファイルから 1 回だけ書き足される',
+    JSON.stringify(restarted.map((e) => `${e.seq}:${e.type}`)),
+  );
+  assert(
+    restarted.filter((e) => e.type === 'job.started' && e.jobId === crashJobId).length === 1,
+    'restart: すでに会話に出ていたジョブのイベント（job.started）は二重に書かれない',
+    JSON.stringify(restarted.map((e) => `${e.seq}:${e.type}`)),
+  );
+  assert(
+    restartOutput().includes('会話に出ていなかったジョブのイベントを書き足した: 1'),
+    'restart: 起動の出力に、書き足した数（1）が出る',
+    restartOutput(),
+  );
+
+  // events/ には確定したものが残る
+  const restartedDisk = await Promise.all(
+    (await readdir(crashEventsDir)).map(async (name) =>
+      JSON.parse(await readFile(join(crashEventsDir, name), 'utf8')),
+    ),
+  );
+  assert(
+    restartedDisk.some(
+      (e) => e.type === 'turn.ended' && e.turn === 2 && e.outcome === 'interrupted',
+    ) && restartedDisk.some((e) => e.type === 'job.think' && e.jobId === crashJobId),
+    'restart: events/ に、interrupted の turn.ended と、書き足した job.think が残る',
+    restartedDisk.map((e) => e.type).join(','),
+  );
+
+  // SSE の読み直し。2 つ目のターンの user.message（seq 9）の続きから、同じ id が重複なしで来る
+  const resumeAt = restarted.find(
+    (e) => e.type === 'user.message' && e.seq > (firstEnd?.seq ?? 0),
+  )?.seq;
+  const afterRestart = await openSse(base, crashConv.id, { 'last-event-id': String(resumeAt) });
+  streams.push(afterRestart);
+  const wantAfter = restarted.filter((e) => e.seq > resumeAt).map((e) => e.seq);
+  await waitFor(
+    () => afterRestart.frames.filter((f) => f.id !== undefined).length >= wantAfter.length,
+    'restart: Last-Event-ID 付きの SSE の読み直し',
+  );
+  const gotAfter = afterRestart.frames.filter((f) => f.id !== undefined);
+  assert(
+    gotAfter
+      .slice(0, wantAfter.length)
+      .map((f) => Number(f.id))
+      .join(',') === wantAfter.join(',') &&
+      gotAfter.some((f) => f.event === 'turn.ended' && f.data?.outcome === 'interrupted'),
+    'restart: Last-Event-ID 付きの SSE に、interrupted の turn.ended と書き足したイベントが、続きの id から重複なしで来る',
+    `来た: ${gotAfter.map((f) => `${f.id}:${f.event}`).join(',')} / 期待 id: ${wantAfter.join(',')}`,
+  );
+  const viaQuery = await api(
+    base,
+    'GET',
+    `/api/conversations/${crashConv.id}/events?after=${resumeAt}&limit=1000`,
+  );
+  assert(
+    (viaQuery.json?.events ?? []).map((/** @type {{ seq: number }} */ e) => e.seq).join(',') ===
+      wantAfter.join(','),
+    'restart: after を使った読み直しでも、同じ続きが来る',
+    viaQuery.text,
+  );
+
+  // ジョブが再開して、Forge の生成からやり直す
+  await waitFor(
+    () => (forge?.stats.heldGenerations ?? 0) > heldBeforeRestart,
+    'restart: 再開したジョブの Forge の生成（起動し直したあと、ジョブが生成をやり直す）',
+  );
+
+  // 起動し直したあとも会話を続けられる
+  const resumedSay = await api(base, 'POST', `/api/conversations/${crashConv.id}/messages`, {
+    text: 'ありがとう',
+    clientMessageId: 'k3',
+  });
+  assert(
+    resumedSay.status === 202,
+    'restart: 起動し直したあとの発言が 202',
+    `${resumedSay.status} ${resumedSay.text}`,
+  );
+  await waitFor(
+    () => afterRestart.frames.some((f) => f.event === 'turn.ended' && f.data?.turn === 3),
+    'restart: 3 つ目のターンの turn.ended',
+  );
+  const thirdEnd = afterRestart.frames.find((f) => f.event === 'turn.ended' && f.data?.turn === 3);
+  assert(
+    thirdEnd?.data?.outcome === 'done',
+    'restart: 起動し直したあとのターンが done で閉じる',
+    JSON.stringify(thirdEnd?.data),
+  );
+  forge.releaseGeneration();
+  await waitFor(() => stopped(afterRestart), 'restart: 再開したジョブの job.stopped');
+  const resumedStop = afterRestart.frames.find((f) => f.event === 'job.stopped');
+  assert(
+    resumedStop?.data?.jobId === crashJobId &&
+      afterRestart.frames.some((f) => f.event === 'job.images'),
+    'restart: 再開したジョブが、job.images を出して、自分の判断で job.stopped まで進む',
+    JSON.stringify(afterRestart.frames.map((f) => f.event)),
   );
 } catch (error) {
   assert(false, '確かめの途中で例外', error instanceof Error ? error.message : String(error));
