@@ -185,3 +185,4 @@ export * from './conversation/talk/runner.js';
 export * from './conversation/talk/tools.js';
 export * from './conversation/progress-poller.js';
 export * from './conversation/progress-preview.js';
+export * from './conversation/job-bridge.js';
