@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const parses = vi.hoisted(() => ({ count: 0 }));
@@ -15,8 +15,12 @@ vi.mock('mdast-util-from-markdown', async (importOriginal) => {
 });
 
 import { MessageRow } from './features/chat/message';
+import { STREAMING_REDRAW_MS } from './features/chat/use-throttled-text';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('replies drawn again while another one streams', () => {
   it('parses only the streaming reply on each delta, not the settled ones', () => {
@@ -33,11 +37,16 @@ describe('replies drawn again while another one streams', () => {
         </MessageRow>
       </div>
     );
+    // 間引きの間隔を空けて増分を入れ、増分ごとに描き直させる
+    vi.useFakeTimers();
     const { rerender } = render(view('流れて'));
+    act(() => vi.advanceTimersByTime(STREAMING_REDRAW_MS));
     parses.count = 0;
 
     rerender(view('流れている'));
+    act(() => vi.advanceTimersByTime(STREAMING_REDRAW_MS));
     rerender(view('流れている途中'));
+    act(() => vi.advanceTimersByTime(STREAMING_REDRAW_MS));
 
     expect(parses.count).toBe(2);
   });

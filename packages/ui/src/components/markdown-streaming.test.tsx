@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MessageRow } from './features/chat/message';
+import { STREAMING_REDRAW_MS } from './features/chat/use-throttled-text';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -51,6 +53,8 @@ describe('a reply drawn while it streams', () => {
   it('draws every prefix, one character at a time, without throwing or warning, and stays safe', () => {
     // React の警告（key の重複・DOM の入れ子の誤りなど）も崩れとみなす
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // 描き直しは間引かれるので、増分ごとに間隔を進め、どの途中の形も実際に描かせる
+    vi.useFakeTimers();
     const { container, rerender } = render(
       <MessageRow author="ai" streaming>
         {''}
@@ -62,6 +66,7 @@ describe('a reply drawn while it streams', () => {
           {REPLY.slice(0, end)}
         </MessageRow>,
       );
+      act(() => vi.advanceTimersByTime(STREAMING_REDRAW_MS));
       expectSafe(container);
     }
     expect(errors).not.toHaveBeenCalled();
