@@ -8,8 +8,6 @@ export function describeExcludedReason(reason: ExcludedReason): string {
       return 'マスクが無い';
     case 'no-candidates-shown':
       return '候補を予算の内で1つも見せられなかった';
-    case 'not-supported-yet':
-      return 'まだ対応していない';
   }
 }
 

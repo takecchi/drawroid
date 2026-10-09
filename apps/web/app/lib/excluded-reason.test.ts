@@ -12,7 +12,6 @@ describe('describeExcludedReason', () => {
   it.each([
     [{ kind: 'no-mask' }, 'マスクが無い'],
     [{ kind: 'no-candidates-shown' }, '候補を予算の内で1つも見せられなかった'],
-    [{ kind: 'not-supported-yet' }, 'まだ対応していない'],
   ] as const)('puts %j into words', (reason, words) => {
     expect(describeExcludedReason(reason)).toBe(words);
   });

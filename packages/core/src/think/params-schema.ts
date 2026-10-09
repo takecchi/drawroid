@@ -14,7 +14,7 @@ export interface ParamsSchemaContext {
   imageSources?: readonly string[];
 }
 
-export type OmittedReason = 'no-candidates-shown' | 'not-supported-yet';
+export type OmittedReason = 'no-candidates-shown';
 
 export interface ParamsSchema {
   schema: z.ZodObject<Record<string, z.ZodType>>;
