@@ -4,6 +4,7 @@
  */
 export * from './components/common';
 export * from './components/layout';
+export * from './components/app-shell';
 export * from './components/features/record';
 export * from './components/features/status-badge';
 export * from './components/features/empty-state';

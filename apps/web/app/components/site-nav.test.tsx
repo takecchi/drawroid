@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -42,5 +43,21 @@ describe('SiteNav', () => {
       ).toBeNull();
       cleanup();
     }
+  });
+
+  it('opens the same destinations from the menu button, and closes once one is chosen', async () => {
+    render(
+      <MemoryRouter initialEntries={['/jobs']}>
+        <SiteNav />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'メニューを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '行き先' });
+    const inDrawer = within(drawer).getByRole('link', { name: '記憶' });
+    expect(inDrawer.getAttribute('href')).toBe('/memory');
+
+    await userEvent.click(inDrawer);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

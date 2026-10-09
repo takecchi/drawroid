@@ -13,6 +13,7 @@
     "@drawroid/ui": "workspace:*",
     "@react-router/node": "catalog:",
     "isbot": "catalog:",
+    "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:",

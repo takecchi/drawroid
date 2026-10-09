@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../../common';
-import { SiteHeader, siteNavLinkClass } from '../../layout';
+import { MobileTopBar } from '../../app-shell';
 import {
   ChatComposer,
   ChatLayout,
@@ -142,20 +142,12 @@ export const Conversation: Story = {
   render: () => <ConversationScreen />,
 };
 
-const NAV = ['会話', '生成と設定', '依頼', 'ジョブ', '記憶', '許可', '候補の説明'];
-
 /** 狭い幅（携帯）で、上の帯の下に会話の画面を置いたもの。入力欄が画面の下に収まる */
 export const ConversationNarrow: Story = {
   globals: { viewport: { value: 'mobile2', isRotated: false } },
   render: () => (
     <>
-      <SiteHeader brand="drawroid">
-        {NAV.map((label, index) => (
-          <a key={label} href={`#${label}`} className={siteNavLinkClass({ isActive: index === 0 })}>
-            {label}
-          </a>
-        ))}
-      </SiteHeader>
+      <MobileTopBar onOpenNav={() => undefined} />
       <ConversationScreen />
     </>
   ),
