@@ -22,7 +22,8 @@
     "check:packed-conversation": "node ./scripts/check-packed-conversation.mjs",
     "check:packed-browser": "node ./scripts/check-packed-browser.mjs",
     "check:packed-browser-conversation": "node ./scripts/check-packed-browser-conversation.mjs",
-    "check:packed-browser-long-conversation": "node ./scripts/check-packed-browser-long-conversation.mjs"
+    "check:packed-browser-long-conversation": "node ./scripts/check-packed-browser-long-conversation.mjs",
+    "check:packed-browser-image-viewer": "node ./scripts/check-packed-browser-image-viewer.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

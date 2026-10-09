@@ -10,8 +10,11 @@ import {
   EmptyState,
   ImageCard,
   ImageGrid,
+  ImageViewer,
   Section,
+  type ViewerImage,
 } from '@drawroid/ui';
+import { useMemo, useState } from 'react';
 
 import { describeExcludedReason, describeWanted } from '../lib/excluded-reason';
 import { formatScore } from '../lib/format';
@@ -120,6 +123,7 @@ export function IterationView({
   interventions = [],
   canPaintMask = false,
   adopt,
+  open,
 }: {
   jobId: string;
   iteration: Iteration;
@@ -131,6 +135,8 @@ export function IterationView({
   canPaintMask?: boolean;
   /** 画像を「この画像で決める」で採れるか。自動ジョブだけ。止まったジョブは押せない理由を添える */
   adopt?: { disabledReason?: string };
+  /** 画像を大きく見る窓で開く（窓の画像の key）。渡さなければ、画像は原寸への link */
+  open?: (viewerKey: string) => void;
 }) {
   const judge = readJudge(iteration.judge);
   const adopted = iteration.judge === null ? iteration.adopted : null;
@@ -159,7 +165,10 @@ export function IterationView({
               key={image.index}
               href={image.url}
               src={image.previewUrl}
-              alt={`seed ${image.seed}`}
+              // 会話の画像の行と同じ呼び方（1 から数える）: 同じ画像が、画面によって別の名前で読まれないため
+              alt={`${imageTitle(iteration.iteration, image.index)}（seed ${image.seed ?? '不明'}）`}
+              viewerKey={imageKey}
+              {...(open !== undefined && { onOpen: () => open(imageKey) })}
               verdict={verdict}
               caption={
                 <>
@@ -220,6 +229,24 @@ export function IterationView({
   );
 }
 
+const imageTitle = (iteration: number, index: number) => `${iteration} 回目の画像 ${index + 1} 番`;
+
+/** ジョブの全部の回の画像を、回の順・番の順に並べる。大きく見る窓の送りはこの順に進む */
+function viewerImagesOf(iterations: readonly Iteration[]): ViewerImage[] {
+  return iterations.flatMap((iteration) =>
+    iteration.images.map((image) => {
+      const title = imageTitle(iteration.iteration, image.index);
+      return {
+        key: formatImageKey({ iteration: iteration.iteration, index: image.index }),
+        src: image.url,
+        fullSrc: image.url,
+        title,
+        alt: `${title}（seed ${image.seed ?? '不明'}）`,
+      };
+    }),
+  );
+}
+
 export function IterationList({
   jobId,
   heading,
@@ -239,8 +266,11 @@ export function IterationList({
   canPaintMask?: boolean;
   adopt?: { disabledReason?: string };
 }) {
+  const [viewing, setViewing] = useState<string | null>(null);
+  const viewerImages = useMemo(() => viewerImagesOf(iterations), [iterations]);
   return (
     <Section title={heading}>
+      <ImageViewer images={viewerImages} openKey={viewing} onOpenKeyChange={setViewing} />
       {iterations.length === 0 && <EmptyState title="まだ画像は無い。" />}
       {iterations.map((iteration) => (
         <IterationView
@@ -250,6 +280,7 @@ export function IterationList({
           verdicts={verdicts}
           canPaintMask={canPaintMask}
           {...(adopt !== undefined && { adopt })}
+          open={setViewing}
           interventions={interventions.filter(
             (intervention) =>
               intervention.kind === 'instruction' &&
