@@ -95,6 +95,47 @@ describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
     expect(JSON.stringify(outcome)).not.toContain(SECRET);
   });
 
+  it('sends the role maxOutputTokens as the limit of the output', async () => {
+    const { fetch, calls } = fakeFetch(() => chatCompletion('{"canStop":true}'));
+    const base = config('native');
+    const llm = createLlm(
+      {
+        ...base,
+        roles: { think: { ...base.roles.think, maxOutputTokens: 777 } },
+      },
+      { env: { LOCAL_KEY: SECRET }, fetch },
+    );
+    await llm.generateStructured(judgeCall);
+    expect(calls[0]?.body.max_tokens).toBe(777);
+  });
+
+  it.each([500, 429])(
+    'succeeds when the first request fails with %i and a network retry succeeds',
+    async (failure) => {
+      let count = 0;
+      const fetch = async () => {
+        count += 1;
+        if (count === 1) {
+          return new Response(JSON.stringify({ error: { message: 'busy' } }), {
+            status: failure,
+            headers: { 'content-type': 'application/json', 'retry-after-ms': '1' },
+          });
+        }
+        return new Response(JSON.stringify(chatCompletion('{"canStop":true}')), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      };
+      const llm = createLlm(
+        { ...config('native'), networkRetries: 1 },
+        { env: { LOCAL_KEY: SECRET }, fetch: fetch as typeof globalThis.fetch },
+      );
+      const outcome = await llm.generateStructured(judgeCall);
+      expect(outcome).toMatchObject({ ok: true, value: { canStop: true } });
+      expect(count).toBe(2);
+    },
+  );
+
   it('names the missing environment variable without a value', () => {
     expect(() => createLlm(config('native'), { env: {} })).toThrow(/LOCAL_KEY/);
   });
