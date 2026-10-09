@@ -136,16 +136,41 @@ const sameJobRole = (
 
 /** 確定したイベントを1件取り込む。読み直しと SSE の継ぎ目で同じ seq が二度来ても、二重にしない */
 export function applyConfirmed(state: ChatState, event: ConversationEvent): ChatState {
-  // ふつうは末尾に足すだけ: 毎回全件から同じ seq を探すと、長い会話の読み込みがイベントの数の二乗で重くなるため
-  const appends = event.seq > lastSeq(state);
-  if (!appends && state.confirmed.some((existing) => existing.seq === event.seq)) return state;
-  const confirmed = appends
-    ? [...state.confirmed, event]
-    : [...state.confirmed, event].sort((a, b) => a.seq - b.seq);
-  const live = new Map(state.live);
-  const progress = new Map(state.progress);
-  const held = new Set(state.held);
-  let status = state.status;
+  return applyConfirmedAll(state, [event]);
+}
+
+/**
+ * 確定したイベントをまとめて取り込む（`applyConfirmed` を順に当てたのと同じ）。
+ * 写しを作るのは1度だけ: 1件ずつ写すと、長い会話を開くときの読み込みがイベントの数の二乗で重くなるため。
+ */
+export function applyConfirmedAll(
+  state: ChatState,
+  events: readonly ConversationEvent[],
+): ChatState {
+  let draft: ChatState | undefined;
+  for (const event of events) {
+    const current = draft ?? state;
+    // ふつうは末尾に足すだけ: 毎回全件から同じ seq を探すと、長い会話の読み込みがイベントの数の二乗で重くなるため
+    const appends = event.seq > lastSeq(current);
+    if (!appends && current.confirmed.some((existing) => existing.seq === event.seq)) continue;
+    draft ??= {
+      confirmed: [...state.confirmed],
+      live: new Map(state.live),
+      progress: new Map(state.progress),
+      status: state.status,
+      held: new Set(state.held),
+    };
+    draft.confirmed.push(event);
+    if (!appends) draft.confirmed.sort((a, b) => a.seq - b.seq);
+    draft.status = confirmInto(draft, event);
+  }
+  return draft ?? state;
+}
+
+/** 確定したイベント1件で、書きかけ・進み具合・待ち・状態を直す（`draft` をその場で書き換え、新しい状態を返す） */
+function confirmInto(draft: ChatState, event: ConversationEvent): ChatStatus | undefined {
+  const { live, progress, held } = draft;
+  let status = draft.status;
 
   switch (event.type) {
     case 'assistant.message':
@@ -196,7 +221,7 @@ export function applyConfirmed(state: ChatState, event: ConversationEvent): Chat
     default:
       break;
   }
-  return { confirmed, live, progress, status, held };
+  return status;
 }
 
 /** 確定しない増分を1件取り込む。本文と思考は継ぎ足す（増分で届くため） */
@@ -247,36 +272,34 @@ function reasoningLabel(source: ReasoningSource | undefined): string {
 
 const imagesKey = (jobId: string, iteration: number) => `images:${jobId}:${iteration}`;
 
-/** ログの行の並びを作る */
-export function chatItems(state: ChatState): ChatItem[] {
+/**
+ * 確定したイベントの行の並びを作る。イベントの数に比例する手間で作る: 長い会話では、行を前から探し直すと二乗で重くなるため。
+ * 前の行を書き換えるもの（送り直し・ツールの結果・評価・途切れ）は、行の位置を覚えておいて直接書き換える。
+ */
+function buildConfirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[] {
   const items: ChatItem[] = [];
-  const tools = new Map<string, ItemOf<'tool'>>();
-  const images = new Map<string, ItemOf<'images'>>();
-  const userByTurn = new Map<number, ItemOf<'user'>>();
-  const pendingUser: ItemOf<'user'>[] = [];
+  const tools = new Map<string, number>();
+  const images = new Map<string, number>();
+  const userIndex = new Map<number, number>();
+  const userByTurn = new Map<number, number>();
+  const interruptedByText = new Map<string, number[]>();
 
-  for (const event of state.confirmed) {
+  for (const event of confirmed) {
     const key = `seq:${event.seq}`;
     switch (event.type) {
       case 'user.message': {
         // 送り直した元の行からは「送り直す」を外す: 残すと、もう一度押して同じ発言（描いて、など）を二重に送れてしまうため
-        for (const [index, earlier] of items.entries()) {
-          if (
-            earlier.kind === 'user' &&
-            earlier.turnInterrupted !== undefined &&
-            earlier.text === event.text
-          )
-            items[index] = { ...earlier, resent: true };
+        for (const index of interruptedByText.get(event.text) ?? []) {
+          items[index] = { ...(items[index] as ItemOf<'user'>), resent: true };
         }
-        const item = { kind: 'user' as const, key, seq: event.seq, at: event.at, text: event.text };
-        pendingUser.push(item);
-        items.push(item);
+        userIndex.set(event.seq, items.length);
+        items.push({ kind: 'user', key, seq: event.seq, at: event.at, text: event.text });
         break;
       }
       case 'turn.started':
         for (const seq of event.messageSeqs) {
-          const user = pendingUser.find((item) => item.seq === seq);
-          if (user !== undefined) userByTurn.set(event.turn, user);
+          const index = userIndex.get(seq);
+          if (index !== undefined) userByTurn.set(event.turn, index);
         }
         break;
       case 'assistant.message':
@@ -305,21 +328,18 @@ export function chatItems(state: ChatState): ChatItem[] {
           input: event.input,
           state: 'running' as const,
         };
-        tools.set(event.callId, item);
+        tools.set(event.callId, items.length);
         items.push(item);
         break;
       }
       case 'tool.result': {
-        const call = tools.get(event.callId);
-        if (call === undefined) break;
-        const index = items.indexOf(call);
-        const done = {
-          ...call,
-          state: event.ok ? ('ok' as const) : ('error' as const),
+        const index = tools.get(event.callId);
+        if (index === undefined) break;
+        items[index] = {
+          ...(items[index] as ItemOf<'tool'>),
+          state: event.ok ? 'ok' : 'error',
           summary: event.summary,
         };
-        items[index] = done;
-        tools.set(event.callId, done);
         break;
       }
       case 'turn.ended':
@@ -327,10 +347,11 @@ export function chatItems(state: ChatState): ChatItem[] {
           items.push({ kind: 'turn-error', key, reason: event.reason });
         if (event.outcome === 'interrupted') {
           // 途中で途切れたターンは、読んだ発言に「送り直す」を出す（設計: 復帰）
-          const user = userByTurn.get(event.turn);
-          if (user !== undefined) {
-            const index = items.indexOf(user);
+          const index = userByTurn.get(event.turn);
+          if (index !== undefined) {
+            const user = items[index] as ItemOf<'user'>;
             items[index] = { ...user, turnInterrupted: event.reason ?? '応答が途中で途切れた' };
+            interruptedByText.set(user.text, [...(interruptedByText.get(user.text) ?? []), index]);
           }
         }
         break;
@@ -370,14 +391,15 @@ export function chatItems(state: ChatState): ChatItem[] {
           iteration: event.iteration,
           images: event.images.map(({ index, seed }) => ({ index, seed })),
         };
-        images.set(item.key, item);
+        images.set(item.key, items.length);
         items.push(item);
         break;
       }
       case 'job.judge': {
         // 評価は、同じ回の画像の行に重ねる: 画像と点数が離れて並ぶと、どの画像の点数か追いにくいため
-        const shown = images.get(imagesKey(event.jobId, event.iteration));
-        if (shown !== undefined) {
+        const index = images.get(imagesKey(event.jobId, event.iteration));
+        if (index !== undefined) {
+          const shown = items[index] as ItemOf<'images'>;
           const scored = {
             ...shown,
             images: shown.images.map((image) => {
@@ -387,8 +409,7 @@ export function chatItems(state: ChatState): ChatItem[] {
                 : { ...image, score: judged.score, issues: judged.issues };
             }),
           };
-          items[items.indexOf(shown)] = scored;
-          images.set(scored.key, scored);
+          items[index] = scored;
         }
         if (event.reasoning !== undefined) {
           items.push({
@@ -425,7 +446,25 @@ export function chatItems(state: ChatState): ChatItem[] {
         break;
     }
   }
+  return items;
+}
 
+// 確定したイベントの配列は、取り込むたびに新しく作り直し、作ったあとは書き換えない（applyConfirmedAll）。だから配列ごとに覚えてよい
+const confirmedItemsCache = new WeakMap<readonly ConversationEvent[], ChatItem[]>();
+
+/** 同じ確定の配列には、同じ行（同じオブジェクト）を返す: 書きかけの増分だけが変わる間、確定した行を描き直さずに済むため */
+function confirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[] {
+  let items = confirmedItemsCache.get(confirmed);
+  if (items === undefined) {
+    items = buildConfirmedItems(confirmed);
+    confirmedItemsCache.set(confirmed, items);
+  }
+  return items;
+}
+
+/** ログの行の並びを作る */
+export function chatItems(state: ChatState): ChatItem[] {
+  const items = [...confirmedItems(state.confirmed)];
   for (const [partId, part] of state.live) {
     items.push(
       part.kind === 'assistant'

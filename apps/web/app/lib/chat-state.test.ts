@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyConfirmed,
+  applyConfirmedAll,
   applyLive,
   chatItems,
   EMPTY_CHAT_STATE,
@@ -189,6 +190,52 @@ describe('chatItems', () => {
       '二',
       '三',
     ]);
+  });
+});
+
+describe('long conversations', () => {
+  it('keeps the confirmed rows as the same objects while only the streaming part changes', () => {
+    const confirmed = confirmAll([
+      { type: 'user.message', text: '海を描いて', attachments: [] },
+      { type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] },
+    ]);
+    const before = chatItems(
+      live(confirmed, { type: 'delta.text', partId: 'm1', turn: 1, text: '流れ' }),
+    );
+    const after = chatItems(
+      live(
+        confirmed,
+        { type: 'delta.text', partId: 'm1', turn: 1, text: '流れ' },
+        { type: 'delta.text', partId: 'm1', turn: 1, text: 'ている' },
+      ),
+    );
+
+    expect(after.slice(0, 2)).toEqual(before.slice(0, 2));
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    expect(after.at(-1)).toMatchObject({ kind: 'assistant', text: '流れている', streaming: true });
+  });
+
+  it('takes in many confirmed events at once exactly as one at a time, with repeats and late ones', () => {
+    const events = [
+      { type: 'user.message', text: '一', attachments: [], seq: 1, at: AT },
+      { type: 'turn.started', turn: 1, messageSeqs: [1], seq: 2, at: AT },
+      { type: 'user.message', text: '三', attachments: [], seq: 4, at: AT },
+      { type: 'turn.ended', turn: 1, outcome: 'interrupted', seq: 3, at: AT },
+      { type: 'user.message', text: '一', attachments: [], seq: 5, at: AT },
+      { type: 'user.message', text: '三', attachments: [], seq: 4, at: AT },
+    ] as ConversationEvent[];
+    const streaming = live(EMPTY_CHAT_STATE, { type: 'status', status: 'waiting-llm' });
+
+    const oneByOne = events.reduce(applyConfirmed, streaming);
+    const atOnce = applyConfirmedAll(streaming, events);
+
+    expect(atOnce).toEqual(oneByOne);
+    expect(chatItems(atOnce)).toEqual(chatItems(oneByOne));
+    expect(chatItems(atOnce).find((item) => item.kind === 'user' && item.seq === 1)).toMatchObject({
+      turnInterrupted: expect.any(String),
+      resent: true,
+    });
   });
 });
 

@@ -57,7 +57,15 @@ export function ChatLog({
       // スクロールの錨止めを切る: 上の行の背が伸びるとブラウザが位置をずらし、その出来事を人が上へ戻ったと読んでしまうため
       className={cn('min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]', className)}
     >
-      <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
+      {/*
+        画面の外の行は、配置と描画を飛ばす（content-visibility: auto）: 長い会話では、増分のたびに数千行ぶんの配置と描画が走り、
+        描き直し1回の大半を占めるため。行は DOM に残るので、ページの中の検索（Ctrl+F）と読み上げは今までどおり古い発言に届く。
+        画面の外にある間の背は、いちど描いた背を覚えて使う（auto）。まだ描いていない行は仮の背で置く
+      */}
+      <div
+        ref={contentRef}
+        className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6 [&>*]:[contain-intrinsic-size:auto_120px] [&>*]:[content-visibility:auto]"
+      >
         {children}
       </div>
     </div>

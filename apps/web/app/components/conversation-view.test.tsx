@@ -127,6 +127,24 @@ describe('ConversationView', () => {
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
   });
 
+  it('does not draw the confirmed rows again while a reply streams in', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    const drawn = vi.mocked(useSelections).mock.calls.length;
+
+    await act(async () => {
+      stream.emit({ type: 'delta.text', partId: 'm9', turn: 9, text: '流れて' });
+      stream.emit({ type: 'delta.text', partId: 'm9', turn: 9, text: 'いる返答' });
+    });
+
+    expect(screen.getByText(/流れて/)).toBeTruthy();
+    expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+  });
+
   it('restores the log from every page of confirmed events, then subscribes after the last one', async () => {
     const first = [confirmed({ type: 'user.message', text: '描けますか？', attachments: [] })];
     const second = [

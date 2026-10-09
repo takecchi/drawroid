@@ -354,8 +354,18 @@ export function ConversationView({
   const sendRef = useRef(send);
   sendRef.current = send;
   const resend = useCallback((text: string) => void sendRef.current(text), []);
+  // 行が変わらなければ、前に作った行の要素をそのまま渡す: 同じ要素なら React はその行を描き直さない。
+  // 書きかけの増分のたびに、確定した数千行まで描き直すと、長い会話で増分1回が重くなるため（確定した行は chatItems が同じオブジェクトで返す）
+  const rowCache = useRef(new WeakMap<ChatItem, { sending: boolean; row: ReactNode }>());
   const rows = useMemo(
-    () => items.map((item) => renderItem(item, { onResend: resend, disabled: sending })),
+    () =>
+      items.map((item) => {
+        const cached = rowCache.current.get(item);
+        if (cached !== undefined && cached.sending === sending) return cached.row;
+        const row = renderItem(item, { onResend: resend, disabled: sending });
+        rowCache.current.set(item, { sending, row });
+        return row;
+      }),
     [items, resend, sending],
   );
 
