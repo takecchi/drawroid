@@ -3,12 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { BackendBusyError } from '@drawroid/api';
-import type { ForgeBackendOptions } from '@drawroid/backend-forge';
 import { generationRequestSchema } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createBackendSettings } from './backend-settings.js';
+import { createBackendSettings, type BackendOptions } from './backend-settings.js';
 import { readConfig } from './config.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
 
@@ -34,7 +33,7 @@ const request = generationRequestSchema.parse({
 async function setup(config: object, source: 'cli' | 'config' | 'default' = 'config') {
   await writeFile(configPath, JSON.stringify(config));
   const first = new StubBackend({ generateDelayMs: 20 });
-  const created: { options: ForgeBackendOptions; backend: StubBackend }[] = [];
+  const created: { options: BackendOptions; backend: StubBackend }[] = [];
   const backend = new ReplaceableBackend(first);
   const settings = createBackendSettings({
     configPath,
@@ -44,19 +43,25 @@ async function setup(config: object, source: 'cli' | 'config' | 'default' = 'con
       created.push({ options, backend: next });
       return next;
     },
-    initial: { forgeUrl: 'http://old:7860', source, config: await readConfig(configPath) },
+    initial: {
+      kind: 'a1111',
+      forgeUrl: 'http://old:7860',
+      source,
+      config: await readConfig(configPath),
+    },
   });
   return { first, backend, settings, created };
 }
 
 describe('backend settings', () => {
-  it('reports the url in use and where it came from, without the password', async () => {
+  it('reports the kind and the url in use and where the url came from, without the password', async () => {
     const { settings } = await setup(
       { backend: { auth: { username: 'u', password: 'secret' }, generateTimeoutMs: 5000 } },
       'cli',
     );
     const view = await settings.read();
     expect(view).toEqual({
+      kind: 'a1111',
       forgeUrl: 'http://old:7860',
       forgeUrlSource: 'cli',
       auth: { username: 'u' },
@@ -69,7 +74,11 @@ describe('backend settings', () => {
     const { settings, backend, first, created } = await setup({});
     const view = await settings.write({ forgeUrl: 'http://new:7860' });
     await backend.generate(request, new AbortController().signal);
-    expect(view).toMatchObject({ forgeUrl: 'http://new:7860', forgeUrlSource: 'config' });
+    expect(view).toMatchObject({
+      kind: 'a1111',
+      forgeUrl: 'http://new:7860',
+      forgeUrlSource: 'config',
+    });
     expect(created[0]?.options.baseUrl).toBe('http://new:7860');
     expect(created[0]?.backend.requests).toHaveLength(1);
     expect(first.requests).toEqual([]);
@@ -92,8 +101,9 @@ describe('backend settings', () => {
     expect(await settings.read()).toMatchObject({ forgeUrl: 'http://new:7860' });
   });
 
-  it('keeps the other keys, the auth and the timeout in config.json after a write', async () => {
+  it('keeps the other keys, the kind, the auth and the timeout in config.json after a write', async () => {
     const backendConfig = {
+      kind: 'a1111',
       forgeUrl: 'http://old:7860',
       auth: { username: 'u', password: 'secret' },
       generateTimeoutMs: 5000,
@@ -123,7 +133,7 @@ describe('backend settings', () => {
         created.push(next);
         return next;
       },
-      initial: { forgeUrl: 'http://old:7860', source: 'config', config: {} },
+      initial: { kind: 'a1111', forgeUrl: 'http://old:7860', source: 'config', config: {} },
     });
 
     await expect(settings.write({ forgeUrl: 'http://new:7860' })).rejects.toThrow();

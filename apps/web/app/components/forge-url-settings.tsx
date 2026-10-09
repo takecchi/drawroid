@@ -7,6 +7,8 @@ const SOURCE_LABELS = {
   default: '既定値',
 } as const;
 
+const KIND_LABELS = { forge: 'Forge', a1111: 'A1111' } as const;
+
 export function ForgeUrlSettings() {
   const { data, error } = useBackendSettings();
   const [input, setInput] = useState('');
@@ -30,10 +32,14 @@ export function ForgeUrlSettings() {
 
   return (
     <section>
-      <h2>Forge の URL</h2>
+      <h2>バックエンドの URL</h2>
       {error !== undefined && <p role="alert">設定を読めない: {error.message}</p>}
       {data !== undefined && (
         <>
+          <p>
+            種類: {KIND_LABELS[data.kind]}（起動時の --backend か config.json の backend.kind
+            で変える）
+          </p>
           <p>
             いまの URL: <code>{data.forgeUrl}</code>（{SOURCE_LABELS[data.forgeUrlSource]}）
           </p>
@@ -51,7 +57,7 @@ export function ForgeUrlSettings() {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder="http://127.0.0.1:7860"
-          aria-label="Forge の URL"
+          aria-label="バックエンドの URL"
           size={40}
         />{' '}
         <button type="submit" disabled={saving || input.trim() === ''}>

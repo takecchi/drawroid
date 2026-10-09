@@ -9,7 +9,7 @@ import type {
   ImageBackend,
 } from '@drawroid/core';
 
-// 起動したまま Forge の URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる
+// 起動したままバックエンドの URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる
 export class ReplaceableBackend implements ImageBackend {
   private current: ImageBackend;
   private running = 0;

@@ -18,8 +18,10 @@ import { stopConditionsRoutes } from './routes/stop-conditions.js';
 
 export {
   BackendBusyError,
+  backendKindSchema,
   backendSettingsViewSchema,
   updateBackendSettingsSchema,
+  type BackendKind,
   type BackendSettingsPort,
   type BackendSettingsView,
   type UpdateBackendSettings,

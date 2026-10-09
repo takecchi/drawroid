@@ -2,7 +2,6 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-import { ForgeBackend, type ForgeBackendOptions } from '@drawroid/backend-forge';
 import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
@@ -17,8 +16,9 @@ import {
 
 import { parseCliArgs } from './args.js';
 import { AutoJobQueue } from './auto-job-queue.js';
-import { createBackendSettings, forgeBackendOptions } from './backend-settings.js';
-import { readConfig, resolveForgeUrlWithSource } from './config.js';
+import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
+import { backendOptions, createBackendSettings } from './backend-settings.js';
+import { readConfig, resolveBackendKind, resolveForgeUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
 
@@ -42,20 +42,19 @@ async function main() {
   // どのアダプタを使うかを決めるのは、組み立ての根であるここだけ
   const configPath = dataPaths(root).config;
   const config = await readConfig(configPath);
+  const kind = resolveBackendKind(args.backend, config);
   const { forgeUrl, source } = resolveForgeUrlWithSource(args.forgeUrl, config);
-  const createBackend = (options: ForgeBackendOptions) => new ForgeBackend(options);
-  const backend = new ReplaceableBackend(
-    createBackend(forgeBackendOptions(forgeUrl, config.backend)),
-  );
+  const createBackend = backendFactory(kind);
+  const backend = new ReplaceableBackend(createBackend(backendOptions(forgeUrl, config.backend)));
   const backendSettings = createBackendSettings({
     configPath,
     backend,
     createBackend,
-    initial: { forgeUrl, source, config },
+    initial: { kind, forgeUrl, source, config },
   });
   const store = new FsJobStore(root);
   const manualRunner = new ManualGenerationRunner({ backend, store });
-  process.stdout.write(`drawroid: Forge ${forgeUrl}\n`);
+  process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${forgeUrl}\n`);
 
   const log = (line: string) => process.stdout.write(`${line}\n`);
   const autoQueue = new AutoJobQueue({
