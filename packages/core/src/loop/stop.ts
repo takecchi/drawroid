@@ -58,6 +58,8 @@ export type StopCheck = {
   judgeSaysStop: boolean;
 };
 
+export const AI_STOP: StopReason = { kind: 'ai', detail: '見る役が意図どおりと判断した' };
+
 /**
  * 回の境目で、次の回へ進むかを決める。人間の停止とエラーはここを通らない（即座に止める）。
  * 順は AI の判断 → 回数 → 枚数 → 時間。
@@ -65,7 +67,7 @@ export type StopCheck = {
 export function checkStopAtBoundary(check: StopCheck): StopReason | undefined {
   const { conditions } = check;
   if (conditions.aiJudgement && check.judgeSaysStop) {
-    return { kind: 'ai', detail: '見る役が意図どおりと判断した' };
+    return AI_STOP;
   }
   if (
     conditions.maxIterations !== undefined &&

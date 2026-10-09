@@ -1,4 +1,8 @@
-import { REPEATED_TOOL_CALL_REASON, TOOL_THREW_PREFIX } from '@drawroid/core';
+import {
+  describeStopConditions,
+  REPEATED_TOOL_CALL_REASON,
+  TOOL_THREW_PREFIX,
+} from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
 import { summarizeToolResult, toolTitle } from './tool-rows';
@@ -56,6 +60,13 @@ describe('summarizeToolResult', () => {
 // 人が読む要約には、ジョブの ID を出さない（結果の文は話す役に返すもので、ID を含む。全文は「詳しく」に残る）。
 // 文は、本物の置き場所・実行器で描く道具と評価の道具を回して、会話の記録に残った summary を写したもの
 describe('summarizeToolResult and job IDs', () => {
+  const LONG_CONDITIONS = describeStopConditions({
+    aiJudgement: true,
+    maxIterations: 1000,
+    maxImages: 200,
+    maxDurationMs: 1_800_000,
+  });
+
   it.each([
     [
       'ok',
@@ -88,6 +99,23 @@ describe('summarizeToolResult and job IDs', () => {
       'ジョブ 20261009-222644-3a2b3a には評価に使う要約が無い',
       'できなかった: ジョブには評価に使う要約が無い',
     ],
+    [
+      'error',
+      'ジョブ 20261009-222644-6484ae はこの会話のジョブではない',
+      'できなかった: ジョブはこの会話のジョブではない',
+    ],
+    // 指示と止める条件を同時に伝えたとき
+    [
+      'ok',
+      `ジョブ 20261009-222644-6484ae に指示を伝えた。止める条件を ${describeStopConditions({ aiJudgement: true, maxIterations: 6 })} にした（次の回の境目から効く）`,
+      'ジョブに指示を伝えた。',
+    ],
+    // ID を省けば 80 字に収まる長い文は、切らずに出す
+    [
+      'ok',
+      `ジョブ 20261009-222644-6484ae に止める条件を ${LONG_CONDITIONS} にした（次の回の境目から効く）`,
+      `ジョブに止める条件を ${LONG_CONDITIONS} にした（次の回の境目から効く）`,
+    ],
     // 道具が投げた失敗（実行器が頭の言葉を付けて残す）
     [
       'error',
@@ -96,6 +124,24 @@ describe('summarizeToolResult and job IDs', () => {
     ],
   ] as const)('leaves the job ID out of %s: %s', (state, summary, short) => {
     expect(summarizeToolResult(state, summary)).toBe(short);
+  });
+
+  // 1つの文に ID がいくつあっても、どれも省く（今の道具の文に ID が 2 つのものは無いが、足されたときに 2 つ目を残さない）
+  it.each([
+    [
+      'ジョブ 20261009-222644-6484ae とジョブ 20261009-222701-f9ac3c はこの会話のジョブではない',
+      'ジョブとジョブはこの会話のジョブではない',
+    ],
+    [
+      '1 回目の 1枚目は無い（ジョブ 20261009-222644-6484ae）し、2 回目の 1枚目も無い（ジョブ 20261009-222701-f9ac3c）',
+      '1 回目の 1枚目は無いし、2 回目の 1枚目も無い',
+    ],
+    [
+      'ジョブ 20261009-222644-6484ae の見る役とジョブ 20261009-222701-f9ac3c の見る役が見ている',
+      '見る役と見る役が見ている',
+    ],
+  ])('leaves every job ID out of one sentence: %s', (summary, short) => {
+    expect(summarizeToolResult('ok', summary)).toBe(short);
   });
 
   // ID の形でない数や名前は、要約に残す

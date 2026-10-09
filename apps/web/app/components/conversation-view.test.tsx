@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import {
   ADOPTED_STOP,
+  AI_STOP,
   HUMAN_STOP,
   LLM_NOT_CONFIGURED_REASON,
   REPEATED_TOOL_CALL_REASON,
   TOOL_THREW_PREFIX,
   type ConversationEvent,
+  type JobState,
   type LiveEvent,
+  type StopReason,
 } from '@drawroid/core';
 import {
   addMask,
@@ -41,7 +44,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
 // jsdom には canvas の描画が無い: マスクを PNG にする所は差し替える
 vi.mock('../lib/mask-png', () => ({ encodeMaskPng: vi.fn() }));
 
-const JOB = '20261009-153112-k3f9';
+const JOB = '20261009-153112-a3f9c1';
 const AT = '2026-10-09T15:30:00+09:00';
 
 /** ブラウザの EventSource の代わり。試験から SSE のイベントを流す */
@@ -117,20 +120,31 @@ afterEach(() => {
 });
 
 describe('the stop card', () => {
-  /** 止まったジョブの状態。best を省けば、最良の画像が無い（1枚もできずに止まった） */
-  const stoppedJob = (best?: { iteration: number; imageIndex: number; score: number }) =>
-    ({
-      data: {
-        state: {
-          status: 'stopped',
-          carry: { intent: '海辺', completedIterations: 2, ...(best !== undefined && { best }) },
-        },
+  /** 止まったジョブの状態（実行器が state.json に残す形）。best を省けば、最良の画像が無い（1枚もできずに止まった） */
+  const stoppedJob = (
+    best?: { iteration: number; imageIndex: number; score: number },
+    reason: StopReason = AI_STOP,
+  ) => {
+    const state: JobState = {
+      status: 'stopped',
+      carry: {
+        intent: '海辺',
+        completedIterations: 2,
+        ...(best !== undefined && {
+          best: { ...best, params: { prompt: 'seaside' }, issues: [], nextChange: '' },
+        }),
       },
-    }) as never;
+      startedAt: AT,
+      stoppedAt: AT,
+      imagesGenerated: 4,
+      reason,
+    };
+    return { data: { state } } as never;
+  };
   const BEST = { iteration: 2, imageIndex: 1, score: 0.92 };
   const CHOOSE = 'この画像に決める（お気に入りにする）: 2 回目の画像 2 番';
 
-  async function stopWith(reason: object) {
+  async function stopWith(reason: StopReason) {
     const { source, stream } = fakeSource([]);
     const view = renderView(source);
     await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
@@ -139,11 +153,11 @@ describe('the stop card', () => {
     return view;
   }
 
-  it.each([
-    ['the judge said it is done', { kind: 'ai', detail: '見る役が止めてよいと言った' }],
+  it.each<[string, StopReason]>([
+    ['the judge said it is done', AI_STOP],
     ['it reached its limit', { kind: 'limit:iterations', detail: '3 回に達した' }],
   ])('offers the best image to choose when %s', async (_, reason) => {
-    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST, reason));
     await stopWith(reason);
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
@@ -159,7 +173,7 @@ describe('the stop card', () => {
 
   it('chooses the best image through the favorite, since a stopped job takes no adopt', async () => {
     vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
-    const { user } = await stopWith({ kind: 'ai', detail: '止めてよい' });
+    const { user } = await stopWith(AI_STOP);
 
     await user.click(await screen.findByRole('button', { name: CHOOSE }));
 
@@ -186,9 +200,7 @@ describe('the stop card', () => {
         ],
       }),
     );
-    stream.emit(
-      confirmed({ type: 'job.stopped', jobId: JOB, reason: { kind: 'ai', detail: '止めてよい' } }),
-    );
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: AI_STOP }));
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
     const inCard = within(card).getByRole('button', { name: CHOOSE });
@@ -220,9 +232,7 @@ describe('the stop card', () => {
         ],
       }),
     );
-    stream.emit(
-      confirmed({ type: 'job.stopped', jobId: JOB, reason: { kind: 'ai', detail: '止めてよい' } }),
-    );
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: AI_STOP }));
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
     const inCard = within(card).getByRole('button', { name: CHOOSE });
@@ -246,7 +256,7 @@ describe('the stop card', () => {
     vi.mocked(useSelections).mockReturnValue({
       data: { selections: [{ imageKey: '2-1', verdict: 'favorite' }] },
     } as never);
-    await stopWith({ kind: 'ai', detail: '止めてよい' });
+    await stopWith(AI_STOP);
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
     expect(within(card).getByText('お気に入り')).toBeTruthy();
@@ -254,15 +264,17 @@ describe('the stop card', () => {
   });
 
   it('offers the best image when the job failed after making one', async () => {
-    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
-    await stopWith({ kind: 'error', detail: '見る段: 形が合わない' });
+    const failed: StopReason = { kind: 'error', detail: '見る段: 形が合わない' };
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST, failed));
+    await stopWith(failed);
 
     expect(await screen.findByRole('button', { name: CHOOSE })).toBeTruthy();
   });
 
   it('gives only the reason when the job failed before making any image', async () => {
-    vi.mocked(useJob).mockReturnValue(stoppedJob());
-    await stopWith({ kind: 'error', detail: '生成の段: 繋がらない' });
+    const failed: StopReason = { kind: 'error', detail: '生成の段: 繋がらない' };
+    vi.mocked(useJob).mockReturnValue(stoppedJob(undefined, failed));
+    await stopWith(failed);
 
     expect(screen.getByText(/描くのを止めた/)).toBeTruthy();
     expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
@@ -270,11 +282,18 @@ describe('the stop card', () => {
 
   // 止めたあとも、途中の画像から選べる。止まりの理由は、実行器が人の止めに付けるもの
   it('offers the best image to choose when a person stopped it, through the favorite', async () => {
-    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST, HUMAN_STOP));
     const { user } = await stopWith(HUMAN_STOP);
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
     expect(within(card).getByText('最良: 2 回目の画像 2 番（見る役の点 0.92）')).toBeTruthy();
+    // 止まったジョブは採る口を断る（409）ので、出す口は決めるボタンだけ
+    expect(
+      within(card)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual([CHOOSE]);
+    expect(screen.queryByRole('button', { name: /^この画像で決める/ })).toBeNull();
     await user.click(within(card).getByRole('button', { name: CHOOSE }));
 
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
@@ -282,7 +301,7 @@ describe('the stop card', () => {
   });
 
   it('adds nothing when a person chose an image, and does not even read the job', async () => {
-    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST, ADOPTED_STOP));
     await stopWith(ADOPTED_STOP);
 
     expect(screen.queryByRole('region', { name: /^最良の画像/ })).toBeNull();
@@ -327,7 +346,7 @@ describe('what the job taught, on the stop card', () => {
         },
       ]),
     );
-    await stopWith({ kind: 'ai', detail: '止めてよい' });
+    await stopWith(AI_STOP);
 
     expect(
       within(learned())
@@ -368,7 +387,7 @@ describe('what the job taught, on the stop card', () => {
       },
     ];
     vi.mocked(useJobDistill).mockReturnValue(distilled(first, { pending: true }));
-    await stopWith({ kind: 'ai', detail: '止めてよい' });
+    await stopWith(AI_STOP);
 
     expect(within(learned()).getByText('覚えた: 指の崩れは許容しない')).toBeTruthy();
     expect(within(learned()).getByText('選び直したことを整理しています')).toBeTruthy();
@@ -376,7 +395,7 @@ describe('what the job taught, on the stop card', () => {
 
     vi.mocked(useJobDistill).mockReturnValue(distilled(first, { exhausted: true }));
     cleanup();
-    await stopWith({ kind: 'ai', detail: '止めてよい' });
+    await stopWith(AI_STOP);
     expect(within(learned()).getByText('覚えた: 指の崩れは許容しない')).toBeTruthy();
     expect(within(learned()).getByText(/選び直したことは、まだ出ていない/)).toBeTruthy();
   });
@@ -385,7 +404,7 @@ describe('what the job taught, on the stop card', () => {
     vi.mocked(useJobDistill).mockReturnValue(
       distilled([{ kind: 'stopped', at: '2026-10-10T05:00:00.000Z', added: [], edited: [] }]),
     );
-    await stopWith({ kind: 'ai', detail: '止めてよい' });
+    await stopWith(AI_STOP);
 
     expect(within(learned()).getByText('新しく覚えたことは無い。')).toBeTruthy();
   });
