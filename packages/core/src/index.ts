@@ -35,6 +35,7 @@ export type {
   LlmPort,
   LlmPurpose,
   LlmRole,
+  LlmRoleInfo,
   LlmUsage,
   TextPart,
 } from './llm/port.js';
