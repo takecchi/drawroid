@@ -7,3 +7,4 @@ export {
   type RunningLoopBackend,
   type StartLoopBackendOptions,
 } from './loop-scenarios.js';
+export { blocking, GatedBackend } from './hold-gates.js';

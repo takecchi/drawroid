@@ -162,11 +162,17 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         const uploadId = await store.addUpload(id, { data, mediaType }, new Date());
         return c.json({ uploadId }, 201);
       })
-      // 中断の口の枠。ターンを走らせるのは後の段（会話 E・I）で、今は受けるだけ
+      // 中断。turn は走っている話す役のターンだけ、all はそれに加えて会話のジョブも止める。
+      // 走っているものが無くても 202 で受ける（何もしない）。応答には、実際に打ち切った・止めたものを返す
       .post('/:conversationId/interrupt', jsonBody(interruptSchema), async (c) => {
         const id = c.req.param('conversationId');
         if (!(await store.hasConversation(id))) return notFound(c, missing(id));
-        return c.json({ scope: c.req.valid('json').scope }, 202);
+        const { scope } = c.req.valid('json');
+        const done = (await conversations.turns?.interrupt(id, scope)) ?? {
+          turn: false,
+          job: undefined,
+        };
+        return c.json({ scope, interruptedTurn: done.turn, stoppedJob: done.job ?? null }, 202);
       })
   );
 }

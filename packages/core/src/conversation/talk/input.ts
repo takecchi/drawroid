@@ -56,7 +56,12 @@ export function buildTalkInput(args: {
     });
   }
   const toSection = (e: (typeof said)[number]): Section & { seq: number } => {
-    const who = e.type === 'user.message' ? '人間' : '話す役';
+    const who =
+      e.type === 'user.message'
+        ? '人間'
+        : e.interrupted
+          ? '話す役（途中で打ち切られた）'
+          : '話す役';
     return {
       seq: e.seq,
       name: `message[${e.seq}]`,

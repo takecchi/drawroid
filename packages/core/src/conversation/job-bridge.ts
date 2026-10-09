@@ -227,3 +227,32 @@ export function relayJobReasoning(deps: {
       .catch((error: unknown) => deps.onError?.(error));
   };
 }
+
+/**
+ * ジョブの実行器の onLlmStagesHeld に渡す。会話に属するジョブの LLM の段が待たされ始めたら、その会話へ
+ * 確定しない status: job.paused を流す（ファイルには書かない。話す役のターンが終わると、ハブがこの写しを捨てる）。
+ */
+export function relayJobHeld(deps: {
+  store: JobStore;
+  hubs: ConversationHubs;
+  onError?: (error: unknown) => void;
+}): (jobId: string, held: boolean) => void {
+  const holding = new Set<string>();
+  return (jobId, held) => {
+    if (!held) {
+      holding.delete(jobId);
+      return;
+    }
+    holding.add(jobId);
+    deps.store
+      .readJob(jobId)
+      .then((spec) => {
+        // 引いている間に解けていたら流さない: 古い job.paused を残さないため
+        if (!holding.has(jobId)) return;
+        if (spec.kind === 'auto' && spec.conversationId !== undefined) {
+          deps.hubs.get(spec.conversationId).live({ type: 'status', status: 'job.paused' });
+        }
+      })
+      .catch((error: unknown) => deps.onError?.(error));
+  };
+}

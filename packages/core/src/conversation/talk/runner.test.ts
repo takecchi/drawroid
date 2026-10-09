@@ -229,7 +229,7 @@ describe('TalkRunner', () => {
     expect(textOf(second.llm.steps[1])).not.toContain('miku_v2');
   });
 
-  it('reads the messages that arrived during a turn together in the next turn', async () => {
+  it('interrupts the turn for the messages that arrived during it, and reads them together in the next turn', async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => (release = resolve));
     const { runner, hubs, conversationId, events, llm } = await setup(async (_call, n) => {
@@ -243,6 +243,8 @@ describe('TalkRunner', () => {
     runner.kick(conversationId);
     await hub.confirm({ type: 'user.message', text: '3つ目', attachments: [] });
     runner.kick(conversationId);
+    // 発言を受けて、LLM の出力を待っているターンが打ち切られるのを待つ
+    await new Promise((resolve) => setTimeout(resolve, 20));
     release?.();
     await runner.idle(conversationId);
 
@@ -254,7 +256,13 @@ describe('TalkRunner', () => {
       [seqOf('1つ目')],
       [seqOf('2つ目'), seqOf('3つ目')],
     ]);
-    expect(llm.steps).toHaveLength(2);
+    expect(
+      all
+        .filter((e) => e.type === 'turn.ended')
+        .map((e) => (e.type === 'turn.ended' ? e.outcome : '')),
+    ).toEqual(['interrupted', 'done']);
+    // 1つ目のターンは、LLM を呼ぶ前に打ち切られた。呼ばれたのは2つ目のターンの1回だけ
+    expect(llm.steps).toHaveLength(1);
   });
 
   it('closes the turn as an error when no LLM is set up', async () => {

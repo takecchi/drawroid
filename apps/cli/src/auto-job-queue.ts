@@ -46,6 +46,8 @@ export type AutoJobQueueOptions = {
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   /** 考える役・見る役の思考の増分を受ける（会話へ流すため） */
   onReasoning?: JobRunnerDeps['onReasoning'];
+  /** ジョブの LLM の段が待たされ始めた・解けたとき（会話へ job.paused を流すため） */
+  onLlmStagesHeld?: JobRunnerDeps['onLlmStagesHeld'];
   log: (line: string) => void;
 };
 
@@ -74,6 +76,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
       ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
       ...(options.memory !== undefined && { memory: options.memory }),
       ...(options.onReasoning !== undefined && { onReasoning: options.onReasoning }),
+      ...(options.onLlmStagesHeld !== undefined && { onLlmStagesHeld: options.onLlmStagesHeld }),
       log: options.log,
     });
   }
@@ -112,6 +115,15 @@ export class AutoJobQueue implements AutoJobQueuePort {
 
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions> {
     return this.runner.changeStopConditions(jobId, change);
+  }
+
+  /** 走っているジョブの LLM の段を待たせる。戻り値で解く */
+  holdLlmStages(jobId: string): () => void {
+    return this.runner.holdLlmStages(jobId);
+  }
+
+  adopt(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord> {
+    return this.runner.adopt(jobId, image);
   }
 
   addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord> {
