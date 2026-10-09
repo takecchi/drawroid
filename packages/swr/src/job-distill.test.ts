@@ -164,3 +164,39 @@ describe('useJobDistill', () => {
     });
   });
 });
+
+// 間隔と回数は、定数ではなく時間そのもので見る: 定数ごと変えると、待つ時間も一緒に縮んで試験が気づかないため
+describe('useJobDistill, in seconds', () => {
+  it('reads again after 2, 4, 8, 16, 30 and 60 seconds, and no more', async () => {
+    fetchMock.mockImplementation(async () => none());
+    const { result } = renderHook(() => useJobDistill('job-1'), { wrapper });
+    await passes(0);
+
+    let reads = 1;
+    for (const ms of [2_000, 4_000, 8_000, 16_000, 30_000, 60_000]) {
+      await passes(ms - 1);
+      expect(fetchMock).toHaveBeenCalledTimes(reads);
+      await passes(1);
+      reads += 1;
+      expect(fetchMock).toHaveBeenCalledTimes(reads);
+    }
+    expect(result.current.exhausted).toBe(true);
+
+    await passes(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+  });
+
+  it('does not say it gave up when the last read finds what was learned', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async () => (++calls < 7 ? none() : learned()));
+    const { result } = renderHook(() => useJobDistill('job-1'), { wrapper });
+    await passes(0);
+
+    for (const ms of JOB_DISTILL_RETRY_MS) await passes(ms);
+
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(result.current.data?.entries).toHaveLength(1);
+    expect(result.current.exhausted).toBe(false);
+    expect(result.current.pending).toBe(false);
+  });
+});

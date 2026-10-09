@@ -173,6 +173,68 @@ describe('IterationList and the large view of an image', () => {
   });
 });
 
+// 止まったジョブの画像の枡（窓の外）も、窓と同じく「この画像に決める（お気に入りにする）」にする。人が選んだ画像は「選んだ」のまま
+describe('IterationList and the image cells of a stopped job', () => {
+  const twoImages = [
+    { index: 0, seed: 7, url: '/a.png', previewUrl: '/a.webp' },
+    { index: 1, seed: 8, url: '/b.png', previewUrl: '/b.webp' },
+  ];
+  const chose = (index: number) => ({
+    by: 'human',
+    image: { iteration: 1, index },
+    score: 1,
+    interventionId: 'iv-1',
+    adoptedAt: '2026-10-09T00:30:00.000Z',
+  });
+
+  it('offers to settle through the favorite in each cell, not the adopt button', () => {
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[{ ...iteration, images: twoImages } as Iteration]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{ stopped: true }}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^この画像で決める:/ })).toBeNull();
+  });
+
+  it('keeps saying a human chose the image they chose, and offers the favorite for the others', () => {
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[
+          { ...iteration, images: twoImages, adopted: chose(1) } as unknown as Iteration,
+        ]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{ stopped: true }}
+      />,
+    );
+
+    expect(screen.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
+      }),
+    ).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番',
+      }),
+    ).toBeTruthy();
+  });
+});
+
 describe('IterationList and what was left out of the AI choices', () => {
   const withExcluded = (excluded: Iteration['excluded']): Iteration => ({ ...iteration, excluded });
 
