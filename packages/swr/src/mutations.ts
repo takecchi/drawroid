@@ -15,6 +15,8 @@ import type {
   BackendSettingsResponse,
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
+  LlmSettingsInput,
+  LlmSettingsResponse,
   ReferenceUpload,
   SetSelectionResponse,
   StopConditionsDraftResponse,
@@ -37,6 +39,17 @@ export async function saveBackendSettings(input: {
   // 状態と候補は、繋ぎ直した先のものへ取り直す: 古い Forge の応答が残ると、直したのに直っていないように見えるため
   await mutate((key) => typeof key === 'string' && key.startsWith(keys.backend));
   await mutate(keys.backendSettings, saved, { revalidate: false });
+  return saved;
+}
+
+/**
+ * LLM の設定を保存する。形が違うとき・組み立てられないとき（provider が無い、API キーの環境変数が入っていない、など）は
+ * ApiError（kind: 'invalid_request'）を投げ、message に理由が入る
+ */
+export async function saveLlmSettings(config: LlmSettingsInput): Promise<LlmSettingsResponse> {
+  const saved = await unwrap<LlmSettingsResponse>(() => client.settings.llm.$put({ json: config }));
+  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
+  await mutate(keys.llmSettings, saved, { revalidate: false });
   return saved;
 }
 

@@ -14,6 +14,7 @@ import type {
   JobsResponse,
   LlmCallDetail,
   LlmCallsResponse,
+  LlmSettingsResponse,
   ReferencesResponse,
   SelectionsResponse,
   StopConditionsResponse,
@@ -117,6 +118,13 @@ export function useLlmCall(jobId: string | undefined, callId: string | undefined
 export function useBackendSettings() {
   return useSWR<BackendSettingsResponse, ApiError>(keys.backendSettings, () =>
     unwrap<BackendSettingsResponse>(() => client.settings.backend.$get()),
+  );
+}
+
+// ポーリングしない: 設定を変えるのは人間の操作だけで、保存の関数が mutate で取り直すため
+export function useLlmSettings() {
+  return useSWR<LlmSettingsResponse, ApiError>(keys.llmSettings, () =>
+    unwrap<LlmSettingsResponse>(() => client.settings.llm.$get()),
   );
 }
 

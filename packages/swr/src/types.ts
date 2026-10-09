@@ -1,5 +1,5 @@
 import type { ReferenceUploadInput } from '@drawroid/api';
-import type { InferResponseType } from 'hono/client';
+import type { InferRequestType, InferResponseType } from 'hono/client';
 
 import type { client } from './client.js';
 
@@ -11,6 +11,10 @@ export type CandidatesResponse = InferResponseType<
 export type JobsResponse = InferResponseType<typeof client.jobs.$get, 200>;
 export type JobDetail = InferResponseType<(typeof client.jobs)[':jobId']['$get'], 200>;
 export type BackendSettingsResponse = InferResponseType<typeof client.settings.backend.$get, 200>;
+/** config が null なら、まだ設定されていない。apiKeyEnv は環境変数の名前と、入っているかだけ（値は返らない） */
+export type LlmSettingsResponse = InferResponseType<typeof client.settings.llm.$get, 200>;
+/** 保存するときに送る LLM の設定（既定値のある欄は省ける） */
+export type LlmSettingsInput = InferRequestType<typeof client.settings.llm.$put>['json'];
 export type IterationsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['iterations']['$get'],
   200
