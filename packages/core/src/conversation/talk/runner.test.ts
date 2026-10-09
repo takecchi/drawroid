@@ -177,6 +177,61 @@ describe('TalkRunner', () => {
     expect((await events()).at(-1)).toMatchObject({ type: 'turn.ended', outcome: 'done' });
   });
 
+  it('runs a call repeated with the same arguments only once, then has the model answer without tools', async () => {
+    const { say, events, llm } = await setup(
+      (call) =>
+        call.tools.length === 0
+          ? { text: '調べた結果で答えます' }
+          : { toolCalls: [{ name: 'search_candidates', input: { kind: 'lora', query: 'ミク' } }] },
+      { limits: { maxSteps: 6 } },
+    );
+    await say('ミクの LoRA ある？');
+
+    const all = await events();
+    const results = all.flatMap((e) => (e.type === 'tool.result' ? [e] : []));
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ ok: true });
+    expect(results[1]).toMatchObject({ ok: false, summary: expect.stringMatching(/同じ引数/) });
+    // 繰り返したら、次のステップはツールを渡さない。上限（6）まで回さない
+    expect(llm.steps).toHaveLength(3);
+    expect(llm.steps[2]?.tools).toEqual([]);
+    expect(all.at(-1)).toMatchObject({ type: 'turn.ended', outcome: 'done' });
+  });
+
+  it('treats the same arguments in another key order as the same call', async () => {
+    const { say, events } = await setup((_call, n) =>
+      n === 0
+        ? { toolCalls: [{ name: 'search_candidates', input: { kind: 'lora', query: 'ミク' } }] }
+        : n === 1
+          ? { toolCalls: [{ name: 'search_candidates', input: { query: 'ミク', kind: 'lora' } }] }
+          : { text: '答えます' },
+    );
+    await say('ミクの LoRA ある？');
+
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e.ok] : []));
+    expect(results).toEqual([true, false]);
+  });
+
+  it('runs the same tool again when the arguments differ', async () => {
+    const { say, events, llm } = await setup((_call, n) =>
+      n < 3
+        ? {
+            toolCalls: [
+              {
+                name: 'search_candidates',
+                input: { kind: 'lora', query: ['ミク', '初音', 'miku'][n]! },
+              },
+            ],
+          }
+        : { text: '答えます' },
+    );
+    await say('ミクの LoRA ある？');
+
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e.ok] : []));
+    expect(results).toEqual([true, true, true]);
+    expect(llm.steps[3]?.tools.length).toBeGreaterThan(0);
+  });
+
   it('closes the turn as an error when the final step gives no reply', async () => {
     const { say, events } = await setup(
       (call) =>

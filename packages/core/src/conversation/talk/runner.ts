@@ -251,9 +251,14 @@ export class TalkRunner {
     // ツールには打ち切りを伝えない: 実行中のツールは最後まで走らせる（途中で止めると、ジョブが半分だけできる）
     const toolSignal = new AbortController().signal;
     const steps: TalkStepRecord[] = [];
+    // このターンで走らせたツールの呼び出し（名前と引数）。同じ呼び出しを2度は走らせない
+    const called = new Set<string>();
+    let repeated = false;
     try {
       for (let step = 0; step < limits.maxSteps; step += 1) {
-        const final = step === limits.maxSteps - 1;
+        // 同じ呼び出しを繰り返したら、次のステップはツールを渡さず返答させる: 小さいモデルが同じツールを呼び続けて、
+        // 上限まで同じことを走らせ（副作用のあるツールなら何度も効かせ）ないように
+        const final = step === limits.maxSteps - 1 || repeated;
         const messages = buildTalkInput({
           events,
           messageSeqs: unread,
@@ -402,9 +407,18 @@ export class TalkRunner {
           });
           const tool = this.deps.tools.find((t) => t.name === call.name);
           let result: { ok: boolean; result: string; summary: string };
+          // 引数はツールのスキーマで読み直してあり、鍵の順はスキーマの順にそろっている
+          const key = `${call.name}:${JSON.stringify(call.input)}`;
           state.phase = 'tool';
           try {
             if (tool === undefined) throw new Error(`知らないツール ${call.name}`);
+            if (called.has(key)) {
+              repeated = true;
+              throw new Error(
+                'このターンで同じ引数ですでに呼んだので、もう一度は走らせなかった。結果は前のとおり',
+              );
+            }
+            called.add(key);
             result = await tool.run(call.input, {
               conversationId,
               turn,
