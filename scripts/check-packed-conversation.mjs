@@ -609,6 +609,176 @@ try {
     `${idle.status} ${idle.text}`,
   );
 
+  // job.held と adopt_image。描いている途中の発言で、ジョブの LLM の段（見る役）が待たされ、ターンが終わると解ける。
+  // 待たされている間に 1 回目の画像ができ、見る役は動けない。解けたあと、話す役が採った画像（adopt_image）を、見る役を呼ばずに採る（job.adopted）。
+  //   1. 1 つ目の発言でジョブを始め、Forge の生成で止める（1 回目の画像はまだ無い）
+  //   2. 2 つ目の発言を、話す役の応答待ちで止める（このターンのあいだ、ジョブの LLM の段が待たされる → job.held: true）
+  //   3. Forge の生成を解く（1 回目の画像ができる。見る役は待たされていて動かない）
+  //   4. 話す役に adopt_image を呼ばせ、待ちを解く（ターンが終わる → job.held: false → 見る役の代わりに採る → ジョブが止まる）
+  llm.restartJudge(3);
+  const heldConv = await startConversation('夕焼けの海辺の少女を描いて', 'h1');
+  forge.holdGeneration();
+  const heldGenBefore = forge.stats.heldGenerations;
+  await heldConv.say();
+  await waitFor(
+    () =>
+      ((forge?.stats.heldGenerations ?? 0) > heldGenBefore &&
+        count(heldConv.stream, 'turn.ended') >= 1) ||
+      (count(heldConv.stream, 'turn.ended') >= 1 && !has(heldConv.stream, 'job.started')),
+    'held: Forge の生成待ちと 1 つ目の turn.ended',
+  );
+  const heldEvents = (/** @type {boolean} */ held) =>
+    heldConv.stream.frames.filter((f) => f.event === 'job.held' && f.data?.held === held);
+  assert(
+    heldEvents(true).length === 0,
+    'job.held: 発言の前は、ジョブの LLM の段は待たされていない',
+    JSON.stringify(heldConv.stream.frames.map((f) => f.event)),
+  );
+  const heldTalkBefore = llm.stats.heldTalkCalls;
+  llm.holdTalk();
+  const heldSay = await api(base, 'POST', `/api/conversations/${heldConv.id}/messages`, {
+    text: 'この絵でいい',
+    clientMessageId: 'h2',
+  });
+  assert(
+    heldSay.status === 202,
+    '待たせる 2 つ目の発言が 202',
+    `${heldSay.status} ${heldSay.text}`,
+  );
+  await waitFor(
+    () => (llm?.stats.heldTalkCalls ?? 0) > heldTalkBefore && heldEvents(true).length >= 1,
+    'held: job.held（held: true）と、話す役の応答待ち',
+  );
+  const heldJobId = String(
+    heldConv.stream.frames.find((f) => f.event === 'job.started')?.data?.jobId,
+  );
+  assert(
+    heldEvents(true).length === 1 && heldEvents(true)[0]?.data?.jobId === heldJobId,
+    'job.held（held: true）が、描いているジョブの id で 1 回流れる',
+    JSON.stringify(heldEvents(true).map((f) => f.data)),
+  );
+  assert(
+    heldEvents(true).every((f) => f.id === undefined) && heldEvents(false).length === 0,
+    'job.held は確定イベント（id 付き）ではなく、ターンの間は解けていない',
+    JSON.stringify(heldConv.stream.frames.map((f) => `${f.event}:${f.data?.held ?? ''}`)),
+  );
+  // 生成（GPU）は待たされない: 待たされている間に 1 回目の画像ができる。見る役は待たされていて、評価は付かない
+  forge.releaseGeneration();
+  await waitFor(() => count(heldConv.stream, 'job.images') >= 1, 'held: 1 回目の job.images');
+  assert(
+    heldEvents(false).length === 0 && !has(heldConv.stream, 'job.judge'),
+    'job.held の間、生成は進むが、見る役の段（job.judge）は始まらない',
+    JSON.stringify(heldConv.stream.frames.map((f) => f.event)),
+  );
+  llm.queueTalkTool('adopt_image', { iteration: 1, index: 0 });
+  llm.releaseTalk();
+  await waitFor(() => stopped(heldConv.stream), 'held: job.stopped');
+  const heldFrames = heldConv.stream.frames;
+  const heldConfirmed = heldFrames.filter((f) => f.id !== undefined);
+  const heldAt = (/** @type {boolean} */ held) =>
+    heldFrames.findIndex((f) => f.event === 'job.held' && f.data?.held === held);
+  const heldFalse = heldEvents(false);
+  assert(
+    heldFalse.length === 1 &&
+      heldFalse[0]?.data?.jobId === heldJobId &&
+      heldFalse[0]?.id === undefined,
+    'ターンが終わると、同じジョブの job.held（held: false）が 1 回流れる',
+    JSON.stringify(heldFrames.map((f) => `${f.event}:${f.data?.held ?? ''}`)),
+  );
+  assert(
+    heldAt(true) >= 0 && heldAt(true) < heldAt(false),
+    'job.held は held: true、held: false の順で流れる',
+    JSON.stringify(heldFrames.map((f) => `${f.event}:${f.data?.held ?? ''}`)),
+  );
+  // 解けたあと、ジョブのイベントが続く
+  const adoptedAt = heldFrames.findIndex((f) => f.event === 'job.adopted');
+  assert(
+    adoptedAt > heldAt(false) && heldFrames.findIndex((f) => f.event === 'job.stopped') > adoptedAt,
+    'job.held が解けたあとに、ジョブの job.adopted・job.stopped が続く',
+    JSON.stringify(heldFrames.map((f) => f.event)),
+  );
+
+  // adopt_image → job.adopted
+  const adoptCall = heldConfirmed.find(
+    (f) => f.event === 'tool.call' && f.data?.name === 'adopt_image',
+  );
+  assert(
+    adoptCall !== undefined &&
+      adoptCall.data?.input?.iteration === 1 &&
+      adoptCall.data?.input?.index === 0,
+    'tool.call（adopt_image）が確定する',
+    JSON.stringify(heldConfirmed.map((f) => f.event)),
+  );
+  assert(
+    heldConfirmed.filter((f) => f.event === 'tool.call').length === 2,
+    'この会話の tool.call は、start_drawing と adopt_image の 2 回だけ',
+    JSON.stringify(heldConfirmed.filter((f) => f.event === 'tool.call').map((f) => f.data?.name)),
+  );
+  // callId は台本の LLM が毎回 call_1 を付けるので、ターンも合わせて引く
+  const adoptResult = heldConfirmed.find(
+    (f) =>
+      f.event === 'tool.result' &&
+      f.data?.callId === adoptCall?.data?.callId &&
+      f.data?.turn === adoptCall?.data?.turn,
+  );
+  assert(
+    adoptResult?.data?.ok === true,
+    'adopt_image の tool.result が ok で確定する',
+    JSON.stringify(adoptResult?.data),
+  );
+  const adopted = heldConfirmed.filter((f) => f.event === 'job.adopted');
+  assert(
+    adopted.length === 1 &&
+      adopted[0]?.data?.jobId === heldJobId &&
+      adopted[0]?.data?.iteration === 1 &&
+      adopted[0]?.data?.image?.iteration === 1 &&
+      adopted[0]?.data?.image?.index === 0,
+    'job.adopted が 1 回確定し、描いているジョブの、採った画像（1 回目の 0 枚目）を指す',
+    JSON.stringify(adopted.map((f) => f.data)),
+  );
+  const heldStopped = heldConfirmed.filter((f) => f.event === 'job.stopped');
+  assert(
+    heldStopped.length === 1 &&
+      heldStopped[0]?.data?.jobId === heldJobId &&
+      heldStopped[0]?.data?.reason?.kind === 'adopted' &&
+      !heldConfirmed.some((f) => f.event === 'job.judge'),
+    '採ったジョブは、見る役を呼ばずに reason adopted で止まる',
+    JSON.stringify(heldConfirmed.map((f) => `${f.event}:${f.data?.reason?.kind ?? ''}`)),
+  );
+  assert(
+    adoptCall !== undefined &&
+      adopted[0] !== undefined &&
+      heldConfirmed.indexOf(adoptCall) < heldConfirmed.indexOf(adopted[0]),
+    'adopt_image の tool.call のあとに job.adopted が確定する',
+    JSON.stringify(heldConfirmed.map((f) => f.event)),
+  );
+  assert(
+    adoptResult !== undefined && heldFrames.indexOf(adoptResult) < heldAt(false),
+    'job.held（held: false）は、ターンの中の adopt_image の tool.result のあとに流れる',
+    JSON.stringify(heldFrames.map((f) => f.event)),
+  );
+  const heldDir = join(dataDir, 'conversations', heldConv.id, 'events');
+  const heldNames = await readdir(heldDir);
+  const heldStored = await Promise.all(
+    heldNames.map(async (name) => JSON.parse(await readFile(join(heldDir, name), 'utf8'))),
+  );
+  assert(
+    heldStored.some(
+      (e) =>
+        e.type === 'job.adopted' &&
+        e.jobId === heldJobId &&
+        e.image?.iteration === 1 &&
+        e.image?.index === 0,
+    ),
+    'events/ に job.adopted が、採った画像の識別つきで残る',
+    heldStored.map((e) => e.type).join(','),
+  );
+  assert(
+    !heldStored.some((e) => e.type === 'job.held') && heldNames.length === heldConfirmed.length,
+    'events/ に job.held は残らず、件数が SSE で確定した件数と一致する',
+    `${heldNames.length} / ${heldConfirmed.length}`,
+  );
+
   // 起動時に「LLM が未設定」と出したあと、設定を保存したことが端末から分かる
   assert(
     (drawroidOutput?.() ?? '').includes('LLM の設定を読み込んだ'),
