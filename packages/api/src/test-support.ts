@@ -21,6 +21,7 @@ import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs
 import sharp from 'sharp';
 
 import type {
+  ApiDeps,
   BudgetSettingsPort,
   CandidateNotesStore,
   ConversationsPort,
@@ -81,7 +82,7 @@ export const noCandidateNotes: CandidateNotesStore = {
   write: async () => undefined,
 };
 
-export async function setup() {
+export async function setup(overrides: Partial<ApiDeps> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'drawroid-api-'));
   const store = new FsJobStore(root);
   const backend = new StubBackend();
@@ -114,6 +115,7 @@ export async function setup() {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
+    ...overrides,
   });
   return {
     root,

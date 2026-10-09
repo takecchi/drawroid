@@ -6,6 +6,7 @@ import { autoJobsRoutes } from './routes/auto-jobs.js';
 import { backendRoutes } from './routes/backend.js';
 import { backendSettingsRoutes } from './routes/backend-settings.js';
 import { budgetSettingsRoutes } from './routes/budget-settings.js';
+import { doctorRoutes } from './routes/doctor.js';
 import { candidateNotesRoutes } from './routes/candidate-notes.js';
 import { conversationsRoutes } from './routes/conversations.js';
 import { generationProgressSettingsRoutes } from './routes/generation-progress-settings.js';
@@ -44,6 +45,10 @@ export type {
   BudgetSettingsPort,
   CandidateNotesStore,
   ConversationsPort,
+  DoctorItem,
+  DoctorPort,
+  DoctorReport,
+  DoctorSection,
   GenerationProgressSettingsPort,
   LlmSettingsStore,
   PermissionSettingsStore,
@@ -76,6 +81,7 @@ export function createApi(deps: ApiDeps) {
     .route('/settings/generation-progress', generationProgressSettingsRoutes(deps))
     .route('/jobs', progressPreviewRoutes(deps))
     .route('/conversations', conversationsRoutes(deps))
+    .route('/doctor', doctorRoutes(deps))
     .onError(handleUncaught);
 }
 

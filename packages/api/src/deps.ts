@@ -97,6 +97,14 @@ export type ConversationsPort = {
   };
 };
 
+/** drawroid doctor の確かめの1項目。ok でなければ、todo に何をすればよいかを書く */
+export type DoctorItem = { ok: boolean; what: string; todo?: string };
+export type DoctorSection = { title: string; items: DoctorItem[] };
+/** lacking は ok でない項目の数 */
+export type DoctorReport = { sections: DoctorSection[]; lacking: number };
+/** 設定・バックエンド・LLM・web の配り先を一度に確かめる（drawroid doctor と同じ確かめ）。何も書き換えない。鍵の値は出さない */
+export type DoctorPort = { run(): Promise<DoctorReport> };
+
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
@@ -118,5 +126,7 @@ export type ApiDeps = {
   env: Readonly<Record<string, string | undefined>>;
   /** 止まったジョブで選択が変わったときに、蒸留を裏で回す側へ知らせる。応答は待たない */
   reselection?: { notify(jobId: string): void };
+  /** 設定の画面の「確かめる」。省けば、画面からは確かめられない（409） */
+  doctor?: DoctorPort;
   now?: () => Date;
 };

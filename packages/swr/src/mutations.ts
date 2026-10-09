@@ -32,6 +32,7 @@ import type {
   SaveMemoryInput,
   SetSelectionResponse,
   AdoptImageResponse,
+  DoctorResponse,
   StopConditionsDraftResponse,
 } from './types.js';
 
@@ -331,4 +332,12 @@ export async function adoptImage(
 // 一覧も取り直す: 止めた・口出しした直後に、一覧の状態が古いまま残らないようにするため
 async function refreshJob(jobId: string): Promise<void> {
   await Promise.all([mutate(keys.job(jobId)), mutate(keys.jobs)]);
+}
+
+/**
+ * 設定の画面の「確かめる」。drawroid doctor と同じ確かめ（設定・バックエンド・LLM・web の配り先）を走らせる。
+ * LLM の返事を待つので、時間がかかることがある。何も書き換えないので、取り直すものは無い
+ */
+export async function runDoctor(): Promise<DoctorResponse> {
+  return unwrap<DoctorResponse>(() => client.doctor.$post());
 }
