@@ -162,7 +162,7 @@ function ImageChoices({
   iteration: number;
   index: number;
   verdict: SelectionVerdict | null;
-  /** ジョブが止まった。採る（この画像で決める）は押せない */
+  /** ジョブが止まった。採る口（adopt）は使わず、決めるのはお気に入りの口で行う */
   stopped: boolean;
   chosen: boolean;
 }) {
@@ -172,13 +172,69 @@ function ImageChoices({
   return (
     <div className="space-y-1">
       <VerdictButtons jobId={jobId} imageKey={imageKey} imageLabel={imageLabel} verdict={verdict} />
-      <AdoptButton
-        jobId={jobId}
-        image={{ iteration, index }}
-        imageLabel={imageLabel}
-        chosen={chosen}
-        {...(stopped && { disabledReason: '描くのはもう止まっているので、決められない' })}
-      />
+      {/* 止まったジョブは採る口を受けない（止まったら受けない約束。API は 409）ので、止まりのカードと同じく、決めるのはお気に入りにする。
+          人が選んで止まった画像は、選んだと出す */}
+      {stopped && !chosen ? (
+        <ChooseAsFavorite
+          jobId={jobId}
+          imageKey={imageKey}
+          imageLabel={imageLabel}
+          verdict={verdict}
+        />
+      ) : (
+        <AdoptButton
+          jobId={jobId}
+          image={{ iteration, index }}
+          imageLabel={imageLabel}
+          chosen={chosen}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 止まったジョブの画像で「この画像に決める（お気に入りにする）」。止まりのカード・画像の行・大きく見る窓が同じものを使う。
+ * すでにお気に入りなら、ボタンの代わりに「お気に入り」と出す
+ */
+function ChooseAsFavorite({
+  jobId,
+  imageKey,
+  imageLabel,
+  verdict,
+}: {
+  jobId: string;
+  imageKey: string;
+  imageLabel: string;
+  verdict: SelectionVerdict | null;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  async function choose() {
+    setPending(true);
+    setError(undefined);
+    try {
+      await setSelection(jobId, imageKey, 'favorite');
+    } catch (caught) {
+      if (!isApiError(caught)) throw caught;
+      setError(caught.message);
+    } finally {
+      setPending(false);
+    }
+  }
+  if (verdict === 'favorite') return <p className="text-xs text-ok">お気に入り</p>;
+  return (
+    <div className="space-y-1">
+      <Button
+        className="h-7 px-2 text-xs"
+        variant="primary"
+        disabled={pending}
+        aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
+        onClick={() => void choose()}
+      >
+        この画像に決める（お気に入りにする）
+      </Button>
+      {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
     </div>
   );
 }
@@ -234,7 +290,7 @@ function ImagesItem({
   open,
 }: {
   item: Extract<ChatItem, { kind: 'images' }>;
-  /** ジョブが止まった。採る（この画像で決める）は押せない */
+  /** ジョブが止まった。採る口（adopt）は使わず、決めるのはお気に入りの口で行う */
   stopped: boolean;
   /** 人が選んだ画像（<jobId>:<回>-<画像>） */
   chosenImages: ReadonlySet<string>;
@@ -343,23 +399,9 @@ function BestChoice({
   const imageKey = formatImageKey({ iteration, index });
   const verdict =
     data?.selections.find((selection) => selection.imageKey === imageKey)?.verdict ?? null;
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>();
   // 1 から数える: 画像の行（「N 回目の画像 M 番」）と同じ呼び方にするため
   const imageLabel = `${iteration} 回目の画像 ${index + 1} 番`;
   const urls = jobImageUrls(jobId, iteration, index);
-  async function choose() {
-    setPending(true);
-    setError(undefined);
-    try {
-      await setSelection(jobId, imageKey, 'favorite');
-    } catch (caught) {
-      if (!isApiError(caught)) throw caught;
-      setError(caught.message);
-    } finally {
-      setPending(false);
-    }
-  }
   return (
     <section
       aria-label={`最良の画像: ${imageLabel}`}
@@ -374,20 +416,12 @@ function BestChoice({
         <p className="break-words">
           最良: {imageLabel}（見る役の点 {formatScore(score)}）
         </p>
-        {verdict === 'favorite' ? (
-          <p className="text-xs text-ok">お気に入り</p>
-        ) : (
-          <Button
-            className="h-7 px-2 text-xs"
-            variant="primary"
-            disabled={pending}
-            aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
-            onClick={() => void choose()}
-          >
-            この画像に決める（お気に入りにする）
-          </Button>
-        )}
-        {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
+        <ChooseAsFavorite
+          jobId={jobId}
+          imageKey={imageKey}
+          imageLabel={imageLabel}
+          verdict={verdict}
+        />
         <p className="text-xs text-muted-foreground">続けるなら、話しかけて指示を出す。</p>
       </div>
     </section>
