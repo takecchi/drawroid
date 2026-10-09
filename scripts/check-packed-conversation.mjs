@@ -114,6 +114,8 @@ const deadline = started + TOTAL_TIMEOUT_MS;
 const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-conversation-'));
 /** @type {import('node:child_process').ChildProcess | undefined} */
 let child;
+/** @type {(() => string) | undefined} */
+let drawroidOutput;
 /** @type {{ url: string, close: () => Promise<void> } | undefined} */
 let forge;
 /** @type {{ url: string, close: () => Promise<void> } | undefined} */
@@ -135,10 +137,15 @@ try {
   const dataDir = join(work, 'data');
   const cwd = join(work, 'cwd');
   await mkdir(cwd);
-  ({ child } = await startDrawroid(bin, ['--data-dir', dataDir, '--backend-url', forge.url], port, {
-    cwd,
-    env: { ...process.env, FAKE_LLM_KEY: 'fake-key-not-real' },
-  }));
+  ({ child, output: drawroidOutput } = await startDrawroid(
+    bin,
+    ['--data-dir', dataDir, '--backend-url', forge.url],
+    port,
+    {
+      cwd,
+      env: { ...process.env, FAKE_LLM_KEY: 'fake-key-not-real' },
+    },
+  ));
   const base = `http://127.0.0.1:${port}`;
 
   /** @param {string} model */
@@ -309,6 +316,11 @@ try {
     names.length === confirmed.length,
     'events/ の件数が SSE で確定した件数と一致する',
     `${names.length} / ${confirmed.length}`,
+  );
+  // 起動時に「LLM が未設定」と出したあと、設定を保存したことが端末から分かる
+  assert(
+    (drawroidOutput?.() ?? '').includes('LLM の設定を読み込んだ'),
+    'LLM の設定を保存すると「LLM の設定を読み込んだ」と出る',
   );
 } catch (error) {
   assert(false, '確かめの途中で例外', error instanceof Error ? error.message : String(error));
