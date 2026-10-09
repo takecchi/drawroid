@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import type { JobStore } from '../../job/store.js';
 import type { LlmPort, TalkStepCall, TalkStepPart } from '../../llm/port.js';
@@ -10,7 +11,7 @@ import { StubBackend } from '../../testing/stub-backend.js';
 import { ConversationHubs, type HubMessage } from '../hub.js';
 import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
 import { TalkRunner } from './runner.js';
-import { createReadOnlyTools } from './tools.js';
+import { createReadOnlyTools, type TalkTool } from './tools.js';
 
 const now = () => new Date('2026-10-09T08:00:00.000Z');
 const noJobs = {
@@ -26,6 +27,8 @@ async function setup(
     loras?: { name: string; label?: string }[];
     /** 台本の LLM を包んで、出し直しなど台本で書けない流れを作る */
     wrap?: (scripted: ScriptedLlm) => LlmPort;
+    /** 副作用の無いツールの後ろに足すツール */
+    extraTools?: TalkTool[];
   } = {},
 ) {
   const store = new MemoryConversationStore();
@@ -50,7 +53,10 @@ async function setup(
     store,
     hubs,
     llm: () => (options.llm === false ? undefined : (options.wrap?.(llm) ?? llm)),
-    tools: createReadOnlyTools({ backend, permissions: async () => permissions, jobs: noJobs }),
+    tools: [
+      ...createReadOnlyTools({ backend, permissions: async () => permissions, jobs: noJobs }),
+      ...(options.extraTools ?? []),
+    ],
     limits: async () => ({ ...DEFAULT_TALK_LIMITS, ...options.limits }),
     now,
   });
@@ -210,6 +216,62 @@ describe('TalkRunner', () => {
 
     const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e.ok] : []));
     expect(results).toEqual([true, false]);
+  });
+
+  /** 走った回数を数えるツール。fail なら、走ったあとで投げる */
+  const countingTool = (fail: boolean) => {
+    const counter = { runs: 0 };
+    const tool: TalkTool = {
+      name: 'note_down',
+      description: '試験用。メモを書き留める',
+      inputSchema: z.object({ text: z.string() }),
+      run: async () => {
+        counter.runs += 1;
+        if (fail) throw new Error('書き留められなかった');
+        return { ok: true, result: '書き留めた', summary: '書き留めた' };
+      },
+    };
+    return { tool, counter };
+  };
+
+  it('runs a call only once when one step asks for it twice', async () => {
+    const { tool, counter } = countingTool(false);
+    const { say, events } = await setup(
+      (_call, n) =>
+        n === 0
+          ? {
+              toolCalls: [
+                { name: 'note_down', input: { text: '海辺' } },
+                { name: 'note_down', input: { text: '海辺' } },
+              ],
+            }
+          : { text: '書き留めました' },
+      { extraTools: [tool] },
+    );
+    await say('メモして');
+
+    expect(counter.runs).toBe(1);
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e] : []));
+    expect(results.map((r) => r.ok)).toEqual([true, false]);
+    expect(results[1]).toMatchObject({ summary: expect.stringMatching(/同じ引数/) });
+  });
+
+  it('does not run a call again after it ran and failed, and has the model answer without tools', async () => {
+    const { tool, counter } = countingTool(true);
+    const { say, events, llm } = await setup(
+      (call) =>
+        call.tools.length === 0
+          ? { text: '書き留められませんでした' }
+          : { toolCalls: [{ name: 'note_down', input: { text: '海辺' } }] },
+      { extraTools: [tool], limits: { maxSteps: 6 } },
+    );
+    await say('メモして');
+
+    expect(counter.runs).toBe(1);
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e] : []));
+    expect(results).toHaveLength(2);
+    expect(results[1]).toMatchObject({ ok: false, summary: expect.stringMatching(/同じ引数/) });
+    expect(llm.steps[2]?.tools).toEqual([]);
   });
 
   it('runs the same tool again when the arguments differ', async () => {
