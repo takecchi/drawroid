@@ -38,7 +38,7 @@ describe('SetupNotice', () => {
 
     expect(screen.getByText(/LLM が未設定なので、話しかけても返事ができない/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'LLM を設定する' }).getAttribute('href')).toBe(
-      '/generate#llm',
+      '/settings#llm',
     );
     expect(screen.queryByRole('link', { name: 'バックエンドを確かめる' })).toBeNull();
   });
@@ -48,7 +48,7 @@ describe('SetupNotice', () => {
 
     expect(screen.getByText(/描き始めても止まる/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'バックエンドを確かめる' }).getAttribute('href')).toBe(
-      '/generate#backend',
+      '/settings#backend',
     );
     expect(screen.queryByRole('link', { name: 'LLM を設定する' })).toBeNull();
   });

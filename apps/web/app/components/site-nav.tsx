@@ -14,6 +14,7 @@ import {
   Settings2,
   ShieldCheck,
   Tags,
+  Wand2,
 } from 'lucide-react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
@@ -35,9 +36,10 @@ const ITEMS: AppSidebarItem[] = [
   { to: '/', label: '会話', icon: MessageSquare },
   { to: '/jobs/new', label: '依頼', icon: Images, section: '描く' },
   { to: '/jobs', label: 'ジョブ', icon: ListTodo, section: '描く' },
+  { to: '/generate', label: '手動で生成', icon: Wand2, section: '描く' },
   { to: '/memory', label: '記憶', icon: Brain, section: '覚えること' },
   { to: '/candidates', label: '候補の説明', icon: Tags, section: '覚えること' },
-  { to: '/generate', label: '生成と設定', icon: Settings2, section: '設定' },
+  { to: '/settings', label: '設定', icon: Settings2, section: '設定' },
   { to: '/permissions', label: '許可', icon: ShieldCheck, section: '設定' },
   { to: '/llm-calls', label: 'LLM の記録', icon: ScrollText, section: '設定' },
 ];

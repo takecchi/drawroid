@@ -1,25 +1,22 @@
 import { Page } from '@drawroid/ui';
-import { useNavigate } from 'react-router';
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 
-import { BackendStatus } from '../components/backend-status';
-import { BackendUrlSettings } from '../components/backend-url-settings';
-import { BudgetSettings } from '../components/budget-settings';
 import { GenerationForm } from '../components/generation-form';
-import { LlmSettings } from '../components/llm-settings';
+
+/** 設定の欄は「設定」（/settings）へ移した。前のリンク（/generate#llm など）は、その欄へ送る */
+const MOVED_TO_SETTINGS = new Set(['#llm', '#backend', '#budgets']);
 
 export default function Generate() {
   const navigate = useNavigate();
+  const { hash } = useLocation();
+  const moved = MOVED_TO_SETTINGS.has(hash);
+  useEffect(() => {
+    if (moved) void navigate(`/settings${hash}`, { replace: true });
+  }, [moved, hash, navigate]);
+  if (moved) return null;
   return (
-    <Page title="生成と設定">
-      {/* 案内（SetupNotice）からのリンクの行き先 */}
-      <div id="backend" className="scroll-mt-4 space-y-6">
-        <BackendStatus />
-        <BackendUrlSettings />
-      </div>
-      <div id="llm" className="scroll-mt-4">
-        <LlmSettings />
-      </div>
-      <BudgetSettings />
+    <Page title="手動で生成">
       <GenerationForm onStarted={(jobId) => void navigate(`/jobs/${jobId}`)} />
     </Page>
   );

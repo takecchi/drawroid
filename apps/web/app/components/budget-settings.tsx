@@ -1,4 +1,5 @@
 import { isApiError, saveBudgetSettings, useBudgetSettings } from '@drawroid/swr';
+import { Input } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import {
@@ -7,6 +8,7 @@ import {
   toBudgetFormValues,
   type BudgetFormValues,
 } from '../lib/budget-form';
+import { budgetLabel, groupBudgetLeaves } from '../lib/budget-labels';
 
 /** 予算の設定。空欄は上書きしない（既定のまま）。保存した予算は、そのあとに投入するジョブから効く */
 export function BudgetSettings() {
@@ -47,21 +49,32 @@ export function BudgetSettings() {
       {error !== undefined && <p role="alert">予算を読めない: {error.message}</p>}
       {data !== undefined && values !== undefined && (
         <form onSubmit={(event) => void save(event)}>
-          {budgetLeaves(data.defaults).map(({ path, defaultValue }) => (
-            <div key={path}>
-              <label>
-                {path}{' '}
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={values[path] ?? ''}
-                  onChange={(event) => setEdited({ ...values, [path]: event.target.value })}
-                  aria-label={path}
-                  placeholder={String(defaultValue)}
-                  size={8}
-                />
-              </label>
-            </div>
+          {groupBudgetLeaves(budgetLeaves(data.defaults)).map((group) => (
+            <fieldset key={group.title} className="space-y-1">
+              <legend className="font-medium">{group.title}</legend>
+              {group.leaves.map(({ path, defaultValue }) => {
+                // 内部名は消さない: 設定ファイル（config.json の budgets）の鍵と同じなので、手で直す人の手がかりになるため
+                const label = budgetLabel(path) ?? path;
+                return (
+                  <div key={path}>
+                    <label className="flex flex-wrap items-baseline gap-x-2">
+                      <span>{label}</span>
+                      <code className="text-xs text-muted-foreground">{path}</code>
+                      <Input
+                        className="w-24"
+                        type="text"
+                        inputMode="numeric"
+                        value={values[path] ?? ''}
+                        onChange={(event) => setEdited({ ...values, [path]: event.target.value })}
+                        aria-label={`${label}（${path}）`}
+                        placeholder={String(defaultValue)}
+                        size={8}
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </fieldset>
           ))}
           {problems.length > 0 && (
             <ul role="alert">
