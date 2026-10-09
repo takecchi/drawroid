@@ -4,6 +4,7 @@ import type {
   CandidateNotes,
   ConversationHubs,
   ConversationStore,
+  GenerationProgressSettings,
   ImageBackend,
   InterventionRecord,
   JobStore,
@@ -13,6 +14,7 @@ import type {
   NewMask,
   NewReference,
   Permissions,
+  ProgressPreviews,
   ReferenceRecord,
   StopConditions,
   StopConditionsChange,
@@ -57,6 +59,12 @@ export type BudgetSettingsPort = {
   write(overrides: BudgetOverrides): Promise<Budgets>;
 };
 
+/** config.json の generationProgress。無ければ既定（途中の画像は流さない）。読めない設定は、理由を付けて投げる */
+export type GenerationProgressSettingsPort = {
+  read(): Promise<GenerationProgressSettings>;
+  write(settings: GenerationProgressSettings): Promise<void>;
+};
+
 /** candidate-notes.json（候補の名前 → 人間の短い説明） */
 export type CandidateNotesStore = {
   read(): Promise<CandidateNotes>;
@@ -80,6 +88,9 @@ export type ApiDeps = {
   autoQueue: AutoJobQueue;
   /** 投入のときに解決した予算を、ジョブへ写すために読む。走行中のジョブには効かせない */
   budgetSettings: BudgetSettingsPort;
+  /** 生成中の途中の画像を1枚だけ持つ置き場。ジョブ実行器の橋渡しが入れ、/progress-preview が読む */
+  progressPreviews: ProgressPreviews;
+  generationProgressSettings: GenerationProgressSettingsPort;
   llmSettings: LlmSettingsStore;
   stopConditionParser: StopConditionParser;
   permissionSettings: PermissionSettingsStore;

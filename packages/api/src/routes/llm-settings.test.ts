@@ -12,6 +12,7 @@ import {
   noCandidateNotes,
   noPermissionSettings,
   memoryBudgetSettings,
+  memoryProgressDeps,
   memoryConversations,
 } from '../test-support.js';
 
@@ -44,6 +45,7 @@ function makeApp(env: Record<string, string | undefined>) {
       addMask: notUsed,
     },
     budgetSettings: memoryBudgetSettings(),
+    ...memoryProgressDeps(),
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: {
       read: async () => saved,

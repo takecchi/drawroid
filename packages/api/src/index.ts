@@ -8,6 +8,8 @@ import { backendSettingsRoutes } from './routes/backend-settings.js';
 import { budgetSettingsRoutes } from './routes/budget-settings.js';
 import { candidateNotesRoutes } from './routes/candidate-notes.js';
 import { conversationsRoutes } from './routes/conversations.js';
+import { generationProgressSettingsRoutes } from './routes/generation-progress-settings.js';
+import { progressPreviewRoutes } from './routes/progress-preview.js';
 import { filesRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
 import { iterationsRoutes } from './routes/iterations.js';
@@ -41,6 +43,7 @@ export type {
   BudgetSettingsPort,
   CandidateNotesStore,
   ConversationsPort,
+  GenerationProgressSettingsPort,
   LlmSettingsStore,
   PermissionSettingsStore,
 } from './deps.js';
@@ -67,6 +70,8 @@ export function createApi(deps: ApiDeps) {
     .route('/stop-conditions', stopConditionParseRoutes(deps))
     .route('/settings/permissions', permissionSettingsRoutes(deps))
     .route('/settings/budgets', budgetSettingsRoutes(deps))
+    .route('/settings/generation-progress', generationProgressSettingsRoutes(deps))
+    .route('/jobs', progressPreviewRoutes(deps))
     .route('/conversations', conversationsRoutes(deps))
     .onError(handleUncaught);
 }

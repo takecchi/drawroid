@@ -2,7 +2,9 @@ import {
   basicPermissions,
   ConversationHubs,
   DEFAULT_BUDGETS,
+  DEFAULT_GENERATION_PROGRESS_SETTINGS,
   ManualGenerationRunner,
+  ProgressPreviews,
 } from '@drawroid/core';
 import { MemoryConversationStore, StubBackend } from '@drawroid/core/testing';
 import type { ApiDeps } from '@drawroid/api';
@@ -33,6 +35,11 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
     budgetSettings: {
       read: async () => ({ overrides: {}, effective: DEFAULT_BUDGETS }),
       write: async () => DEFAULT_BUDGETS,
+    },
+    progressPreviews: new ProgressPreviews(),
+    generationProgressSettings: {
+      read: async () => DEFAULT_GENERATION_PROGRESS_SETTINGS,
+      write: async () => undefined,
     },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: { read: async () => undefined, write: async () => undefined },
