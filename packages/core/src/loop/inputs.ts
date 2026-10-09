@@ -1,7 +1,7 @@
 import { clipText, estimateImageTokens, estimateTextTokens } from '../budget/estimate.js';
-import { type PackLimits, packWithinBudget } from '../budget/pack.js';
+import { packWithinBudget } from '../budget/pack.js';
 import type { MemoryItem } from '../memory/item.js';
-import { selectMemory } from '../memory/select.js';
+import { describeMemoryDrop, type MemoryRoleLimits, selectMemory } from '../memory/select.js';
 import {
   sealMessages,
   type BudgetNote,
@@ -32,7 +32,7 @@ export type PreviewImage = {
 /** 記憶ストアから読んだ全項目と、この役の記憶の予算。どれを載せるかは組み立て器が選ぶ */
 export type MemoryInput = {
   items: readonly MemoryItem[];
-  limits: PackLimits;
+  limits: MemoryRoleLimits;
 };
 
 export class InputOverBudgetError extends Error {
@@ -178,11 +178,11 @@ function memorySections(
 ): Section[] {
   if (memory === undefined) return [];
   const { selected, droppedByBudget } = selectMemory(memory.items, carry.intent, memory.limits);
-  for (const { item, reason } of droppedByBudget) {
+  for (const dropped of droppedByBudget) {
     w.notes.push({
       kind: 'dropped',
-      section: `memory[${item.id}]`,
-      reason: reason === 'count' ? '記憶の件数の予算に入らない' : '記憶の文字数の予算に入らない',
+      section: `memory[${dropped.item.id}]`,
+      reason: describeMemoryDrop(dropped, memory.limits),
     });
   }
   return selected.map((item) => ({ name: `memory[${item.id}]`, text: `好み: ${item.body}` }));

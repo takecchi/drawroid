@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BudgetedMessages } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
 import type { MemoryItem } from '../memory/item.js';
+import { DEFAULT_MEMORY_LIMITS } from '../memory/limits.js';
 import { DEFAULT_BUDGET, DEFAULT_MODEL_WINDOW } from './budget.js';
 import { advanceCarry, createCarry, type Carry } from './carry.js';
 import { buildJudgeInput, buildThinkInput, type MemoryInput, type PreviewImage } from './inputs.js';
@@ -158,5 +159,21 @@ describe('memory in the inputs of the think and judge roles', () => {
 
   it('leaves the input as before when no memory is given', () => {
     expect(textOf(think(undefined))).not.toContain('好み');
+  });
+
+  it('still gives the judging role a matching preference when always preferences overflow their frame', () => {
+    const items = [
+      ...manyItems(300),
+      memoryItem('anime', { body: 'アニメ調は線を細く', scope: 'tagged', tags: ['アニメ'] }),
+    ];
+
+    const messages = judge({ items, limits: DEFAULT_MEMORY_LIMITS.judge });
+
+    expect(textOf(messages)).toContain('アニメ調は線を細く');
+    const dropped = messages.report.notes.filter((note) => note.section.startsWith('memory['));
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(
+      dropped.every((note) => note.kind === 'dropped' && note.reason.includes('always 枠')),
+    ).toBe(true);
   });
 });
