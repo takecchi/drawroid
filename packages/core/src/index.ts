@@ -35,6 +35,7 @@ export type {
   LlmPort,
   LlmPurpose,
   LlmRole,
+  LlmRoleInfo,
   LlmUsage,
   TextPart,
 } from './llm/port.js';
@@ -46,6 +47,10 @@ export * from './job/manual.js';
 export * from './job/store.js';
 export * from './job/types.js';
 export * from './loop/schemas.js';
+export * from './job/store.js';
+export * from './job/types.js';
+export * from './loop/runner.js';
+export * from './loop/stop.js';
 export {
   MEMORY_SCOPES,
   memoryItemSchema,

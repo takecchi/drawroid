@@ -39,6 +39,17 @@ export async function readConfig(path: string): Promise<Config> {
 }
 
 // 優先順位は CLI 引数 > config.json > 既定
+export function resolveForgeUrlWithSource(
+  cliArg: string | undefined,
+  config: Config,
+): { forgeUrl: string; source: 'cli' | 'config' | 'default' } {
+  if (cliArg !== undefined) return { forgeUrl: cliArg, source: 'cli' };
+  if (config.backend?.forgeUrl !== undefined) {
+    return { forgeUrl: config.backend.forgeUrl, source: 'config' };
+  }
+  return { forgeUrl: DEFAULT_FORGE_URL, source: 'default' };
+}
+
 export function resolveForgeUrl(cliArg: string | undefined, config: Config): string {
-  return cliArg ?? config.backend?.forgeUrl ?? DEFAULT_FORGE_URL;
+  return resolveForgeUrlWithSource(cliArg, config).forgeUrl;
 }

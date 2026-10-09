@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import type { ModelWindow } from '../loop/budget.js';
 
 export type LlmRole = 'think' | 'judge';
 export type LlmPurpose = 'think' | 'judge';
@@ -69,7 +70,20 @@ export type LlmCall<T> = {
   signal: AbortSignal;
 };
 
+/** 役割に割り当てたモデル。記録と入力の組み立てに使う */
+export type LlmRoleInfo = {
+  provider: string;
+  model: string;
+  window: ModelWindow;
+  imageInput: boolean;
+};
+
 /** LLM との唯一の口。provider の差は実装（packages/llm）が吸収する */
 export interface LlmPort {
+  describe(role: LlmRole): LlmRoleInfo;
+  /**
+   * 構造化出力を検証して返す。検証の失敗と呼び出しの失敗は ok: false で返す。
+   * signal が中断されたときだけ、中断のエラーを投げる。
+   */
   generateStructured<T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>>;
 }
