@@ -9,6 +9,7 @@ const sdModulesSchema = z.array(z.object({ model_name: z.string() }));
 const lorasSchema = z.array(z.object({ name: z.string(), alias: z.string().nullish() }));
 const samplersSchema = z.array(z.object({ name: z.string() }));
 const schedulersSchema = z.array(z.object({ name: z.string(), label: z.string().nullish() }));
+const namedSchema = z.array(z.object({ name: z.string() }));
 
 export async function listForgeCandidates(
   client: ForgeClient,
@@ -39,6 +40,21 @@ export async function listForgeCandidates(
       const schedulers = await client.getJson('/sdapi/v1/schedulers', schedulersSchema, { signal });
       return schedulers.map((s) => withLabel(s.name, s.label ?? undefined));
     }
+    case 'upscaler': {
+      // Hires. fix の hr_upscaler が受け付けるのは、潜在空間の方式（latent-upscale-modes）と画像の拡大器（upscalers）を合わせたもの（modules/processing.py）
+      const latent = await client.getJson('/sdapi/v1/latent-upscale-modes', namedSchema, {
+        signal,
+      });
+      const upscalers = await client.getJson('/sdapi/v1/upscalers', namedSchema, { signal });
+      // None を出さない: 拡大せずに Hires. fix を回すことになり、選ばせる意味が無いため
+      return [...latent, ...upscalers]
+        .filter((u) => u.name !== 'None')
+        .map((u) => ({ name: u.name }));
+    }
+    case 'controlnetModel':
+    case 'controlnetModule':
+      // ControlNet はまだこのアダプタで使えない（probe が理由付きで返す）。候補が空なのは、使えない機能の候補として正しい形
+      return [];
   }
 }
 

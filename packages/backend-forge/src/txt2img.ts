@@ -26,9 +26,30 @@ export async function generateWithForge(
   req: GenerationRequest,
   options: { signal: AbortSignal; timeoutMs: number },
 ): Promise<GenerationResult> {
+  const unmapped = unmappedFields(req);
+  if (unmapped.length > 0) {
+    throw new BackendError(
+      'failed',
+      `Forge のアダプタはまだ次の欄を Forge に渡せない: ${unmapped.join(', ')}`,
+    );
+  }
   const payload = await buildTxt2imgPayload(client, req, options.signal);
   const res = await client.postJson('/sdapi/v1/txt2img', payload, txt2imgResponseSchema, options);
   return readTxt2imgResponse(res, req.batchSize);
+}
+
+// 渡せない欄を黙って落とさない: 落とすと、頼んだものと違う画像が、頼んだとおりに描けたものとして返るため
+function unmappedFields(req: GenerationRequest): string[] {
+  const hires = req.hiresFix ?? {};
+  return [
+    ...(req.img2img === undefined ? [] : ['img2img']),
+    ...(req.inpaint === undefined ? [] : ['inpaint']),
+    ...(req.controlnet.length === 0 ? [] : ['controlnet']),
+    ...req.loras.filter((l) => l.unetWeight !== undefined).map(() => 'loras[].unetWeight'),
+    ...(['checkpoint', 'sampler', 'scheduler', 'prompt', 'negativePrompt', 'cfgScale'] as const)
+      .filter((key) => key in hires && hires[key as keyof typeof hires] !== undefined)
+      .map((key) => `hiresFix.${key}`),
+  ];
 }
 
 export async function buildTxt2imgPayload(

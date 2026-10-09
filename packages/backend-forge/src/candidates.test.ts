@@ -61,3 +61,19 @@ describe('listForgeCandidates', () => {
     });
   });
 });
+
+describe('listForgeCandidates for Hires. fix and ControlNet', () => {
+  it('offers both latent and image upscalers for Hires. fix, leaving out None', async () => {
+    expect(await listForgeCandidates(client, 'upscaler')).toEqual([
+      { name: 'Latent' },
+      { name: 'Latent (bicubic antialiased)' },
+      { name: 'Lanczos' },
+      { name: 'R-ESRGAN 4x+' },
+    ]);
+  });
+
+  it('offers no ControlNet candidates while the adapter cannot use ControlNet', async () => {
+    expect(await listForgeCandidates(client, 'controlnetModel')).toEqual([]);
+    expect(await listForgeCandidates(client, 'controlnetModule')).toEqual([]);
+  });
+});

@@ -11,6 +11,8 @@ const FIXTURE_ROUTES: Record<string, string> = {
   'GET /sdapi/v1/samplers': 'samplers.json',
   'GET /sdapi/v1/schedulers': 'schedulers.json',
   'GET /sdapi/v1/cmd-flags': 'cmd-flags.json',
+  'GET /sdapi/v1/upscalers': 'upscalers.json',
+  'GET /sdapi/v1/latent-upscale-modes': 'latent-upscale-modes.json',
 };
 
 export function fixture(name: string): unknown {
