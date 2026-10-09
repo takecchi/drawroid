@@ -1,4 +1,10 @@
-import type { Budget, ImageBackend, JobStore, ManualGenerationRunner } from '@drawroid/core';
+import type {
+  Budget,
+  ImageBackend,
+  JobStore,
+  ManualGenerationRunner,
+  MemoryStore,
+} from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
 
 import type { BackendSettingsPort } from './backend-settings.js';
@@ -14,6 +20,7 @@ export type LlmSettingsStore = {
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
+  memoryStore: MemoryStore;
   manualRunner: ManualGenerationRunner;
   backendSettings: BackendSettingsPort;
   autoQueue: AutoJobQueue;

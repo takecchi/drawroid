@@ -50,9 +50,9 @@ const think: Script = (_call, n) => ({
   params: {
     prompt: `girl, beach, sunset, take ${n + 1}`,
     negativePrompt: 'lowres',
-    seed: -1,
+    seed: 1234 + n,
     steps: 28,
-    cfg: 7,
+    cfgScale: 7,
   },
   rationale: `${n + 1} 回目の案`,
 });

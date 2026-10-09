@@ -34,9 +34,9 @@ export async function readApiError(res: {
 }
 
 // 例外で扱う: 成功の値と失敗を別の戻り値の形にすると、SWR の error にも、呼び手の try/catch にも載せ替えが要るため
-export async function unwrap<T>(
-  request: () => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>,
-): Promise<T> {
+type ApiResponse = { ok: boolean; status: number; json(): Promise<unknown> };
+
+async function send(request: () => Promise<ApiResponse>): Promise<ApiResponse> {
   let res;
   try {
     res = await request();
@@ -44,5 +44,14 @@ export async function unwrap<T>(
     throw new ApiError('network', 'drawroid の API に繋がらない', null, { cause });
   }
   if (!res.ok) throw await readApiError(res);
-  return (await res.json()) as T;
+  return res;
+}
+
+export async function unwrap<T>(request: () => Promise<ApiResponse>): Promise<T> {
+  return (await (await send(request)).json()) as T;
+}
+
+// 204 は体が無く、unwrap の json() が落ちるため、成功の体を読まない口を別に置く
+export async function unwrapEmpty(request: () => Promise<ApiResponse>): Promise<void> {
+  await send(request);
 }

@@ -125,6 +125,16 @@ describe('ManualGenerationRunner', () => {
     expect(backend.requests).toEqual([]);
   });
 
+  it('refuses a request that points at images, without creating a job, since it cannot pass them yet', async () => {
+    const { runner, store, backend } = setup();
+
+    await expect(
+      runner.start({ ...params, img2img: { image: 'refs/r1.png', denoisingStrength: 0.5 } }),
+    ).rejects.toThrow(ZodError);
+    expect(store.specs.size).toBe(0);
+    expect(backend.requests).toEqual([]);
+  });
+
   it('does not let two generations overlap', async () => {
     const backend = new StubBackend({ generateDelayMs: 10 });
     let running = 0;

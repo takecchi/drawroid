@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { BackendBusyError } from '@drawroid/api';
 import type { ForgeBackendOptions } from '@drawroid/backend-forge';
+import { generationRequestSchema } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -21,16 +22,14 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const request = {
+// schema を通して作る: 要求に欄が足されても、既定値のある欄はここで埋まるため
+const request = generationRequestSchema.parse({
   prompt: 'a cat',
-  negativePrompt: '',
-  loras: [],
   steps: 4,
   cfgScale: 7,
   width: 64,
   height: 64,
-  batchSize: 1,
-};
+});
 
 async function setup(config: object, source: 'cli' | 'config' | 'default' = 'config') {
   await writeFile(configPath, JSON.stringify(config));
