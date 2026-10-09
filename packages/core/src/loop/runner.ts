@@ -530,7 +530,9 @@ export class JobRunner {
       requestGist: carry.intent,
       limits: this.deps.candidateLimits ?? DEFAULT_CANDIDATE_LIMITS,
     });
-    const sources = permissions.img2img.mode === 'auto' ? imageSourcesOf(carry) : [];
+    const choosesImage =
+      permissions.img2img.mode === 'auto' || permissions.controlnet.mode === 'auto';
+    const sources = choosesImage ? imageSourcesOf(carry) : [];
     const params = this.paramsSchema(permissions, candidates, sources);
     return { permissions, merged, disabled, candidates, sources, mask, params };
   }
@@ -742,6 +744,21 @@ export class JobRunner {
         throw new StopJob({ kind: 'error', detail: `元画像のキー ${img2img.image} の画像が無い` });
       }
       decided.img2img = { ...img2img, image: source.ref };
+    }
+    // 考える役の出力（モデル名・前処理名・画像のキー）を生成の要求の ControlNetUnit に写すのはここ。
+    // バックエンド固有の形（Forge の args など）はアダプタが作るので、ここでは持たない。null は使わない
+    const controlnet = think.params.controlnet as
+      { model: string; module?: string; image: string } | null | undefined;
+    if (controlnet === null) delete decided.controlnet;
+    else if (controlnet !== undefined) {
+      const source = paramsPlan.sources.find((s) => s.key === controlnet.image);
+      if (source === undefined) {
+        throw new StopJob({
+          kind: 'error',
+          detail: `ControlNet の入力画像のキー ${controlnet.image} の画像が無い`,
+        });
+      }
+      decided.controlnet = [{ ...controlnet, image: source.ref }];
     }
     if (think.params.inpaint !== undefined) {
       const { mask } = paramsPlan;

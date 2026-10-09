@@ -131,12 +131,78 @@ describe('buildParamsSchema', () => {
     expect(jsonSchemaKeys(schema)).not.toContain('inpaint');
     expect(omitted.inpaint).toBeUndefined();
   });
+});
 
-  it('keeps ControlNet out until there is a way to offer its choices', () => {
-    const { schema, omitted } = buildParamsSchema(allAuto(), context);
+describe('buildParamsSchema for ControlNet', () => {
+  const controlnetOnly = { ...allOff(), controlnet: { mode: 'auto' } } satisfies Permissions;
+  const withControlNet: ParamsSchemaContext = {
+    ...context,
+    shown: {
+      ...context.shown,
+      controlnetModel: [{ name: 'canny [abcd]' }, { name: 'depth [1234]' }],
+      controlnetModule: [{ name: 'canny' }, { name: 'depth_midas' }],
+    },
+    imageSources: ['best', 'ref:0001'],
+  };
+  const unit = { model: 'canny [abcd]', module: 'canny', image: 'ref:0001' };
+
+  it('offers only the model, the preprocessor and the image key, nothing else about the unit', () => {
+    const { schema } = buildParamsSchema(controlnetOnly, withControlNet);
+
+    const json = z.toJSONSchema(schema) as unknown as {
+      properties: { controlnet: { anyOf: { properties?: object }[] } };
+    };
+    const unitShape = json.properties.controlnet.anyOf.find((s) => s.properties !== undefined);
+    expect(Object.keys(unitShape?.properties ?? {}).sort()).toEqual(['image', 'model', 'module']);
+  });
+
+  it('lets the AI use one unit or none, and the preprocessor may be left out', () => {
+    const { schema } = buildParamsSchema(controlnetOnly, withControlNet);
+
+    expect(schema.safeParse({ controlnet: unit }).success).toBe(true);
+    expect(schema.safeParse({ controlnet: null }).success).toBe(true);
+    expect(schema.safeParse({ controlnet: { model: unit.model, image: 'best' } }).success).toBe(
+      true,
+    );
+    expect(schema.safeParse({ controlnet: [unit] }).success).toBe(false);
+  });
+
+  it('rejects a model, a preprocessor or an image key that was not shown', () => {
+    const { schema } = buildParamsSchema(controlnetOnly, withControlNet);
+
+    expect(schema.safeParse({ controlnet: { ...unit, model: 'openpose [ffff]' } }).success).toBe(
+      false,
+    );
+    expect(schema.safeParse({ controlnet: { ...unit, module: 'lineart' } }).success).toBe(false);
+    expect(schema.safeParse({ controlnet: { ...unit, image: 'latest' } }).success).toBe(false);
+  });
+
+  it('does not offer ControlNet without a model that was shown', () => {
+    const { schema, omitted } = buildParamsSchema(controlnetOnly, {
+      ...withControlNet,
+      shown: { ...withControlNet.shown, controlnetModel: [] },
+    });
 
     expect(jsonSchemaKeys(schema)).not.toContain('controlnet');
-    expect(omitted.controlnet).toBe('not-supported-yet');
+    expect(omitted.controlnet).toBe('no-candidates-shown');
+  });
+
+  it('does not offer ControlNet without an image that was shown', () => {
+    const { schema, omitted } = buildParamsSchema(controlnetOnly, {
+      ...withControlNet,
+      imageSources: [],
+    });
+
+    expect(jsonSchemaKeys(schema)).not.toContain('controlnet');
+    expect(omitted.controlnet).toBe('no-candidates-shown');
+  });
+
+  it('does not offer ControlNet when it is off or fixed', () => {
+    for (const permission of [{ mode: 'off' }, { mode: 'fixed', value: [] }] as const) {
+      const { schema } = buildParamsSchema({ ...allOff(), controlnet: permission }, withControlNet);
+
+      expect(jsonSchemaKeys(schema)).not.toContain('controlnet');
+    }
   });
 });
 

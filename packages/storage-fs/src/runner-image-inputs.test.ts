@@ -47,7 +47,9 @@ const textOf = (call: LlmCall<unknown>) =>
   call.messages.user.map((part) => (part.type === 'text' ? part.text : '')).join('');
 
 /** 考える役。出力スキーマにある画像の欄にだけ値を入れる */
-function think(choose: { img2img?: string; inpaint?: number } = {}): Script {
+function think(
+  choose: { img2img?: string; inpaint?: number; controlnet?: object | null } = {},
+): Script {
   return (call) => {
     const keys = paramKeysOf(call);
     return {
@@ -55,6 +57,9 @@ function think(choose: { img2img?: string; inpaint?: number } = {}): Script {
         ...decided,
         ...(keys.includes('img2img') && choose.img2img !== undefined
           ? { img2img: { image: choose.img2img, denoisingStrength: 0.5 } }
+          : {}),
+        ...(keys.includes('controlnet') && choose.controlnet !== undefined
+          ? { controlnet: choose.controlnet }
           : {}),
         ...(keys.includes('inpaint') && choose.inpaint !== undefined
           ? { inpaint: { denoisingStrength: choose.inpaint } }
@@ -237,5 +242,69 @@ describe('img2img starts from an image the thinking role was shown (Issue #5 G)'
 
     expect(textOf(thinkCalls(llm)[0]!)).toContain(`ref:${reference.refId}: 白いワンピースの立ち姿`);
     expect(backend.requests[0]?.img2img).toMatchObject({ image: `ref:${reference.refId}` });
+  });
+});
+
+describe('ControlNet is chosen from the models, preprocessors and images the thinking role was shown (M4:123)', () => {
+  const permissions = mergePermissions(base, { controlnet: { mode: 'auto' } });
+  const unit = { model: 'stub-canny [0123abcd]', module: 'canny', image: 'best' };
+
+  it('sends one unit with the chosen image and the default weights', async () => {
+    const { store, llm, backend, runner } = setup(
+      { think: think({ controlnet: unit }), judge: judge() },
+      permissions,
+    );
+    await submit(store, 2);
+
+    runner.kick();
+    await runner.idle();
+
+    const [first, second] = thinkCalls(llm);
+    // 1回目は見せた画像が無いので出ない
+    expect(paramKeysOf(first!)).not.toContain('controlnet');
+    expect(paramKeysOf(second!)).toContain('controlnet');
+    expect(backend.requests[0]?.controlnet).toEqual([]);
+    expect(backend.requests[1]?.controlnet).toEqual([
+      {
+        image: 'image:1-0',
+        module: 'canny',
+        model: 'stub-canny [0123abcd]',
+        weight: 1,
+        guidanceStart: 0,
+        guidanceEnd: 1,
+        controlMode: 'balanced',
+        resize: 'crop',
+        pixelPerfect: false,
+      },
+    ]);
+  });
+
+  it('sends no ControlNet when the AI chooses not to use it', async () => {
+    const { store, llm, backend, runner } = setup(
+      { think: think({ controlnet: null }), judge: judge() },
+      permissions,
+    );
+    await submit(store, 2);
+
+    runner.kick();
+    await runner.idle();
+
+    expect(paramKeysOf(thinkCalls(llm)[1]!)).toContain('controlnet');
+    expect(backend.requests.every((request) => request.controlnet.length === 0)).toBe(true);
+  });
+
+  it('does not offer ControlNet when the backend has no ControlNet model', async () => {
+    const set = {
+      store: new FsJobStore(root),
+      llm: new ScriptedLlm({ think: think({ controlnet: unit }), judge: judge() }),
+      backend: new StubBackend({ candidates: { controlnetModel: [] } }),
+    };
+    const runner = new JobRunner({ ...set, budget: DEFAULT_BUDGET, permissions });
+    await submit(set.store, 2);
+
+    runner.kick();
+    await runner.idle();
+
+    for (const call of thinkCalls(set.llm)) expect(paramKeysOf(call)).not.toContain('controlnet');
   });
 });
