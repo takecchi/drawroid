@@ -183,8 +183,12 @@ describe('ForgeBackend default time limits', () => {
       },
       stop.signal,
     );
-    await vi.waitFor(() => expect(limits.mock.calls.map(([ms]) => ms)).toContain(600_000));
-    stop.abort();
-    await generating.catch(() => undefined);
+    try {
+      await vi.waitFor(() => expect(limits.mock.calls.map(([ms]) => ms)).toContain(600_000));
+    } finally {
+      // 落ちたときも、待ち続ける生成を止める
+      stop.abort();
+      await generating.catch(() => undefined);
+    }
   });
 });
