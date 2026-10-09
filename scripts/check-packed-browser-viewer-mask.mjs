@@ -198,6 +198,13 @@ try {
       true,
       'ジョブの詳細の人間の指示に、塗ったマスクが「1 回目の画像 1 番」と 1 から数えて出る',
     );
+    // 見出しは依頼の文（偽の話す役が start_drawing に渡す文）で、ID は下の並びにある
+    const heading = await page.getByRole('heading', { level: 1 }).textContent();
+    expect(
+      heading === '夕焼けの海辺の少女' &&
+        (await page.locator('dd code').first().textContent()) === jobId,
+      `ジョブの詳細の見出しは依頼の文で、ID は下の並びにある（見出し: ${String(heading)}）`,
+    );
     await page.close();
   }
 } finally {
