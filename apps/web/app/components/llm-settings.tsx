@@ -11,7 +11,6 @@ import {
   Section,
   Select,
   SubSection,
-  WarnNote,
 } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
@@ -75,7 +74,7 @@ function RoleFields({
             value={values.contextTokens}
             onChange={(event) => onChange({ ...values, contextTokens: event.target.value })}
             aria-label={`${label}の文脈の上限`}
-            placeholder="8192"
+            placeholder="自動"
             className="w-32"
           />
         </Field>
@@ -86,7 +85,7 @@ function RoleFields({
             value={values.maxOutputTokens}
             onChange={(event) => onChange({ ...values, maxOutputTokens: event.target.value })}
             aria-label={`${label}の出力の上限`}
-            placeholder="4096"
+            placeholder="なし"
             className="w-32"
           />
         </Field>
@@ -128,8 +127,6 @@ export function LlmSettings() {
 
   const stored = data?.config ?? null;
   const keyStatus = data !== undefined && 'apiKeyEnv' in data ? data.apiKeyEnv : {};
-  const limitWarnings =
-    data !== undefined && 'outputLimitWarnings' in data ? data.outputLimitWarnings : [];
   const values = edited ?? (data === undefined ? undefined : toFormValues(stored));
 
   function change(next: Partial<LlmSettingsFormValues>) {
@@ -263,10 +260,6 @@ export function LlmSettings() {
             </datalist>
           </SubSection>
           <SubSection title="役ごとのモデル">
-            {/* 保存されている値についての警告。値は書き換えず、上げるかどうかは利用者が決める */}
-            {limitWarnings.map((warning) => (
-              <WarnNote key={warning.role}>警告: {warning.message}</WarnNote>
-            ))}
             <RoleFields
               role="think"
               values={values.think}

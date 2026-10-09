@@ -55,10 +55,10 @@ const thinkMessages: BudgetedMessages = buildThinkInput({
   budget: DEFAULT_BUDGET,
   window: DEFAULT_MODEL_WINDOW,
 });
-const thinkSchema = buildThinkOutputSchema(
-  { schema: z.object({ prompt: z.string(), steps: z.number().int().max(150) }), omitted: {} },
-  DEFAULT_BUDGET,
-);
+const thinkSchema = buildThinkOutputSchema({
+  schema: z.object({ prompt: z.string(), steps: z.number().int().max(150) }),
+  omitted: {},
+});
 const valid = JSON.stringify({
   params: { prompt: 'girl, beach, sunset', steps: 28 },
   rationale: '最初の案',
@@ -93,29 +93,45 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
   const half = valid.slice(0, 30);
 
   it.each(['native', 'json', 'text'] as const)(
-    'stops at once in %s mode, naming the setting to raise and the size to raise it to',
+    'stops at once in %s mode, saying the limit of the LLM side cut it when drawroid sends none',
     async (structuredOutput) => {
       const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half), reply(valid)] });
       const outcome = await adapter(model, role({ structuredOutput })).generateStructured(call());
 
       // 同じ上限で出し直しても同じ所で切れるので、出し直さない
       expect(model.doGenerateCalls).toHaveLength(1);
+      expect(model.doGenerateCalls[0]?.maxOutputTokens).toBeUndefined();
       expect(outcome.ok).toBe(false);
       expect(outcome.attempts).toEqual([
         { rawOutput: half, usage: { inputTokens: 100, outputTokens: 4096 }, durationMs: 10 },
       ]);
       if (!outcome.ok) {
         expect(outcome.reason).toContain(
-          '考える役の出力が、出力の上限（maxOutputTokens = 4096）で切れた',
+          '考える役の出力が、LLM 側の出力の上限で切れた（drawroid は出力の上限を送っていない）',
         );
-        expect(outcome.reason).toContain(
-          '「出力の上限（トークン）」（config.json の llm.roles.think.maxOutputTokens）を 8192 以上に上げる',
-        );
-        expect(outcome.reason).toContain('llm.roles.think.contextTokens、いま 8192');
+        expect(outcome.reason).toContain('LLM のサーバかモデルの設定で');
         expect(outcome.reason).toContain('考える過程（reasoning）');
       }
     },
   );
+
+  it('names the setting to raise, or to leave empty, when the role sets its own output limit', async () => {
+    const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half)] });
+    const outcome = await adapter(model, role({ maxOutputTokens: 1024 })).generateStructured(
+      call(),
+    );
+
+    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(1024);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.reason).toContain(
+        '考える役の出力が、出力の上限（maxOutputTokens = 1024）で切れた',
+      );
+      expect(outcome.reason).toContain(
+        '「出力の上限（トークン）」（config.json の llm.roles.think.maxOutputTokens）を 2048 以上に上げるか、空にして LLM 側の設定に任せる',
+      );
+    }
+  });
 
   it('treats a server error that says the output stopped at length the same way, keeping the original message', async () => {
     const model = new MockLanguageModelV4({
@@ -338,8 +354,16 @@ describe('describe', () => {
     expect(adapter(model, role({ contextTokens: 4096 })).describe('judge')).toEqual({
       provider: 'local',
       model: 'qwen',
-      window: { contextTokens: 4096, maxOutputTokens: 2048 },
+      window: { contextTokens: 4096, maxOutputTokens: 1024 },
       imageInput: true,
     });
+  });
+
+  it('reserves the configured output limit in the window', () => {
+    const model = new MockLanguageModelV4();
+    const window = adapter(model, role({ contextTokens: 4096, maxOutputTokens: 3000 })).describe(
+      'think',
+    ).window;
+    expect(window).toEqual({ contextTokens: 4096, maxOutputTokens: 3000 });
   });
 });

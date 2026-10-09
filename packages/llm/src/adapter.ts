@@ -7,6 +7,7 @@ import type {
   LlmRoleInfo,
   LlmUsage,
 } from '@drawroid/core';
+import { DEFAULT_MODEL_WINDOW } from '@drawroid/core';
 import {
   generateText,
   NoObjectGeneratedError,
@@ -98,7 +99,11 @@ export class AiSdkLlm implements LlmPort {
     return {
       provider: this.models[role].providerName,
       model: config.model,
-      window: { contextTokens: config.contextTokens, maxOutputTokens: config.maxOutputTokens },
+      window: {
+        contextTokens: config.contextTokens ?? DEFAULT_MODEL_WINDOW.contextTokens,
+        // 上限を送らないときも、入力の予算からは出力の分を空けておく: 入力で窓を埋めると出力が入らず length で切れるため
+        maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MODEL_WINDOW.maxOutputTokens,
+      },
       imageInput: config.imageInput,
     };
   }
@@ -207,7 +212,9 @@ export class AiSdkLlm implements LlmPort {
         model: this.models[call.role].model,
         instructions,
         messages,
-        maxOutputTokens: config.maxOutputTokens,
+        ...(config.maxOutputTokens === undefined
+          ? {}
+          : { maxOutputTokens: config.maxOutputTokens }),
         maxRetries: this.options.networkRetries,
         abortSignal: call.signal,
         ...(output === undefined ? {} : { output }),
@@ -229,22 +236,30 @@ export class AiSdkLlm implements LlmPort {
     }
   }
 
-  // どの設定をいくつに上げればよいかを名指す: 「上限を上げる」だけでは、画面のどの欄・config.json のどの鍵か分からないため
+  // どこで切れたか・何を変えればよいかを名指す: 「上限を上げる」だけでは、画面のどの欄・config.json のどの鍵か、
+  // drawroid と LLM のどちらの設定かが分からないため
   private cutAtLimitReason(role: LlmRole, detail: string | undefined): string {
     const key = this.options.configKeys?.[role] ?? role;
     const config = this.roles[role];
-    const suggested = Math.max(config.maxOutputTokens * 2, 2048);
-    const inherited =
-      key === role ? '' : `${ROLE_LABELS[role]}は${ROLE_LABELS[key]}の設定を使っているので、`;
-    const lines = [
-      `${ROLE_LABELS[role]}の出力が、出力の上限（maxOutputTokens = ${config.maxOutputTokens}）で切れた。`,
-      `${inherited}LLM の設定の${ROLE_LABELS[key]}の「出力の上限（トークン）」（config.json の llm.roles.${key}.maxOutputTokens）を ${suggested} 以上に上げる。`,
-      // 入力に使える量は「文脈の上限 − 出力の上限」なので、出力だけを上げると入力が削られる
-      suggested >= config.contextTokens
-        ? `あわせて「文脈の上限（トークン）」（llm.roles.${key}.contextTokens、いま ${config.contextTokens}）を、モデルとサーバが許す範囲で ${suggested} より大きくする。`
-        : `入力に使えるのは「文脈の上限（いま ${config.contextTokens}）− 出力の上限」なので、モデルとサーバが許すなら llm.roles.${key}.contextTokens も上げる。`,
+    const lines: string[] = [];
+    if (config.maxOutputTokens === undefined) {
+      // 上限を書いていない役は、drawroid は上限を送らず LLM 側の設定に任せている
+      lines.push(
+        `${ROLE_LABELS[role]}の出力が、LLM 側の出力の上限で切れた（drawroid は出力の上限を送っていない）。`,
+        'LLM のサーバかモデルの設定で、出力の上限（max_tokens など）や文脈の長さを上げる。',
+      );
+    } else {
+      const suggested = Math.max(config.maxOutputTokens * 2, 2048);
+      const inherited =
+        key === role ? '' : `${ROLE_LABELS[role]}は${ROLE_LABELS[key]}の設定を使っているので、`;
+      lines.push(
+        `${ROLE_LABELS[role]}の出力が、出力の上限（maxOutputTokens = ${config.maxOutputTokens}）で切れた。`,
+        `${inherited}LLM の設定の${ROLE_LABELS[key]}の「出力の上限（トークン）」（config.json の llm.roles.${key}.maxOutputTokens）を ${suggested} 以上に上げるか、空にして LLM 側の設定に任せる。`,
+      );
+    }
+    lines.push(
       '考える過程（reasoning）を出すモデルでは、その分も出力の上限に数えられる。上げても切れるなら、サーバかモデルの側で考える過程を切る。',
-    ];
+    );
     if (detail !== undefined) lines.push(`（元のエラー: ${clip(detail, ERROR_SUMMARY_LIMIT)}）`);
     return lines.join('');
   }

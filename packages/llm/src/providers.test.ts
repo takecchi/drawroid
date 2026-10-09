@@ -109,6 +109,13 @@ describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
     expect(calls[0]?.body.max_tokens).toBe(777);
   });
 
+  it('leaves the limit of the output to the provider when the role has no maxOutputTokens', async () => {
+    const { fetch, calls } = fakeFetch(() => chatCompletion('{"canStop":true}'));
+    const llm = createLlm(config('native'), { env: { LOCAL_KEY: SECRET }, fetch });
+    await llm.generateStructured(judgeCall);
+    expect(calls[0]?.body).not.toHaveProperty('max_tokens');
+  });
+
   it.each([500, 429])(
     'succeeds when the first request fails with %i and a network retry succeeds',
     async (failure) => {
