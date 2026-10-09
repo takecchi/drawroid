@@ -93,7 +93,7 @@ beforeEach(async () => {
     manualRunner: new ManualGenerationRunner({ backend, store }),
     autoQueue: runner,
     budgetSettings: {
-      read: async () => ({ overrides: {}, effective: resolveBudgets({}) }),
+      read: async () => ({ overrides: {}, effective: resolveBudgets({}), invalid: [] }),
       write: notUsed,
     },
     progressPreviews: new ProgressPreviews(),
