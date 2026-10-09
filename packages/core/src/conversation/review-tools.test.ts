@@ -182,6 +182,17 @@ describe('review_image', () => {
     expect(llm.calls).toHaveLength(1);
   });
 
+  it('judges an image of the iteration the human chose, before the loop writes adopted.json for it', async () => {
+    const { review, llm } = setup({
+      'job-1': job(runningState(), {
+        interventions: [{ kind: 'adopt', image: { iteration: 2, index: 0 } }],
+      }),
+    });
+
+    expect(await review({ iteration: 2 })).toMatchObject({ ok: true });
+    expect(llm.calls).toHaveLength(1);
+  });
+
   it('returns the first evaluation, without calling the judge, when the same image is asked again', async () => {
     const { review, llm } = setup({ 'job-1': job(stoppedState()) });
 
