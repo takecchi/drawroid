@@ -51,8 +51,22 @@ export const interventionRecordSchema = z.discriminatedUnion('kind', [
     ...interventionIdentity,
     stopConditions: stopConditionsChangeSchema,
   }),
+  // mask は inpaint のマスク。画像そのものは masks/<interventionId>.png で、塗った生成画像に紐づく（Issue #5 の H）
+  z.object({
+    kind: z.literal('mask'),
+    ...interventionIdentity,
+    image: z.object({
+      iteration: z.number().int().positive(),
+      index: z.number().int().nonnegative(),
+    }),
+    /** inpaint に使った回。1回使うと切れる。使われる前に新しいマスクが来ても切れる */
+    usedInIteration: z.number().int().positive().optional(),
+  }),
 ]);
 export type InterventionRecord = z.infer<typeof interventionRecordSchema>;
+export type MaskIntervention = Extract<InterventionRecord, { kind: 'mask' }>;
+/** addMask に渡す形。data は PNG（白い所を描き直す） */
+export type NewMask = { image: { iteration: number; index: number }; data: Uint8Array };
 export type InstructionIntervention = Extract<InterventionRecord, { kind: 'instruction' }>;
 export type StopConditionsIntervention = Extract<InterventionRecord, { kind: 'stopConditions' }>;
 /** addIntervention に渡す形（interventionId と receivedAt は置き場所が決め、受けたときは未反映） */

@@ -75,6 +75,19 @@ export function InterventionItem({
             </p>
           )}
         </>
+      ) : intervention.kind === 'mask' ? (
+        <>
+          <p style={{ margin: '4px 0' }}>
+            {intervention.image.iteration} 回目の画像 {intervention.image.index} にマスクを塗った
+          </p>
+          {showStatus && (
+            <p style={{ margin: '4px 0' }}>
+              {intervention.usedInIteration === undefined
+                ? 'まだ inpaint に使っていない'
+                : `${intervention.usedInIteration} 回目の inpaint に使った`}
+            </p>
+          )}
+        </>
       ) : (
         <>
           <p style={{ margin: '4px 0' }}>止める条件を変えた</p>

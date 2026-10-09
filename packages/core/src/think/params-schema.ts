@@ -10,6 +10,8 @@ export interface ParamsSchemaContext {
   // その回に考える役へ見せた候補（selectCandidates の結果）。見せていない候補は選べない
   shown: Partial<Record<CandidateKind, readonly ShownCandidate[]>>;
   budget: Budget;
+  // その回に入力に載せた、元画像に選べる画像のキー。見せていない画像は選べない
+  imageSources?: readonly string[];
 }
 
 export type OmittedReason = 'no-candidates-shown' | 'not-supported-yet';
@@ -64,9 +66,20 @@ const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSche
       denoisingStrength: request.hiresFix.unwrap().shape.denoisingStrength,
     });
   },
-  // 要求の欄は入った（#30）が、元画像・マスク・参照画像の選び方が未決（#5 の G・H）なので、決まるまで入れない
-  img2img: () => 'not-supported-yet',
-  inpaint: () => 'not-supported-yet',
+  // 元画像は、入力に載せた画像のキー（best・latest・ref:<refId>）の enum から選ばせる（Issue #5 の G）。
+  // 見せていない画像は選べない。キーを要求の参照に写すのはループの側
+  img2img: ({ imageSources }) => {
+    const [first, ...rest] = imageSources ?? [];
+    if (first === undefined) return 'no-candidates-shown';
+    return z.object({
+      image: z.enum([first, ...rest]),
+      denoisingStrength: request.img2img.unwrap().shape.denoisingStrength,
+    });
+  },
+  // 元画像とマスクは人間が塗ったものに決まっているので、AI には描き直す強さだけを決めさせる（Issue #5 の H）。
+  // マスクが無い回は、許可（effectivePermissions）の時点で「使わない」になり、ここまで来ない
+  inpaint: () => z.object({ denoisingStrength: request.inpaint.unwrap().shape.denoisingStrength }),
+  // 参照画像を元にする道は img2img で足りる（M4:123）。ControlNet のモデルと前処理の選ばせ方は決めていない
   controlnet: () => 'not-supported-yet',
 };
 
