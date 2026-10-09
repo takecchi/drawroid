@@ -1,9 +1,9 @@
 import type { AutoJobQueue as AutoJobQueuePort } from '@drawroid/api';
 import {
+  basicPermissions,
   JobRunner,
-  THINK_PARAM_KEYS,
+  mergePermissions,
   type Budget,
-  type GenerationDefaults,
   type ImageBackend,
   type InterventionRecord,
   type JobStore,
@@ -12,18 +12,14 @@ import {
   type LlmPort,
   type LlmRole,
   type LlmRoleInfo,
+  type Permissions,
   type StopConditions,
   type StopConditionsChange,
 } from '@drawroid/core';
 import { createLlm, type LlmConfig } from '@drawroid/llm';
 
-const DEFAULTS: GenerationDefaults = {
-  width: 1024,
-  height: 1024,
-  steps: 20,
-  cfgScale: 7,
-  negativePrompt: '',
-};
+// 設定に許可を書かないときの土台。M2 の可動範囲（プロンプト・seed・steps・CFG を AI に任せ、大きさは固定）
+const BASE_PERMISSIONS = basicPermissions({ width: 1024, height: 1024 });
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -32,6 +28,8 @@ export type AutoJobQueueOptions = {
   backend: ImageBackend;
   env: Env;
   budget: Budget;
+  /** config.json の permissions。全体の既定の許可の土台に重ねる */
+  permissions?: Partial<Permissions>;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   log: (line: string) => void;
 };
@@ -54,8 +52,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
       llm: delegating,
       backend: options.backend,
       budget: options.budget,
-      allowed: THINK_PARAM_KEYS,
-      defaults: DEFAULTS,
+      permissions: mergePermissions(BASE_PERMISSIONS, options.permissions ?? {}),
     });
   }
 

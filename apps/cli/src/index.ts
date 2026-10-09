@@ -57,6 +57,7 @@ async function main() {
     backend,
     env: process.env,
     budget: DEFAULT_BUDGET,
+    ...(config.permissions !== undefined && { permissions: config.permissions }),
     log,
   });
   const stored = await readLlmSettings(configPath);

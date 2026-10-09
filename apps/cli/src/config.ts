@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
+import { permissionOverridesSchema } from '@drawroid/core';
 import { z } from 'zod';
 
 export const DEFAULT_FORGE_URL = 'http://127.0.0.1:7860';
@@ -13,6 +14,8 @@ const configSchema = z.object({
       generateTimeoutMs: z.number().int().positive().optional(),
     })
     .optional(),
+  // 全体の既定の許可。書いたパラメータだけを、土台（M2 の可動範囲）に重ねる
+  permissions: permissionOverridesSchema.optional(),
 });
 export type Config = z.infer<typeof configSchema>;
 

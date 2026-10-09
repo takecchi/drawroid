@@ -7,10 +7,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  BackendError,
+  basicPermissions,
   DEFAULT_BUDGET,
   JobRunner,
   InterventionRejectedError,
-  THINK_PARAM_KEYS,
   type AutoJobSpec,
   type GenerationRequest,
   type GenerationResult,
@@ -89,8 +90,7 @@ function setup(options: {
     llm,
     backend,
     budget: DEFAULT_BUDGET,
-    allowed: THINK_PARAM_KEYS,
-    defaults: { width: 1024, height: 768, steps: 20, cfgScale: 7, negativePrompt: '' },
+    permissions: basicPermissions({ width: 1024, height: 768 }),
     ...(options.now === undefined ? {} : { now: options.now }),
     newCallId: () => String(++seq).padStart(4, '0'),
   });
@@ -285,12 +285,26 @@ describe('a broken structured output stops the job with the reason (:73)', () =>
 
   it('stops as an error when the backend fails, naming the stage', async () => {
     const backend = new BigImageBackend();
-    backend.setUnreachable(true);
+    backend.failNextGenerate(new BackendError('failed', 'Forge が失敗を返した'));
     const { store, runner } = setup({ scripts: { think, judge: judge() }, backend });
     const spec = await submit(store, { aiJudgement: true, maxIterations: 5 });
     runner.kick();
     await runner.idle();
     expect((await stoppedState(store, spec.jobId)).reason.detail).toMatch(/^生成の段: /);
+  });
+
+  it('stops before thinking when the backend is down at the start of the job', async () => {
+    const backend = new BigImageBackend();
+    backend.setUnreachable(true);
+    const { store, llm, runner } = setup({ scripts: { think, judge: judge() }, backend });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 });
+    runner.kick();
+    await runner.idle();
+
+    const { reason } = await stoppedState(store, spec.jobId);
+    expect(reason).toMatchObject({ kind: 'error', backendErrorKind: 'unreachable' });
+    expect(reason.detail).toMatch(/^バックエンドの能力と候補を取る段: /);
+    expect(llm.calls).toEqual([]);
   });
 });
 

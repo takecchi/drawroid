@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  basicPermissions,
   DEFAULT_BUDGET,
   generationRequestSchema,
   JobRunner,
   ManualGenerationRunner,
-  THINK_PARAM_KEYS,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
@@ -31,8 +31,7 @@ beforeEach(async () => {
     llm: new ScriptedLlm({}),
     backend,
     budget: DEFAULT_BUDGET,
-    allowed: THINK_PARAM_KEYS,
-    defaults: { width: 64, height: 64, steps: 4, cfgScale: 7, negativePrompt: '' },
+    permissions: basicPermissions({ width: 64, height: 64 }),
     now,
   });
   app = createApi({
