@@ -264,7 +264,8 @@ export function LlmSettings() {
                           ? 'http://127.0.0.1:11434/v1'
                           : '既定の接続先'
                       }
-                      className="w-80"
+                      // 狭い画面では枠の幅に収める: 決まった幅のままだと、provider の枠の外へはみ出すため
+                      className="w-full max-w-80"
                     />
                   </Field>
                   <FieldRow className="items-end">

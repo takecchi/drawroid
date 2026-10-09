@@ -1,5 +1,5 @@
 import { isApiError, saveBackendSettings, useBackendSettings } from '@drawroid/swr';
-import { Button, ErrorNote, Input, Section } from '@drawroid/ui';
+import { Button, ErrorNote, Input, OkNote, Section } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import { BACKEND_KIND_LABELS } from '../lib/backend-error';
@@ -15,14 +15,19 @@ export function BackendUrlSettings() {
   const [input, setInput] = useState('');
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  // 保存した URL。保存すると欄は空に戻るので、効いたことを知らせる
+  const [saved, setSaved] = useState<string | undefined>();
 
   async function save(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
     setSaveError(undefined);
+    setSaved(undefined);
     try {
-      await saveBackendSettings({ url: input.trim() });
+      const url = input.trim();
+      await saveBackendSettings({ url });
       setInput('');
+      setSaved(url);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setSaveError(caught.message);
@@ -55,7 +60,10 @@ export function BackendUrlSettings() {
         <Input
           type="text"
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => {
+            setInput(event.target.value);
+            setSaved(undefined);
+          }}
           placeholder="http://127.0.0.1:7860"
           aria-label="バックエンドの URL"
           className="w-80"
@@ -64,6 +72,7 @@ export function BackendUrlSettings() {
           保存
         </Button>
       </form>
+      {saved !== undefined && <OkNote>保存した。{saved} に繋ぐ。</OkNote>}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
     </Section>
   );

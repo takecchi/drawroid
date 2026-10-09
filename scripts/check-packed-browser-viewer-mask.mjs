@@ -5,6 +5,7 @@
 // 4. 「マスクを送る」で送ると、ジョブの口出しにマスクが入る（ジョブの詳細の塗る部品と同じ口）
 // 5. 閉じるボタンは、塗りかけを捨てて閉じる。開き直すと、塗る前の窓に戻る
 // 6. 狭い画面（390×844）でも、塗る面と送るボタンが画面の中に収まり、横にはみ出さない
+// 7. ジョブの詳細の人間の指示にも、塗ったマスクが、画像を 1 から数えた名前で出る
 // 偽の LLM と偽の Forge は check-packed-conversation の部品（scripts/packed-conversation/）を使う。ジョブは回を重ね続けるようにして、塗る間も止めない。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -181,6 +182,21 @@ try {
     expect(
       problems.length === 0,
       `${label}: コンソールのエラー・失敗した読み込みが無い${problems.length === 0 ? '' : `:\n${problems.join('\n')}`}`,
+    );
+    await page.close();
+  }
+
+  // 7. ジョブの詳細の人間の指示にも、窓で塗ったマスクが、画像を 1 から数えた名前で出る（会話の画面の呼び方にそろう）
+  {
+    const { jobs } = await api(base, 'GET', '/api/jobs');
+    const jobId = /** @type {{ jobId: string }[]} */ (jobs)[0]?.jobId;
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    page.setDefaultTimeout(STEP_TIMEOUT_MS);
+    await page.goto(`${base}/jobs/${jobId}`);
+    await page.getByText('1 回目の画像 1 番にマスクを塗った').waitFor();
+    expect(
+      true,
+      'ジョブの詳細の人間の指示に、塗ったマスクが「1 回目の画像 1 番」と 1 から数えて出る',
     );
     await page.close();
   }
