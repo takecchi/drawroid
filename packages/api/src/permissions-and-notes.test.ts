@@ -156,6 +156,21 @@ describe('the default permissions over HTTP', () => {
     expect(await readConfig()).toEqual({ llm: { providers: {} } });
   });
 
+  it('refuses a fixed value of the wrong shape, saying which field it was, and writes nothing', async () => {
+    await writeFile(paths.config, JSON.stringify({ llm: { providers: {} } }));
+
+    const res = await send('PUT', '/settings/permissions', {
+      cfgScale: { mode: 'auto' },
+      steps: { mode: 'fixed', value: 'twenty' },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { kind: string; message: string } };
+    expect(body.error.kind).toBe('invalid_request');
+    expect(body.error.message).toContain('steps.value');
+    expect(await readConfig()).toEqual({ llm: { providers: {} } });
+  });
+
   it('says the stored permissions are broken instead of answering something else', async () => {
     await writeFile(paths.config, JSON.stringify({ permissions: { prompt: { mode: 'off' } } }));
 
