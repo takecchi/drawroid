@@ -18,13 +18,13 @@ import { useState, type FormEvent } from 'react';
 import {
   buildLlmSettings,
   definedProviderNames,
-  emptyProviderRow,
   PROVIDER_TYPES,
   REASONING_MODES,
   roleProviderOf,
   TOOL_CALLING_MODES,
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
+  withProviderAdded,
   type LlmSettingsFormValues,
   type ProviderRow,
   type ProviderType,
@@ -318,11 +318,7 @@ export function LlmSettings() {
                 </FieldSet>
               );
             })}
-            <Button
-              onClick={() => change({ providers: [...values.providers, emptyProviderRow()] })}
-            >
-              provider を足す
-            </Button>
+            <Button onClick={() => change(withProviderAdded(values))}>provider を足す</Button>
           </SubSection>
           <SubSection title="役ごとのモデル">
             <RoleFields
