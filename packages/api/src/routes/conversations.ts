@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createMessageIntake } from '../conversation-messages.js';
 import type { ApiDeps } from '../deps.js';
 import { notFound } from '../errors.js';
+import { referenceUploadSchema } from '../references.js';
 import { jsonBody, queryParams } from '../validate.js';
 
 /** SSE のハートビートの既定の間隔 */
@@ -50,7 +51,7 @@ const defaultHeartbeat = (beat: () => void) => {
   return () => clearInterval(timer);
 };
 
-/** 一覧の1行: 最後の発言の先頭と、ターンが走っているか（turn.started があって turn.ended が無い） */
+/** 一覧の1行: 最後の発言（人間か話す役か）の先頭と、ターンが走っているか（turn.started があって turn.ended が無い） */
 async function summarize(store: ConversationStore, conversationId: string) {
   let lastMessage = '';
   const open = new Set<number>();
@@ -58,7 +59,12 @@ async function summarize(store: ConversationStore, conversationId: string) {
   for (;;) {
     const page = await store.readEvents(conversationId, { after });
     for (const event of page.events) {
-      if (event.type === 'user.message') lastMessage = event.text.slice(0, LAST_MESSAGE_CHARS);
+      // 本文の無い返答（ツールだけ呼んで打ち切られたものなど）で、前の発言を消さない
+      if (
+        (event.type === 'user.message' || event.type === 'assistant.message') &&
+        event.text.trim() !== ''
+      )
+        lastMessage = event.text.slice(0, LAST_MESSAGE_CHARS);
       if (event.type === 'turn.started') open.add(event.turn);
       if (event.type === 'turn.ended') open.delete(event.turn);
     }
@@ -147,6 +153,14 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         if (!(await store.hasConversation(id))) return notFound(c, missing(id));
         const { seq } = await intake.post(id, c.req.valid('json'));
         return c.json({ seq }, 202);
+      })
+      // 会話で添える画像。描き始めるときに、ジョブの参照画像へ写す（用途の言葉は、描き始めるときに話す役が付ける）
+      .post('/:conversationId/uploads', jsonBody(referenceUploadSchema), async (c) => {
+        const id = c.req.param('conversationId');
+        if (!(await store.hasConversation(id))) return notFound(c, missing(id));
+        const { data, mediaType } = c.req.valid('json');
+        const uploadId = await store.addUpload(id, { data, mediaType }, new Date());
+        return c.json({ uploadId }, 201);
       })
       // 中断の口の枠。ターンを走らせるのは後の段（会話 E・I）で、今は受けるだけ
       .post('/:conversationId/interrupt', jsonBody(interruptSchema), async (c) => {

@@ -164,6 +164,12 @@ export {
   type DistillResult,
 } from './memory/distill/run.js';
 export {
+  DEFAULT_RESELECTION_QUIET_MS,
+  ReselectionDistiller,
+  type ReselectionDistillerDeps,
+  type ReselectionTimers,
+} from './memory/distill/reselection.js';
+export {
   buildDistillOutputSchema,
   type DistilledPreference,
   type DistillOperation,
@@ -185,3 +191,6 @@ export * from './conversation/talk/runner.js';
 export * from './conversation/talk/tools.js';
 export * from './conversation/progress-poller.js';
 export * from './conversation/progress-preview.js';
+export * from './conversation/job-bridge.js';
+export * from './conversation/drawing.js';
+export * from './conversation/drawing-tools.js';

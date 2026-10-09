@@ -9,8 +9,9 @@ import { cn } from '@/lib/utils';
 export function SiteHeader({ brand, children }: { brand: ReactNode; children: ReactNode }) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
-      <nav className="mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-4 py-2">
-        <span className="mr-4 font-semibold tracking-tight">{brand}</span>
+      {/* 折り返さず横に流す: 会話の画面（ChatLayout）は帯を1段の高さとして引くので、2段になると入力欄が画面の外へ押し出される */}
+      <nav className="mx-auto flex max-w-5xl items-center gap-1 overflow-x-auto px-4 py-2 [scrollbar-width:none]">
+        <span className="mr-4 shrink-0 font-semibold tracking-tight">{brand}</span>
         {children}
       </nav>
     </header>
@@ -19,7 +20,7 @@ export function SiteHeader({ brand, children }: { brand: ReactNode; children: Re
 
 export function siteNavLinkClass({ isActive }: { isActive: boolean }): string {
   return cn(
-    'rounded-md px-3 py-1.5 text-sm transition-colors',
+    'shrink-0 rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors',
     isActive
       ? 'bg-primary text-primary-foreground'
       : 'text-muted-foreground hover:bg-muted hover:text-foreground',

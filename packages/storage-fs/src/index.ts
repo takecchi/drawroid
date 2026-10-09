@@ -1,6 +1,7 @@
 export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 export { createFsDistillLog } from './distill/log.js';
 export { readCandidateNotes, writeCandidateNotes } from './candidate-notes.js';
+export { readConversationSettings } from './conversation-settings.js';
 export {
   DEFAULT_EVENT_PAGE_SIZE,
   FsConversationStore,
