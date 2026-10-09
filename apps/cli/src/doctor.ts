@@ -11,10 +11,14 @@ import {
   sealMessages,
   generationProgressSettingsSchema,
   type BackendCapabilities,
+  type ImagePart,
+  type LlmRole,
+  type TextPart,
   type ImageBackend,
   type ToolSpec,
 } from '@drawroid/core';
 import { createLlm, llmConfigSchema, resolveRoles, type LlmConfig } from '@drawroid/llm';
+import sharp from 'sharp';
 import { z } from 'zod';
 
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
@@ -523,13 +527,56 @@ async function checkLlm(options: DoctorOptions, llm: LlmState): Promise<DoctorSe
       });
     }
   }
-  section.items.push(await roundTrip(options, config));
+  section.items.push(...(await roundTrips(options, config)));
   return section;
 }
 
-async function roundTrip(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem> {
+const ROLE_NAMES = { think: '考える役', judge: '見る役', talk: '話す役' } as const;
+
+/**
+ * 役ごとに1往復を確かめる。割り当て（provider とモデル）が同じ役は、確かめを1回で済ませる。
+ * 話す役はツールを1つ呼ばせ、考える役・見る役は構造化出力で1往復する。見る役には小さな画像を1枚渡す
+ */
+async function roundTrips(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem[]> {
+  const roles = resolveRoles(config);
+  const same = (a: LlmRole, b: LlmRole) =>
+    roles[a].provider === roles[b].provider && roles[a].model === roles[b].model;
+  const others = (['think', 'judge'] as const).filter((role) => !same(role, 'talk'));
+  const items = [
+    await toolRoundTrip(
+      options,
+      config,
+      (['talk', 'think', 'judge'] as const).filter((role) => same(role, 'talk')),
+    ),
+  ];
+  // 考える役 → 見る役の順に出す。見る役と同じ割り当ての考える役は、見る役の確かめ（画像あり）に含める
+  if (others.includes('think') && !(others.includes('judge') && same('think', 'judge'))) {
+    items.push(await structuredRoundTrip(options, config, ['think'], 'think'));
+  }
+  if (others.includes('judge')) {
+    items.push(
+      await structuredRoundTrip(
+        options,
+        config,
+        others.filter((role) => same(role, 'judge')),
+        'judge',
+      ),
+    );
+  }
+  return items;
+}
+
+function rolesLabel(group: readonly LlmRole[]): string {
+  return group.map((role) => ROLE_NAMES[role]).join('・');
+}
+
+async function toolRoundTrip(
+  options: DoctorOptions,
+  config: LlmConfig,
+  group: readonly LlmRole[],
+): Promise<DoctorItem> {
   const role = resolveRoles(config).talk;
-  const who = `話す役（${role.provider} の ${role.model}、toolCalling: ${role.toolCalling}、reasoning: ${role.reasoning}）`;
+  const who = `${rolesLabel(group)}（${role.provider} の ${role.model}、toolCalling: ${role.toolCalling}、reasoning: ${role.reasoning}）`;
   const timeoutMs = options.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
   const started = Date.now();
   let called = false;
@@ -562,7 +609,11 @@ async function roundTrip(options: DoctorOptions, config: LlmConfig): Promise<Doc
   }
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (failure !== undefined) {
-    return { ok: false, what: `${who}と1往復できない: ${failure}`, todo: llmTodo(failure, config) };
+    return {
+      ok: false,
+      what: `${who}と1往復できない: ${failure}`,
+      todo: llmTodo(failure, role.toolCalling === 'native' ? TOOL_CALLING_HINT : ''),
+    };
   }
   if (!called) {
     return {
@@ -586,7 +637,129 @@ async function roundTrip(options: DoctorOptions, config: LlmConfig): Promise<Doc
   return { ok: true, what: `${who}と1往復できた（${seconds} 秒${thinking}）` };
 }
 
-function llmTodo(failure: string, config: LlmConfig): string {
+const TOOL_CALLING_HINT = '。ツールの呼び出しに弱いモデルなら、toolCalling を json にする';
+const STRUCTURED_HINT =
+  '。JSON をうまく出せないモデルなら、structuredOutput を json か text にする';
+
+const THINK_PING_SCHEMA = z.object({ ok: z.boolean() });
+const JUDGE_PING_SCHEMA = z.object({ color: z.string().min(1) });
+const STRUCTURED_SYSTEM =
+  'これは drawroid の接続の確かめです。指示どおりの JSON だけを返してください。';
+
+/** 画像を読めるかを確かめるための、赤一色の小さな PNG */
+async function probeImage(): Promise<ImagePart> {
+  const data = await sharp({
+    create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 40, b: 40 } },
+  })
+    .png()
+    .toBuffer();
+  return {
+    type: 'image',
+    key: 'doctor-probe.png',
+    data: new Uint8Array(data),
+    mediaType: 'image/png',
+  };
+}
+
+async function structuredOnce(
+  options: DoctorOptions,
+  config: LlmConfig,
+  role: 'think' | 'judge',
+  image: ImagePart | undefined,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const timeoutMs = options.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const user: (TextPart | ImagePart)[] =
+    image === undefined
+      ? [
+          {
+            type: 'text',
+            text:
+              role === 'judge'
+                ? 'color に "red" を入れた JSON を返してください。'
+                : 'ok に true を入れた JSON を返してください。',
+          },
+        ]
+      : [
+          {
+            type: 'text',
+            text: '画像の主な色を英語の1語で、color に入れた JSON を返してください。',
+          },
+          image,
+        ];
+  try {
+    const outcome = await createLlm(config, { env: options.env }).generateStructured<unknown>({
+      role,
+      purpose: role,
+      schema: role === 'judge' ? JUDGE_PING_SCHEMA : THINK_PING_SCHEMA,
+      messages: sealMessages(STRUCTURED_SYSTEM, user, {
+        estimatedInputTokens: 0,
+        inputTokenLimit: 0,
+        notes: [],
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
+  } catch (error) {
+    return {
+      ok: false,
+      reason:
+        error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+          ? `${Math.round(timeoutMs / 1000)} 秒待っても返事が終わらなかった`
+          : messageOf(error),
+    };
+  }
+}
+
+async function structuredRoundTrip(
+  options: DoctorOptions,
+  config: LlmConfig,
+  group: readonly LlmRole[],
+  role: 'think' | 'judge',
+): Promise<DoctorItem> {
+  const rc = resolveRoles(config)[role];
+  const who = `${rolesLabel(group)}（${rc.provider} の ${rc.model}、structuredOutput: ${rc.structuredOutput}、reasoning: ${rc.reasoning}）`;
+  const started = Date.now();
+  if (role === 'judge') {
+    if (!rc.imageInput) {
+      return {
+        ok: false,
+        what: `${who}は、LLM の設定で画像を読めない（imageInput: false）とされている。見る役は画像を見て評価する`,
+        todo: '見る役に画像を読めるモデルを割り当て、LLM の設定で imageInput を有効にする',
+      };
+    }
+    const withImage = await structuredOnce(options, config, role, await probeImage());
+    if (withImage.ok) {
+      const seconds = ((Date.now() - started) / 1000).toFixed(1);
+      return { ok: true, what: `${who}と、画像を1枚渡して1往復できた（${seconds} 秒）` };
+    }
+    // 画像なしで通るなら、画像が原因と分かる
+    const withoutImage = await structuredOnce(options, config, role, undefined);
+    if (withoutImage.ok) {
+      return {
+        ok: false,
+        what: `${who}は、画像を渡すと返事が来ない（画像なしなら返事が来る）。このモデルは画像を読めない可能性がある: ${withImage.reason}`,
+        todo: '見る役に、画像を読めるモデル（vision に対応したもの）を割り当てる。LLM のサーバ側で画像の入力を有効にする設定が要ることもある',
+      };
+    }
+    return {
+      ok: false,
+      what: `${who}と1往復できない: ${withoutImage.reason}`,
+      todo: llmTodo(withoutImage.reason, STRUCTURED_HINT),
+    };
+  }
+  const result = await structuredOnce(options, config, role, undefined);
+  if (!result.ok) {
+    return {
+      ok: false,
+      what: `${who}と1往復できない: ${result.reason}`,
+      todo: llmTodo(result.reason, STRUCTURED_HINT),
+    };
+  }
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  return { ok: true, what: `${who}と1往復できた（${seconds} 秒）` };
+}
+
+function llmTodo(failure: string, hint: string): string {
   if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed|Cannot connect/i.test(failure)) {
     return 'LLM のサーバを起動するか、LLM の設定の provider の baseURL を直す';
   }
@@ -596,11 +769,7 @@ function llmTodo(failure: string, config: LlmConfig): string {
   if (/404|not found|does not exist/i.test(failure)) {
     return 'モデルの名前が、LLM のサーバにあるものと合っているかを確かめる';
   }
-  const native = Object.values(resolveRoles(config)).some((role) => role.toolCalling === 'native');
-  return (
-    'baseURL・モデルの名前・API キーを確かめる' +
-    (native ? '。ツールの呼び出しに弱いモデルなら、toolCalling を json にする' : '')
-  );
+  return `baseURL・モデルの名前・API キーを確かめる${hint}`;
 }
 
 // --- web の配り先 -------------------------------------------------------------
