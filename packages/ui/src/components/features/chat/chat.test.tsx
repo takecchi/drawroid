@@ -79,6 +79,17 @@ describe('GenerationProgress', () => {
     expect(screen.getByText(/7 \/ 20 ステップ/).textContent).toContain('残り約 5 秒');
   });
 
+  it('shows the image in progress only when one is given', () => {
+    const { rerender } = render(<GenerationProgress iteration={2} progress={0.35} />);
+    expect(screen.queryByRole('img')).toBeNull();
+
+    rerender(<GenerationProgress iteration={2} progress={0.35} previewSrc="/preview?step=7" />);
+
+    expect(screen.getByRole('img', { name: '2 回目の途中の画像' }).getAttribute('src')).toBe(
+      '/preview?step=7',
+    );
+  });
+
   it('says only that it is generating when the backend reports no progress', () => {
     render(<GenerationProgress />);
 

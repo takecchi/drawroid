@@ -117,6 +117,7 @@ export function GenerationProgress({
   step,
   steps,
   etaMs,
+  previewSrc,
 }: {
   iteration?: number;
   /** 0〜1 */
@@ -124,6 +125,8 @@ export function GenerationProgress({
   step?: number;
   steps?: number;
   etaMs?: number;
+  /** 途中の画像（設定で有効なときだけ） */
+  previewSrc?: string;
 }) {
   const percent = progress === undefined ? undefined : Math.round(progress * 100);
   const details = [
@@ -158,6 +161,13 @@ export function GenerationProgress({
       </div>
       {details.length > 0 && (
         <div className="text-xs text-muted-foreground tabular-nums">{details.join(' ・ ')}</div>
+      )}
+      {previewSrc !== undefined && (
+        <img
+          src={previewSrc}
+          alt={iteration === undefined ? '途中の画像' : `${iteration} 回目の途中の画像`}
+          className="size-32 rounded-md border border-border object-cover"
+        />
       )}
     </LogCard>
   );

@@ -230,6 +230,14 @@ export const Progress: Story = {
   render: () => (
     <div className="space-y-3 p-6">
       <GenerationProgress iteration={2} progress={0.35} step={7} steps={20} etaMs={5200} />
+      <GenerationProgress
+        iteration={2}
+        progress={0.6}
+        step={12}
+        steps={20}
+        etaMs={3100}
+        previewSrc={IMAGES[0]}
+      />
       <GenerationProgress iteration={3} />
     </div>
   ),

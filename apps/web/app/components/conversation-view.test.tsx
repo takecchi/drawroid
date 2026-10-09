@@ -228,6 +228,30 @@ describe('ConversationView', () => {
     ).toBe(false);
   });
 
+  it('shows the image in progress and fetches it again as the generation moves on', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    const progress = (step: number) => ({
+      type: 'generation.progress' as const,
+      jobId: JOB,
+      iteration: 1,
+      progress: step / 20,
+      step,
+      steps: 20,
+      previewUrl: `/api/jobs/${JOB}/progress-preview`,
+    });
+
+    stream.emit(progress(4));
+    const first = screen.getByRole('img', { name: '1 回目の途中の画像' }).getAttribute('src');
+    stream.emit(progress(9));
+    const later = screen.getByRole('img', { name: '1 回目の途中の画像' }).getAttribute('src');
+
+    expect(first).toContain(`/api/jobs/${JOB}/progress-preview`);
+    expect(later).toContain(`/api/jobs/${JOB}/progress-preview`);
+    expect(later).not.toBe(first);
+  });
+
   it('replaces the streamed text with the confirmed message of the same part', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);
