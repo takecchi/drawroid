@@ -263,4 +263,31 @@ describe('reading only the tail of a conversation for a talk turn', () => {
       jobId: '20261009-010000-job2',
     });
   });
+
+  // ページの境目が、覚えた位置のすぐ後ろのどこに来ても、新しいジョブを見落とさない
+  for (let after = 0; after <= 12; after += 1) {
+    it(`notices a job started right after where it last read, with ${after} events after the job (page 1)`, async () => {
+      const c = await conversation();
+      await c.job('20261009-000000-job1');
+      for (let i = 0; i < 20; i += 1) await c.round(`発言 ${i}`);
+      const reader = new TalkWindowReader(c.store, 1);
+      await c.add({ type: 'user.message', text: '続けて', attachments: [] });
+      const limits = { ...DEFAULT_TALK_LIMITS, recentMessages: 1 };
+      const first = await expectSameAsReadingAll(c, reader, limits);
+      // そのターンが、未読の発言を読んで描き始めたつもり。描き始める直前に、割り込みの確かめで末尾を読む
+      const t = c.nextTurn();
+      await c.add({ type: 'turn.started', turn: t, messageSeqs: first.unread });
+      await reader.read(c.conversationId, 0);
+      await c.job('20261009-010000-job2');
+      await c.add({ type: 'turn.ended', turn: t, outcome: 'done' });
+      await c.round('描いて');
+      for (let i = 0; i < after; i += 1) {
+        await c.add({ type: 'user.message', text: `追加 ${i}`, attachments: [] });
+      }
+      const window = await expectSameAsReadingAll(c, reader, limits);
+      expect(window.events.findLast((e) => e.type === 'job.started')).toMatchObject({
+        jobId: '20261009-010000-job2',
+      });
+    });
+  }
 });
