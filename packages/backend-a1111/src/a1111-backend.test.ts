@@ -3,7 +3,7 @@ import { describeImageBackendContract, STUB_PNG } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { A1111Backend } from './a1111-backend.js';
-import { startMockA1111, unusedUrl, type MockA1111 } from './test-support/mock-a1111.js';
+import { solidPng, startMockA1111, unusedUrl, type MockA1111 } from './test-support/mock-a1111.js';
 
 describeImageBackendContract('A1111Backend against the mock A1111 (v1.10.1 fixtures)', {
   connected: async () => {
@@ -125,6 +125,31 @@ describe('A1111Backend', () => {
       init_images: [Buffer.from(STUB_PNG).toString('base64')],
       denoising_strength: 0.4,
     });
+  });
+
+  it('sends inpaint to /sdapi/v1/img2img with the source image and the mask, not the one for the other', async () => {
+    const source = solidPng([200, 10, 10], 2);
+    const mask = solidPng([255, 255, 255], 3);
+    const images: GenerationImages = new Map([
+      ['iterations/0001/images/0.png', { data: source, mediaType: 'image/png' }],
+      ['masks/m1.png', { data: mask, mediaType: 'image/png' }],
+    ]);
+
+    await generate(
+      {
+        inpaint: {
+          image: 'iterations/0001/images/0.png',
+          mask: 'masks/m1.png',
+          denoisingStrength: 0.6,
+        },
+      },
+      images,
+    );
+
+    const body = sent('/sdapi/v1/img2img');
+    expect(body.init_images).toEqual([Buffer.from(source).toString('base64')]);
+    expect(body.mask).toBe(Buffer.from(mask).toString('base64'));
+    expect(body.mask).not.toBe((body.init_images as string[])[0]);
   });
 
   it('reports ControlNet as unavailable, with a reason, when the extension is not installed', async () => {
