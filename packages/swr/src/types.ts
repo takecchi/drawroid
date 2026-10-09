@@ -26,6 +26,10 @@ export type SelectionsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['selections']['$get'],
   200
 >;
+export type InterventionsResponse = InferResponseType<
+  (typeof client.jobs.auto)[':jobId']['interventions']['$get'],
+  200
+>;
 export type StopConditionsDraftResponse = InferResponseType<
   (typeof client)['stop-conditions']['parse']['$post'],
   200

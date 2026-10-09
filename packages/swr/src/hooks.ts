@@ -8,6 +8,7 @@ import type {
   BackendSettingsResponse,
   BackendStatus,
   CandidatesResponse,
+  InterventionsResponse,
   IterationsResponse,
   JobDetail,
   JobsResponse,
@@ -59,6 +60,17 @@ export function useIterations(jobId: string | undefined, { live }: { live: boole
     () =>
       unwrap<IterationsResponse>(() =>
         client.jobs[':jobId'].iterations.$get({ param: { jobId: jobId ?? '' } }),
+      ),
+    { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
+  );
+}
+
+export function useInterventions(jobId: string | undefined, { live }: { live: boolean }) {
+  return useSWR<InterventionsResponse, ApiError>(
+    jobId === undefined ? null : keys.interventions(jobId),
+    () =>
+      unwrap<InterventionsResponse>(() =>
+        client.jobs.auto[':jobId'].interventions.$get({ param: { jobId: jobId ?? '' } }),
       ),
     { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
   );

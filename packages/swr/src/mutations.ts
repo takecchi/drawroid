@@ -72,6 +72,7 @@ export async function addInstruction(jobId: string, text: string): Promise<AddIn
     ),
   );
   await refreshJob(jobId);
+  await mutate(keys.interventions(jobId));
   return added;
 }
 
@@ -87,6 +88,7 @@ export async function changeStopConditions(
     ),
   );
   await refreshJob(jobId);
+  await mutate(keys.interventions(jobId));
   return changed;
 }
 

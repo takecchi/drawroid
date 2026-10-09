@@ -7,6 +7,7 @@ export const keys = {
   job: (jobId: string) => `/api/jobs/${jobId}`,
   iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,
   selections: (jobId: string) => `/api/jobs/${jobId}/selections`,
+  interventions: (jobId: string) => `/api/jobs/auto/${jobId}/interventions`,
   llmCalls: (jobId: string) => `/api/jobs/${jobId}/llm-calls`,
   llmCall: (jobId: string, callId: string) => `/api/jobs/${jobId}/llm-calls/${callId}`,
 } as const;
