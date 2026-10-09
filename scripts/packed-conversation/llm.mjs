@@ -54,10 +54,11 @@ function generate(schema, hint = '') {
 }
 
 /**
- * @param {{ stopAfterIterations: number }} options 見る役が何回目で止めてよいと言うか
+ * @param {{ stopAfterIterations: number, rejectImages?: boolean }} options stopAfterIterations は見る役が何回目で止めてよいと言うか。
+ *   rejectImages なら、画像を含む呼び出しを 400 で断る（画像を読めないモデルの代わり）
  * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown) => void }>}
  */
-export async function startFakeLlm({ stopAfterIterations }) {
+export async function startFakeLlm({ stopAfterIterations, rejectImages = false }) {
   let judgeCalls = 0;
   let stopAfter = stopAfterIterations;
   // 話す役が、どの経路で呼ばれたか。native に倒れて通っただけ、を見分けるために数える
@@ -77,6 +78,10 @@ export async function startFakeLlm({ stopAfterIterations }) {
         return res.end('{}');
       }
       const request = JSON.parse(body);
+      if (rejectImages && body.includes('"image_url"')) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ error: { message: 'image input is not supported' } }));
+      }
       const role = String(request.model).replace('-model', '');
       if (role === 'talk' && holdNext) {
         holdNext = false;
