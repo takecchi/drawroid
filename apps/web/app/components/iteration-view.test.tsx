@@ -79,14 +79,16 @@ describe('IterationList and an iteration the human picked an image in', () => {
     { index: 1, seed: 8, url: '/b.png', previewUrl: '/b.webp' },
   ];
 
-  it('shows that a human chose, which image, and score 1 instead of an empty evaluation', () => {
+  it('shows that a human chose, which image, and the point 1 instead of an empty evaluation', () => {
     renderList(false, { ...iteration, images: twoImages, adopted: adoptedRecord } as Iteration);
 
     const section = screen.getByRole('heading', { name: '評価' }).closest('section');
     expect(section?.textContent).toContain('人が選んだ');
     expect(section?.textContent).toContain('画像 2 番');
-    expect(section?.textContent).toContain('score 1.00');
-    expect(screen.getAllByText(/人が選んだ \/ score 1.00/)).toHaveLength(1);
+    // 選んだ印の点は、見る役の点とは書かない
+    expect(section?.textContent).toContain('点 1.00');
+    expect(section?.textContent).not.toContain('見る役の点');
+    expect(screen.getAllByText(/人が選んだ \/ 点 1.00/)).toHaveLength(1);
   });
 
   it('keeps showing the judge evaluation as before for an iteration the judge evaluated', () => {

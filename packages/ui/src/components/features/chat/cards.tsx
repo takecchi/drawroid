@@ -285,7 +285,7 @@ export function ImageRow({
             caption={
               (image.score !== undefined || (image.issues?.length ?? 0) > 0) && (
                 <>
-                  {image.score !== undefined && <div>score {image.score}</div>}
+                  {image.score !== undefined && <div>見る役の点 {image.score}</div>}
                   {image.issues !== undefined && image.issues.length > 0 && (
                     <BulletList className="text-xs">
                       {image.issues.map((issue) => (
