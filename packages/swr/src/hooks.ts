@@ -15,6 +15,7 @@ import type {
   LlmCallDetail,
   LlmCallsResponse,
   SelectionsResponse,
+  StopConditionsResponse,
 } from './types.js';
 
 const JOBS_POLL_MS = 2000;
@@ -114,5 +115,17 @@ export function useSelections(jobId: string | undefined) {
       unwrap<SelectionsResponse>(() =>
         client.jobs[':jobId'].selections.$get({ param: { jobId: jobId ?? '' } }),
       ),
+  );
+}
+
+// live を呼び手から受ける: 走行中は別の口出し（別タブ・API）でも変わるので取り直し、止まったら変わらないため止める
+export function useStopConditions(jobId: string | undefined, { live }: { live: boolean }) {
+  return useSWR<StopConditionsResponse, ApiError>(
+    jobId === undefined ? null : keys.stopConditions(jobId),
+    () =>
+      unwrap<StopConditionsResponse>(() =>
+        client.jobs.auto[':jobId']['stop-conditions'].$get({ param: { jobId: jobId ?? '' } }),
+      ),
+    { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
   );
 }

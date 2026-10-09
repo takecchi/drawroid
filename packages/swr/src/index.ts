@@ -10,9 +10,11 @@ export {
   useLlmCall,
   useLlmCalls,
   useSelections,
+  useStopConditions,
 } from './hooks.js';
 export {
   addInstruction,
+  addReference,
   changeStopConditions,
   createAutoJob,
   parseStopConditionsText,
@@ -23,6 +25,7 @@ export {
 } from './mutations.js';
 export type {
   AddInstructionResponse,
+  AddReferenceResponse,
   BackendSettingsResponse,
   BackendStatus,
   CandidatesResponse,
@@ -34,7 +37,9 @@ export type {
   JobsResponse,
   LlmCallDetail,
   LlmCallsResponse,
+  ReferenceUpload,
   SelectionsResponse,
   SetSelectionResponse,
   StopConditionsDraftResponse,
+  StopConditionsResponse,
 } from './types.js';

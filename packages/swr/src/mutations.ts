@@ -11,9 +11,11 @@ import { client } from './client.js';
 import { keys } from './keys.js';
 import type {
   AddInstructionResponse,
+  AddReferenceResponse,
   BackendSettingsResponse,
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
+  ReferenceUpload,
   SetSelectionResponse,
   StopConditionsDraftResponse,
 } from './types.js';
@@ -50,6 +52,7 @@ export async function createAutoJob(input: {
   request: string;
   stopConditions: StopConditions;
   batchSize: number;
+  references?: ReferenceUpload[];
 }): Promise<CreateAutoJobResponse> {
   const created = await unwrap<CreateAutoJobResponse>(() =>
     client.jobs.auto.$post({ json: input }),
@@ -76,6 +79,22 @@ export async function addInstruction(jobId: string, text: string): Promise<AddIn
   return added;
 }
 
+/** 画像は1回に1枚。止まったジョブへは ApiError（status 409）、形式・大きさ・note の違反は 'invalid_request' を投げる */
+export async function addReference(
+  jobId: string,
+  image: ReferenceUpload,
+): Promise<AddReferenceResponse> {
+  const added = await unwrap<AddReferenceResponse>(() =>
+    client.jobs.auto[':jobId'].interventions.$post({
+      param: { jobId },
+      json: { kind: 'reference', image },
+    }),
+  );
+  await refreshJob(jobId);
+  await mutate(keys.interventions(jobId));
+  return added;
+}
+
 /** 重ねたあとの実際の止める条件を返す。止まったジョブへは ApiError（status 409）を投げる */
 export async function changeStopConditions(
   jobId: string,
@@ -89,6 +108,7 @@ export async function changeStopConditions(
   );
   await refreshJob(jobId);
   await mutate(keys.interventions(jobId));
+  await mutate(keys.stopConditions(jobId));
   return changed;
 }
 

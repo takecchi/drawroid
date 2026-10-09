@@ -1,4 +1,4 @@
-import type { InferResponseType } from 'hono/client';
+import type { InferRequestType, InferResponseType } from 'hono/client';
 
 import type { client } from './client.js';
 
@@ -43,6 +43,19 @@ export type ChangeStopConditionsResponse = Extract<
   InferResponseType<(typeof client.jobs.auto)[':jobId']['interventions']['$post'], 202>,
   { stopConditions: unknown }
 >;
+export type StopConditionsResponse = InferResponseType<
+  (typeof client.jobs.auto)[':jobId']['stop-conditions']['$get'],
+  200
+>;
+export type AddReferenceResponse = Extract<
+  InferResponseType<(typeof client.jobs.auto)[':jobId']['interventions']['$post'], 202>,
+  { reference: unknown }
+>;
+// 送る側の形は body の入力型から導く: api の references.ts の transform は出力を Uint8Array にするが、client の json に要るのは入力（base64）の型のため
+export type ReferenceUpload = Extract<
+  InferRequestType<(typeof client.jobs.auto)[':jobId']['interventions']['$post']>['json'],
+  { kind: 'reference' }
+>['image'];
 export type SetSelectionResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['selections'][':imageKey']['$put'],
   200
