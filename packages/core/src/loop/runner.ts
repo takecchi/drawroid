@@ -306,6 +306,8 @@ export class JobRunner {
       references: this.deps.referenceLimits ?? DEFAULT_BUDGETS.references,
       memory: memory?.limits ?? DEFAULT_BUDGETS.memory,
       distill: memory?.distillBudget ?? DEFAULT_DISTILL_BUDGET,
+      // ジョブは話す役の予算を使わない。Budgets の形をそろえるためだけに既定を置く
+      talk: DEFAULT_BUDGETS.talk,
     };
   }
 

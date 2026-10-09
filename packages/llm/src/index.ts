@@ -16,7 +16,7 @@ export function createLlm(
 ): LlmPort {
   const config: LlmConfig = llmConfigSchema.parse(input);
   const roles = resolveRoles(config);
-  const modelOf = (role: 'think' | 'judge') => {
+  const modelOf = (role: 'think' | 'judge' | 'talk') => {
     const providerName = roles[role].provider;
     const provider = config.providers[providerName];
     // superRefine で確かめ済み。型の上で undefined が外れないので明示する
@@ -28,11 +28,15 @@ export function createLlm(
   };
   return new AiSdkLlm(
     roles,
-    { think: modelOf('think'), judge: modelOf('judge') },
+    { think: modelOf('think'), judge: modelOf('judge'), talk: modelOf('talk') },
     {
       validationRetries: config.validationRetries,
       networkRetries: config.networkRetries,
-      configKeys: { think: 'think', judge: config.roles.judge === undefined ? 'think' : 'judge' },
+      configKeys: {
+        think: 'think',
+        judge: config.roles.judge === undefined ? 'think' : 'judge',
+        talk: config.roles.talk === undefined ? 'think' : 'talk',
+      },
       ...options,
     },
   );

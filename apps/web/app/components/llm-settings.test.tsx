@@ -115,6 +115,24 @@ describe('LlmSettings', () => {
     });
   });
 
+  it('saves a separate model for the talking role when it does not use the thinking role', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.click(screen.getByLabelText('話す役（会話）も考える役と同じモデルを使う'));
+    await user.clear(input('話す役のモデル'));
+    await user.type(input('話す役のモデル'), 'qwen3-talk');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(mocks.saveLlmSettings).toHaveBeenCalledWith({
+      ...stored.config,
+      roles: {
+        ...stored.config!.roles,
+        talk: { ...stored.config!.roles.think, model: 'qwen3-talk' },
+      },
+    });
+  });
+
   it('leaves the judging role out when it uses the same model as the thinking role', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);

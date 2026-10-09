@@ -179,3 +179,7 @@ export * from './budget/settings.js';
 export * from './conversation/events.js';
 export * from './conversation/store.js';
 export * from './conversation/hub.js';
+export * from './conversation/talk/input.js';
+export * from './conversation/talk/limits.js';
+export * from './conversation/talk/runner.js';
+export * from './conversation/talk/tools.js';
