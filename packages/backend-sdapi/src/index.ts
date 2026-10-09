@@ -1,3 +1,4 @@
+export { listSharedCandidates, withLabel, type SharedCandidateKind } from './candidates.js';
 export { resolveCheckpoint } from './checkpoints.js';
 export { SdapiClient, type CallOptions, type SdapiConnection } from './client.js';
 export { img2imgFields } from './img2img.js';
