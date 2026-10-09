@@ -15,13 +15,13 @@ import {
   type LlmCall,
   type Permissions,
 } from '@drawroid/core';
-import { ScriptedLlm, STUB_PNG, type Script } from '@drawroid/core/testing';
+import { ScriptedLlm, type Script } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { A1111Backend } from './a1111-backend.js';
-import { startMockA1111, type MockA1111 } from './test-support/mock-a1111.js';
+import { solidPng, startMockA1111, type MockA1111 } from './test-support/mock-a1111.js';
 
 let root: string;
 let a1111: MockA1111 | undefined;
@@ -44,7 +44,11 @@ const decided = {
   steps: 20,
   cfgScale: 6,
 };
-const stubPngBase64 = Buffer.from(STUB_PNG).toString('base64');
+// n 番目の生成が返す画像。色も大きさも回ごとに違う（init_images とマスクと別の回の画像を、取り違えたときに見分けるため）
+const generatedPng = (n: number) => solidPng([40 + n * 60, 20, 20], 2 + n);
+// 人間が塗るマスク。どの生成画像とも中身が違う
+const MASK_PNG = solidPng([255, 255, 255], 7);
+const b64 = (png: Uint8Array) => Buffer.from(png).toString('base64');
 
 const paramKeysOf = (call: LlmCall<unknown>) => {
   const json = z.toJSONSchema(call.schema) as unknown as {
@@ -87,7 +91,7 @@ async function setup(
   permissions: Permissions,
   options: { controlnet?: boolean } = {},
 ) {
-  const mock = await startMockA1111(options);
+  const mock = await startMockA1111({ ...options, generatedImage: generatedPng });
   a1111 = mock;
   const llm = new ScriptedLlm(scripts);
   const backend = new A1111Backend({ baseUrl: mock.url });
@@ -155,9 +159,11 @@ describe('the M4 loop over the A1111 adapter', () => {
     expect(paramKeysOf(second!)).toContain('img2img');
     // 1回目は txt2img、2回目は 1回目に A1111 が返した画像を元にした img2img
     expect(posted(mock, '/sdapi/v1/txt2img')).toHaveLength(1);
+    // 元画像は 1回目の画像であって、2回目に返ってくる画像（img2img の応答）ではない
     expect(posted(mock, '/sdapi/v1/img2img')).toMatchObject([
-      { init_images: [stubPngBase64], denoising_strength: 0.5 },
+      { init_images: [b64(generatedPng(0))], denoising_strength: 0.5 },
     ]);
+    expect(b64(generatedPng(1))).not.toBe(b64(generatedPng(0)));
   });
 
   it('repaints with the mask the human painted on a running job, and not before it exists', async () => {
@@ -169,7 +175,7 @@ describe('the M4 loop over the A1111 adapter', () => {
         // 1回目を見ている間に、人間が1回目の画像にマスクを塗る
         judge: judge(async (n) => {
           if (n === 0) {
-            await set.runner.addMask(jobId, { image: { iteration: 1, index: 0 }, data: STUB_PNG });
+            await set.runner.addMask(jobId, { image: { iteration: 1, index: 0 }, data: MASK_PNG });
           }
         }),
       },
@@ -189,11 +195,14 @@ describe('the M4 loop over the A1111 adapter', () => {
     expect(posted(set.mock, '/sdapi/v1/txt2img')).toHaveLength(2);
     const img2img = posted(set.mock, '/sdapi/v1/img2img');
     expect(img2img).toHaveLength(1);
+    // init_images は 1回目の画像（マスクを塗った画像）、mask は人間のマスク。取り違えず、互いに別の中身
+    const initImage = b64(generatedPng(0));
     expect(img2img[0]).toMatchObject({
-      init_images: [stubPngBase64],
-      mask: stubPngBase64,
+      init_images: [initImage],
+      mask: b64(MASK_PNG),
       denoising_strength: 0.6,
     });
+    expect(b64(MASK_PNG)).not.toBe(initImage);
   });
 
   it('sends the model and the image the thinking role chose in the ControlNet unit', async () => {
@@ -223,6 +232,11 @@ describe('the M4 loop over the A1111 adapter', () => {
     const args = (
       secondBody!.alwayson_scripts as { controlnet: { args: Record<string, unknown>[] } }
     ).controlnet.args;
-    expect(args[0]).toMatchObject({ enabled: true, model, module: 'canny', image: stubPngBase64 });
+    expect(args[0]).toMatchObject({
+      enabled: true,
+      model,
+      module: 'canny',
+      image: b64(generatedPng(0)),
+    });
   });
 });
