@@ -20,7 +20,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from './index.js';
-import { noCandidateNotes, memoryBudgetSettings, memoryConversations } from './test-support.js';
+import {
+  noCandidateNotes,
+  memoryBudgetSettings,
+  memoryProgressDeps,
+  memoryConversations,
+} from './test-support.js';
 
 let dir: string;
 let configPath: string;
@@ -44,6 +49,7 @@ beforeEach(async () => {
       addMask: notUsed,
     },
     budgetSettings: memoryBudgetSettings(),
+    ...memoryProgressDeps(),
     stopConditionParser: { parse: notUsed },
     backendSettings: { read: notUsed, write: notUsed },
     llmSettings: {
