@@ -338,6 +338,49 @@ describe('the same tool called again and again with the same arguments', () => {
   }
 });
 
+// 今の読み方を守る歯: タグは大文字小文字を問わずに読む（モデルによって <THINK>・<Tool_Call> と書くため）
+describe('tags written in any case', () => {
+  it('moves the thinking in upper-case tags to the reasoning (native)', async () => {
+    const { events } = await talk('native', [
+      textStream(`<THINK>LoRA を探すべきか</THINK>${REPLY}`),
+    ]);
+
+    expect(messages(events)).toEqual([REPLY]);
+    expect(events.find((e) => e.type === 'assistant.reasoning')).toMatchObject({
+      text: 'LoRA を探すべきか',
+    });
+  });
+
+  it('moves the text before a lone upper-case closing tag to the reasoning (native)', async () => {
+    const { events } = await talk('native', [textStream(`LoRA を探すべきか</Think>\n${REPLY}`)]);
+
+    expect(messages(events)).toEqual([REPLY]);
+    expect(events.find((e) => e.type === 'assistant.reasoning')).toMatchObject({
+      text: 'LoRA を探すべきか',
+    });
+  });
+
+  it('reads a tool call in mixed-case <tool_call> tags (native)', async () => {
+    const written = `<Tool_Call>${JSON.stringify(SEARCH)}</TOOL_CALL>`;
+    const { events, searches } = await talk('native', [textStream(written), textStream(REPLY)]);
+
+    expect(searches).toBe(1);
+    expect(messages(events).join('\n')).not.toMatch(/tool_call/i);
+    expect(messages(events)).toContain(REPLY);
+  });
+
+  it('skips the thinking in upper-case tags before the JSON (json)', async () => {
+    const { events } = await talk('json', [
+      textStream(
+        `<THINK>{"kind":"tool"} とすべきか</THINK>${JSON.stringify({ kind: 'reply', text: REPLY })}`,
+      ),
+    ]);
+
+    expect(messages(events)).toEqual([REPLY]);
+    expect(ended(events)).toMatchObject({ outcome: 'done' });
+  });
+});
+
 describe('thinking tags and empty text', () => {
   it('keeps the thinking out of the reply, with native tool calling', async () => {
     const { events } = await talk('native', [
