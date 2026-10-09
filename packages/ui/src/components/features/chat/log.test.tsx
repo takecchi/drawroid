@@ -123,6 +123,55 @@ describe('ChatLog', () => {
 
     expect(log.scrollTop).toBe(1200);
   });
+
+  // ブラウザは位置を末尾までに収める。行を入れ替える途中で背が一瞬縮んで測られると、位置が新しい末尾へ引かれ、
+  // その動きの知らせが届くまでに新しい行で背が伸びる。「位置は上がり、背は伸びた」と、人が上へ戻したのと同じに見える
+  // （Chromium の長い会話で、新しい行のあと末尾から 22px 引かれて追うのをやめ、120〜273px 手前に置き去りにされた）
+  it('keeps following when the end pulled the position up a little without a person touching the log', () => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    log.scrollTop = 578;
+    size.scrollHeight = 1112;
+    fireEvent.scroll(log);
+    grow();
+
+    expect(log.scrollTop).toBe(1112);
+  });
+
+  it.each([
+    ['the wheel', (log: HTMLElement) => fireEvent.wheel(log)],
+    ['a touch', (log: HTMLElement) => fireEvent.touchMove(log)],
+    ['a key', (log: HTMLElement) => fireEvent.keyDown(log, { key: 'ArrowUp' })],
+    ['the scroll bar', (log: HTMLElement) => fireEvent.pointerDown(log)],
+  ])('stops following when a person scrolls up a short way from the end with %s', (_, touch) => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    // 末尾を見ている範囲（48px）の外まで、画面の背の半分より短く戻す
+    touch(log);
+    log.scrollTop = 450;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1300;
+    grow();
+
+    expect(log.scrollTop).toBe(450);
+  });
+
+  it('stops following when the position jumps far up from the end without a person touching the log, as find in page does', () => {
+    const { log, size } = renderLog();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+
+    log.scrollTop = 350;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1300;
+    grow();
+
+    expect(log.scrollTop).toBe(350);
+  });
 });
 
 describe('ChatLog in a long conversation', () => {
