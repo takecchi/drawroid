@@ -10,6 +10,7 @@ import {
   type ImageBackend,
   type JobStore,
   type ManualGenerationRunner,
+  type MemoryStore,
 } from '@drawroid/core';
 import {
   readLlmSettings,
@@ -33,6 +34,7 @@ beforeEach(async () => {
     // 設定の経路はジョブとバックエンドを使わない
     backend: {} as ImageBackend,
     store: {} as JobStore,
+    memoryStore: {} as MemoryStore,
     manualRunner: {} as ManualGenerationRunner,
     autoQueue: {
       kick: () => undefined,
@@ -43,6 +45,8 @@ beforeEach(async () => {
       addMask: notUsed,
     },
     budget: DEFAULT_BUDGET,
+    stopConditionParser: { parse: notUsed },
+    backendSettings: { read: notUsed, write: notUsed },
     llmSettings: {
       read: () => readLlmSettings(configPath),
       write: (config) => writeLlmSettings(configPath, config),

@@ -10,7 +10,7 @@ import {
   ManualGenerationRunner,
 } from '@drawroid/core';
 import { ScriptedLlm, STUB_PNG, StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { hc } from 'hono/client';
@@ -41,7 +41,12 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     autoQueue: {
       kick: () => undefined,
       stop: (jobId) => runner.stop(jobId),
@@ -52,6 +57,7 @@ beforeEach(async () => {
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     permissionSettings: noPermissionSettings,
     candidateNotes: noCandidateNotes,
     env: {},
@@ -148,6 +154,19 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
       expect((await intervene(jobId, body)).status).toBe(400);
     }
     expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
+  it('reads back what humans said to a job, as they said it', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, { kind: 'instruction', text: '逆光にして' });
+
+    const res = await app.request(`/jobs/auto/${jobId}/interventions`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      interventions: [expect.objectContaining({ kind: 'instruction', text: '逆光にして' })],
+    });
+    expect((await app.request('/jobs/auto/no-such-job/interventions')).status).toBe(404);
   });
 
   it('gives the hono client a typed body for an intervention', async () => {
@@ -341,5 +360,73 @@ describe('inpaint masks, as an intervention', () => {
 
     expect(res.status).toBe(400);
     expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+});
+
+describe('the reference images attached to a job, read back (Issue #46)', () => {
+  const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+
+  it('lists the images in the order received, with the words a human added', async () => {
+    const res = await post('/jobs/auto', {
+      request: '夕暮れの海辺の少女',
+      references: [{ mediaType: 'image/png', data: b64(STUB_PNG), note: 'この構図で' }],
+    });
+    const { jobId } = (await res.json()) as { jobId: string };
+    await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(STUB_PNG), note: '服はこれ' },
+    });
+
+    const listed = await app.request(`/jobs/auto/${jobId}/references`);
+
+    expect(listed.status).toBe(200);
+    const { references } = (await listed.json()) as {
+      references: { refId: string; note?: string; gist?: string; previewUrl: string }[];
+    };
+    expect(references.map((r) => r.note)).toEqual(['この構図で', '服はこれ']);
+    expect(references.every((r) => r.gist === undefined)).toBe(true);
+  });
+
+  it('shows the gist and the call that made it, once the judge has looked at the image', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(STUB_PNG) },
+    });
+    const [stored] = await store.listReferences(jobId);
+    await store.writeReferenceGist(jobId, stored!.refId, '白いワンピースの立ち姿');
+    await store.markSent({ jobId, refId: stored!.refId }, 'call-0001', new Date());
+
+    const { references } = (await (await app.request(`/jobs/auto/${jobId}/references`)).json()) as {
+      references: { gist?: string; sentInCall?: string }[];
+    };
+
+    expect(references[0]).toMatchObject({
+      gist: '白いワンピースの立ち姿',
+      sentInCall: 'call-0001',
+    });
+  });
+
+  it('serves a reduced copy of each listed image', async () => {
+    const jobId = await createAuto();
+    await intervene(jobId, {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(STUB_PNG) },
+    });
+    const { references } = (await (await app.request(`/jobs/auto/${jobId}/references`)).json()) as {
+      references: { previewUrl: string }[];
+    };
+
+    const image = await app.request(references[0]!.previewUrl.replace(/^\/api/, ''));
+
+    expect(image.status).toBe(200);
+    expect(image.headers.get('content-type')).toBe('image/webp');
+  });
+
+  it('answers 404 for a job that is not an automatic job, and for an image the job does not have', async () => {
+    const jobId = await createAuto();
+
+    expect((await app.request('/jobs/auto/no-such-job/references')).status).toBe(404);
+    expect((await app.request(`/files/jobs/${jobId}/refs/000009.preview.webp`)).status).toBe(404);
   });
 });

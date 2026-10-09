@@ -16,3 +16,8 @@ export const memoryItemSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
 });
 export type MemoryItem = z.infer<typeof memoryItemSchema>;
+
+/** 記憶の ID として使える形か。ID はそのままファイル名になるので、データディレクトリの外や一時ファイル・隠しファイルを指す形を通さない */
+export function isMemoryId(id: string): boolean {
+  return id !== '' && !id.startsWith('.') && !/[/\\\0]/.test(id);
+}

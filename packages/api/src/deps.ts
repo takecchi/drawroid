@@ -5,6 +5,7 @@ import type {
   InterventionRecord,
   JobStore,
   ManualGenerationRunner,
+  MemoryStore,
   MaskIntervention,
   NewMask,
   NewReference,
@@ -14,6 +15,9 @@ import type {
   StopConditionsChange,
 } from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
+
+import type { BackendSettingsPort } from './backend-settings.js';
+import type { StopConditionParser } from './stop-condition-parse.js';
 
 /** 自動ジョブの待ち行列。JobRunner をそのまま渡せる形にしてある */
 export type AutoJobQueue = {
@@ -52,11 +56,14 @@ export type CandidateNotesStore = {
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
+  memoryStore: MemoryStore;
   manualRunner: ManualGenerationRunner;
+  backendSettings: BackendSettingsPort;
   autoQueue: AutoJobQueue;
   /** 自動ジョブの依頼を要約へ切り詰めるときの予算 */
   budget: Budget;
   llmSettings: LlmSettingsStore;
+  stopConditionParser: StopConditionParser;
   permissionSettings: PermissionSettingsStore;
   candidateNotes: CandidateNotesStore;
   /** API キーの環境変数が入っているかを確かめるため。値は応答に出さない */

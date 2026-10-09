@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { writeBackendSettings } from './backend-settings.js';
 import { updateConfigObject } from './config-file.js';
 import { writeLlmSettings } from './llm-settings.js';
 import { writePermissionSettings } from './permission-settings.js';
@@ -29,6 +30,27 @@ describe('writing config.json from several places at once', () => {
     await Promise.all([writeLlmSettings(path, llm), writePermissionSettings(path, permissions)]);
 
     expect(await readConfig()).toEqual({ llm, permissions });
+  });
+
+  it('keeps both changes when the permissions and the backend settings are written at the same time', async () => {
+    const permissions = { steps: { mode: 'fixed', value: 28 } };
+    const backend = { kind: 'forge', url: 'http://127.0.0.1:7860' };
+
+    await Promise.all([
+      writePermissionSettings(path, permissions),
+      writeBackendSettings(path, backend),
+    ]);
+
+    expect(await readConfig()).toEqual({ permissions, backend });
+  });
+
+  it('keeps both changes when the backend settings and the LLM settings are written at the same time', async () => {
+    const backend = { kind: 'a1111', url: 'http://127.0.0.1:7861' };
+    const llm = { providers: {} };
+
+    await Promise.all([writeBackendSettings(path, backend), writeLlmSettings(path, llm)]);
+
+    expect(await readConfig()).toEqual({ backend, llm });
   });
 
   it('keeps every change when many updates of the same file come at once', async () => {
