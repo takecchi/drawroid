@@ -17,10 +17,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "catalog:"
+    "@drawroid/core": "workspace:*",
+    "@drawroid/llm": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
+    "@drawroid/storage-fs": "workspace:*",
     "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^5.0.0"
   }
 }

@@ -1,18 +1,22 @@
+import type { GenerationRequest, GenerationResult } from '../backend.js';
 import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
-import type { GeneratedImage } from '../backend.js';
-import type {
-  InterventionRecord,
-  JobSpec,
-  JobState,
-  NewIntervention,
-  NewJobSpec,
-} from './types.js';
-
-/** 回の中の段の出力。ファイルがあることが、その段が済んだことを表す */
-export type StageName = 'think' | 'request' | 'judge';
+import type { InterventionRecord, JobSpec, JobState, NewIntervention } from './types.js';
 
 export type ImageRef = { jobId: string; iteration: number; index: number };
+
+/** 回の中の LLM の段の出力。ファイルがあることが、その段が済んだことを表す（生成の段は writeGeneration の request） */
+export type StageName = 'think' | 'judge';
+
+// Omit は union に効かず分岐ごとの欄が消えるため、型引数に取って分岐ごとに外す
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+export type NewJobSpec = DistributiveOmit<JobSpec, 'jobId' | 'createdAt'>;
+
+export type StoredGeneration = {
+  iteration: number;
+  request: GenerationRequest;
+  images: { index: number; seed: number | null }[];
+};
 
 /** ジョブの置き場所。core はファイルの置き方を知らず、この口だけを使う */
 export interface JobStore {
@@ -36,12 +40,23 @@ export interface JobStore {
   /** 人間の指示を「考える」に取り込んだ回を書き戻す。原文には触れない */
   markInterventionApplied(jobId: string, interventionId: string, iteration: number): Promise<void>;
 
+  /** 画像とそのメタデータを置いてから request を置く。request があることが、その回の生成と保存が済んだことを表す */
+  writeGeneration(
+    jobId: string,
+    iteration: number,
+    request: GenerationRequest,
+    result: GenerationResult,
+  ): Promise<void>;
+  /** 生成と保存が済んだ回だけを、回の順に返す */
+  listGenerations(jobId: string): Promise<StoredGeneration[]>;
+  /** その回の生成と保存が済んでいなければ undefined */
+  readGeneration(jobId: string, iteration: number): Promise<StoredGeneration | undefined>;
+  /** 無ければ undefined */
+  readImage(image: ImageRef): Promise<Uint8Array | undefined>;
+
   /** 段の出力が無ければ undefined */
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown>;
   writeStage(jobId: string, iteration: number, stage: StageName, value: unknown): Promise<void>;
-
-  /** 生成された画像（原寸）とバックエンドのメタデータを置く */
-  saveImages(jobId: string, iteration: number, images: readonly GeneratedImage[]): Promise<void>;
 
   /**
    * LLM に渡す縮小版を返す。無ければ原寸から作って置く。渡した印があれば sentInCall に入る。
