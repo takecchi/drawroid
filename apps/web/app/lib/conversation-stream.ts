@@ -6,7 +6,14 @@ import {
 } from '@drawroid/core';
 import { useEffect, useReducer } from 'react';
 
-import { applyConfirmed, applyLive, EMPTY_CHAT_STATE, lastSeq, type ChatState } from './chat-state';
+import {
+  applyConfirmed,
+  applyConfirmedAll,
+  applyLive,
+  EMPTY_CHAT_STATE,
+  lastSeq,
+  type ChatState,
+} from './chat-state';
 
 /** SSE の `event:` に来る名前（確定するもの・しないもの） */
 export const STREAM_EVENT_TYPES = [
@@ -102,11 +109,12 @@ export function useConversationStream(conversationId: string, source: Conversati
       for (;;) {
         const page = await source.loadEvents(conversationId, after);
         if (closed) return;
+        const events = [];
         for (const raw of page.events) {
           const parsed = conversationEventSchema.safeParse(raw);
-          if (!parsed.success) continue;
-          chat = applyConfirmed(chat, parsed.data);
+          if (parsed.success) events.push(parsed.data);
         }
+        chat = applyConfirmedAll(chat, events);
         // 進まないページで回り続けない: 置き場所が more を返し続けても、画面を固めないため
         if (!page.more || page.last <= after) break;
         after = page.last;

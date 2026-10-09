@@ -127,6 +127,68 @@ describe('ConversationView', () => {
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
   });
 
+  it('does not draw the confirmed rows again while a reply streams in', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    const drawn = vi.mocked(useSelections).mock.calls.length;
+
+    await act(async () => {
+      stream.emit({ type: 'delta.text', partId: 'm9', turn: 9, text: '流れて' });
+      stream.emit({ type: 'delta.text', partId: 'm9', turn: 9, text: 'いる返答' });
+    });
+
+    expect(screen.getByText(/流れて/)).toBeTruthy();
+    expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+  });
+
+  it('draws an image row again once its image is chosen or its job stops, even though the row itself did not change', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 1,
+        images: [
+          { index: 0, seed: 1 },
+          { index: 1, seed: 2 },
+        ],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /^この画像で決める/ })).toHaveLength(2),
+    );
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: JOB,
+        iteration: 1,
+        image: { iteration: 1, index: 0 },
+      }),
+    );
+    await waitFor(() => expect(screen.getByText('この画像で決めた（選んだ）')).toBeTruthy());
+
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'human', detail: '人が止めた' },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^この画像で決める/ })).toHaveProperty(
+        'disabled',
+        true,
+      ),
+    );
+  });
+
   it('reads the selections of the job again when a person chose an image, so its button shows the favorite', async () => {
     const mutate = vi.fn();
     vi.mocked(useSelections).mockReturnValue({ data: { selections: [] }, mutate } as never);
