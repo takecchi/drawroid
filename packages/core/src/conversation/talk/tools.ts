@@ -36,6 +36,9 @@ export type TalkToolOutcome = {
 };
 
 /** 話す役が呼ぶツール。定義（名前・説明・引数のスキーマ）と、core が行う実行 */
+/** ツールの説明の文字数の上限。説明はツールの数だけ毎ステップ送るので、小さいローカル LLM の窓を食わないように短く保つ */
+export const TALK_TOOL_DESCRIPTION_MAX_CHARS = 160;
+
 export type TalkTool = ToolSpec & {
   run(input: unknown, context: TalkToolContext): Promise<TalkToolOutcome>;
 };
@@ -148,7 +151,8 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
 
   const recallMemory: TalkTool = {
     name: 'recall_memory',
-    description: '人間の好みとして覚えている記憶を、語に関係するものだけ引く。',
+    description:
+      '人間の好みとして覚えている記憶を、語に関係するものだけ引く。記憶は会話をまたいで残る。描き始める前や、好みが関わる質問のときに使う。',
     inputSchema: recallInput,
     async run(input, { limits }) {
       const { query } = recallInput.parse(input);

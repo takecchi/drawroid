@@ -204,7 +204,7 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
   const reviseDrawing: TalkTool = {
     name: 'revise_drawing',
     description:
-      '描いている絵に、人間の指示を伝える・止める条件を変える。次の回の境目から効く。描いている絵が無いときは使えない',
+      '描いている絵に、人間の指示（「次は夕焼けにして」など）を伝える・止める条件を変える。次の回の境目から効く。描いている絵が無いときは使えない',
     inputSchema: reviseInputSchema,
     async run(raw, context) {
       const input = reviseInputSchema.parse(raw);
@@ -225,7 +225,8 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
 
   const stopDrawing: TalkTool = {
     name: 'stop_drawing',
-    description: '描いている絵を止める。人間が止めるよう言ったときに呼ぶ',
+    description:
+      '描いている絵を止める。人間が止めるよう言ったときに呼ぶ（「止めて」）。「これでいい」と画像を選んだときは adopt_image を使う',
     inputSchema: z.object({}),
     async run(_raw, context) {
       const jobId = await activeJobOf(context);
@@ -238,7 +239,7 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
   const adoptImage: TalkTool = {
     name: 'adopt_image',
     description:
-      '人間が「これでいい」と選んだ画像を、お気に入りにして採る。描いている絵の画像だけ。続きの指示があれば、続けて revise_drawing を呼ぶ。無ければ、その画像で止まる',
+      '人間が途中の画像を「これでいい」と選んだときに呼ぶ。その画像をお気に入りにして採る。「これでいいから次はこうして」なら、続けて revise_drawing で次の指示を伝える。「これでいい」だけなら、その画像で止まる',
     inputSchema: adoptInputSchema,
     async run(raw, context) {
       const input = adoptInputSchema.parse(raw);
