@@ -5,6 +5,8 @@ import { BackendError } from '../backend-error.js';
 import type { AnyImageRef, ImageRef, JobStore, ReferenceImageRef } from '../job/store.js';
 import {
   stopConditionsChangeSchema,
+  type AdoptIntervention,
+  type AdoptedRecord,
   type AutoJobSpec,
   type InterventionRecord,
   type JobState,
@@ -41,7 +43,14 @@ import {
 } from '../reference/reference.js';
 import { DEFAULT_BUDGETS, resolveBudgets, type Budgets } from '../budget/settings.js';
 import type { Budget } from './budget.js';
-import { advanceCarry, createCarry, type Carry } from './carry.js';
+import {
+  adoptAsBest,
+  advanceCarry,
+  createCarry,
+  type Carry,
+  type StageJudgement,
+} from './carry.js';
+import { LlmGate } from './llm-gate.js';
 import { buildJudgeInput, buildRefGistInput, buildThinkInput, type MemoryInput } from './inputs.js';
 import {
   buildJudgeOutputSchema,
@@ -121,11 +130,26 @@ export type JobRunnerDeps = {
   /** 蒸留が投げて失敗したときの理由の行き先。ジョブの止まった状態には触れない */
   log?: (line: string) => void;
   now?: () => Date;
+  /**
+   * ジョブの LLM の段を待たせる口（holdLlmStages）が、待たせ始めた・全部解けた（または、待たせたままジョブが終わった）ときに呼ばれる。
+   * 話す役のターンが job.paused を流すのに使う
+   */
+  onLlmStagesHeld?: (jobId: string, held: boolean) => void;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
+  /**
+   * 考える役・見る役が自分で出す思考の増分を受ける。画面に流すためで、次の入力には戻さない。
+   * 確定した思考は、段の出力（think.json・judge.json）の reasoning に残す
+   */
+  onReasoning?: (event: {
+    jobId: string;
+    iteration: number;
+    role: 'think' | 'judge';
+    text: string;
+  }) => void;
 };
 
-type Running = { jobId: string; controller: AbortController };
+type Running = { jobId: string; controller: AbortController; gate: LlmGate };
 type BackendView = {
   capabilities: BackendCapabilities;
   lists: Partial<Record<CandidateKind, readonly Candidate[]>>;
@@ -154,6 +178,7 @@ class StopJob extends Error {
 }
 
 const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
+const ADOPTED_STOP: StopReason = { kind: 'adopted', detail: '人間が画像を選んだ' };
 
 /** 口出しを断った理由。manual は口出しを受けない手動のジョブ、unstoppable は重ねると止まらなくなる変更 */
 export type InterventionRejection = 'manual' | 'stopped' | 'unstoppable';
@@ -225,6 +250,32 @@ export class JobRunner {
       return;
     }
     await this.distillAfterStop(jobId, stopped, HUMAN_STOP);
+  }
+
+  /**
+   * 走っているジョブの LLM の段（考える・見る・参照画像の要点）を待たせる。戻り値の関数で解く。重ねて呼べて、全部解けたら解ける。
+   * 走っている LLM の呼び出しはその呼び出しだけ abort し、解けたら出力ファイルの無い段からやり直す。生成（GPU）は待たせない。
+   * 走っていないジョブには何もしない（解く関数は返す）。
+   */
+  holdLlmStages(jobId: string): () => void {
+    if (this.running?.jobId !== jobId) return () => undefined;
+    return this.running.gate.hold();
+  }
+
+  /**
+   * 走行中・待ち行列のジョブに、人間が選んだ画像を置く。まだ見る役が見ていない回なら、見る役の代わりに採る。
+   * お気に入りへの記録（selections/）はしない。呼び手の役目。
+   */
+  async adopt(
+    jobId: string,
+    image: { iteration: number; index: number },
+  ): Promise<InterventionRecord> {
+    await this.acceptingJob(jobId);
+    const generation = await this.deps.store.readGeneration(jobId, image.iteration);
+    if (generation === undefined || image.index >= generation.images.length) {
+      throw new Error(`ジョブ ${jobId} の回 ${image.iteration} に画像 ${image.index} が無い`);
+    }
+    return this.deps.store.addIntervention(jobId, { kind: 'adopt', image }, this.now());
   }
 
   /**
@@ -323,7 +374,8 @@ export class JobRunner {
 
   private async runJob(jobId: string): Promise<void> {
     const controller = new AbortController();
-    this.running = { jobId, controller };
+    const gate = new LlmGate((held) => this.notifyHeld(jobId, held));
+    this.running = { jobId, controller, gate };
     const { store } = this.deps;
     let state = await store.readState(jobId);
     let justStopped: { state: JobState; reason: StopReason } | undefined;
@@ -359,12 +411,29 @@ export class JobRunner {
       await store.writeState(jobId, stopped);
       justStopped = { state: stopped, reason };
     } finally {
+      gate.close();
       this.running = undefined;
     }
     // 止まった状態を書いて、走行中の印を外したあとに行う: 人間の停止で中断した合図を蒸留に引きずらず、蒸留の失敗が止まった理由を変えないため
     if (justStopped !== undefined) {
       await this.distillAfterStop(jobId, justStopped.state, justStopped.reason);
     }
+  }
+
+  private notifyHeld(jobId: string, held: boolean): void {
+    try {
+      this.deps.onLlmStagesHeld?.(jobId, held);
+    } catch (error) {
+      this.deps.log?.(`drawroid: ジョブ ${jobId} の待ちの通知に失敗した: ${messageOf(error)}`);
+    }
+  }
+
+  /** LLM を呼ぶ段を、待たせている間は始めず、段の最中に待たせたら呼び出しだけ abort してやり直す */
+  private llmStage<T>(
+    signal: AbortSignal,
+    run: (stageSignal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    return this.running === undefined ? run(signal) : this.running.gate.runStage(signal, run);
   }
 
   /**
@@ -603,6 +672,9 @@ export class JobRunner {
       const conditions = await this.stopConditions(spec);
       const stop = await this.checkBoundary(spec, conditions, state);
       if (stop !== undefined) throw new StopJob(stop);
+      const adopting = await this.takeInAdoption(spec, state);
+      state = adopting.state;
+      if (adopting.stop !== undefined) throw new StopJob(adopting.stop);
 
       const iteration = state.carry.completedIterations + 1;
       // 走っている段には触れず、境目で要点にする: 回の途中で届いた参照画像は、次の回の「考える」から効く（Issue #5 の I）
@@ -651,24 +723,26 @@ export class JobRunner {
     const limits = budget.references;
     for (const reference of referencesWithoutGist(await store.listReferences(spec.jobId))) {
       const ref: ReferenceImageRef = { jobId: spec.jobId, refId: reference.refId };
-      const messages = buildRefGistInput({
-        carry,
-        image: await store.loadPreview(ref, budget.imageLongEdge),
-        ...(reference.note === undefined ? {} : { note: reference.note }),
-        budget,
-        limits,
-        window: llm.describe('judge').window,
-      });
-      const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'ref-gist', messages, {
-        schema: buildRefGistOutputSchema(),
-        signal,
-        sentImages: [ref],
-        // 要点を印より先に書く: 印だけ残って落ちると、再開で「渡し済み」の画像を渡せず、要点も作れなくなるため。
-        // 要点だけ残って落ちたときは、要点があるので2度は渡さない
-        keepBeforeMarking: async (result) => {
-          if (result.ok)
-            await store.writeReferenceGist(spec.jobId, reference.refId, result.value.gist);
-        },
+      const outcome = await this.llmStage(signal, async (stageSignal) => {
+        const messages = buildRefGistInput({
+          carry,
+          image: await store.loadPreview(ref, budget.imageLongEdge),
+          ...(reference.note === undefined ? {} : { note: reference.note }),
+          budget,
+          limits,
+          window: llm.describe('judge').window,
+        });
+        return this.callLlm(spec.jobId, iteration, 'judge', 'ref-gist', messages, {
+          schema: buildRefGistOutputSchema(),
+          signal: stageSignal,
+          sentImages: [ref],
+          // 要点を印より先に書く: 印だけ残って落ちると、再開で「渡し済み」の画像を渡せず、要点も作れなくなるため。
+          // 要点だけ残って落ちたときは、要点があるので2度は渡さない
+          keepBeforeMarking: async (result) => {
+            if (result.ok)
+              await store.writeReferenceGist(spec.jobId, reference.refId, result.value.gist);
+          },
+        });
       });
       if (!outcome.ok) {
         throw new StopJob({ kind: 'error', detail: `参照画像の要点: ${outcome.reason}` });
@@ -697,7 +771,21 @@ export class JobRunner {
     });
   }
 
-  private async think(
+  private think(
+    spec: AutoJobSpec,
+    conditions: StopConditions,
+    carry: Carry,
+    iteration: number,
+    paramsPlan: ParamsPlan,
+    memoryItems: readonly MemoryItem[] | undefined,
+    signal: AbortSignal,
+  ): Promise<ThinkOutput> {
+    return this.llmStage(signal, (stageSignal) =>
+      this.thinkOnce(spec, conditions, carry, iteration, paramsPlan, memoryItems, stageSignal),
+    );
+  }
+
+  private async thinkOnce(
     spec: AutoJobSpec,
     conditions: StopConditions,
     carry: Carry,
@@ -735,11 +823,13 @@ export class JobRunner {
     await store.writeStage(spec.jobId, iteration, 'plan', {
       excluded: excludedOf(paramsPlan.merged, paramsPlan.disabled, params.omitted),
     });
+    const thinking = this.collectReasoning(spec.jobId, iteration, 'think');
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
       schema: buildThinkOutputSchema(params, {
         withInterventions: plan.included.length > 0,
       }),
       signal,
+      onReasoning: thinking.add,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
     // 取り込んだ回を think.json より先に書く: think.json を「この回の考えるが済んだ」印にしているので、
@@ -748,7 +838,7 @@ export class JobRunner {
     for (const planned of plan.included) {
       await store.markInterventionApplied(spec.jobId, planned.interventionId, iteration);
     }
-    await store.writeStage(spec.jobId, iteration, 'think', outcome.value);
+    await store.writeStage(spec.jobId, iteration, 'think', thinking.into(outcome.value));
     return outcome.value;
   }
 
@@ -879,18 +969,34 @@ export class JobRunner {
     await this.deps.store.markMaskUsed(spec.jobId, mask.maskId, iteration);
   }
 
-  private async judge(
+  private judge(
     spec: AutoJobSpec,
     carry: Carry,
     iteration: number,
     imageCount: number,
     memoryItems: readonly MemoryItem[] | undefined,
     signal: AbortSignal,
-  ): Promise<JudgeOutput> {
+  ): Promise<StageJudgement> {
+    return this.llmStage(signal, (stageSignal) =>
+      this.judgeOnce(spec, carry, iteration, imageCount, memoryItems, stageSignal),
+    );
+  }
+
+  private async judgeOnce(
+    spec: AutoJobSpec,
+    carry: Carry,
+    iteration: number,
+    imageCount: number,
+    memoryItems: readonly MemoryItem[] | undefined,
+    signal: AbortSignal,
+  ): Promise<StageJudgement> {
     const { store, llm } = this.deps;
     const budget = this.budgetsFor(spec);
     const done = await store.readStage(spec.jobId, iteration, 'judge');
     if (done !== undefined) return done as JudgeOutput;
+    // 見る役より先に、人間の選択を見る: 選ばれた回の画像は、見る役に見せずに採る
+    const adopted = await this.adoptionOf(spec, iteration);
+    if (adopted !== undefined) return adoptedJudgement(adopted, imageCount);
 
     const refs: ImageRef[] = Array.from({ length: imageCount }, (_, index) => ({
       jobId: spec.jobId,
@@ -906,14 +1012,99 @@ export class JobRunner {
       window: llm.describe('judge').window,
       ...this.memoryInput(memoryItems, budget.memory, 'judge'),
     });
+    const thinking = this.collectReasoning(spec.jobId, iteration, 'judge');
     const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'judge', messages, {
       schema: buildJudgeOutputSchema(imageCount),
       signal,
       sentImages: refs,
+      onReasoning: thinking.add,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `見る段: ${outcome.reason}` });
-    await store.writeStage(spec.jobId, iteration, 'judge', outcome.value);
+    await store.writeStage(spec.jobId, iteration, 'judge', thinking.into(outcome.value));
     return outcome.value;
+  }
+
+  /** この回の、人間が選んだ記録。置いてあればそれ、無くて選ぶ口出しが来ていれば置いて返す */
+  private async adoptionOf(
+    spec: AutoJobSpec,
+    iteration: number,
+  ): Promise<AdoptedRecord | undefined> {
+    const { store } = this.deps;
+    const done = await store.readAdopted(spec.jobId, iteration);
+    if (done !== undefined) return done;
+    const chosen = latestAdoption(await store.listInterventions(spec.jobId));
+    if (chosen?.image.iteration !== iteration) return undefined;
+    const record: AdoptedRecord = {
+      by: 'human',
+      image: chosen.image,
+      score: 1,
+      interventionId: chosen.interventionId,
+      adoptedAt: this.now().toISOString(),
+    };
+    await store.writeAdopted(spec.jobId, iteration, record);
+    return record;
+  }
+
+  /**
+   * 回の境目で、人間の選択を取り込む。見る役が済んだ回の画像への選択は、最良候補を差し替える。
+   * 選択のあと、取り込んでいない人間の指示が無ければ、ジョブを止める。
+   */
+  // 最後の選択だけを見る: 古い選択を見ると、新しく選んだ画像を古い選択で上書きし直すため
+  private async takeInAdoption(
+    spec: AutoJobSpec,
+    state: RunningState,
+  ): Promise<{ state: RunningState; stop?: StopReason }> {
+    const { store } = this.deps;
+    const done = state.carry.completedIterations;
+    if (done === 0) return { state };
+    const interventions = await store.listInterventions(spec.jobId);
+    const chosen = latestAdoption(interventions);
+    let taken = (await store.readAdopted(spec.jobId, done)) !== undefined;
+    if (chosen !== undefined && !taken) {
+      const { iteration, index } = chosen.image;
+      const best = state.carry.best;
+      const alreadyBest = best?.iteration === iteration && best.imageIndex === index;
+      if (
+        !alreadyBest &&
+        iteration <= done &&
+        (await store.readAdopted(spec.jobId, iteration)) === undefined
+      ) {
+        const think = (await store.readStage(spec.jobId, iteration, 'think')) as
+          ThinkOutput | undefined;
+        const judge = (await store.readStage(spec.jobId, iteration, 'judge')) as
+          JudgeOutput | undefined;
+        const carry = adoptAsBest(state.carry, {
+          iteration,
+          imageIndex: index,
+          params: think?.params ?? {},
+          issues: judge?.images[index]?.issues ?? [],
+        });
+        state = { ...state, carry };
+        await store.writeState(spec.jobId, state);
+        taken = true;
+      }
+    }
+    if (!taken) return { state };
+    return hasPendingInstruction(interventions, done + 1)
+      ? { state }
+      : { state, stop: ADOPTED_STOP };
+  }
+
+  /**
+   * 考える・見るの段で、モデルが自分で出す思考を受ける。増分は onReasoning へ流し、確定した思考は段の出力に足す。
+   */
+  // 段の出力（think.json・judge.json）に残す: 画面とファイルで見るためで、次の入力には戻さない
+  // （持ち回すのは carry の決まった欄だけで、組み立て器は段の出力の reasoning を読まない）
+  private collectReasoning(jobId: string, iteration: number, role: 'think' | 'judge') {
+    let text = '';
+    return {
+      add: (delta: string) => {
+        text += delta;
+        this.deps.onReasoning?.({ jobId, iteration, role, text: delta });
+      },
+      into: <T extends object>(value: T): T =>
+        text === '' ? value : { ...value, reasoning: text },
+    };
   }
 
   /**
@@ -934,15 +1125,19 @@ export class JobRunner {
       sentImages?: AnyImageRef[];
       /** 記録を置いたあと、印を付ける前に、結果をファイルに残す */
       keepBeforeMarking?: (outcome: LlmCallOutcome<T>) => Promise<void>;
+      /** モデルが自分で出した思考を受ける（考える・見るの段だけ） */
+      onReasoning?: (text: string) => void;
     },
   ): Promise<LlmCallOutcome<T>> {
     const startedAt = this.now();
+    const onReasoning = options.onReasoning;
     const outcome = await this.deps.llm.generateStructured({
       role,
       purpose,
       schema: options.schema,
       messages,
       signal: options.signal,
+      ...(onReasoning === undefined ? {} : { onReasoning }),
     });
     const callId = this.newCallId(startedAt);
     const { provider, model } = this.deps.llm.describe(role);
@@ -976,6 +1171,37 @@ export class JobRunner {
       reason,
     };
   }
+}
+
+function latestAdoption(
+  interventions: readonly InterventionRecord[],
+): AdoptIntervention | undefined {
+  return interventions.findLast((i): i is AdoptIntervention => i.kind === 'adopt');
+}
+
+/** 次の回の「考える」が取り込む、人間の指示があるか（取り込みかけて落ちたものも含む） */
+function hasPendingInstruction(
+  interventions: readonly InterventionRecord[],
+  nextIteration: number,
+): boolean {
+  return interventions.some(
+    (i) =>
+      i.kind === 'instruction' &&
+      (i.appliedInIteration === undefined || i.appliedInIteration === nextIteration),
+  );
+}
+
+/** 見る役を通さない評価。選んだ画像だけが満点で、ほかは 0 */
+function adoptedJudgement(adopted: AdoptedRecord, imageCount: number): StageJudgement {
+  return {
+    images: Array.from({ length: imageCount }, (_, index) => ({
+      score: index === adopted.image.index ? adopted.score : 0,
+      issues: [],
+    })),
+    nextChange: '',
+    canStop: false,
+    adopted: true,
+  };
 }
 
 /** この回の「考える」が取り込みかけて、think.json を置く前に落ちた指示を、未反映に戻す */

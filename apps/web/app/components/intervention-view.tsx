@@ -72,6 +72,10 @@ export function InterventionItem({
             </p>
           )}
         </>
+      ) : intervention.kind === 'adopt' ? (
+        <p>
+          {intervention.image.iteration} 回目の画像 {intervention.image.index} を選んだ
+        </p>
       ) : (
         <>
           <p>止める条件を変えた</p>

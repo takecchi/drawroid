@@ -63,17 +63,28 @@ export const interventionRecordSchema = z.discriminatedUnion('kind', [
     /** inpaint に使った回。1回使うと切れる。使われる前に新しいマスクが来ても切れる */
     usedInIteration: z.number().int().positive().optional(),
   }),
+  // adopt は人間がその回の画像を「これでいい」と選んだ印。取り込んだかは、その回の adopted.json の有無で決まる
+  z.object({
+    kind: z.literal('adopt'),
+    ...interventionIdentity,
+    image: z.object({
+      iteration: z.number().int().positive(),
+      index: z.number().int().nonnegative(),
+    }),
+  }),
 ]);
 export type InterventionRecord = z.infer<typeof interventionRecordSchema>;
 export type MaskIntervention = Extract<InterventionRecord, { kind: 'mask' }>;
 /** addMask に渡す形。data は PNG（白い所を描き直す） */
 export type NewMask = { image: { iteration: number; index: number }; data: Uint8Array };
+export type AdoptIntervention = Extract<InterventionRecord, { kind: 'adopt' }>;
 export type InstructionIntervention = Extract<InterventionRecord, { kind: 'instruction' }>;
 export type StopConditionsIntervention = Extract<InterventionRecord, { kind: 'stopConditions' }>;
 /** addIntervention に渡す形（interventionId と receivedAt は置き場所が決め、受けたときは未反映） */
 export type NewIntervention =
   | { kind: 'instruction'; text: string }
-  | { kind: 'stopConditions'; stopConditions: StopConditionsChange };
+  | { kind: 'stopConditions'; stopConditions: StopConditionsChange }
+  | { kind: 'adopt'; image: { iteration: number; index: number } };
 
 const jobSpecBase = {
   jobId: z.string().min(1),
@@ -119,6 +130,8 @@ export const STOP_REASON_KINDS = [
   'limit:duration',
   'limit:images',
   'human',
+  /** 人間が画像を選び、続く指示が無かった */
+  'adopted',
   'error',
 ] as const;
 
@@ -130,6 +143,23 @@ export const stopReasonSchema = z.object({
   backendErrorKind: z.enum(BACKEND_ERROR_KINDS).optional(),
 });
 export type StopReason = z.infer<typeof stopReasonSchema>;
+
+/**
+ * iterations/<n>/adopted.json の中身。その回の評価を「人間が選んだ」で打ち切った記録で、judge.json の代わりに置く。
+ * 置いたことが、その回の見る段が済んだことを表す。
+ */
+export const adoptedRecordSchema = z.object({
+  by: z.literal('human'),
+  image: z.object({
+    iteration: z.number().int().positive(),
+    index: z.number().int().nonnegative(),
+  }),
+  /** 人間が選んだ画像は、見る役の評価を経ずに満点として扱う */
+  score: z.literal(1),
+  interventionId: z.string().min(1),
+  adoptedAt: z.iso.datetime({ offset: true }),
+});
+export type AdoptedRecord = z.infer<typeof adoptedRecordSchema>;
 
 // 欄を閉じない: M4 で考える役が決めてよいパラメータが許可の設定しだいで増え、閉じると読み直しで黙って消えるため
 const thinkParamsSchema = z.looseObject({

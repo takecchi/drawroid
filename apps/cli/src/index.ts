@@ -7,6 +7,7 @@ import {
   backfillJobEvents,
   bridgeJobEvents,
   closeInterruptedTurns,
+  relayJobReasoning,
   ConversationHubs,
   conversationMessagesFor,
   createDrawingTools,
@@ -131,6 +132,8 @@ async function main() {
       distillLog: createFsDistillLog(root),
       conversationMessages: conversationMessagesFor(conversationStore),
     },
+    // 会話に属するジョブの、考える役・見る役の思考の増分を、その会話へ流す
+    onReasoning: relayJobReasoning({ store, hubs: conversationHubs }),
     log,
   });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため

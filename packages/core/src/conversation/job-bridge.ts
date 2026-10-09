@@ -10,12 +10,15 @@ import type { ConversationHubs } from './hub.js';
 const thinkStageSchema = z.object({
   params: z.record(z.string(), z.unknown()),
   rationale: z.string(),
+  /** 考える役が自分で出した思考（あれば）。ジョブの実行器が段の出力に残す */
+  reasoning: z.string().optional(),
 });
 
 const judgeStageSchema = z.object({
   images: z.array(z.object({ score: z.number(), issues: z.array(z.string()) })),
   nextChange: z.string(),
   canStop: z.boolean(),
+  reasoning: z.string().optional(),
 });
 
 /**
@@ -41,6 +44,7 @@ export const jobEvents = {
       rationale: think.rationale,
       params: think.params,
       excluded: parsedPlan.success ? parsedPlan.data.excluded : [],
+      ...(think.reasoning === undefined ? {} : { reasoning: think.reasoning }),
     };
   },
   images(
@@ -64,6 +68,7 @@ export const jobEvents = {
       images: judge.images.map((image, index) => ({ index, ...image })),
       nextChange: judge.nextChange,
       canStop: judge.canStop,
+      ...(judge.reasoning === undefined ? {} : { reasoning: judge.reasoning }),
     };
   },
   intervention(
@@ -174,4 +179,51 @@ export function bridgeJobEvents(
         : value;
     },
   });
+}
+
+/** ジョブの段の思考の増分を流す部品の ID。job.think / job.judge が確定したら、ハブはこの写しを捨てる */
+export function jobReasoningPartId(
+  jobId: string,
+  iteration: number,
+  role: 'think' | 'judge',
+): string {
+  return `job:${jobId}:${iteration}:${role}`;
+}
+
+/**
+ * ジョブの実行器の onReasoning に渡す。会話に属するジョブの、考える役・見る役の思考の増分を、その会話へ流す
+ * （delta.reasoning。ファイルには書かない。確定した思考は job.think / job.judge に載る）。
+ */
+export function relayJobReasoning(deps: {
+  store: JobStore;
+  hubs: ConversationHubs;
+  onError?: (error: unknown) => void;
+}): (event: { jobId: string; iteration: number; role: 'think' | 'judge'; text: string }) => void {
+  const conversations = new Map<string, Promise<string | undefined>>();
+  const conversationOf = (jobId: string) => {
+    let found = conversations.get(jobId);
+    if (found === undefined) {
+      found = deps.store
+        .readJob(jobId)
+        .then((spec) => (spec.kind === 'auto' ? spec.conversationId : undefined));
+      conversations.set(jobId, found);
+    }
+    return found;
+  };
+  // 届いた順に流す: 会話を引く間に次の増分が来ても、順が入れ替わらないように
+  let chain: Promise<void> = Promise.resolve();
+  return (event) => {
+    chain = chain
+      .then(async () => {
+        const conversationId = await conversationOf(event.jobId);
+        if (conversationId === undefined) return;
+        deps.hubs.get(conversationId).live({
+          type: 'delta.reasoning',
+          partId: jobReasoningPartId(event.jobId, event.iteration, event.role),
+          source: { role: event.role, jobId: event.jobId, iteration: event.iteration },
+          text: event.text,
+        });
+      })
+      .catch((error: unknown) => deps.onError?.(error));
+  };
 }

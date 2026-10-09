@@ -100,6 +100,8 @@ function iterationFiles(dir: string) {
     plan: join(dir, 'plan.json'),
     request: join(dir, 'request.json'),
     judge: join(dir, 'judge.json'),
+    /** 見る役の代わりに、人間が選んだ画像でその回の評価を打ち切った記録 */
+    adopted: join(dir, 'adopted.json'),
     images,
     /** 生成された画像（原寸） */
     image: (index: number) => join(images, `${index}.png`),
