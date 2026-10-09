@@ -268,6 +268,40 @@ describe('FsJobStore interventions', () => {
     );
   });
 
+  it('lists interventions in the order they were received, even within the same second', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const sameSecond = new Date('2026-10-09T06:31:00Z');
+    const said: string[] = [];
+    for (let n = 1; n <= 10; n += 1) {
+      said.push(
+        (await jobs.addIntervention(a.jobId, { kind: 'instruction', text: `指示${n}` }, sameSecond))
+          .interventionId,
+      );
+    }
+
+    const listed = await jobs.listInterventions(a.jobId);
+    expect(listed.map((i) => i.interventionId)).toEqual(said);
+    expect(listed.map((i) => (i.kind === 'instruction' ? i.text : ''))).toEqual(
+      Array.from({ length: 10 }, (_, i) => `指示${i + 1}`),
+    );
+  });
+
+  it('keeps every intervention received at once, none overwriting another', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const sameSecond = new Date('2026-10-09T06:31:00Z');
+
+    const added = await Promise.all(
+      Array.from({ length: 10 }, (_, n) =>
+        jobs.addIntervention(a.jobId, { kind: 'instruction', text: `指示${n}` }, sameSecond),
+      ),
+    );
+
+    expect(new Set(added.map((i) => i.interventionId)).size).toBe(10);
+    expect(await jobs.listInterventions(a.jobId)).toHaveLength(10);
+  });
+
   it('refuses a job or intervention id that could point outside the data directory', async () => {
     const jobs = store();
     const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
