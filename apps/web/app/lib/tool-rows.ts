@@ -29,7 +29,6 @@ const JOB_ID = String.raw`\d{8}-\d{6}-[0-9a-z]+`;
  */
 function withoutJobIds(text: string): string {
   return text
-    .replace(new RegExp(`（ジョブ ${JOB_ID}）`, 'g'), '')
     .replace(new RegExp(`ジョブ ${JOB_ID} の`, 'g'), '')
     .replace(new RegExp(` ?${JOB_ID} ?`, 'g'), '');
 }
