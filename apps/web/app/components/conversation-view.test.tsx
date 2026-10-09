@@ -167,6 +167,38 @@ describe('the stop card', () => {
     await waitFor(() => expect(recheckJobDistill).toHaveBeenCalledWith(JOB));
   });
 
+  it('makes only the card button stand out, while the rows offer the same choice quietly', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 2,
+        images: [
+          { index: 0, seed: 8 },
+          { index: 1, seed: 9 },
+        ],
+      }),
+    );
+    stream.emit(
+      confirmed({ type: 'job.stopped', jobId: JOB, reason: { kind: 'ai', detail: '止めてよい' } }),
+    );
+
+    const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
+    const inCard = within(card).getByRole('button', { name: CHOOSE });
+    const inRows = screen.getAllByRole('button', { name: CHOOSE }).filter((b) => b !== inCard);
+    // 同じ名前のボタンが行にもあるが、目立つ形（紫）はカードだけ
+    expect(inRows).toHaveLength(1);
+    expect(inCard.className).toContain('bg-primary');
+    expect(inRows[0]!.className).not.toContain('bg-primary');
+    // 名前が長いので、どちらも折り返せる
+    expect(inCard.className).toContain('whitespace-normal');
+    expect(inRows[0]!.className).toContain('whitespace-normal');
+  });
+
   it('says it is a favorite instead of the button when the best image already is', async () => {
     vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
     vi.mocked(useSelections).mockReturnValue({
@@ -661,7 +693,7 @@ describe('ConversationView', () => {
     expect(screen.getByText('夕暮れの海')).toBeTruthy();
     expect(screen.getByText('空を抑える')).toBeTruthy();
     expect(screen.queryByRole('progressbar')).toBeNull();
-    expect(screen.getByText('score 0.45')).toBeTruthy();
+    expect(screen.getByText('見る役の点 0.45')).toBeTruthy();
     expect(screen.getByText('手が崩れている')).toBeTruthy();
     expect(screen.getByText('ちょっと違う。次は「手を隠す」。')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('話を聞いています');

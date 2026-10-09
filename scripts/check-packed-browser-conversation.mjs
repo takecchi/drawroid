@@ -178,6 +178,25 @@ async function api(base, method, path, body) {
   return text === '' ? undefined : JSON.parse(text);
 }
 
+/**
+ * 「この画像に決める（お気に入りにする）」のボタンが、どれも自分の入れ物（画像の枡・止まりのカード）と画面の幅の中に収まるか。
+ * 収まらないボタンの名前と、はみ出した幅を返す（空なら収まっている）
+ * @param {import('playwright-core').Page} page
+ * @returns {Promise<string[]>}
+ */
+async function chooseButtonsOverflowing(page) {
+  const found = await page.evaluate(`(() => [...document.querySelectorAll('button')]
+    .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: '))
+    .flatMap((b) => {
+      const box = b.closest('figure, section') ?? document.body;
+      const r = b.getBoundingClientRect();
+      const c = box.getBoundingClientRect();
+      const over = Math.max(r.right - c.right, c.left - r.left, r.right - innerWidth, 0);
+      return over > 0.5 ? [b.getAttribute('aria-label') + '（' + Math.round(over) + 'px）'] : [];
+    }))()`);
+  return /** @type {string[]} */ (found);
+}
+
 const work = await mkdtemp(
   join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-packed-browser-chat-'),
 );
@@ -414,6 +433,11 @@ try {
         .count()) > 0,
     '止まったジョブの画像は、採る口ではなく「この画像に決める（お気に入りにする）」になり、押せない理由は出ない',
   );
+  const wideOverflow = await chooseButtonsOverflowing(page);
+  expect(
+    wideOverflow.length === 0,
+    `広い画面で、「この画像に決める（お気に入りにする）」は、どれも画像の枡・カードからはみ出さない${wideOverflow.length === 0 ? '' : `: ${wideOverflow.join(', ')}`}`,
+  );
 
   expect(
     problems.length === 0,
@@ -520,6 +544,17 @@ try {
         .isVisible()) &&
       (await bestCard.getByText('続けるなら、話しかけて指示を出す。').isVisible()),
     '狭い画面で、止まりのカードに最良の画像・何回目の何番・点・決めるボタン（名前つき）・続けるときの一言が、画面の幅の中に出る',
+  );
+  // 文字を折り返すので、狭い画面でもカード・画像の枡からはみ出さない。目立つ形（紫）はカードのボタンだけ
+  const narrowOverflow = await chooseButtonsOverflowing(narrow);
+  const prominent = /** @type {string[]} */ (
+    await narrow.evaluate(`[...document.querySelectorAll('button')]
+      .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: ') && b.className.includes('bg-primary'))
+      .map((b) => b.closest('section')?.getAttribute('aria-label') ?? '(枡)')`)
+  );
+  expect(
+    narrowOverflow.length === 0 && prominent.every((where) => where.startsWith('最良の画像: ')),
+    `狭い画面で、「この画像に決める（お気に入りにする）」はどれも枠からはみ出さず、目立つ形は止まりのカードだけ${narrowOverflow.length === 0 ? '' : `: ${narrowOverflow.join(', ')}`}（目立つ形: ${prominent.join(', ')}）`,
   );
   const favoritesBefore = await favorites();
   // 押したあとに読まれる「覚えたこと」を数える（選び直しの蒸留で増える記録を、押したジョブだけ読み直す）
