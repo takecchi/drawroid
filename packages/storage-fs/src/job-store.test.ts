@@ -1,13 +1,30 @@
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import type { JobState, LlmCallRecord } from '@drawroid/core';
+import {
+  generationRequestSchema,
+  jobSpecSchema,
+  jobStateSchema,
+  type GenerationRequest,
+  type GenerationResult,
+  type JobState,
+  type LlmCallRecord,
+  type NewJobSpec,
+} from '@drawroid/core';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { formatJobId, FsJobStore, ImageAlreadySentError, StoredFileError } from './job-store.js';
-import { dataPaths } from './paths.js';
+import {
+  formatJobId,
+  FsJobStore,
+  ImageAlreadySentError,
+  isJobId,
+  StoredFileError,
+} from './job-store.js';
+import { dataPaths, TEMP_FILE_PREFIX } from './paths.js';
 
 let root: string;
 beforeEach(async () => {
@@ -17,12 +34,23 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const spec = {
+const request: GenerationRequest = generationRequestSchema.parse({
+  prompt: 'a cat',
+  steps: 4,
+  cfgScale: 7,
+  width: 64,
+  height: 64,
+  batchSize: 2,
+});
+const spec: NewJobSpec = { kind: 'manual', request };
+const autoSpec: NewJobSpec = {
+  kind: 'auto',
   request: '夕暮れの海辺の少女',
   stopConditions: { aiJudgement: true, maxIterations: 10 },
   batchSize: 2,
 };
-const queued: JobState = {
+const queued: JobState = { status: 'queued' };
+const queuedAuto: JobState = {
   status: 'queued',
   carry: { intent: '夕暮れの海辺の少女', completedIterations: 0 },
 };
@@ -32,37 +60,14 @@ function store(suffixes: string[] = ['aaaaaa', 'bbbbbb', 'cccccc', 'dddddd']) {
   return new FsJobStore(root, { randomSuffix: () => suffixes[i++ % suffixes.length] ?? 'zzzzzz' });
 }
 
-async function putImage(
-  jobId: string,
-  iteration: number,
-  index: number,
-  width: number,
-  height: number,
-) {
-  const path = dataPaths(root).jobFiles(jobId).iteration(iteration).image(index);
-  await mkdir(join(path, '..'), { recursive: true });
-  const png = await sharp({ create: { width, height, channels: 3, background: '#336699' } })
-    .png()
-    .toBuffer();
-  await writeFile(path, png);
-}
-
-function record(callId: string, jobId: string | null): LlmCallRecord {
+function result(seeds: (number | null)[]): GenerationResult {
   return {
-    callId,
-    jobId,
-    iteration: jobId === null ? null : 1,
-    role: 'think',
-    purpose: 'think',
-    provider: 'local',
-    model: 'qwen',
-    startedAt: '2026-10-09T00:00:00.000Z',
-    durationMs: 10,
-    input: { system: 's', user: [] },
-    budget: { estimatedInputTokens: 1, inputTokenLimit: 2, notes: [] },
-    attempts: [],
-    usage: { inputTokens: null, outputTokens: null },
-    outcome: { ok: false, reason: 'x' },
+    images: seeds.map((seed, i) => ({
+      png: Uint8Array.of(137, 80, 78, 71, i),
+      seed,
+      metadata: { index: i },
+    })),
+    metadata: { stub: true },
   };
 }
 
@@ -74,6 +79,15 @@ describe('formatJobId', () => {
   });
 });
 
+describe('isJobId', () => {
+  it('accepts an id that formatJobId made and refuses anything that could leave the jobs directory', () => {
+    expect(isJobId(formatJobId(new Date('2026-10-09T06:30:12Z'), 'k3f9a1'))).toBe(true);
+    for (const bad of ['', '..', '../x', '20261009-063012-a/b', 'config.json']) {
+      expect(isJobId(bad), bad).toBe(false);
+    }
+  });
+});
+
 describe('FsJobStore jobs', () => {
   it('creates job.json and state.json that can be read back', async () => {
     const jobs = store();
@@ -81,6 +95,40 @@ describe('FsJobStore jobs', () => {
     expect(created).toMatchObject({ ...spec, jobId: '20261009-063012-aaaaaa' });
     expect(await jobs.readJob(created.jobId)).toEqual(created);
     expect(await jobs.readState(created.jobId)).toEqual(queued);
+  });
+
+  it('keeps both kinds of job spec apart by kind', async () => {
+    const jobs = store();
+    const manual = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const auto = await jobs.createJob(autoSpec, queued, new Date('2026-10-09T06:31:00Z'));
+    expect(await jobs.readJob(manual.jobId)).toMatchObject({ kind: 'manual', request });
+    expect(await jobs.readJob(auto.jobId)).toMatchObject({ kind: 'auto', batchSize: 2 });
+  });
+
+  it('keeps the carry of an auto job in its state, while a manual job has none', async () => {
+    const jobs = store();
+    const manual = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const auto = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:31:00Z'));
+    const carry = {
+      intent: '夕暮れの海辺の少女',
+      completedIterations: 1,
+      latest: {
+        iteration: 1,
+        imageIndex: 0,
+        score: 0.6,
+        params: { prompt: 'girl, sunset' },
+        issues: ['背景が暗い'],
+        nextChange: 'もっと逆光にする',
+      },
+    };
+    await jobs.writeState(auto.jobId, {
+      status: 'running',
+      carry,
+      startedAt: '2026-10-09T06:31:00.000Z',
+      imagesGenerated: 2,
+    });
+    expect(await jobs.readState(auto.jobId)).toMatchObject({ status: 'running', carry });
+    expect(await jobs.readState(manual.jobId)).toEqual({ status: 'queued' });
   });
 
   it('lists jobs in creation order from the directories alone', async () => {
@@ -130,12 +178,119 @@ describe('FsJobStore jobs', () => {
     ).rejects.toThrow();
     expect(await jobs.readState(a.jobId)).toEqual(queued);
   });
+
+  it('keeps the kind of the backend error in a stopped state', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const stopped: JobState = {
+      status: 'stopped',
+      stoppedAt: '2026-10-09T06:31:00.000Z',
+      imagesGenerated: 0,
+      reason: { kind: 'error', detail: '繋がらない', backendErrorKind: 'unreachable' },
+    };
+    await jobs.writeState(a.jobId, stopped);
+    expect(await jobs.readState(a.jobId)).toEqual(stopped);
+  });
 });
+
+describe('FsJobStore generations', () => {
+  it('lists a saved generation with its request and seeds, and reads the images back', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const generated = result([5, 6]);
+    await jobs.writeGeneration(a.jobId, 1, request, generated);
+
+    expect(await jobs.listGenerations(a.jobId)).toEqual([
+      {
+        iteration: 1,
+        request,
+        images: [
+          { index: 0, seed: 5 },
+          { index: 1, seed: 6 },
+        ],
+      },
+    ]);
+    const ref = { jobId: a.jobId, iteration: 1 };
+    expect(new Uint8Array((await jobs.readImage({ ...ref, index: 1 })) ?? [])).toEqual(
+      generated.images[1]?.png,
+    );
+  });
+
+  it('keeps the backend metadata next to each image', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await jobs.writeGeneration(a.jobId, 1, request, result([null]));
+    const meta = JSON.parse(
+      await readFile(dataPaths(root).jobFiles(a.jobId).iteration(1).imageMeta(0), 'utf8'),
+    ) as unknown;
+    expect(meta).toEqual({ seed: null, metadata: { index: 0 }, response: { stub: true } });
+  });
+
+  it('does not list an iteration whose request.json has not been written', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await jobs.writeGeneration(a.jobId, 1, request, result([1]));
+    const files = dataPaths(root).jobFiles(a.jobId).iteration(2);
+    await mkdir(files.images, { recursive: true });
+    await writeFile(files.image(0), 'half');
+    expect((await jobs.listGenerations(a.jobId)).map((g) => g.iteration)).toEqual([1]);
+  });
+
+  it('lists iterations in numeric order even past four digits', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    for (const iteration of [10000, 2, 1]) {
+      await jobs.writeGeneration(a.jobId, iteration, request, result([iteration]));
+    }
+    expect((await jobs.listGenerations(a.jobId)).map((g) => g.iteration)).toEqual([1, 2, 10000]);
+  });
+
+  it('returns no generations for a job that has none, and undefined for a missing image', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.listGenerations(a.jobId)).toEqual([]);
+    expect(await jobs.readImage({ jobId: a.jobId, iteration: 1, index: 0 })).toBeUndefined();
+  });
+});
+
+async function putImage(
+  jobId: string,
+  iteration: number,
+  index: number,
+  width: number,
+  height: number,
+) {
+  const path = dataPaths(root).jobFiles(jobId).iteration(iteration).image(index);
+  await mkdir(join(path, '..'), { recursive: true });
+  const png = await sharp({ create: { width, height, channels: 3, background: '#336699' } })
+    .png()
+    .toBuffer();
+  await writeFile(path, png);
+}
+
+function record(callId: string, jobId: string | null): LlmCallRecord {
+  return {
+    callId,
+    jobId,
+    iteration: jobId === null ? null : 1,
+    role: 'think',
+    purpose: 'think',
+    provider: 'local',
+    model: 'qwen',
+    startedAt: '2026-10-09T00:00:00.000Z',
+    durationMs: 10,
+    input: { system: 's', user: [] },
+    budget: { estimatedInputTokens: 1, inputTokenLimit: 2, notes: [] },
+    attempts: [],
+    usage: { inputTokens: null, outputTokens: null },
+    outcome: { ok: false, reason: 'x' },
+  };
+}
 
 describe('FsJobStore stages', () => {
   it('tells a stage that has not run yet by the missing file', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     expect(await jobs.readStage(a.jobId, 1, 'think')).toBeUndefined();
     await jobs.writeStage(a.jobId, 1, 'think', { params: { prompt: 'girl' }, rationale: 'r' });
     expect(await jobs.readStage(a.jobId, 1, 'think')).toEqual({
@@ -150,7 +305,7 @@ describe('FsJobStore stages', () => {
 describe('FsJobStore previews', () => {
   it('makes a webp preview whose long edge is within the limit, and keeps it next to the original', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await putImage(a.jobId, 1, 0, 1216, 832);
     const preview = await jobs.loadPreview({ jobId: a.jobId, iteration: 1, index: 0 }, 512);
 
@@ -167,7 +322,7 @@ describe('FsJobStore previews', () => {
 
   it('reuses the preview it already made', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await putImage(a.jobId, 1, 0, 1024, 1024);
     const ref = { jobId: a.jobId, iteration: 1, index: 0 };
     await jobs.loadPreview(ref, 512);
@@ -179,7 +334,7 @@ describe('FsJobStore previews', () => {
 
   it('does not enlarge a small image', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await putImage(a.jobId, 1, 0, 300, 200);
     const preview = await jobs.loadPreview({ jobId: a.jobId, iteration: 1, index: 0 }, 512);
     expect(preview.longEdge).toBe(300);
@@ -187,7 +342,7 @@ describe('FsJobStore previews', () => {
 
   it('keeps previews of different sizes apart', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await putImage(a.jobId, 1, 0, 1024, 768);
     const ref = { jobId: a.jobId, iteration: 1, index: 0 };
     expect((await jobs.loadPreview(ref, 512)).longEdge).toBe(512);
@@ -198,7 +353,7 @@ describe('FsJobStore previews', () => {
 describe('FsJobStore sent marks', () => {
   it('reports the call that already received the image', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await putImage(a.jobId, 1, 0, 640, 640);
     const ref = { jobId: a.jobId, iteration: 1, index: 0 };
     await jobs.markSent(ref, 'call-1', new Date('2026-10-09T06:31:00Z'));
@@ -207,7 +362,7 @@ describe('FsJobStore sent marks', () => {
 
   it('refuses to mark the same image twice, keeping the first mark', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await putImage(a.jobId, 1, 0, 640, 640);
     const ref = { jobId: a.jobId, iteration: 1, index: 0 };
     await jobs.markSent(ref, 'call-1', new Date('2026-10-09T06:31:00Z'));
@@ -221,7 +376,7 @@ describe('FsJobStore sent marks', () => {
 describe('FsJobStore LLM call records', () => {
   it('puts job calls under the job and other calls at the top level, listing them in order', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     await jobs.writeLlmCall(record('0002', a.jobId));
     await jobs.writeLlmCall(record('0001', a.jobId));
     await jobs.writeLlmCall(record('0001-parse', null));
@@ -234,7 +389,66 @@ describe('FsJobStore LLM call records', () => {
 
   it('returns no records for a job that has made no call', async () => {
     const jobs = store();
-    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     expect(await jobs.listLlmCalls(a.jobId)).toEqual([]);
   });
+});
+
+describe('a process killed while saving a job', () => {
+  const child = fileURLToPath(
+    new URL('./test-fixtures/job-store-writer-child.mjs', import.meta.url),
+  );
+
+  function killWhileSaving(dir: string, delayMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const proc = spawn(process.execPath, [child, dir], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stderr = '';
+      proc.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+      proc.stdout.once('data', () => setTimeout(() => proc.kill('SIGKILL'), delayMs));
+      proc.once('exit', (_code, signal) =>
+        signal === 'SIGKILL' ? resolve() : reject(new Error(`child exited early: ${stderr}`)),
+      );
+    });
+  }
+
+  const schemas = {
+    'job.json': jobSpecSchema,
+    'state.json': jobStateSchema,
+    'request.json': generationRequestSchema,
+  } as const;
+
+  it('never leaves a JSON file that is broken or does not match its schema', async () => {
+    for (const delayMs of [0, 1, 2, 3, 5, 7, 11, 15, 20, 30, 45, 60, 90]) {
+      const dir = join(root, `kill-${delayMs}`);
+      await killWhileSaving(dir, delayMs);
+      const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+        // 殺された書き込みが残す一時ファイルは、読み手が無視し、起動時に片付けるもの
+        if (entry.name.startsWith(TEMP_FILE_PREFIX)) continue;
+        const path = join(entry.parentPath, entry.name);
+        const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown;
+        const schema = schemas[basename(path) as keyof typeof schemas];
+        if (schema !== undefined) expect(schema.safeParse(parsed).success, path).toBe(true);
+      }
+
+      // 一覧に出るジョブは、読めて、保存の済んだ回の画像が揃っている
+      const jobs = new FsJobStore(dir);
+      for (const jobId of await jobs.listJobIds()) {
+        await jobs.readJob(jobId);
+        await jobs.readState(jobId);
+        for (const generation of await jobs.listGenerations(jobId)) {
+          expect(generation.images).toHaveLength(2);
+          for (const image of generation.images) {
+            const png = await jobs.readImage({
+              jobId,
+              iteration: generation.iteration,
+              index: image.index,
+            });
+            expect(png).toHaveLength(128 * 1024);
+          }
+        }
+      }
+    }
+  }, 60_000);
 });
