@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import {
   type InvalidMemoryFile,
+  isMemoryId,
   type MemoryItem,
   memoryItemSchema,
   type MemoryStore,
@@ -17,7 +18,7 @@ function isNotFound(error: unknown): boolean {
 
 // id はそのままファイル名になる。API から来た id でデータディレクトリの外や一時ファイルを指せないようにする
 function assertSafeId(id: string): void {
-  if (id === '' || id.startsWith('.') || /[/\\\0]/.test(id)) {
+  if (!isMemoryId(id)) {
     throw new Error(`記憶の ID に使えない形: ${JSON.stringify(id)}`);
   }
 }

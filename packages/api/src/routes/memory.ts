@@ -1,4 +1,9 @@
-import { DEFAULT_DISTILL_BUDGET, memoryScopeSchema, type JobSpec } from '@drawroid/core';
+import {
+  DEFAULT_DISTILL_BUDGET,
+  isMemoryId,
+  memoryScopeSchema,
+  type JobSpec,
+} from '@drawroid/core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { validator } from 'hono/validator';
@@ -17,11 +22,8 @@ const updateMemorySchema = z.object({
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
 });
 
-// ストアの assertSafeId と同じ形を、ストアに投げる前に弾く。ストアは安全でない id と読めないファイルを
+// ストアに投げる前に、ストアと同じ isMemoryId で弾く。ストアは使えない形の id と読めないファイルを
 // どちらも Error で返し、型では見分けられないため、前者を 404 にするにはここで先に判定するしかない
-function isSafeId(id: string): boolean {
-  return id !== '' && !id.startsWith('.') && !/[/\\\0]/.test(id);
-}
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -51,7 +53,7 @@ export function memoryRoutes({ memoryStore, store }: ApiDeps) {
       .get('/', async (c) => c.json(await memoryStore.list(), 200))
       .get('/:id', async (c) => {
         const id = c.req.param('id');
-        if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
+        if (!isMemoryId(id)) return notFound(c, `記憶 ${id} は無い`);
         let item;
         try {
           item = await memoryStore.get(id);
@@ -74,7 +76,7 @@ export function memoryRoutes({ memoryStore, store }: ApiDeps) {
         }),
         async (c) => {
           const id = c.req.param('id');
-          if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
+          if (!isMemoryId(id)) return notFound(c, `記憶 ${id} は無い`);
           const { expectedUpdatedAt, ...edit } = c.req.valid('json');
 
           let current;
@@ -95,7 +97,7 @@ export function memoryRoutes({ memoryStore, store }: ApiDeps) {
       )
       .delete('/:id', async (c) => {
         const id = c.req.param('id');
-        if (!isSafeId(id)) return notFound(c, `記憶 ${id} は無い`);
+        if (!isMemoryId(id)) return notFound(c, `記憶 ${id} は無い`);
         if (!(await memoryStore.remove(id))) return notFound(c, `記憶 ${id} は無い`);
         return c.body(null, 204);
       })

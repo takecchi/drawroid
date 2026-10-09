@@ -57,6 +57,7 @@ export * from './job/store.js';
 export * from './job/types.js';
 export * from './loop/schemas.js';
 export {
+  isMemoryId,
   MEMORY_SCOPES,
   memoryItemSchema,
   memoryScopeSchema,
