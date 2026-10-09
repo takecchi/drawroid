@@ -29,6 +29,15 @@ describe('ForgeClient errors', () => {
     });
   });
 
+  it('names the URL and the underlying reason when fetch fails without a known code', async () => {
+    // fetch はポート 1 を危険なポートとして、繋ぎに行かずに断る
+    const url = 'http://127.0.0.1:1';
+    await expect(clientFor(url).getJson('/sdapi/v1/cmd-flags', anything)).rejects.toMatchObject({
+      kind: 'unreachable',
+      message: expect.stringMatching(/127\.0\.0\.1:1.*bad port/) as unknown,
+    });
+  });
+
   it('says the API is missing when the path is not found (wrong URL or no --api)', async () => {
     await expect(
       clientFor(`${forge.url}/wrong`).getJson('/sdapi/v1/cmd-flags', anything),

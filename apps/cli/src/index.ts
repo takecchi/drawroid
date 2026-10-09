@@ -2,13 +2,15 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-import { ForgeBackend } from '@drawroid/backend-forge';
+import { ForgeBackend, type ForgeBackendOptions } from '@drawroid/backend-forge';
 import { ManualGenerationRunner } from '@drawroid/core';
 import { dataPaths, FsJobStore, initDataDir, resolveDataDir } from '@drawroid/storage-fs';
 
 import { parseCliArgs } from './args.js';
-import { readConfig, resolveForgeUrl } from './config.js';
+import { createBackendSettings, forgeBackendOptions } from './backend-settings.js';
+import { readConfig, resolveForgeUrlWithSource } from './config.js';
 import { listen } from './listen.js';
+import { ReplaceableBackend } from './replaceable-backend.js';
 
 // apps/web の成果物を dist へ写さずに、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため
 function resolveWebRoot(): string {
@@ -29,13 +31,16 @@ async function main() {
 
   // どのアダプタを使うかを決めるのは、組み立ての根であるここだけ
   const config = await readConfig(dataPaths(root).config);
-  const forgeUrl = resolveForgeUrl(args.forgeUrl, config);
-  const backend = new ForgeBackend({
-    baseUrl: forgeUrl,
-    ...(config.backend?.auth !== undefined && { auth: config.backend.auth }),
-    ...(config.backend?.generateTimeoutMs !== undefined && {
-      generateTimeoutMs: config.backend.generateTimeoutMs,
-    }),
+  const { forgeUrl, source } = resolveForgeUrlWithSource(args.forgeUrl, config);
+  const createBackend = (options: ForgeBackendOptions) => new ForgeBackend(options);
+  const backend = new ReplaceableBackend(
+    createBackend(forgeBackendOptions(forgeUrl, config.backend)),
+  );
+  const backendSettings = createBackendSettings({
+    configPath: dataPaths(root).config,
+    backend,
+    createBackend,
+    initial: { forgeUrl, source, config },
   });
   const store = new FsJobStore(root);
   const manualRunner = new ManualGenerationRunner({ backend, store });
@@ -44,7 +49,7 @@ async function main() {
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),
-    deps: { backend, store, manualRunner },
+    deps: { backend, store, manualRunner, backendSettings },
   });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
 }

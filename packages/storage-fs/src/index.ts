@@ -6,6 +6,7 @@ export {
   StoredFileError,
   type FsJobStoreOptions,
 } from './job-store.js';
+export { readBackendSettings, writeBackendSettings } from './backend-settings.js';
 export { initDataDir, type InitializedDataDir } from './init.js';
 export {
   dataPaths,
