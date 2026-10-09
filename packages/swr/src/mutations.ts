@@ -15,12 +15,12 @@ export async function startManualJob(params: GenerationRequestInput): Promise<{ 
 
 /** URL が不正なときは ApiError（kind: 'invalid_request'）を投げる */
 export async function saveBackendSettings(input: {
-  forgeUrl: string;
+  url: string;
 }): Promise<BackendSettingsResponse> {
   const saved = await unwrap<BackendSettingsResponse>(() =>
     client.settings.backend.$put({ json: input }),
   );
-  // 状態と候補は、繋ぎ直した先のものへ取り直す: 古い Forge の応答が残ると、直したのに直っていないように見えるため
+  // 状態と候補は、繋ぎ直した先のものへ取り直す: 古いバックエンドの応答が残ると、直したのに直っていないように見えるため
   await mutate((key) => typeof key === 'string' && key.startsWith(keys.backend));
   await mutate(keys.backendSettings, saved, { revalidate: false });
   return saved;

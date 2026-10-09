@@ -9,7 +9,7 @@ describe('parseCliArgs', () => {
       port: DEFAULT_PORT,
       dataDir: undefined,
       backend: undefined,
-      forgeUrl: undefined,
+      backendUrl: undefined,
     });
   });
 
@@ -27,10 +27,19 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['--backend', 'comfyui'])).toThrow(/--backend/);
   });
 
-  it('accepts --forge-url', () => {
-    expect(parseCliArgs(['--forge-url', 'http://gpu:7860'])).toMatchObject({
-      forgeUrl: 'http://gpu:7860',
+  it('accepts --backend-url, and --forge-url as its old name', () => {
+    expect(parseCliArgs(['--backend-url', 'http://gpu:7860'])).toMatchObject({
+      backendUrl: 'http://gpu:7860',
     });
+    expect(parseCliArgs(['--forge-url', 'http://gpu:7860'])).toMatchObject({
+      backendUrl: 'http://gpu:7860',
+    });
+  });
+
+  it('refuses --backend-url and --forge-url together', () => {
+    expect(() =>
+      parseCliArgs(['--backend-url', 'http://a:7860', '--forge-url', 'http://b:7860']),
+    ).toThrow(/--backend-url と --forge-url/);
   });
 
   it('rejects a port outside 1-65535 or not an integer', () => {

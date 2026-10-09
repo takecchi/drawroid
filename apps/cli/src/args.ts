@@ -8,7 +8,7 @@ export interface CliOptions {
   port: number;
   dataDir: string | undefined;
   backend: BackendKind | undefined;
-  forgeUrl: string | undefined;
+  backendUrl: string | undefined;
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
@@ -18,6 +18,8 @@ export function parseCliArgs(argv: string[]): CliOptions {
       port: { type: 'string' },
       'data-dir': { type: 'string' },
       backend: { type: 'string' },
+      'backend-url': { type: 'string' },
+      // 古い名前。--backend-url と同じ意味で受ける
       'forge-url': { type: 'string' },
     },
     strict: true,
@@ -26,8 +28,18 @@ export function parseCliArgs(argv: string[]): CliOptions {
     port: parsePort(values.port),
     dataDir: values['data-dir'],
     backend: parseBackend(values.backend),
-    forgeUrl: values['forge-url'],
+    backendUrl: parseBackendUrl(values['backend-url'], values['forge-url']),
   };
+}
+
+function parseBackendUrl(
+  backendUrl: string | undefined,
+  forgeUrl: string | undefined,
+): string | undefined {
+  if (backendUrl !== undefined && forgeUrl !== undefined) {
+    throw new Error('--backend-url と --forge-url（古い名前）は片方だけを指定する');
+  }
+  return backendUrl ?? forgeUrl;
 }
 
 function parseBackend(raw: string | undefined): BackendKind | undefined {
