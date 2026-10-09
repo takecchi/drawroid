@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { Button, CheckboxField, ErrorNote, Field, FilePicker, Input } from './common';
+import { Button, CheckboxField, ErrorNote, Field, FilePicker, Input, Spinner } from './common';
 
 afterEach(cleanup);
 
@@ -18,6 +18,29 @@ describe('Button', () => {
 
     expect(screen.getByRole('button', { name: '送る' }).getAttribute('type')).toBe('button');
     expect(screen.getByRole('button', { name: '投入する' }).getAttribute('type')).toBe('submit');
+  });
+
+  it('cannot be pressed while loading, and keeps its label as its name', async () => {
+    let pressed = 0;
+    render(
+      <Button loading onClick={() => (pressed += 1)}>
+        送る
+      </Button>,
+    );
+
+    const button = screen.getByRole('button', { name: '送る' });
+    expect(button).toHaveProperty('disabled', true);
+    await userEvent.click(button);
+    expect(pressed).toBe(0);
+  });
+});
+
+describe('Spinner', () => {
+  it('is announced by its Japanese label alone', () => {
+    render(<Spinner label="ジョブを読み込み中" />);
+
+    expect(screen.getByRole('status').textContent).toBe('ジョブを読み込み中');
+    expect(screen.queryByLabelText('Loading')).toBeNull();
   });
 });
 
