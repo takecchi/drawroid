@@ -187,6 +187,18 @@ describe('ChatComposer', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it('cannot be sent twice while the message is still being sent', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<ChatComposer value="海の絵" onChange={() => undefined} onSend={onSend} sending />);
+
+    await user.type(screen.getByLabelText('発言'), '{Enter}');
+    await user.click(screen.getByRole('button', { name: /送る/ }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /送る/ })).toHaveProperty('disabled', true);
+  });
+
   it('does not send an empty message', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();

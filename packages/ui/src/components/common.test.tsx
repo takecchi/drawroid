@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Button, CheckboxField, ErrorNote, Field, FilePicker, Input, Spinner } from './common';
+import {
+  Button,
+  CheckboxField,
+  ErrorNote,
+  Field,
+  FilePicker,
+  Input,
+  Spinner,
+  Textarea,
+} from './common';
 
 afterEach(cleanup);
 
@@ -98,5 +107,26 @@ describe('FilePicker', () => {
     );
 
     expect(screen.getByText('kept.png')).toBeTruthy();
+  });
+});
+
+describe('Textarea', () => {
+  it('grows to its content up to the given height when asked to', () => {
+    // jsdom は配置をしないので、中身の高さを決めて渡す
+    const height = vi
+      .spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(120);
+    render(
+      <>
+        <Textarea aria-label="伸びる" maxHeight="15rem" defaultValue="一行目" />
+        <Textarea aria-label="伸びない" defaultValue="一行目" />
+      </>,
+    );
+
+    const grows = screen.getByLabelText('伸びる') as HTMLTextAreaElement;
+    expect(grows.style.height).toBe('120px');
+    expect(grows.style.maxHeight).toBe('15rem');
+    expect((screen.getByLabelText('伸びない') as HTMLTextAreaElement).style.height).toBe('');
+    height.mockRestore();
   });
 });

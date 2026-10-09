@@ -19,11 +19,14 @@ export default function ConversationRoute() {
       actions={actions}
       title={
         <>
-          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
+          <Link
+            to="/"
+            className="shrink-0 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground"
+          >
             会話
           </Link>
-          <span className="text-muted-foreground">/</span>
-          <span className="truncate font-medium">
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="min-w-0 truncate font-medium">
             {title === undefined || title === '' ? '新しい会話' : title}
           </span>
         </>
