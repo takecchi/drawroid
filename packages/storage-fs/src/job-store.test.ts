@@ -267,6 +267,15 @@ describe('FsJobStore interventions', () => {
       StoredFileError,
     );
   });
+
+  it('refuses a job or intervention id that could point outside the data directory', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const said = { kind: 'instruction' as const, text: '逆光にして' };
+    await expect(jobs.addIntervention('../../x', said, new Date())).rejects.toThrow();
+    await expect(jobs.listInterventions('../../x')).rejects.toThrow();
+    await expect(jobs.markInterventionApplied(a.jobId, '../../state', 1)).rejects.toThrow();
+  });
 });
 
 describe('FsJobStore generations', () => {
