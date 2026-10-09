@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { BackendStatus } from '../components/backend-status';
 import { ForgeUrlSettings } from '../components/forge-url-settings';
 import { GenerationForm } from '../components/generation-form';
+import { LlmSettings } from '../components/llm-settings';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export default function Home() {
       <h1>drawroid</h1>
       <BackendStatus />
       <ForgeUrlSettings />
+      <LlmSettings />
       <GenerationForm onStarted={(jobId) => void navigate(`/jobs/${jobId}`)} />
     </main>
   );
