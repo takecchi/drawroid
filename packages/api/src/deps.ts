@@ -19,6 +19,7 @@ import type {
   ReferenceRecord,
   StopConditions,
   StopConditionsChange,
+  DistillLog,
 } from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
 
@@ -126,6 +127,8 @@ export type ApiDeps = {
   env: Readonly<Record<string, string | undefined>>;
   /** 止まったジョブで選択が変わったときに、蒸留を裏で回す側へ知らせる。応答は待たない */
   reselection?: { notify(jobId: string): void };
+  /** ジョブから覚えたこと（蒸留の記録）を読む。省けば、どのジョブも覚えたことが無いとして答える */
+  distillLog?: Pick<DistillLog, 'read'>;
   /** 設定の画面の「確かめる」。省けば、画面からは確かめられない（409） */
   doctor?: DoctorPort;
   now?: () => Date;

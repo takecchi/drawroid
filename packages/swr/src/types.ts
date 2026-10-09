@@ -126,6 +126,11 @@ export type ConversationUploadResponse = InferResponseType<
   (typeof client.conversations)[':conversationId']['uploads']['$post'],
   201
 >;
+/** ジョブから覚えたこと（蒸留ごとに、足した項目・直した項目の前後・失敗の理由） */
+export type JobDistillResponse = InferResponseType<
+  (typeof client.jobs)[':jobId']['distill']['$get'],
+  200
+>;
 export type AdoptImageResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['adopt']['$post'],
   200

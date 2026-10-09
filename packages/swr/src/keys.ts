@@ -12,6 +12,7 @@ export const keys = {
   generationProgressSettings: '/api/settings/generation-progress',
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
+  jobDistill: (jobId: string) => `/api/jobs/${jobId}/distill`,
   iterations: (jobId: string) => `/api/jobs/${jobId}/iterations`,
   selections: (jobId: string) => `/api/jobs/${jobId}/selections`,
   interventions: (jobId: string) => `/api/jobs/auto/${jobId}/interventions`,

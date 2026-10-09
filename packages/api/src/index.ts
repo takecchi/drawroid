@@ -6,6 +6,7 @@ import { autoJobsRoutes } from './routes/auto-jobs.js';
 import { backendRoutes } from './routes/backend.js';
 import { backendSettingsRoutes } from './routes/backend-settings.js';
 import { budgetSettingsRoutes } from './routes/budget-settings.js';
+import { distillRoutes } from './routes/distill.js';
 import { doctorRoutes } from './routes/doctor.js';
 import { candidateNotesRoutes } from './routes/candidate-notes.js';
 import { conversationsRoutes } from './routes/conversations.js';
@@ -73,6 +74,7 @@ export function createApi(deps: ApiDeps) {
     .route('/memory', memoryRoutes(deps))
     .route('/jobs', selectionsRoutes(deps))
     .route('/jobs', adoptRoutes(deps))
+    .route('/jobs', distillRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps))
     .route('/stop-conditions', stopConditionParseRoutes(deps))
