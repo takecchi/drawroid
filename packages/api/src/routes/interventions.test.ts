@@ -47,6 +47,7 @@ beforeEach(async () => {
       addInstruction: (jobId, text) => runner.addInstruction(jobId, text),
       changeStopConditions: (jobId, change) => runner.changeStopConditions(jobId, change),
       addReference: (jobId, reference) => runner.addReference(jobId, reference),
+      addMask: (jobId, mask) => runner.addMask(jobId, mask),
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },

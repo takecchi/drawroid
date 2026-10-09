@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
 import { conflict, invalidRequest, notFound } from '../errors.js';
+import { maskUploadSchema } from '../masks.js';
 import { referenceUploadSchema } from '../references.js';
 import { jsonBody } from '../validate.js';
 import { isAutoJob } from './auto-jobs.js';
@@ -22,6 +23,15 @@ const bodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('stopConditions'), stopConditions: stopConditionsChangeSchema }),
   // 画像を kind と同じ段に並べない: 検証で画像のバイト列に戻すので、判別 union の枝にそのまま置けないため
   z.object({ kind: z.literal('reference'), image: referenceUploadSchema }),
+  // inpaint のマスク。image は塗った生成画像（Issue #5 の H）
+  z.object({
+    kind: z.literal('mask'),
+    image: z.object({
+      iteration: z.number().int().positive(),
+      index: z.number().int().nonnegative(),
+    }),
+    mask: maskUploadSchema,
+  }),
 ]);
 
 function rejected(c: Context, error: unknown) {
@@ -50,6 +60,17 @@ export function interventionsRoutes({ store, autoQueue }: ApiDeps) {
       if (body.kind === 'reference') {
         const reference = await autoQueue.addReference(jobId, body.image);
         return c.json({ reference }, 202);
+      }
+      if (body.kind === 'mask') {
+        // 無い画像に塗ったマスクを受けない: inpaint の元画像が無く、使えないマスクが残るだけになるため
+        if ((await store.readImage({ jobId, ...body.image })) === undefined) {
+          return notFound(
+            c,
+            `${body.image.iteration} 回目の画像 ${body.image.index} は無い（マスクを塗った画像）`,
+          );
+        }
+        const mask = await autoQueue.addMask(jobId, { image: body.image, data: body.mask });
+        return c.json({ mask }, 202);
       }
       const stopConditions = await autoQueue.changeStopConditions(jobId, body.stopConditions);
       return c.json({ stopConditions }, 202);

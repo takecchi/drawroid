@@ -12,6 +12,8 @@ import {
   type LlmPort,
   type LlmRole,
   type LlmRoleInfo,
+  type MaskIntervention,
+  type NewMask,
   type NewReference,
   type Permissions,
   type ReferenceRecord,
@@ -91,6 +93,10 @@ export class AutoJobQueue implements AutoJobQueuePort {
 
   addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord> {
     return this.runner.addReference(jobId, reference);
+  }
+
+  addMask(jobId: string, mask: NewMask): Promise<MaskIntervention> {
+    return this.runner.addMask(jobId, mask);
   }
 
   idle(): Promise<void> {

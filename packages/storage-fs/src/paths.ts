@@ -53,6 +53,7 @@ function jobFiles(dir: string) {
   const iterations = join(dir, 'iterations');
   const llmCalls = join(dir, 'llm-calls');
   const interventions = join(dir, 'interventions');
+  const masks = join(dir, 'masks');
   const refs = join(dir, 'refs');
   return {
     dir,
@@ -69,6 +70,9 @@ function jobFiles(dir: string) {
     interventions,
     /** 口出し1件 */
     intervention: (interventionId: string) => join(interventions, `${interventionId}.json`),
+    masks,
+    /** inpaint のマスク。名前は、そのマスクを受けた口出しの interventionId */
+    mask: (maskId: string) => join(masks, `${maskId}.png`),
     llmCalls,
     llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
     iterations,

@@ -71,6 +71,10 @@ class MemoryJobStore implements JobStore {
   addReference = notUsed;
   listReferences = notUsed;
   writeReferenceGist = notUsed;
+  readReferenceImage = notUsed;
+  addMask = notUsed;
+  readMask = notUsed;
+  markMaskUsed = notUsed;
 }
 
 async function notUsed(): Promise<never> {

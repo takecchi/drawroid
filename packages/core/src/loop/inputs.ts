@@ -173,10 +173,12 @@ function interventionSection(w: SectionWriter, plan: InterventionPlan | undefine
 }
 
 /** 参照画像の要点。量は carry に入れるときに件数と文字数で締めてある */
-function referenceSections(carry: Carry): Section[] {
+function referenceSections(carry: Carry, withKeys = false): Section[] {
   const references = carry.references ?? [];
   if (references.length === 0) return [];
-  const lines = references.map((reference) => `- ${reference.gist}`);
+  const lines = references.map((reference) =>
+    withKeys ? `- ref:${reference.refId}: ${reference.gist}` : `- ${reference.gist}`,
+  );
   return [{ name: 'references', text: `参照画像の要点:\n${lines.join('\n')}` }];
 }
 
@@ -258,8 +260,11 @@ export function buildThinkInput(args: {
   interventions?: InterventionPlan;
   /** 候補を持つパラメータごとに、予算で絞って見せる候補（selectCandidates の結果） */
   candidates?: ShownCandidates;
+  /** img2img を AI に任せる回だけ true。最良・直近・参照画像に、元画像として選ぶときのキーを添える */
+  withImageSourceKeys?: boolean;
 }): BudgetedMessages {
   const { carry, progress, allowed, budget, window, interventions, candidates } = args;
+  const withImageSourceKeys = args.withImageSourceKeys ?? false;
   const w = new SectionWriter();
   const remaining =
     progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
@@ -275,10 +280,16 @@ export function buildThinkInput(args: {
     // 量は selectCandidates の予算で締めてある
     ...candidateSections(w, candidates),
   ];
-  const optional: Section[] = [...referenceSections(carry)];
-  if (carry.best !== undefined) optional.push(w.result('best', '最良', carry.best, budget, true));
+  // 元画像のキーを、その画像を説明する区画の中に書く: 区画が入力の上限で落ちたら、キーも一緒に見えなくなり、
+  // 見えていない画像を元画像に選ばせずに済むため（Issue #5 の G）
+  const keyed = (label: string, key: string) =>
+    withImageSourceKeys ? `${label}（元画像のキー ${key}）` : label;
+  const optional: Section[] = [...referenceSections(carry, withImageSourceKeys)];
+  if (carry.best !== undefined) {
+    optional.push(w.result('best', keyed('最良', 'best'), carry.best, budget, true));
+  }
   if (carry.latest !== undefined && carry.latest.iteration !== carry.best?.iteration) {
-    optional.push(w.result('latest', '直近', carry.latest, budget, true));
+    optional.push(w.result('latest', keyed('直近', 'latest'), carry.latest, budget, true));
   }
   return seal({
     system: THINK_SYSTEM,
