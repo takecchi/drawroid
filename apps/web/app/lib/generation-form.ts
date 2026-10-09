@@ -51,7 +51,6 @@ export function buildGenerationRequest(values: GenerationFormValues): Generation
   const optionalText = {
     negativePrompt: values.negativePrompt,
     checkpoint: values.checkpoint,
-    vae: values.vae,
     sampler: values.sampler,
     scheduler: values.scheduler,
   };
