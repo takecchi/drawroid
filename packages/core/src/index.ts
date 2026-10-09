@@ -180,3 +180,4 @@ export * from './conversation/events.js';
 export * from './conversation/store.js';
 export * from './conversation/hub.js';
 export * from './conversation/job-bridge.js';
+export * from './conversation/drawing.js';
