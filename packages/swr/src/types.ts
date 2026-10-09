@@ -1,3 +1,4 @@
+import type { Permissions } from '@drawroid/core';
 import type { ReferenceUploadInput } from '@drawroid/api';
 import type { InferRequestType, InferResponseType } from 'hono/client';
 
@@ -19,6 +20,16 @@ export type SavedMemoryItem = InferResponseType<(typeof client.memory)[':id']['$
 export type LlmSettingsResponse = InferResponseType<typeof client.settings.llm.$get, 200>;
 /** 保存するときに送る LLM の設定（既定値のある欄は省ける） */
 export type LlmSettingsInput = InferRequestType<typeof client.settings.llm.$put>['json'];
+/** overrides は書いた欄、permissions は土台に重ねた実際の許可 */
+export type PermissionSettingsResponse = InferResponseType<
+  typeof client.settings.permissions.$get,
+  200
+>;
+/**
+ * 保存するときに送る、全体の既定の許可の上書き（書いた欄だけ）。
+ * core の型を使う: api の validator の schema は型を Permissions へ明示しているので、hono/client から引くと unknown になるため
+ */
+export type PermissionOverridesInput = Partial<Permissions>;
 export type IterationsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['iterations']['$get'],
   200
