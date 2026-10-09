@@ -1,0 +1,8 @@
+[
+  { "name": "Latent" },
+  { "name": "Latent (antialiased)" },
+  { "name": "Latent (bicubic)" },
+  { "name": "Latent (bicubic antialiased)" },
+  { "name": "Latent (nearest)" },
+  { "name": "Latent (nearest-exact)" }
+]

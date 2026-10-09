@@ -9,16 +9,18 @@ Forge の雛形（`packages/backend-forge/src/test-support/fixtures/`）と対�
 
 行番号は `v1.10.1` のもの。
 
-| ファイル                                       | 口                                                              | 形の出どころ                                                                                                                                               |
-| ---------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sd-models.json`                               | `GET /sdapi/v1/sd-models`                                       | `modules/api/models.py:255-261`（`SDModelItem`）、`modules/api/api.py:726-728`、値の作り方は `modules/sd_models.py` の `CheckpointInfo`                    |
-| `sd-vae.json`                                  | `GET /sdapi/v1/sd-vae`                                          | `modules/api/models.py:263-265`（`SDVaeItem`）、`modules/api/api.py:730-732`、名前の作り方は `modules/sd_vae.py:68-69`・`95-104`                           |
-| `loras.json`                                   | `GET /sdapi/v1/loras`                                           | `extensions-builtin/Lora/scripts/lora_script.py:53-65`、`alias` の既定は `extensions-builtin/Lora/network.py:49`                                           |
-| `samplers.json`                                | `GET /sdapi/v1/samplers`                                        | `modules/api/models.py:233-236`（`SamplerItem`）、`modules/api/api.py:692-693`、一覧は `modules/sd_samplers_kdiffusion.py:11-`                             |
-| `schedulers.json`                              | `GET /sdapi/v1/schedulers`                                      | `modules/api/models.py:238-243`（`SchedulerItem`）、`modules/api/api.py:695-704`、一覧は `modules/sd_schedulers.py:130-143`                                |
-| `cmd-flags.json`                               | `GET /sdapi/v1/cmd-flags`                                       | `modules/api/api.py:222`・`689`。実際は起動の引数をすべて返す。雛形は Forge と同じく、使う欄の周りだけを残した                                             |
-| `scripts.json`・`scripts-with-controlnet.json` | `GET /sdapi/v1/scripts`                                         | `modules/api/models.py:302-304`（`ScriptsList`）、`modules/api/api.py:244`・`294-298`。名前は各スクリプトの `title().lower()`（`modules/scripts.py:653`）  |
-| `txt2img-info.json`                            | `POST /sdapi/v1/txt2img` の応答の `info`（JSON の文字列）の中身 | `modules/processing.py:570-605`（`Processed.js`）。応答そのものは `modules/api/models.py:134-137`（`TextToImageResponse`: `images`・`parameters`・`info`） |
+| ファイル                                       | 口                                                              | 形の出どころ                                                                                                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sd-models.json`                               | `GET /sdapi/v1/sd-models`                                       | `modules/api/models.py:255-261`（`SDModelItem`）、`modules/api/api.py:726-728`、値の作り方は `modules/sd_models.py` の `CheckpointInfo`                            |
+| `sd-vae.json`                                  | `GET /sdapi/v1/sd-vae`                                          | `modules/api/models.py:263-265`（`SDVaeItem`）、`modules/api/api.py:730-732`、名前の作り方は `modules/sd_vae.py:68-69`・`95-104`                                   |
+| `loras.json`                                   | `GET /sdapi/v1/loras`                                           | `extensions-builtin/Lora/scripts/lora_script.py:53-65`、`alias` の既定は `extensions-builtin/Lora/network.py:49`                                                   |
+| `samplers.json`                                | `GET /sdapi/v1/samplers`                                        | `modules/api/models.py:233-236`（`SamplerItem`）、`modules/api/api.py:692-693`、一覧は `modules/sd_samplers_kdiffusion.py:11-`                                     |
+| `schedulers.json`                              | `GET /sdapi/v1/schedulers`                                      | `modules/api/models.py:238-243`（`SchedulerItem`）、`modules/api/api.py:695-704`、一覧は `modules/sd_schedulers.py:130-143`                                        |
+| `cmd-flags.json`                               | `GET /sdapi/v1/cmd-flags`                                       | `modules/api/api.py:222`・`689`。実際は起動の引数をすべて返す。雛形は Forge と同じく、使う欄の周りだけを残した                                                     |
+| `scripts.json`・`scripts-with-controlnet.json` | `GET /sdapi/v1/scripts`                                         | `modules/api/models.py:302-304`（`ScriptsList`）、`modules/api/api.py:244`・`294-298`。名前は各スクリプトの `title().lower()`（`modules/scripts.py:653`）          |
+| `txt2img-info.json`                            | `POST /sdapi/v1/txt2img` の応答の `info`（JSON の文字列）の中身 | `modules/processing.py:570-605`（`Processed.js`）。応答そのものは `modules/api/models.py:134-137`（`TextToImageResponse`: `images`・`parameters`・`info`）         |
+| `upscalers.json`                               | `GET /sdapi/v1/upscalers`                                       | `modules/api/models.py:245-250`（`UpscalerItem`）、`modules/api/api.py:225`・`706-716`。アダプタ本体の PR で足した（契約が Hires. fix の拡大器の候補を求めるため） |
+| `latent-upscale-modes.json`                    | `GET /sdapi/v1/latent-upscale-modes`                            | `modules/api/models.py:252-253`（`LatentUpscalerModeItem`）、`modules/api/api.py:226`・`718-724`、一覧は `modules/shared.py:55-62`。同上                           |
 
 ## Forge の雛形と違う所（A1111 のアダプタが吸収する差）
 
@@ -40,6 +42,8 @@ curl -s "$A1111/sdapi/v1/loras"      > loras.json
 curl -s "$A1111/sdapi/v1/samplers"   > samplers.json
 curl -s "$A1111/sdapi/v1/schedulers" > schedulers.json
 curl -s "$A1111/sdapi/v1/cmd-flags"  > cmd-flags.json
+curl -s "$A1111/sdapi/v1/upscalers"  > upscalers.json
+curl -s "$A1111/sdapi/v1/latent-upscale-modes" > latent-upscale-modes.json
 curl -s "$A1111/sdapi/v1/scripts"    > scripts.json   # ControlNet の拡張を入れたときは scripts-with-controlnet.json に
 curl -s -X POST "$A1111/sdapi/v1/txt2img" -H 'content-type: application/json' \
   -d '{"prompt":"a cat","steps":4,"cfg_scale":7,"seed":42,"width":64,"height":64,"batch_size":2,"save_images":false}' \

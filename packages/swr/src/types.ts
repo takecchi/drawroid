@@ -14,3 +14,15 @@ export type MemoryList = InferResponseType<typeof client.memory.$get, 200>;
 export type MemoryItemDetail = InferResponseType<(typeof client.memory)[':id']['$get'], 200>;
 export type SaveMemoryInput = InferRequestType<(typeof client.memory)[':id']['$put']>['json'];
 export type SavedMemoryItem = InferResponseType<(typeof client.memory)[':id']['$put'], 200>;
+export type IterationsResponse = InferResponseType<
+  (typeof client.jobs)[':jobId']['iterations']['$get'],
+  200
+>;
+export type LlmCallsResponse = InferResponseType<
+  (typeof client.jobs)[':jobId']['llm-calls']['$get'],
+  200
+>;
+export type LlmCallDetail = InferResponseType<
+  (typeof client.jobs)[':jobId']['llm-calls'][':callId']['$get'],
+  200
+>;
