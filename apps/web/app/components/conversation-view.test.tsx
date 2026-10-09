@@ -127,6 +127,30 @@ describe('ConversationView', () => {
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
   });
 
+  it('reads the selections of the job again when a person chose an image, so its button shows the favorite', async () => {
+    const mutate = vi.fn();
+    vi.mocked(useSelections).mockReturnValue({ data: { selections: [] }, mutate } as never);
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    expect(mutate).not.toHaveBeenCalled();
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: JOB,
+        iteration: 1,
+        image: { iteration: 1, index: 0 },
+      }),
+    );
+
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(useSelections)).toHaveBeenLastCalledWith(JOB);
+  });
+
   it('restores the log from every page of confirmed events, then subscribes after the last one', async () => {
     const first = [confirmed({ type: 'user.message', text: '描けますか？', attachments: [] })];
     const second = [

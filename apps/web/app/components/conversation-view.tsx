@@ -18,7 +18,7 @@ import {
   ThinkNote,
   ToolCallCard,
 } from '@drawroid/ui';
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import {
@@ -144,6 +144,22 @@ function ImagesItem({ item }: { item: Extract<ChatItem, { kind: 'images' }> }) {
   );
 }
 
+function AdoptedItem({ item }: { item: Extract<ChatItem, { kind: 'adopted' }> }) {
+  // 選ぶとき、話す役はその画像をお気に入りにもする（adopt_image）。画像の行は選択を読んだ時点のままなので、読み直させる
+  // （読み直さないと、再読み込みするまで「お気に入り」のボタンが選ぶ前のまま残る）
+  const { mutate } = useSelections(item.jobId);
+  useEffect(() => {
+    void mutate?.();
+  }, [mutate]);
+  return (
+    <JudgeNote
+      iteration={item.iteration}
+      canStop={false}
+      adopted={{ iteration: item.image.iteration, number: item.image.index + 1 }}
+    />
+  );
+}
+
 function describeInput(input: unknown): string | undefined {
   if (input === undefined || input === null) return undefined;
   if (typeof input !== 'object') return String(input);
@@ -255,14 +271,7 @@ function renderItem(
         />
       );
     case 'adopted':
-      return (
-        <JudgeNote
-          key={item.key}
-          iteration={item.iteration}
-          canStop={false}
-          adopted={{ iteration: item.image.iteration, number: item.image.index + 1 }}
-        />
-      );
+      return <AdoptedItem key={item.key} item={item} />;
     case 'job-stopped':
       return (
         <StopNotice
