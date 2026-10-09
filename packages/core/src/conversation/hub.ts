@@ -108,7 +108,9 @@ export class ConversationHub {
     if (
       copy !== undefined &&
       (event.type === 'delta.text' || event.type === 'delta.reasoning') &&
-      copy.type === event.type
+      copy.type === event.type &&
+      // 置き換えの増分（出し直し）は継ぎ足さない: 捨てた本文・思考を、後から購読した画面に渡さないため
+      event.replace !== true
     ) {
       this.copies.set(key, { ...event, text: copy.text + event.text });
     } else {

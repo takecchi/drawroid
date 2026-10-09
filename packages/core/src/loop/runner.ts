@@ -156,6 +156,8 @@ export type JobRunnerDeps = {
     iteration: number;
     role: 'think' | 'judge';
     text: string;
+    /** true なら、ここまでに流した思考を text で置き換える（出し直し・段のやり直しで、前の試行の思考を捨てる） */
+    replace?: true;
   }) => void;
 };
 
@@ -841,6 +843,7 @@ export class JobRunner {
       }),
       signal,
       onReasoning: thinking.add,
+      onRetry: thinking.reset,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
     // 取り込んだ回を think.json より先に書く: think.json を「この回の考えるが済んだ」印にしているので、
@@ -1038,6 +1041,7 @@ export class JobRunner {
       signal,
       sentImages: refs,
       onReasoning: thinking.add,
+      onRetry: thinking.reset,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `見る段: ${outcome.reason}` });
     await store.writeStage(spec.jobId, iteration, 'judge', thinking.into(outcome.value));
@@ -1117,10 +1121,25 @@ export class JobRunner {
   // （持ち回すのは carry の決まった欄だけで、組み立て器は段の出力の reasoning を読まない）
   private collectReasoning(jobId: string, iteration: number, role: 'think' | 'judge') {
     let text = '';
+    // 試行の最初の増分は、置き換えで流す: 待たせて段をやり直したとき、前の試行の思考に継ぎ足さないため
+    let fresh = true;
     return {
       add: (delta: string) => {
         text += delta;
-        this.deps.onReasoning?.({ jobId, iteration, role, text: delta });
+        this.deps.onReasoning?.({
+          jobId,
+          iteration,
+          role,
+          text: fresh ? text : delta,
+          ...(fresh && { replace: true as const }),
+        });
+        fresh = false;
+      },
+      /** 出し直す。前の試行の思考は、段の出力にも画面にも残さない */
+      reset: () => {
+        text = '';
+        fresh = true;
+        this.deps.onReasoning?.({ jobId, iteration, role, text: '', replace: true });
       },
       into: <T extends object>(value: T): T =>
         text === '' ? value : { ...value, reasoning: text },
@@ -1147,6 +1166,8 @@ export class JobRunner {
       keepBeforeMarking?: (outcome: LlmCallOutcome<T>) => Promise<void>;
       /** モデルが自分で出した思考を受ける（考える・見るの段だけ） */
       onReasoning?: (text: string) => void;
+      /** 出し直す合図（考える・見るの段だけ） */
+      onRetry?: () => void;
     },
   ): Promise<LlmCallOutcome<T>> {
     const startedAt = this.now();
@@ -1158,6 +1179,7 @@ export class JobRunner {
       messages,
       signal: options.signal,
       ...(onReasoning === undefined ? {} : { onReasoning }),
+      ...(options.onRetry === undefined ? {} : { onRetry: options.onRetry }),
     });
     const callId = this.newCallId(startedAt);
     const { provider, model } = this.deps.llm.describe(role);

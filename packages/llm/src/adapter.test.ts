@@ -471,6 +471,36 @@ describe('AiSdkLlm.generateStructured with reasoning', () => {
     expect(outcome.ok).toBe(true);
     expect(thoughts).toEqual([]);
   });
+
+  it('says to drop the thinking so far before each retry, and only when another try follows', async () => {
+    const broken = (reasoning: string) => streamOf({ reasoning, text: '{"params":{}}' });
+    const model = new MockLanguageModelV4({
+      doStream: [
+        broken('1回目の考え'),
+        broken('2回目の考え'),
+        streamOf({ reasoning: '3回目の考え', text: valid }),
+      ],
+    });
+    const seen: string[] = [];
+    const outcome = await adapter(model, role(), 2).generateStructured(
+      call({ onReasoning: (text) => seen.push(text), onRetry: () => seen.push('<retry>') }),
+    );
+
+    expect(outcome.ok).toBe(true);
+    expect(seen).toEqual(['1回目の考え', '<retry>', '2回目の考え', '<retry>', '3回目の考え']);
+  });
+
+  it('does not say to retry after the last try fails', async () => {
+    const broken = () => streamOf({ reasoning: '考え', text: '{"params":{}}' });
+    const model = new MockLanguageModelV4({ doStream: [broken(), broken()] });
+    let retries = 0;
+    const outcome = await adapter(model, role(), 1).generateStructured(
+      call({ onRetry: () => (retries += 1) }),
+    );
+
+    expect(outcome.ok).toBe(false);
+    expect(retries).toBe(1);
+  });
 });
 
 const lookup = {

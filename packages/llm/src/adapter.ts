@@ -239,6 +239,7 @@ export class AiSdkLlm implements LlmPort {
       validationError = clip(validationError, ERROR_SUMMARY_LIMIT);
       attempts.push({ rawOutput: raw.text, usage: raw.usage, durationMs, validationError });
       previousError = validationError;
+      if (i < this.options.validationRetries) call.onRetry?.();
     }
     return {
       ok: false,

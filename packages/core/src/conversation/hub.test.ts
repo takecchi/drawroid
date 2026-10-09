@@ -366,3 +366,17 @@ describe('the copy of the thinking of a job', () => {
     expect(kept).toEqual(['job:job2:1:think']);
   });
 });
+
+describe('an increment that replaces', () => {
+  it('replaces the copy instead of adding to it, so a late subscriber does not get the text that was dropped', async () => {
+    const { hub } = await setup();
+    hub.live(delta('p1', '捨てる本文'));
+    hub.live({ type: 'delta.text', partId: 'p1', turn: 1, text: '', replace: true });
+    hub.live(delta('p1', '残す'));
+    hub.live(delta('p1', '本文'));
+
+    const late = collector();
+    await hub.subscribe(0, late.send);
+    expect(late.liveTexts('p1')).toEqual(['残す本文']);
+  });
+});

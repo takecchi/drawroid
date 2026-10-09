@@ -198,7 +198,13 @@ export function relayJobReasoning(deps: {
   store: JobStore;
   hubs: ConversationHubs;
   onError?: (error: unknown) => void;
-}): (event: { jobId: string; iteration: number; role: 'think' | 'judge'; text: string }) => void {
+}): (event: {
+  jobId: string;
+  iteration: number;
+  role: 'think' | 'judge';
+  text: string;
+  replace?: true;
+}) => void {
   const conversations = new Map<string, Promise<string | undefined>>();
   const conversationOf = (jobId: string) => {
     let found = conversations.get(jobId);
@@ -222,6 +228,7 @@ export function relayJobReasoning(deps: {
           partId: jobReasoningPartId(event.jobId, event.iteration, event.role),
           source: { role: event.role, jobId: event.jobId, iteration: event.iteration },
           text: event.text,
+          ...(event.replace && { replace: true }),
         });
       })
       .catch((error: unknown) => deps.onError?.(error));
