@@ -22,6 +22,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@drawroid/storage-fs": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:"
   }

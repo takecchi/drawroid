@@ -60,3 +60,14 @@ export const referenceUploadSchema = z
 export const referenceUploadsSchema = z
   .array(referenceUploadSchema)
   .max(MAX_REFERENCES_PER_REQUEST);
+
+/**
+ * 参照画像1枚を送るときの本文の形（validator の変換の前）。data は base64 の文字列。
+ * 画面の側（packages/swr）は、送る本文をこの型で組む。
+ */
+export type ReferenceUploadInput = z.input<typeof referenceUploadSchema>;
+
+/** 添えた参照画像の縮小版を返す口の URL */
+export function referencePreviewUrl(jobId: string, refId: string): string {
+  return `/api/files/jobs/${jobId}/refs/${refId}.preview.webp`;
+}

@@ -11,6 +11,7 @@ export {
   useLlmCalls,
   useMemoryItem,
   useMemoryList,
+  useReferences,
   useSelections,
   useStopConditions,
 } from './hooks.js';
@@ -45,6 +46,7 @@ export type {
   MemoryList,
   SaveMemoryInput,
   SavedMemoryItem,
+  ReferencesResponse,
   ReferenceUpload,
   SelectionsResponse,
   SetSelectionResponse,
