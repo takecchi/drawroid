@@ -60,4 +60,22 @@ describe('SiteNav', () => {
     await userEvent.click(inDrawer);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it('closes the menu on Escape and puts the focus back on the menu button', async () => {
+    render(
+      <MemoryRouter initialEntries={['/jobs']}>
+        <SiteNav />
+      </MemoryRouter>,
+    );
+    const menu = screen.getByRole('button', { name: 'メニューを開く' });
+    await userEvent.click(menu);
+    expect(screen.getByRole('dialog', { name: '行き先' }).contains(document.activeElement)).toBe(
+      true,
+    );
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(menu);
+  });
 });

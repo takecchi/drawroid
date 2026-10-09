@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
@@ -15,6 +15,9 @@ export function Drawer({
   label: string;
   children: ReactNode;
 }) {
+  // 開いたときに焦点が在った所を覚えて、閉じたら戻す: Radix は `SheetTrigger` にしか焦点を戻さず、
+  // 開くボタンは上の帯に在って Trigger ではないので、戻さないと焦点が body に落ちるため
+  const returnFocusTo = useRef<HTMLElement | null>(null);
   return (
     <Sheet
       open={open}
@@ -24,6 +27,14 @@ export function Drawer({
     >
       <SheetContent
         side="left"
+        onOpenAutoFocus={() => {
+          returnFocusTo.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusTo.current?.focus();
+        }}
         // `w-` に `data-[side=left]:` を付ける: sheet の幅指定が同じ修飾子付きで、揃えないと tailwind-merge が衝突と見なせず sheet の 3/4 が勝つため
         className="max-w-[85%] gap-0 border-r border-border bg-card pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] text-base shadow-xl data-[side=left]:w-[17rem]"
       >

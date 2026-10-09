@@ -145,6 +145,30 @@ describe('ConversationView', () => {
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
   });
 
+  it('reads the selections of the job again when a person chose an image, so its button shows the favorite', async () => {
+    const mutate = vi.fn();
+    vi.mocked(useSelections).mockReturnValue({ data: { selections: [] }, mutate } as never);
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    expect(mutate).not.toHaveBeenCalled();
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: JOB,
+        iteration: 1,
+        image: { iteration: 1, index: 0 },
+      }),
+    );
+
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(useSelections)).toHaveBeenLastCalledWith(JOB);
+  });
+
   it('restores the log from every page of confirmed events, then subscribes after the last one', async () => {
     const first = [confirmed({ type: 'user.message', text: '描けますか？', attachments: [] })];
     const second = [
@@ -431,6 +455,28 @@ describe('ConversationView', () => {
 
     expect(given.send).toHaveBeenCalledWith('これでいいから次はこうして', expect.any(String));
     expect(given.stop).toHaveBeenCalled();
+    expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('does not send the same message twice while it is still being sent', async () => {
+    const { source, stream } = fakeSource([]);
+    let finishSending = () => {};
+    const given = actions();
+    given.send.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishSending = resolve;
+      }),
+    );
+    const { user } = renderView(source, given);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    await user.type(screen.getByLabelText('発言'), '海の絵{Enter}');
+    await user.type(screen.getByLabelText('発言'), '{Enter}');
+    await user.click(screen.getByRole('button', { name: /送る/ }));
+
+    expect(given.send).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: /送る/ }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finishSending());
     expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('');
   });
 

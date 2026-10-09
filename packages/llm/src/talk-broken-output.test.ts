@@ -177,6 +177,45 @@ describe('a tool call written into the text instead of called', () => {
     expect(messages(events)).toEqual(['調べます。', REPLY]);
   });
 
+  it('gives each written tool call its own id across steps, so each result goes with its own call (native)', async () => {
+    const written = (query: string) =>
+      `<tool_call>${JSON.stringify({ name: 'search_candidates', arguments: { kind: 'lora', query } })}</tool_call>`;
+    const { events, searches } = await talk('native', [
+      textStream(written('ミク')),
+      textStream(written('初音')),
+      textStream(REPLY),
+    ]);
+
+    const calls = events.flatMap((e) => (e.type === 'tool.call' ? [e.callId] : []));
+    const results = events.flatMap((e) => (e.type === 'tool.result' ? [e.callId] : []));
+    expect(searches).toBe(2);
+    // 画面は callId で呼び出しと結果を組にする: ステップをまたいで同じ ID だと、2つめの結果が1つめの呼び出しに付く
+    expect(new Set(calls).size).toBe(2);
+    expect(results).toEqual(calls);
+  });
+
+  it('gives each native tool call its own id, even when the server returns the same id every step', async () => {
+    // ローカルの LLM のサーバには、ステップごとに同じ ID（call-0）を返すものがある
+    const { events, searches } = await talk('native', [
+      toolStream('search_candidates', JSON.stringify({ kind: 'lora', query: 'ミク' })),
+      toolStream('search_candidates', JSON.stringify({ kind: 'lora', query: '初音' })),
+      textStream(REPLY),
+    ]);
+
+    const calls = events.flatMap((e) =>
+      e.type === 'tool.call' ? [{ callId: e.callId, input: e.input }] : [],
+    );
+    const results = events.flatMap((e) => (e.type === 'tool.result' ? [e.callId] : []));
+    expect(searches).toBe(2);
+    expect(calls.map((c) => c.input)).toEqual([
+      { kind: 'lora', query: 'ミク' },
+      { kind: 'lora', query: '初音' },
+    ]);
+    expect(new Set(calls.map((c) => c.callId)).size).toBe(2);
+    // それぞれの結果が、それぞれの呼び出しに付く
+    expect(results).toEqual(calls.map((c) => c.callId));
+  });
+
   it('leaves a JSON object in the reply alone when it names no tool it was given', async () => {
     const text = JSON.stringify({ name: 'miku', arguments: { style: 'anime' } });
     const { events } = await talk('native', [textStream(text)]);
@@ -306,6 +345,18 @@ describe('thinking tags and empty text', () => {
     ]);
 
     expect(messages(events)).toEqual([REPLY]);
+    expect(events.find((e) => e.type === 'assistant.reasoning')).toMatchObject({
+      text: 'LoRA を探すべきか',
+    });
+    expect(ended(events)).toMatchObject({ outcome: 'done' });
+  });
+
+  it('keeps the reply written before and after the thinking, moving only the inside (native)', async () => {
+    const { events } = await talk('native', [
+      piecesStream(['はい。<think>LoRA を', '探すべきか</think>', REPLY]),
+    ]);
+
+    expect(messages(events)).toEqual([`はい。${REPLY}`]);
     expect(events.find((e) => e.type === 'assistant.reasoning')).toMatchObject({
       text: 'LoRA を探すべきか',
     });
