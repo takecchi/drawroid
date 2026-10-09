@@ -76,4 +76,12 @@ describe('excludedOf', () => {
 
     expect(iterationPlanSchema.parse({ excluded })).toEqual({ excluded });
   });
+
+  it('does not read back a reason that nothing writes', () => {
+    const plan = {
+      excluded: [{ param: 'controlnet', wanted: 'auto', reason: { kind: 'not-supported-yet' } }],
+    };
+
+    expect(iterationPlanSchema.safeParse(plan).success).toBe(false);
+  });
 });
