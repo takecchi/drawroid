@@ -158,8 +158,14 @@ export function summarizeJobForTalk(
   if (carry !== undefined) {
     parts.push(`${carry.completedIterations} 回済み。`);
     if (carry.best !== undefined) {
+      const best = carry.best;
+      const image = `${best.iteration} 回目の ${best.imageIndex + 1}枚目`;
+      const issues = clip(best.issues.join('・'), 80) || '問題なし';
+      // 人が選んで止まったときは、最良が選ばれた画像になる（選択による評価は必ず最良になる）。点数（選択では 1）は出さず、選んだと書く
       parts.push(
-        `最良は ${carry.best.iteration} 回目の ${carry.best.score.toFixed(2)}（${clip(carry.best.issues.join('・'), 80) || '問題なし'}）。`,
+        state.status === 'stopped' && state.reason.kind === 'adopted'
+          ? `人が選んだのは ${image}（${issues}）。`
+          : `最良は ${image}で ${best.score.toFixed(2)}（${issues}）。`,
       );
     }
     if (carry.latest !== undefined && carry.latest.nextChange.trim() !== '') {

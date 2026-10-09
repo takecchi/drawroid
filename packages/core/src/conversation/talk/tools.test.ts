@@ -246,4 +246,31 @@ describe('drawing_status', () => {
     expect(outcome.result).toContain('job-new');
     expect(outcome.result).not.toContain('job-old');
   });
+
+  it('names which image of which iteration is the best', async () => {
+    const jobs = {
+      readState: async () => ({
+        status: 'stopped',
+        reason: { kind: 'adopted', detail: '人間が画像を選んだ' },
+        carry: {
+          intent: '夕焼け',
+          completedIterations: 2,
+          best: {
+            iteration: 2,
+            imageIndex: 1,
+            score: 1,
+            params: {},
+            issues: [],
+            nextChange: '',
+          },
+        },
+      }),
+    } as unknown as JobStore;
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {}, { events: [started('job-1', 1)] });
+
+    expect(outcome.result).toContain('最良は 2 回目の 2枚目（1.00）');
+    expect(outcome.result).toContain('止まった理由: 人間が画像を選んだ');
+  });
 });
