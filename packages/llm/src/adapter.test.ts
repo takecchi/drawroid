@@ -7,22 +7,56 @@ import {
   DEFAULT_MODEL_WINDOW,
   THINK_PARAM_KEYS,
   type BudgetedMessages,
+  type TalkStepPart,
 } from '@drawroid/core';
-import { MockLanguageModelV4 } from 'ai/test';
+import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AiSdkLlm, extractJson } from './adapter.js';
 import { roleConfigSchema, type RoleConfig } from './config.js';
 
-type GenerateResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
+type StreamResult = Awaited<ReturnType<MockLanguageModelV4['doStream']>>;
+type StreamPart = StreamResult['stream'] extends ReadableStream<infer P> ? P : never;
 
-function reply(
-  text: string,
-  usage: { input?: number; output?: number } = { input: 100, output: 20 },
-): GenerateResult {
-  return {
-    content: [{ type: 'text', text }],
-    finishReason: { unified: 'stop', raw: 'stop' },
+/** モデルが流す応答（ストリーム）。思考・本文・ツールの呼び出しを、この順に流す */
+function streamOf(
+  parts: {
+    reasoning?: string;
+    text?: string;
+    toolCalls?: { name: string; input: string }[];
+    finishReason?: 'stop' | 'length' | 'tool-calls';
+    usage?: { input?: number; output?: number };
+  } = {},
+): StreamResult {
+  const usage = parts.usage ?? { input: 100, output: 20 };
+  const chunks: StreamPart[] = [{ type: 'stream-start', warnings: [] }];
+  if (parts.reasoning !== undefined) {
+    chunks.push(
+      { type: 'reasoning-start', id: 'r' },
+      { type: 'reasoning-delta', id: 'r', delta: parts.reasoning },
+      { type: 'reasoning-end', id: 'r' },
+    );
+  }
+  if (parts.text !== undefined) {
+    chunks.push(
+      { type: 'text-start', id: 't' },
+      { type: 'text-delta', id: 't', delta: parts.text },
+      { type: 'text-end', id: 't' },
+    );
+  }
+  for (const [i, call] of (parts.toolCalls ?? []).entries()) {
+    chunks.push({
+      type: 'tool-call',
+      toolCallId: `call-${i}`,
+      toolName: call.name,
+      input: call.input,
+    });
+  }
+  const finishReason =
+    parts.finishReason ?? (parts.toolCalls === undefined ? 'stop' : 'tool-calls');
+  chunks.push({
+    type: 'finish',
+    finishReason: { unified: finishReason, raw: finishReason },
     usage: {
       inputTokens: {
         total: usage.input,
@@ -32,8 +66,15 @@ function reply(
       },
       outputTokens: { total: usage.output, text: usage.output, reasoning: undefined },
     },
-    warnings: [],
-  };
+  });
+  return { stream: convertArrayToReadableStream(chunks) };
+}
+
+function reply(
+  text: string,
+  usage: { input?: number; output?: number } = { input: 100, output: 20 },
+): StreamResult {
+  return streamOf({ text, usage });
 }
 
 const role = (overrides: Partial<RoleConfig> = {}): RoleConfig =>
@@ -73,7 +114,7 @@ const call = (overrides: Partial<Parameters<AiSdkLlm['generateStructured']>[0]> 
 });
 
 function userTexts(model: MockLanguageModelV4, index: number): string[] {
-  const prompt = model.doGenerateCalls[index]?.prompt ?? [];
+  const prompt = model.doStreamCalls[index]?.prompt ?? [];
   return prompt.flatMap((message) =>
     message.role === 'user'
       ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
@@ -82,11 +123,8 @@ function userTexts(model: MockLanguageModelV4, index: number): string[] {
 }
 
 /** 出力の上限で切れた応答 */
-function cutAtLimit(text: string): GenerateResult {
-  return {
-    ...reply(text, { input: 100, output: 4096 }),
-    finishReason: { unified: 'length', raw: 'length' },
-  };
+function cutAtLimit(text: string): StreamResult {
+  return streamOf({ text, usage: { input: 100, output: 4096 }, finishReason: 'length' });
 }
 
 describe('AiSdkLlm.generateStructured when the output is cut at the limit', () => {
@@ -95,12 +133,12 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
   it.each(['native', 'json', 'text'] as const)(
     'stops at once in %s mode, saying the limit of the LLM side cut it when drawroid sends none',
     async (structuredOutput) => {
-      const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half), reply(valid)] });
+      const model = new MockLanguageModelV4({ doStream: [cutAtLimit(half), reply(valid)] });
       const outcome = await adapter(model, role({ structuredOutput })).generateStructured(call());
 
       // 同じ上限で出し直しても同じ所で切れるので、出し直さない
-      expect(model.doGenerateCalls).toHaveLength(1);
-      expect(model.doGenerateCalls[0]?.maxOutputTokens).toBeUndefined();
+      expect(model.doStreamCalls).toHaveLength(1);
+      expect(model.doStreamCalls[0]?.maxOutputTokens).toBeUndefined();
       expect(outcome.ok).toBe(false);
       expect(outcome.attempts).toEqual([
         { rawOutput: half, usage: { inputTokens: 100, outputTokens: 4096 }, durationMs: 10 },
@@ -116,12 +154,12 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
   );
 
   it('names the setting to raise, or to leave empty, when the role sets its own output limit', async () => {
-    const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half)] });
+    const model = new MockLanguageModelV4({ doStream: [cutAtLimit(half)] });
     const outcome = await adapter(model, role({ maxOutputTokens: 1024 })).generateStructured(
       call(),
     );
 
-    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(1024);
+    expect(model.doStreamCalls[0]?.maxOutputTokens).toBe(1024);
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.reason).toContain(
@@ -135,7 +173,7 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
 
   it('treats a server error that says the output stopped at length the same way, keeping the original message', async () => {
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
+      doStream: async () => {
         throw new Error(
           'structured output was incomplete (finish_reason=length); increase the output budget',
         );
@@ -155,7 +193,7 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
   });
 
   it('points at the settings of the think role when the judge role uses them', async () => {
-    const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half)] });
+    const model = new MockLanguageModelV4({ doStream: [cutAtLimit(half)] });
     const config = role({ maxOutputTokens: 1024 });
     const llm = new AiSdkLlm(
       { think: config, judge: config },
@@ -178,7 +216,7 @@ describe('AiSdkLlm.generateStructured when the output is cut at the limit', () =
 
 describe('AiSdkLlm.generateStructured', () => {
   it('returns the validated value with tokens and time of the call', async () => {
-    const model = new MockLanguageModelV4({ doGenerate: [reply(valid)] });
+    const model = new MockLanguageModelV4({ doStream: [reply(valid)] });
     const outcome = await adapter(model).generateStructured(call());
     expect(outcome).toEqual({
       ok: true,
@@ -191,7 +229,7 @@ describe('AiSdkLlm.generateStructured', () => {
 
   it('asks again with only a short summary of the error, then accepts a valid output', async () => {
     const broken = JSON.stringify({ params: { prompt: 'girl', steps: 999 }, rationale: 'x' });
-    const model = new MockLanguageModelV4({ doGenerate: [reply(broken), reply(valid)] });
+    const model = new MockLanguageModelV4({ doStream: [reply(broken), reply(valid)] });
     const outcome = await adapter(model).generateStructured(call());
 
     expect(outcome.ok).toBe(true);
@@ -204,7 +242,7 @@ describe('AiSdkLlm.generateStructured', () => {
 
   it('does not let the retry input grow with the number of retries', async () => {
     const model = new MockLanguageModelV4({
-      doGenerate: [reply('not json'), reply('{"params":{}}'), reply('still not json')],
+      doStream: [reply('not json'), reply('{"params":{}}'), reply('still not json')],
     });
     await adapter(model).generateStructured(call());
     const lengths = [1, 2].map((i) => userTexts(model, i).join('').length);
@@ -214,7 +252,7 @@ describe('AiSdkLlm.generateStructured', () => {
 
   it('gives up with the reason after the retries are used up', async () => {
     const model = new MockLanguageModelV4({
-      doGenerate: [reply('{}'), reply('{}'), reply('{}')],
+      doStream: [reply('{}'), reply('{}'), reply('{}')],
     });
     const outcome = await adapter(model, role(), 2).generateStructured(call());
     expect(outcome.ok).toBe(false);
@@ -223,14 +261,14 @@ describe('AiSdkLlm.generateStructured', () => {
   });
 
   it('reports unknown tokens when the provider does not return usage', async () => {
-    const model = new MockLanguageModelV4({ doGenerate: [reply(valid, {})] });
+    const model = new MockLanguageModelV4({ doStream: [reply(valid, {})] });
     const outcome = await adapter(model).generateStructured(call());
     expect(outcome.attempts[0]?.usage).toEqual({ inputTokens: null, outputTokens: null });
   });
 
   it('returns a failure instead of throwing when the provider call fails', async () => {
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
+      doStream: async () => {
         throw new Error('connect ECONNREFUSED 127.0.0.1:11434');
       },
     });
@@ -242,7 +280,7 @@ describe('AiSdkLlm.generateStructured', () => {
 
   it('cuts a very long failure reason at 300 characters and ends it with an ellipsis', async () => {
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
+      doStream: async () => {
         throw new Error('x'.repeat(2000));
       },
     });
@@ -256,7 +294,7 @@ describe('AiSdkLlm.generateStructured', () => {
   it('throws when the call is aborted, so the job can stop as stopped by a human', async () => {
     const controller = new AbortController();
     const model = new MockLanguageModelV4({
-      doGenerate: async ({ abortSignal }) => {
+      doStream: async ({ abortSignal }) => {
         controller.abort();
         throw abortSignal?.reason ?? new Error('no signal');
       },
@@ -267,30 +305,30 @@ describe('AiSdkLlm.generateStructured', () => {
   });
 
   it('sends the JSON Schema to the model in native mode', async () => {
-    const model = new MockLanguageModelV4({ doGenerate: [reply(valid)] });
+    const model = new MockLanguageModelV4({ doStream: [reply(valid)] });
     await adapter(model, role({ structuredOutput: 'native' })).generateStructured(call());
-    const format = model.doGenerateCalls[0]?.responseFormat;
+    const format = model.doStreamCalls[0]?.responseFormat;
     expect(format?.type).toBe('json');
     expect(format && 'schema' in format && format.schema).toMatchObject({ type: 'object' });
   });
 
   it('puts the schema into the instructions and reads JSON out of text in text mode', async () => {
     const model = new MockLanguageModelV4({
-      doGenerate: [reply(`はい。\n\`\`\`json\n${valid}\n\`\`\``)],
+      doStream: [reply(`はい。\n\`\`\`json\n${valid}\n\`\`\``)],
     });
     const outcome = await adapter(model, role({ structuredOutput: 'text' })).generateStructured(
       call(),
     );
     expect(outcome.ok).toBe(true);
-    expect(model.doGenerateCalls[0]?.responseFormat).toBeUndefined();
-    const system = model.doGenerateCalls[0]?.prompt.find((m) => m.role === 'system');
+    expect(model.doStreamCalls[0]?.responseFormat).toBeUndefined();
+    const system = model.doStreamCalls[0]?.prompt.find((m) => m.role === 'system');
     expect(system?.content).toMatch(/JSON Schema/);
   });
 
   it('asks only for JSON in json mode', async () => {
-    const model = new MockLanguageModelV4({ doGenerate: [reply(valid)] });
+    const model = new MockLanguageModelV4({ doStream: [reply(valid)] });
     await adapter(model, role({ structuredOutput: 'json' })).generateStructured(call());
-    expect(model.doGenerateCalls[0]?.responseFormat).toEqual({ type: 'json' });
+    expect(model.doStreamCalls[0]?.responseFormat).toEqual({ type: 'json' });
   });
 
   it('passes images as image files and refuses them for a model without image input', async () => {
@@ -316,20 +354,20 @@ describe('AiSdkLlm.generateStructured', () => {
       messages: judgeMessages,
     };
 
-    const model = new MockLanguageModelV4({ doGenerate: [reply('{"ok":true}')] });
+    const model = new MockLanguageModelV4({ doStream: [reply('{"ok":true}')] });
     await adapter(model).generateStructured(judgeCall);
-    const files = model.doGenerateCalls[0]?.prompt.flatMap((m) =>
+    const files = model.doStreamCalls[0]?.prompt.flatMap((m) =>
       m.role === 'user' ? m.content.filter((p) => p.type === 'file') : [],
     );
     expect(files).toHaveLength(1);
     expect(files?.[0]).toMatchObject({ mediaType: 'image/webp' });
 
-    const textOnly = new MockLanguageModelV4({ doGenerate: [reply('{"ok":true}')] });
+    const textOnly = new MockLanguageModelV4({ doStream: [reply('{"ok":true}')] });
     const outcome = await adapter(textOnly, role({ imageInput: false })).generateStructured(
       judgeCall,
     );
     expect(outcome.ok).toBe(false);
-    expect(textOnly.doGenerateCalls).toHaveLength(0);
+    expect(textOnly.doStreamCalls).toHaveLength(0);
   });
 });
 
@@ -387,5 +425,190 @@ describe('describe', () => {
       'think',
     ).window;
     expect(window).toEqual({ contextTokens: 4096, maxOutputTokens: 3000 });
+  });
+});
+
+describe('AiSdkLlm.generateStructured with reasoning', () => {
+  it('passes the reasoning the model streams to onReasoning, returning the same value as before', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [streamOf({ reasoning: '海辺なので逆光にする', text: valid })],
+    });
+    const thoughts: string[] = [];
+    const outcome = await adapter(model).generateStructured(
+      call({ onReasoning: (text) => thoughts.push(text) }),
+    );
+
+    expect(thoughts.join('')).toBe('海辺なので逆光にする');
+    expect(outcome).toEqual({
+      ok: true,
+      value: { params: { prompt: 'girl, beach, sunset', steps: 28 }, rationale: '最初の案' },
+      attempts: [
+        { rawOutput: valid, usage: { inputTokens: 100, outputTokens: 20 }, durationMs: 10 },
+      ],
+    });
+  });
+
+  it('passes nothing to onReasoning when the role does not take reasoning', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [streamOf({ reasoning: '考え', text: valid })],
+    });
+    const thoughts: string[] = [];
+    const outcome = await adapter(model, role({ reasoning: 'none' })).generateStructured(
+      call({ onReasoning: (text) => thoughts.push(text) }),
+    );
+    expect(outcome.ok).toBe(true);
+    expect(thoughts).toEqual([]);
+  });
+});
+
+const lookup = {
+  name: 'search_candidates',
+  description: '候補を調べる。描かない',
+  inputSchema: z.object({ kind: z.enum(['lora', 'checkpoint']), query: z.string().min(1) }),
+};
+const stepCall = (overrides: Partial<Parameters<AiSdkLlm['streamStep']>[0]> = {}) => ({
+  role: 'think' as const,
+  messages: thinkMessages,
+  tools: [lookup],
+  signal: new AbortController().signal,
+  ...overrides,
+});
+
+async function partsOf(iterable: AsyncIterable<TalkStepPart>): Promise<TalkStepPart[]> {
+  const parts: TalkStepPart[] = [];
+  for await (const part of iterable) parts.push(part);
+  return parts;
+}
+
+describe('AiSdkLlm.streamStep', () => {
+  it('maps the text, the reasoning and a validated tool call to step parts, with usage and time', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        streamOf({
+          reasoning: 'キャラの LoRA があるか調べる',
+          text: '調べます。',
+          toolCalls: [{ name: 'search_candidates', input: '{"kind":"lora","query":"miku"}' }],
+          usage: { input: 300, output: 40 },
+        }),
+      ],
+    });
+    const parts = await partsOf(adapter(model).streamStep(stepCall()));
+
+    expect(parts).toEqual([
+      { type: 'reasoning-delta', text: 'キャラの LoRA があるか調べる' },
+      { type: 'text-delta', text: '調べます。' },
+      {
+        type: 'tool-call',
+        callId: 'call-0',
+        name: 'search_candidates',
+        input: { kind: 'lora', query: 'miku' },
+      },
+      {
+        type: 'finish',
+        attempts: [
+          {
+            rawOutput:
+              '調べます。\n[{"name":"search_candidates","input":{"kind":"lora","query":"miku"}}]',
+            usage: { inputTokens: 300, outputTokens: 40 },
+            durationMs: 10,
+          },
+        ],
+      },
+    ]);
+    // ツールの定義（名前・説明・引数のスキーマ）を渡し、実行はさせない
+    const tools = model.doStreamCalls[0]?.tools ?? [];
+    expect(tools.map((t) => ('name' in t ? t.name : ''))).toEqual(['search_candidates']);
+  });
+
+  it('asks again with only a summary when the arguments do not match, and returns the call that does', async () => {
+    const bad = '{"kind":"vae","query":""}';
+    const model = new MockLanguageModelV4({
+      doStream: [
+        streamOf({ toolCalls: [{ name: 'search_candidates', input: bad }] }),
+        streamOf({
+          toolCalls: [{ name: 'search_candidates', input: '{"kind":"lora","query":"miku"}' }],
+        }),
+      ],
+    });
+    const parts = await partsOf(adapter(model).streamStep(stepCall()));
+
+    expect(parts.map((p) => p.type)).toEqual(['retry', 'tool-call', 'finish']);
+    expect(parts[0]).toMatchObject({ type: 'retry', reason: expect.stringContaining('kind') });
+    const retryTexts = userTexts(model, 1);
+    expect(retryTexts.some((t) => t.includes('受け付けられなかった') && t.includes('kind'))).toBe(
+      true,
+    );
+    // 失敗した呼び出しの全文は積まない
+    expect(retryTexts.some((t) => t.includes(bad))).toBe(false);
+    const finish = parts.at(-1);
+    expect(finish?.type === 'finish' && finish.failure).toBeUndefined();
+    expect(finish?.type === 'finish' && finish.attempts[0]?.validationError).toMatch(/kind/);
+  });
+
+  it('fails the step when the arguments keep failing the schema', async () => {
+    const wrong = () => streamOf({ toolCalls: [{ name: 'search_candidates', input: '{}' }] });
+    const model = new MockLanguageModelV4({ doStream: [wrong(), wrong(), wrong()] });
+    const parts = await partsOf(adapter(model, role(), 2).streamStep(stepCall()));
+
+    expect(parts.map((p) => p.type)).toEqual(['retry', 'retry', 'finish']);
+    const finish = parts.at(-1);
+    expect(finish?.type === 'finish' && finish.failure).toMatch(/3 回続けてスキーマに合わなかった/);
+    expect(finish?.type === 'finish' && finish.attempts).toHaveLength(3);
+  });
+
+  it('refuses a tool it was not given and arguments that are not JSON', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        streamOf({ toolCalls: [{ name: 'start_drawing', input: '{}' }] }),
+        streamOf({ toolCalls: [{ name: 'search_candidates', input: '{kind:' }] }),
+      ],
+    });
+    const parts = await partsOf(adapter(model, role(), 1).streamStep(stepCall()));
+    expect(parts[0]).toMatchObject({
+      type: 'retry',
+      reason: expect.stringContaining('start_drawing'),
+    });
+    const finish = parts.at(-1);
+    expect(finish?.type === 'finish' && finish.failure).toMatch(/JSON として読めない/);
+  });
+
+  it('stops a flowing call when the signal is aborted', async () => {
+    const controller = new AbortController();
+    const model = new MockLanguageModelV4({
+      doStream: async ({ abortSignal }) => ({
+        stream: new ReadableStream({
+          start(stream) {
+            stream.enqueue({ type: 'stream-start', warnings: [] });
+            stream.enqueue({ type: 'text-start', id: 't' });
+            stream.enqueue({ type: 'text-delta', id: 't', delta: '描き' });
+            abortSignal?.addEventListener('abort', () => stream.error(abortSignal.reason));
+          },
+        }),
+      }),
+    });
+    const seen: TalkStepPart[] = [];
+    await expect(
+      (async () => {
+        for await (const part of adapter(model).streamStep(
+          stepCall({ signal: controller.signal }),
+        )) {
+          seen.push(part);
+          if (part.type === 'text-delta') controller.abort();
+        }
+      })(),
+    ).rejects.toThrow();
+    expect(seen.map((p) => p.type)).toEqual(['text-delta']);
+  });
+
+  it('fails the step, naming the setting, when the output is cut at the limit', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [streamOf({ text: '描きま', finishReason: 'length' })],
+    });
+    const parts = await partsOf(
+      adapter(model, role({ maxOutputTokens: 1024 })).streamStep(stepCall()),
+    );
+    const finish = parts.at(-1);
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(finish?.type === 'finish' && finish.failure).toContain('maxOutputTokens = 1024');
   });
 });

@@ -18,12 +18,14 @@ import {
   buildLlmSettings,
   emptyProviderRow,
   PROVIDER_TYPES,
+  REASONING_MODES,
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
   type LlmSettingsFormValues,
   type ProviderRow,
   type ProviderType,
   type RoleValues,
+  type ReasoningMode,
   type StructuredOutputMode,
 } from '../lib/llm-settings-form';
 
@@ -108,6 +110,22 @@ function RoleFields({
             className="w-40"
           >
             {STRUCTURED_OUTPUT_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {mode}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="思考の受け取り方">
+          <Select
+            value={values.reasoning}
+            onChange={(event) =>
+              onChange({ ...values, reasoning: event.target.value as ReasoningMode })
+            }
+            aria-label={`${label}の思考の受け取り方`}
+            className="w-40"
+          >
+            {REASONING_MODES.map((mode) => (
               <option key={mode} value={mode}>
                 {mode}
               </option>

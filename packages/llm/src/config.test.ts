@@ -59,6 +59,7 @@ describe('llmConfigSchema', () => {
       provider: 'local',
       model: 'qwen2.5vl:7b',
       structuredOutput: 'native',
+      reasoning: 'native',
       imageInput: true,
     });
   });

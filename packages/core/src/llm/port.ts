@@ -72,7 +72,42 @@ export type LlmCall<T> = {
   schema: ZodType<T>;
   messages: BudgetedMessages;
   signal: AbortSignal;
+  /**
+   * モデルが自分で出す思考（reasoning）の増分を受ける。画面とファイルに見せるためで、次の入力には戻さない。
+   * 思考を出さないモデル・設定（reasoning: none）では呼ばれない
+   */
+  onReasoning?: (text: string) => void;
 };
+
+/** 話す役に渡すツール。実行は core が行い、LLM には名前・説明・引数のスキーマだけを渡す */
+export type ToolSpec = {
+  name: string;
+  /** 呼ぶべき時・呼ぶべきでない時を書く。システムプロンプトには足さず、ここに置く */
+  description: string;
+  /** 引数のスキーマ。呼び出しの引数は必ずこれで検証してから返す */
+  inputSchema: ZodType<unknown>;
+};
+
+/** 話す役の1ステップ。ツールの実行もステップをまたぐ繰り返しも行わず、1回の応答だけを流す */
+export type TalkStepCall = {
+  role: LlmRole;
+  messages: BudgetedMessages;
+  tools: readonly ToolSpec[];
+  signal: AbortSignal;
+};
+
+export type TalkStepPart =
+  | { type: 'text-delta'; text: string }
+  | { type: 'reasoning-delta'; text: string }
+  /** 引数はツールのスキーマで検証済み */
+  | { type: 'tool-call'; callId: string; name: string; input: unknown }
+  /**
+   * ツールの引数が検証に落ち、同じステップをやり直す。それまでに流した本文・思考の増分は、
+   * やり直す前の応答のもの（呼び手は捨ててよい）
+   */
+  | { type: 'retry'; reason: string }
+  /** 最後に1回だけ来る。failure があれば、このステップは失敗（ツールの呼び出しは返していない） */
+  | { type: 'finish'; attempts: LlmAttempt[]; failure?: string };
 
 /** 役割に割り当てたモデル。記録と入力の組み立てに使う */
 export type LlmRoleInfo = {
@@ -90,4 +125,9 @@ export interface LlmPort {
    * signal が中断されたときだけ、中断のエラーを投げる。
    */
   generateStructured<T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>>;
+  /**
+   * 話す役の1ステップを流す。最後に必ず finish を1回流す。ツールの引数の検証に落ちたら、検証エラーの要約だけを
+   * 足して同じステップをやり直し、尽きたら finish の failure で返す。signal が中断されたときだけ、中断のエラーを投げる。
+   */
+  streamStep(call: TalkStepCall): AsyncIterable<TalkStepPart>;
 }

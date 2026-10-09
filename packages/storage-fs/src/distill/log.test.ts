@@ -141,6 +141,9 @@ describe('distilling into the data directory', () => {
         });
         return { ok: true, value, attempts: [] };
       },
+      streamStep: () => {
+        throw new Error('この試験では使わない');
+      },
     };
     const memory = createFsMemoryStore(paths.memory);
     const log = createFsDistillLog(root);

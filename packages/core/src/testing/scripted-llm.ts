@@ -5,6 +5,8 @@ import type {
   LlmPurpose,
   LlmRole,
   LlmRoleInfo,
+  TalkStepCall,
+  TalkStepPart,
 } from '../llm/port.js';
 import { DEFAULT_MODEL_WINDOW } from '../loop/budget.js';
 
@@ -14,8 +16,20 @@ import { DEFAULT_MODEL_WINDOW } from '../loop/budget.js';
  */
 export type Script = (call: LlmCall<unknown>, n: number) => unknown;
 
+/** 話す役の1ステップで、モデルが返すもの。思考・本文・ツールの呼び出しの順に流す */
+export type ScriptedStep = {
+  reasoning?: string;
+  text?: string;
+  toolCalls?: { name: string; input: unknown }[];
+};
+
+/** 話す役のステップの台本。n は何回目のステップか（0 始まり） */
+export type TalkScript = (call: TalkStepCall, n: number) => ScriptedStep | Promise<ScriptedStep>;
+
 export type ScriptedLlmOptions = {
   roles?: Partial<Record<LlmRole, Partial<LlmRoleInfo>>>;
+  /** streamStep の台本。省けば streamStep は失敗を投げる */
+  talk?: TalkScript;
 };
 
 /** 1回の呼び出しが返す使用量（固定） */
@@ -25,6 +39,8 @@ export const SCRIPTED_USAGE = { inputTokens: 100, outputTokens: 20 } as const;
 export class ScriptedLlm implements LlmPort {
   /** 受け取った呼び出し。試験は「何を渡したか」をここで見る */
   readonly calls: LlmCall<unknown>[] = [];
+  /** 受け取った話す役のステップ */
+  readonly steps: TalkStepCall[] = [];
   private readonly counts = new Map<LlmPurpose, number>();
 
   constructor(
@@ -51,6 +67,7 @@ export class ScriptedLlm implements LlmPort {
     this.counts.set(call.purpose, n + 1);
 
     const raw = await raceAbort(Promise.resolve(script(call as LlmCall<unknown>, n)), call.signal);
+    // 台本の値に思考の欄は無いので、思考を受ける呼び手には何も流さない
     const rawOutput = JSON.stringify(raw);
     const attempt = { rawOutput, usage: { ...SCRIPTED_USAGE }, durationMs: 1 };
     const parsed = call.schema.safeParse(raw);
@@ -61,6 +78,44 @@ export class ScriptedLlm implements LlmPort {
       reason: `構造化出力が 1 回続けてスキーマに合わなかった（最後: ${validationError}）`,
       attempts: [{ ...attempt, validationError }],
     };
+  }
+
+  async *streamStep(call: TalkStepCall): AsyncIterable<TalkStepPart> {
+    if (call.signal.aborted) throw abortError();
+    const talk = this.options.talk;
+    if (talk === undefined) throw new Error('台本に talk が無い');
+    const n = this.steps.length;
+    this.steps.push(call);
+    const step = await raceAbort(Promise.resolve(talk(call, n)), call.signal);
+    if (step.reasoning !== undefined) yield { type: 'reasoning-delta', text: step.reasoning };
+    if (step.text !== undefined) yield { type: 'text-delta', text: step.text };
+    const attempt = {
+      rawOutput: JSON.stringify(step),
+      usage: { ...SCRIPTED_USAGE },
+      durationMs: 1,
+    };
+    // 引数は本物と同じくツールのスキーマで検証する。台本では出し直さず、落ちたらそのまま失敗にする
+    const parts: TalkStepPart[] = [];
+    for (const [i, toolCall] of (step.toolCalls ?? []).entries()) {
+      const tool = call.tools.find((t) => t.name === toolCall.name);
+      const parsed = tool?.inputSchema.safeParse(toolCall.input);
+      if (tool === undefined || parsed === undefined || !parsed.success) {
+        const failure =
+          tool === undefined
+            ? `知らないツール ${toolCall.name} を呼んだ`
+            : `${tool.name} の引数がスキーマに合わない: ${parsed?.error?.issues[0]?.message ?? ''}`;
+        yield { type: 'finish', attempts: [{ ...attempt, validationError: failure }], failure };
+        return;
+      }
+      parts.push({
+        type: 'tool-call',
+        callId: `scripted-${n}-${i}`,
+        name: tool.name,
+        input: parsed.data,
+      });
+    }
+    yield* parts;
+    yield { type: 'finish', attempts: [attempt] };
   }
 }
 

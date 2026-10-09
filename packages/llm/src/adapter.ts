@@ -1,4 +1,5 @@
 import type {
+  BudgetedMessages,
   LlmAttempt,
   LlmCall,
   LlmCallOutcome,
@@ -6,15 +7,22 @@ import type {
   LlmRole,
   LlmRoleInfo,
   LlmUsage,
+  TalkStepCall,
+  TalkStepPart,
+  ToolSpec,
 } from '@drawroid/core';
 import { DEFAULT_MODEL_WINDOW } from '@drawroid/core';
 import {
-  generateText,
-  NoObjectGeneratedError,
+  jsonSchema,
   Output,
+  streamText,
+  tool,
+  type FinishReason,
   type LanguageModel,
   type LanguageModelUsage,
   type ModelMessage,
+  type ToolSet,
+  type UserContent,
 } from 'ai';
 import { z, type ZodType } from 'zod';
 import type { ResolvedRoles, RoleConfig } from './config.js';
@@ -101,6 +109,48 @@ function summarizeIssues(error: z.ZodError): string {
 }
 
 type RawResponse = { text: string; usage: LlmUsage };
+
+type StreamedToolCall = { callId: string; name: string; input: unknown; invalid: boolean };
+
+/** 1回の呼び出しを流し終えたときの中身 */
+type Streamed = {
+  text: string;
+  usage: LlmUsage;
+  finishReason: FinishReason | undefined;
+  toolCalls: StreamedToolCall[];
+};
+
+/** 流れている間に呼び手へ渡すもの */
+type StreamEvent = { kind: 'text' | 'reasoning'; text: string };
+
+function abortError(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error('呼び手が止めた');
+  error.name = 'AbortError';
+  return error;
+}
+
+function toContent(messages: BudgetedMessages): Exclude<UserContent, string> {
+  return messages.user.map((part) =>
+    part.type === 'text'
+      ? { type: 'text' as const, text: part.text }
+      : { type: 'file' as const, data: part.data, mediaType: part.mediaType },
+  );
+}
+
+// 実行の関数は渡さない: ツールの実行・許可の検証・ステップをまたぐ繰り返しは core が行う。
+// 引数は AI SDK に検証させず（JSON として読むだけ）、core のスキーマで検証して要約をそろえる
+function toToolSet(tools: readonly ToolSpec[]): ToolSet {
+  return Object.fromEntries(
+    tools.map((spec) => [
+      spec.name,
+      tool({
+        description: spec.description,
+        inputSchema: jsonSchema(z.toJSONSchema(spec.inputSchema as ZodType) as never),
+      }),
+    ]),
+  );
+}
 
 export class AiSdkLlm implements LlmPort {
   private readonly now: () => number;
@@ -207,11 +257,7 @@ export class AiSdkLlm implements LlmPort {
         : `${call.messages.system}\n次の JSON Schema に合う JSON だけを出力する:\n${JSON.stringify(
             z.toJSONSchema(call.schema as ZodType),
           )}`;
-    const content: Exclude<ModelMessage['content'], string> = call.messages.user.map((part) =>
-      part.type === 'text'
-        ? { type: 'text' as const, text: part.text }
-        : { type: 'file' as const, data: part.data, mediaType: part.mediaType },
-    );
+    const content = toContent(call.messages);
     // 失敗した出力の全文は積まない: 再試行のたびに入力が膨らむため。足すのは直前の検証エラーの要約だけ
     if (previousError !== undefined) {
       content.push({
@@ -219,40 +265,202 @@ export class AiSdkLlm implements LlmPort {
         text: `前の出力は受け付けられなかった（${previousError}）。JSON だけを出し直す。`,
       });
     }
-    const messages = [{ role: 'user', content }] as ModelMessage[];
+    // native でも出力は AI SDK に読ませない: スキーマを送るためだけに使い、検証は core のスキーマで自前で行う
     const output =
       config.structuredOutput === 'native'
         ? Output.object({ schema: call.schema })
         : config.structuredOutput === 'json'
           ? Output.json()
           : undefined;
-    try {
-      const result = await generateText({
-        model: this.models[call.role].model,
-        instructions,
-        messages,
-        ...(config.maxOutputTokens === undefined
-          ? {}
-          : { maxOutputTokens: config.maxOutputTokens }),
-        maxRetries: this.options.networkRetries,
-        abortSignal: call.signal,
-        ...(output === undefined ? {} : { output }),
-      });
-      if (result.finishReason === 'length') {
-        throw new OutputCutAtLimit(result.text, toUsage(result.usage));
-      }
-      return { text: result.text, usage: toUsage(result.usage) };
-    } catch (error) {
-      // 検証は core のスキーマで自前で行う。AI SDK の検証で落ちた出力も、生の文字列として受け取る。
-      // ただし上限で切れたものは別にする: スキーマに合わないとして同じ上限で出し直しても、同じ所で切れるため
-      if (NoObjectGeneratedError.isInstance(error)) {
-        if (error.finishReason === 'length') {
-          throw new OutputCutAtLimit(error.text ?? '', toUsage(error.usage));
-        }
-        return { text: error.text ?? '', usage: toUsage(error.usage) };
-      }
-      throw error;
+    const onReasoning = call.onReasoning;
+    const streamed = await this.streamOnce(call.role, config, {
+      instructions,
+      content,
+      signal: call.signal,
+      ...(output === undefined ? {} : { output }),
+      ...(onReasoning === undefined
+        ? {}
+        : { onEvent: (event) => event.kind === 'reasoning' && onReasoning(event.text) }),
+    });
+    // 上限で切れたものは別にする: スキーマに合わないとして同じ上限で出し直しても、同じ所で切れるため
+    if (streamed.finishReason === 'length') {
+      throw new OutputCutAtLimit(streamed.text, streamed.usage);
     }
+    return { text: streamed.text, usage: streamed.usage };
+  }
+
+  /**
+   * 1回の呼び出しを流し、本文・思考の増分を onEvent へ渡す。思考は reasoning: none なら渡さない。
+   * 流れの途中のエラーは投げる。signal が中断されたら中断のエラーを投げる。
+   */
+  private async streamOnce(
+    role: LlmRole,
+    config: RoleConfig,
+    request: {
+      instructions: string;
+      content: Exclude<UserContent, string>;
+      signal: AbortSignal;
+      output?: Parameters<typeof streamText>[0]['output'];
+      tools?: ToolSet;
+      onEvent?: (event: StreamEvent) => void;
+    },
+  ): Promise<Streamed> {
+    const result = streamText({
+      model: this.models[role].model,
+      instructions: request.instructions,
+      messages: [{ role: 'user', content: request.content }] as ModelMessage[],
+      ...(config.maxOutputTokens === undefined ? {} : { maxOutputTokens: config.maxOutputTokens }),
+      maxRetries: this.options.networkRetries,
+      abortSignal: request.signal,
+      ...(request.output === undefined ? {} : { output: request.output }),
+      ...(request.tools === undefined ? {} : { tools: request.tools }),
+      // 流れの中の error の部品で受けて投げる。既定の console への出力はさせない
+      onError: () => undefined,
+    });
+    const streamed: Streamed = {
+      text: '',
+      usage: { inputTokens: null, outputTokens: null },
+      finishReason: undefined,
+      toolCalls: [],
+    };
+    for await (const part of result.fullStream) {
+      switch (part.type) {
+        case 'text-delta':
+          streamed.text += part.text;
+          request.onEvent?.({ kind: 'text', text: part.text });
+          break;
+        case 'reasoning-delta':
+          if (config.reasoning !== 'none')
+            request.onEvent?.({ kind: 'reasoning', text: part.text });
+          break;
+        case 'tool-call':
+          streamed.toolCalls.push({
+            callId: part.toolCallId,
+            name: part.toolName,
+            input: part.input,
+            invalid: part.dynamic === true && part.invalid === true,
+          });
+          break;
+        case 'finish':
+          streamed.finishReason = part.finishReason;
+          streamed.usage = toUsage(part.totalUsage);
+          break;
+        case 'error':
+          throw part.error instanceof Error ? part.error : new Error(String(part.error));
+        default:
+          break;
+      }
+    }
+    if (request.signal.aborted) throw abortError(request.signal);
+    return streamed;
+  }
+
+  async *streamStep(call: TalkStepCall): AsyncIterable<TalkStepPart> {
+    const config = this.roles[call.role];
+    const hasImage = call.messages.user.some((part) => part.type === 'image');
+    if (hasImage && !config.imageInput) {
+      yield {
+        type: 'finish',
+        attempts: [],
+        failure: `${call.role} の役のモデル ${config.model} は、設定で画像入力に対応していないとされている`,
+      };
+      return;
+    }
+    const tools = toToolSet(call.tools);
+    const attempts: LlmAttempt[] = [];
+    let previousError: string | undefined;
+    for (let i = 0; i <= this.options.validationRetries; i += 1) {
+      const content = toContent(call.messages);
+      // 失敗した呼び出しの全文は積まない: 足すのは直前の検証エラーの要約だけ
+      if (previousError !== undefined) {
+        content.push({
+          type: 'text',
+          text: `前の応答のツールの呼び出しは受け付けられなかった（${previousError}）。呼び直す。`,
+        });
+      }
+      const started = this.now();
+      // 流れてきた増分を、そのまま呼び手へ流す（ストリームの読みと yield を交互に進める）
+      const queue: StreamEvent[] = [];
+      let wake: (() => void) | undefined;
+      let settled: { ok: true; value: Streamed } | { ok: false; error: unknown } | undefined;
+      void this.streamOnce(call.role, config, {
+        instructions: call.messages.system,
+        content,
+        signal: call.signal,
+        tools,
+        onEvent: (event) => {
+          queue.push(event);
+          wake?.();
+        },
+      }).then(
+        (value) => {
+          settled = { ok: true, value };
+          wake?.();
+        },
+        (error: unknown) => {
+          settled = { ok: false, error };
+          wake?.();
+        },
+      );
+      for (;;) {
+        const event = queue.shift();
+        if (event !== undefined) {
+          yield {
+            type: event.kind === 'text' ? 'text-delta' : 'reasoning-delta',
+            text: event.text,
+          };
+          continue;
+        }
+        if (settled !== undefined) break;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+        wake = undefined;
+      }
+      const durationMs = this.now() - started;
+      const outcome = settled as NonNullable<typeof settled>;
+      if (!outcome.ok) {
+        if (call.signal.aborted) throw outcome.error;
+        const message =
+          outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+        attempts.push({
+          rawOutput: '',
+          usage: { inputTokens: null, outputTokens: null },
+          durationMs,
+        });
+        yield {
+          type: 'finish',
+          attempts,
+          failure: LENGTH_IN_MESSAGE.test(message)
+            ? this.cutAtLimitReason(call.role, message)
+            : `LLM の呼び出しに失敗した: ${clip(message, ERROR_SUMMARY_LIMIT)}`,
+        };
+        return;
+      }
+      const streamed = outcome.value;
+      const rawOutput = rawOutputOf(streamed);
+      if (streamed.finishReason === 'length') {
+        attempts.push({ rawOutput, usage: streamed.usage, durationMs });
+        yield { type: 'finish', attempts, failure: this.cutAtLimitReason(call.role, undefined) };
+        return;
+      }
+      const checked = checkToolCalls(streamed.toolCalls, call.tools);
+      if (checked.ok) {
+        attempts.push({ rawOutput, usage: streamed.usage, durationMs });
+        yield* checked.parts;
+        yield { type: 'finish', attempts };
+        return;
+      }
+      const validationError = clip(checked.error, ERROR_SUMMARY_LIMIT);
+      attempts.push({ rawOutput, usage: streamed.usage, durationMs, validationError });
+      previousError = validationError;
+      if (i < this.options.validationRetries) yield { type: 'retry', reason: validationError };
+    }
+    yield {
+      type: 'finish',
+      attempts,
+      failure: `ツールの呼び出しが ${attempts.length} 回続けてスキーマに合わなかった（最後: ${previousError}）`,
+    };
   }
 
   // どこで切れたか・何を変えればよいかを名指す: 「上限を上げる」だけでは、画面のどの欄・config.json のどの鍵か、
@@ -282,4 +490,33 @@ export class AiSdkLlm implements LlmPort {
     if (detail !== undefined) lines.push(`（元のエラー: ${clip(detail, ERROR_SUMMARY_LIMIT)}）`);
     return lines.join('');
   }
+}
+
+/** 記録に残す生の出力。本文と、ツールの呼び出し（名前と引数）をそのまま並べる */
+function rawOutputOf(streamed: Streamed): string {
+  if (streamed.toolCalls.length === 0) return streamed.text;
+  const calls = streamed.toolCalls.map((c) => ({ name: c.name, input: c.input }));
+  return `${streamed.text}${streamed.text === '' ? '' : '\n'}${JSON.stringify(calls)}`;
+}
+
+/** ツールの呼び出しを、ツールのスキーマで検証する。1つでも落ちたら、全体を出し直させる */
+function checkToolCalls(
+  calls: readonly StreamedToolCall[],
+  tools: readonly ToolSpec[],
+): { ok: true; parts: TalkStepPart[] } | { ok: false; error: string } {
+  const parts: TalkStepPart[] = [];
+  for (const call of calls) {
+    const spec = tools.find((t) => t.name === call.name);
+    if (spec === undefined) return { ok: false, error: `知らないツール ${call.name} を呼んだ` };
+    if (call.invalid) return { ok: false, error: `${call.name} の引数が JSON として読めない` };
+    const parsed = spec.inputSchema.safeParse(call.input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: `${call.name} の引数がスキーマに合わない: ${summarizeIssues(parsed.error)}`,
+      };
+    }
+    parts.push({ type: 'tool-call', callId: call.callId, name: call.name, input: parsed.data });
+  }
+  return { ok: true, parts };
 }

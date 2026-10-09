@@ -1,8 +1,10 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import type { LanguageModel } from 'ai';
+import { extractReasoningMiddleware, wrapLanguageModel, type LanguageModel } from 'ai';
 import type { ProviderConfig, RoleConfig } from './config.js';
+
+type WrappableModel = Parameters<typeof wrapLanguageModel>[0]['model'];
 
 export type ModelEnvironment = {
   env: Readonly<Record<string, string | undefined>>;
@@ -42,6 +44,19 @@ export function createLanguageModel(
       `provider「${providerName}」（${provider.type}）は apiKeyEnv で API キーの環境変数を指す`,
     );
   }
+  const model = createBaseModel(providerName, provider, role, environment);
+  // 本文に混ざる <think> を、AI SDK のミドルウェアで思考の部品に分ける（ストリームにもストリームでない呼び出しにも効く）
+  return role.reasoning === 'think-tag'
+    ? wrapLanguageModel({ model, middleware: extractReasoningMiddleware({ tagName: 'think' }) })
+    : model;
+}
+
+function createBaseModel(
+  providerName: string,
+  provider: ProviderConfig,
+  role: RoleConfig,
+  environment: ModelEnvironment,
+): WrappableModel {
   const apiKey = resolveApiKey(provider, environment);
   const fetch = environment.fetch;
   switch (provider.type) {

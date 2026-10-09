@@ -7,6 +7,7 @@ import type {
   LlmPort,
   LlmRole,
   LlmRoleInfo,
+  TalkStepPart,
 } from '../../llm/port.js';
 import { DEFAULT_MODEL_WINDOW } from '../../loop/budget.js';
 import type { MemoryItem } from '../item.js';
@@ -35,6 +36,11 @@ class StubLlm implements LlmPort {
       window: DEFAULT_MODEL_WINDOW,
       imageInput: true,
     };
+  }
+
+  // 蒸留は話す役のステップを使わない
+  streamStep(): AsyncIterable<TalkStepPart> {
+    throw new Error('この試験では使わない');
   }
 
   async generateStructured<T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>> {
