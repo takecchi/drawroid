@@ -16,6 +16,7 @@ export {
   StoredFileError,
   type FsJobStoreOptions,
 } from './job-store.js';
+export { makePreview, PREVIEW_MEDIA_TYPE } from './preview.js';
 export { readBackendSettings, writeBackendSettings } from './backend-settings.js';
 export { readBudgetSettings, writeBudgetSettings } from './budget-settings.js';
 export {

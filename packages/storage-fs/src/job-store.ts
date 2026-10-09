@@ -40,6 +40,7 @@ import { z, type ZodType } from 'zod';
 
 import { createJsonExclusive, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 import { dataPaths, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
+import { makePreview, PREVIEW_MEDIA_TYPE } from './preview.js';
 
 export class ImageAlreadySentError extends Error {
   constructor(key: string, callId: string) {
@@ -441,17 +442,14 @@ export class FsJobStore implements JobStore {
       data = await readFile(preview);
     } catch (error) {
       if (!isNotFound(error)) throw error;
-      data = await sharp(await readFile(source))
-        .resize({ width: longEdge, height: longEdge, fit: 'inside', withoutEnlargement: true })
-        .webp()
-        .toBuffer();
+      data = await makePreview(await readFile(source), longEdge);
       await writeFileAtomic(preview, data);
     }
     const { width = 0, height = 0 } = await sharp(data).metadata();
     return {
       key: this.imageKey(image),
       data,
-      mediaType: 'image/webp',
+      mediaType: PREVIEW_MEDIA_TYPE,
       longEdge: Math.max(width, height),
       ...(sentInCall === undefined ? {} : { sentInCall }),
     };
