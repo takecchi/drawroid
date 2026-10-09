@@ -22,7 +22,6 @@ export const iterationPlanSchema = z.object({
         z.object({ kind: z.literal('backend'), detail: z.string() }),
         z.object({ kind: z.literal('no-mask') }),
         z.object({ kind: z.literal('no-candidates-shown') }),
-        z.object({ kind: z.literal('not-supported-yet') }),
       ]),
     }),
   ),

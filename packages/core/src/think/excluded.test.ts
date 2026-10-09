@@ -48,10 +48,10 @@ describe('excludedOf', () => {
     const merged = allow({ loras: { mode: 'auto' }, hiresFix: { mode: 'auto' } });
 
     expect(
-      excludedOf(merged, {}, { loras: 'no-candidates-shown', hiresFix: 'not-supported-yet' }),
+      excludedOf(merged, {}, { loras: 'no-candidates-shown', hiresFix: 'no-candidates-shown' }),
     ).toEqual([
       { param: 'loras', wanted: 'auto', reason: { kind: 'no-candidates-shown' } },
-      { param: 'hiresFix', wanted: 'auto', reason: { kind: 'not-supported-yet' } },
+      { param: 'hiresFix', wanted: 'auto', reason: { kind: 'no-candidates-shown' } },
     ]);
   });
 
