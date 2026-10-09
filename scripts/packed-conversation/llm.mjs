@@ -2,6 +2,7 @@
 // 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing を呼び、結果が来たら短く返す。
 // toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
 // holdTalk() で、次の話す役の呼び出しを releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
+// queueTalkTool(name, input) で、次の話す役の呼び出し（native）に、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
@@ -53,7 +54,7 @@ function generate(schema, hint = '') {
 
 /**
  * @param {{ stopAfterIterations: number }} options 見る役が何回目で止めてよいと言うか
- * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void }>}
+ * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown) => void }>}
  */
 export async function startFakeLlm({ stopAfterIterations }) {
   let judgeCalls = 0;
@@ -63,6 +64,8 @@ export async function startFakeLlm({ stopAfterIterations }) {
   let holdNext = false;
   /** @type {(() => void) | null} */
   let releaseHeld = null;
+  /** @type {{ name: string, input: unknown } | null} */
+  let queuedTool = null;
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -89,12 +92,23 @@ export async function startFakeLlm({ stopAfterIterations }) {
       }
       const hasToolResult =
         request.messages.some((/** @type {{ role: string }} */ m) => m.role === 'tool') ||
-        JSON.stringify(request.messages).includes('で描き始めた');
+        ['で描き始めた', 'をお気に入りにして採った'].some((done) =>
+          JSON.stringify(request.messages).includes(done),
+        );
       const format = request.response_format;
-      const toolArgs = JSON.stringify({
-        request: '夕焼けの海辺の少女',
-        stopConditions: { aiJudgement: true, maxIterations: stopAfter },
-      });
+      // 待ちが解けたあとに取る: 待っている間に台本を差し替えられるように
+      const queued =
+        role === 'talk' && Array.isArray(request.tools) && request.tools.length > 0
+          ? queuedTool
+          : null;
+      if (queued !== null) queuedTool = null;
+      const toolName = queued?.name ?? 'start_drawing';
+      const toolArgs = JSON.stringify(
+        queued?.input ?? {
+          request: '夕焼けの海辺の少女',
+          stopConditions: { aiJudgement: true, maxIterations: stopAfter },
+        },
+      );
       /** @type {'tool' | 'text' | 'json'} */
       let kind;
       let content = '';
@@ -113,7 +127,7 @@ export async function startFakeLlm({ stopAfterIterations }) {
         );
       } else if (role === 'talk' && Array.isArray(request.tools) && request.tools.length > 0) {
         stats.nativeTalkCalls++;
-        if (hasToolResult) {
+        if (hasToolResult && queued === null) {
           kind = 'text';
           content = '描き始めました。少しお待ちください。';
         } else {
@@ -166,7 +180,7 @@ export async function startFakeLlm({ stopAfterIterations }) {
                   index: 0,
                   id: 'call_1',
                   type: 'function',
-                  function: { name: 'start_drawing', arguments: '' },
+                  function: { name: toolName, arguments: '' },
                 },
               ],
             }),
@@ -191,7 +205,7 @@ export async function startFakeLlm({ stopAfterIterations }) {
                   {
                     id: 'call_1',
                     type: 'function',
-                    function: { name: 'start_drawing', arguments: toolArgs },
+                    function: { name: toolName, arguments: toolArgs },
                   },
                 ],
               }
@@ -221,6 +235,9 @@ export async function startFakeLlm({ stopAfterIterations }) {
       holdNext = true;
     },
     releaseTalk: () => releaseHeld?.(),
+    queueTalkTool: (/** @type {string} */ name, /** @type {unknown} */ input) => {
+      queuedTool = { name, input };
+    },
     restartJudge: (/** @type {number} */ next) => {
       judgeCalls = 0;
       stopAfter = next;
