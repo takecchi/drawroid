@@ -1,5 +1,5 @@
 export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
-export { createFsDistillLog, DISTILL_FILE_NAME } from './distill/log.js';
+export { createFsDistillLog } from './distill/log.js';
 export {
   formatJobId,
   FsJobStore,

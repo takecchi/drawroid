@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createFsMemoryStore } from '../memory/store.js';
 import { dataPaths } from '../paths.js';
-import { createFsDistillLog, DISTILL_FILE_NAME } from './log.js';
+import { createFsDistillLog } from './log.js';
 
 const JOB = '20261009-153012-k3f9';
 
@@ -43,11 +43,11 @@ function entry(at: string): DistillEntry {
   };
 }
 
-const distillFile = () => join(paths.job(JOB), DISTILL_FILE_NAME);
+const distillFile = () => paths.jobFiles(JOB).distill;
 
 describe('createFsDistillLog', () => {
   it('appends each distillation to distill.json in the job directory, keeping the earlier ones', async () => {
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
 
     await log.append(JOB, entry('2026-10-09T16:00:00Z'));
     await log.append(JOB, entry('2026-10-09T17:00:00Z'));
@@ -60,7 +60,7 @@ describe('createFsDistillLog', () => {
   });
 
   it('keeps every entry when distillations of the same job are appended at the same time', async () => {
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
 
     await Promise.all(
       Array.from({ length: 10 }, (_, n) => log.append(JOB, entry(`2026-10-09T16:00:0${n}Z`))),
@@ -70,7 +70,7 @@ describe('createFsDistillLog', () => {
   });
 
   it('refuses to append to a distill.json it cannot read, leaving the file as it was', async () => {
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
     await writeFile(distillFile(), '{ "jobId": "hand-edited", ');
 
     await expect(log.append(JOB, entry('2026-10-09T16:00:00Z'))).rejects.toThrow();
@@ -79,7 +79,7 @@ describe('createFsDistillLog', () => {
   });
 
   it('does not bring back a job directory the human deleted', async () => {
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
     await rm(paths.job(JOB), { recursive: true });
 
     await expect(log.append(JOB, entry('2026-10-09T16:00:00Z'))).rejects.toThrow();
@@ -88,19 +88,19 @@ describe('createFsDistillLog', () => {
   });
 
   it('leaves only the finished distill.json in the job directory, with no temporary file', async () => {
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
 
     await log.append(JOB, entry('2026-10-09T16:00:00Z'));
 
-    expect(await readdir(paths.job(JOB))).toEqual([DISTILL_FILE_NAME]);
+    expect(await readdir(paths.job(JOB))).toEqual(['distill.json']);
   });
 
   it('reads an empty history for a job that has not been distilled', async () => {
-    expect(await createFsDistillLog(paths.jobs).read(JOB)).toEqual([]);
+    expect(await createFsDistillLog(root).read(JOB)).toEqual([]);
   });
 
   it('rejects a job id that points outside the jobs directory', async () => {
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
 
     await expect(log.append('../escape', entry('2026-10-09T16:00:00Z'))).rejects.toThrow();
   });
@@ -117,7 +117,7 @@ describe('distilling into the data directory', () => {
       },
     };
     const memory = createFsMemoryStore(paths.memory);
-    const log = createFsDistillLog(paths.jobs);
+    const log = createFsDistillLog(root);
 
     await distillStoppedJob(
       { llm, memory, log, window: DEFAULT_MODEL_WINDOW, newMemoryId: () => 'fingers' },
