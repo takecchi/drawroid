@@ -25,7 +25,7 @@ import { toLlmCallRecord } from '../llm/record.js';
 import type { MemoryItem } from '../memory/item.js';
 import type { MemoryLimits } from '../memory/limits.js';
 import { DEFAULT_DISTILL_BUDGET, type DistillBudget } from '../memory/distill/budget.js';
-import type { StoppedJobMaterial } from '../memory/distill/input.js';
+import type { InterventionMaterial, StoppedJobMaterial } from '../memory/distill/input.js';
 import type { DistillLog } from '../memory/distill/log.js';
 import { distillStoppedJob } from '../memory/distill/run.js';
 import type { MemoryStore } from '../memory/store.js';
@@ -93,6 +93,8 @@ export type JobMemory = {
   /** 役ごとの記憶の予算。job.json に budgets が無い古いジョブの既定。省けば既定値 */
   limits?: MemoryLimits;
   distillBudget?: DistillBudget;
+  /** ジョブを作った会話での、そのジョブに関わる人間の発言（古い順）。止まったときの蒸留の材料に足す */
+  conversationMessages?: (spec: AutoJobSpec) => Promise<readonly InterventionMaterial[]>;
 };
 
 export type JobRunnerDeps = {
@@ -389,6 +391,7 @@ export class JobRunner {
           .sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt))
           .map((i) => ({ id: i.interventionId, text: i.text })),
         selections: await summarizeSelections(store, jobId),
+        conversation: (await memory.conversationMessages?.(spec)) ?? [],
       };
       const startedAt = this.now();
       const callId = this.newCallId(startedAt);

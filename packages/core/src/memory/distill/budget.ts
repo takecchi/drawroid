@@ -10,6 +10,10 @@ export type DistillBudget = {
   interventions: PackLimits;
   /** 口出し1件の原文 */
   interventionChars: number;
+  /** ジョブを作った会話での人間の発言の件数と、文字数の合計（maxSize） */
+  messages: PackLimits;
+  /** 会話での発言1件 */
+  messageChars: number;
   /** 選択・却下の件数 */
   selections: PackLimits;
   /** 選択・却下1件に添える評価の問題点の件数と、1件の文字数 */
@@ -32,6 +36,8 @@ export const DEFAULT_DISTILL_BUDGET: DistillBudget = {
   stopDetailChars: 120,
   interventions: { maxCount: 8, maxSize: 800 },
   interventionChars: 200,
+  messages: { maxCount: 8, maxSize: 800 },
+  messageChars: 200,
   selections: { maxCount: 8 },
   issuesPerSelection: 3,
   issueChars: 80,
