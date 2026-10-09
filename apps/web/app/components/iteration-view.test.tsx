@@ -224,7 +224,7 @@ describe('IterationList and the large view of an image', () => {
   });
 });
 
-// 止まったジョブの画像の枡（窓の外）も、窓と同じく「この画像に決める（お気に入りにする）」にする。人が選んだ画像は「選んだ」のまま
+// 止まったジョブの画像の枡（窓の外）も、窓と同じく「この画像に決める（お気に入りにする）」にする。人が選んだ画像は、枡でも窓でも「選んだ」のまま
 describe('IterationList and the image cells of a stopped job', () => {
   const twoImages = [
     { index: 0, seed: 7, url: '/a.png', previewUrl: '/a.webp' },
@@ -283,6 +283,66 @@ describe('IterationList and the image cells of a stopped job', () => {
         name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番',
       }),
     ).toBeTruthy();
+  });
+
+  it('keeps saying a human chose the image they chose in the large view too', async () => {
+    const user = userEvent.setup();
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[
+          { ...iteration, images: twoImages, adopted: chose(1) } as unknown as Iteration,
+        ]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{ stopped: true }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: '大きく見る: 1 回目の画像 2 番（seed 8）' }),
+    );
+    const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ }));
+
+    expect(dialog.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(
+      dialog.queryByRole('button', { name: /^この画像に決める（お気に入りにする）:/ }),
+    ).toBeNull();
+  });
+});
+
+// 走っている自動ジョブの画像の枡は、止まったジョブと取り違えず、採る口（この画像で決める）を出す
+describe('IterationList and the image cells of a running job', () => {
+  it('offers the adopt button, not the favorite, in each cell', () => {
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[
+          {
+            ...iteration,
+            images: [
+              { index: 0, seed: 7, url: '/a.png', previewUrl: '/a.webp' },
+              { index: 1, seed: 8, url: '/b.png', previewUrl: '/b.webp' },
+            ],
+          } as Iteration,
+        ]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{ stopped: false }}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'この画像で決める: 1 回目の画像 2 番' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^この画像に決める（お気に入りにする）:/ }),
+    ).toBeNull();
   });
 });
 
