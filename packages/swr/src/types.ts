@@ -1,5 +1,5 @@
 import type { ReferenceUploadInput } from '@drawroid/api';
-import type { InferResponseType } from 'hono/client';
+import type { InferRequestType, InferResponseType } from 'hono/client';
 
 import type { client } from './client.js';
 
@@ -11,6 +11,10 @@ export type CandidatesResponse = InferResponseType<
 export type JobsResponse = InferResponseType<typeof client.jobs.$get, 200>;
 export type JobDetail = InferResponseType<(typeof client.jobs)[':jobId']['$get'], 200>;
 export type BackendSettingsResponse = InferResponseType<typeof client.settings.backend.$get, 200>;
+export type MemoryList = InferResponseType<typeof client.memory.$get, 200>;
+export type MemoryItemDetail = InferResponseType<(typeof client.memory)[':id']['$get'], 200>;
+export type SaveMemoryInput = InferRequestType<(typeof client.memory)[':id']['$put']>['json'];
+export type SavedMemoryItem = InferResponseType<(typeof client.memory)[':id']['$put'], 200>;
 export type IterationsResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['iterations']['$get'],
   200

@@ -22,7 +22,7 @@ export function stopConditionParseRoutes({ stopConditionParser }: ApiDeps) {
       return c.json({ draft }, 200);
     } catch (error) {
       if (error instanceof LlmNotConfiguredError) {
-        return conflict(c, error.message, 'llm_not_configured');
+        return conflict(c, 'llm_not_configured', error.message);
       }
       throw error;
     }

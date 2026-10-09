@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { DEFAULT_BUDGET, generationRequestSchema, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApi } from '../index.js';
@@ -27,11 +27,8 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(join(root, 'memory')),
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
-    backendSettings: {
-      read: () => Promise.reject(new Error('この試験では使わない')),
-      write: () => Promise.reject(new Error('この試験では使わない')),
-    },
     autoQueue: {
       kick: () => void kicks++,
       stop: async (jobId) => void stops.push(jobId),
@@ -44,6 +41,10 @@ beforeEach(async () => {
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     env: {},
     now,
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
 });
 afterEach(async () => {

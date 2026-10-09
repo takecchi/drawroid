@@ -1,0 +1,18 @@
+[
+  {
+    "title": "animagine-xl-4.0.safetensors [6327eca98b]",
+    "model_name": "animagine-xl-4.0",
+    "hash": "6327eca98b",
+    "sha256": "6327eca98bfb6538dd7a4edce22484a1bbc57a8cff6b11d075d40da1afb847ac",
+    "filename": "/webui/models/Stable-diffusion/animagine-xl-4.0.safetensors",
+    "config": null
+  },
+  {
+    "title": "real/juggernaut-xl.safetensors",
+    "model_name": "real_juggernaut-xl",
+    "hash": null,
+    "sha256": null,
+    "filename": "/webui/models/Stable-diffusion/real/juggernaut-xl.safetensors",
+    "config": null
+  }
+]

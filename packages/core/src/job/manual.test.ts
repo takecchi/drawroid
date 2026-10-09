@@ -65,6 +65,8 @@ class MemoryJobStore implements JobStore {
   markSent = notUsed;
   writeLlmCall = notUsed;
   listLlmCalls = notUsed;
+  listLlmCallRecords = notUsed;
+  listIterations = notUsed;
   addIntervention = notUsed;
   listInterventions = notUsed;
   markInterventionApplied = notUsed;
@@ -74,8 +76,6 @@ class MemoryJobStore implements JobStore {
   writeSelection = notUsed;
   readSelection = notUsed;
   listSelections = notUsed;
-  listLlmCallRecords = notUsed;
-  listIterations = notUsed;
 }
 
 async function notUsed(): Promise<never> {
@@ -130,6 +130,16 @@ describe('ManualGenerationRunner', () => {
   it('refuses invalid parameters without creating a job or calling the backend', async () => {
     const { runner, store, backend } = setup();
     await expect(runner.start({ prompt: 'a cat' })).rejects.toThrow(ZodError);
+    expect(store.specs.size).toBe(0);
+    expect(backend.requests).toEqual([]);
+  });
+
+  it('refuses a request that points at images, without creating a job, since it cannot pass them yet', async () => {
+    const { runner, store, backend } = setup();
+
+    await expect(
+      runner.start({ ...params, img2img: { image: 'refs/r1.png', denoisingStrength: 0.5 } }),
+    ).rejects.toThrow(ZodError);
     expect(store.specs.size).toBe(0);
     expect(backend.requests).toEqual([]);
   });

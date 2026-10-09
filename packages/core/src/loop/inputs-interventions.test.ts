@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   integrateInterventions,
   InterventionNotIntegratedError,
@@ -148,10 +149,11 @@ describe('taking interventions into the next think', () => {
 
   it('asks for the integrated intent only when interventions are included', () => {
     const output = { params: { prompt: 'girl' }, rationale: 'x' };
+    const promptOnly = { schema: z.object({ prompt: z.string() }), omitted: {} };
     expect(() =>
-      buildThinkOutputSchema(['prompt'], budget, { withInterventions: true }).parse(output),
+      buildThinkOutputSchema(promptOnly, budget, { withInterventions: true }).parse(output),
     ).toThrow();
-    expect(buildThinkOutputSchema(['prompt'], budget).parse({ ...output, intent: '要点' })).toEqual(
+    expect(buildThinkOutputSchema(promptOnly, budget).parse({ ...output, intent: '要点' })).toEqual(
       output,
     );
   });

@@ -1,0 +1,11 @@
+[
+  { "name": "None", "model_name": null, "model_path": null, "model_url": null, "scale": 4 },
+  { "name": "Lanczos", "model_name": null, "model_path": null, "model_url": null, "scale": 4 },
+  {
+    "name": "R-ESRGAN 4x+",
+    "model_name": "RealESRGAN_x4plus",
+    "model_path": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+    "model_url": null,
+    "scale": 4
+  }
+]

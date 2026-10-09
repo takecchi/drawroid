@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { generationRequestSchema } from '../backend.js';
 import { BACKEND_ERROR_KINDS } from '../backend-error.js';
+import { permissionOverridesSchema } from '../permissions/permission.js';
 
 export const stopConditionsSchema = z.object({
   /** 見る役が「意図どおり」と判断したら止める */
@@ -79,6 +80,8 @@ export const autoJobSpecSchema = z.object({
   stopConditions: stopConditionsSchema,
   /** 1回の生成で出す枚数 */
   batchSize: z.number().int().positive(),
+  /** 全体の既定の許可に重ねる、このジョブだけの上書き。書いたパラメータだけ */
+  permissions: permissionOverridesSchema.optional(),
 });
 export type AutoJobSpec = z.infer<typeof autoJobSpecSchema>;
 
@@ -107,12 +110,13 @@ export const stopReasonSchema = z.object({
 });
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
-const thinkParamsSchema = z.object({
+// 欄を閉じない: M4 で考える役が決めてよいパラメータが許可の設定しだいで増え、閉じると読み直しで黙って消えるため
+const thinkParamsSchema = z.looseObject({
   prompt: z.string().optional(),
   negativePrompt: z.string().optional(),
   seed: z.number().optional(),
   steps: z.number().optional(),
-  cfg: z.number().optional(),
+  cfgScale: z.number().optional(),
 });
 
 const carriedResultSchema = z.object({

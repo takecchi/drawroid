@@ -4,12 +4,16 @@ import type {
   InterventionRecord,
   JobStore,
   ManualGenerationRunner,
+  MemoryStore,
   NewReference,
   ReferenceRecord,
   StopConditions,
   StopConditionsChange,
 } from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
+
+import type { BackendSettingsPort } from './backend-settings.js';
+import type { StopConditionParser } from './stop-condition-parse.js';
 
 /** 自動ジョブの待ち行列。JobRunner をそのまま渡せる形にしてある */
 export type AutoJobQueue = {
@@ -28,12 +32,10 @@ export type LlmSettingsStore = {
   write(config: LlmConfig): Promise<void>;
 };
 
-import type { BackendSettingsPort } from './backend-settings.js';
-import type { StopConditionParser } from './stop-condition-parse.js';
-
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
+  memoryStore: MemoryStore;
   manualRunner: ManualGenerationRunner;
   backendSettings: BackendSettingsPort;
   autoQueue: AutoJobQueue;

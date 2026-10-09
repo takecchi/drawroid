@@ -1,5 +1,7 @@
 import { clipText, estimateImageTokens, estimateTextTokens } from '../budget/estimate.js';
 import { packWithinBudget } from '../budget/pack.js';
+import type { MemoryItem } from '../memory/item.js';
+import { describeMemoryDrop, type MemoryRoleLimits, selectMemory } from '../memory/select.js';
 import type { InterventionPlan } from '../intervention/plan.js';
 import type { ReferenceLimits } from '../reference/reference.js';
 import {
@@ -9,9 +11,11 @@ import {
   type ImagePart,
   type TextPart,
 } from '../llm/port.js';
+import type { CandidateKind } from '../backend.js';
+import type { ShownCandidate } from '../candidates/select.js';
+import type { ParamKey } from '../params/param-key.js';
 import type { Budget, ModelWindow } from './budget.js';
 import type { CarriedResult, Carry } from './carry.js';
-import type { ThinkParamKey } from './schemas.js';
 
 export type Progress = {
   /** これから回す回（1始まり） */
@@ -27,6 +31,12 @@ export type PreviewImage = {
   longEdge: number;
   /** すでにこの画像を渡した LLM 呼び出しの ID（渡した印） */
   sentInCall?: string;
+};
+
+/** 記憶ストアから読んだ全項目と、この役の記憶の予算。どれを載せるかは組み立て器が選ぶ */
+export type MemoryInput = {
+  items: readonly MemoryItem[];
+  limits: MemoryRoleLimits;
 };
 
 export class InputOverBudgetError extends Error {
@@ -61,9 +71,9 @@ const JUDGE_SYSTEM = [
 ].join('\n');
 
 /** 入力の1区画。必須でない区画は、入力の上限に入らなければ落とす */
-type Section = { name: string; text: string };
+export type Section = { name: string; text: string };
 
-class SectionWriter {
+export class SectionWriter {
   readonly notes: BudgetNote[] = [];
 
   clip(section: string, text: string, limit: number): string {
@@ -94,7 +104,7 @@ class SectionWriter {
           `negativePrompt: ${this.clip(`${name}.negativePrompt`, p.negativePrompt, budget.text.negativePrompt)}`,
         );
       }
-      const numbers = (['seed', 'steps', 'cfg'] as const)
+      const numbers = (['seed', 'steps', 'cfgScale'] as const)
         .filter((k) => p[k] !== undefined)
         .map((k) => `${k}=${p[k]}`);
       if (numbers.length > 0) lines.push(numbers.join(' '));
@@ -122,7 +132,7 @@ class SectionWriter {
 /**
  * 必須の区画は必ず入れ、任意の区画は渡した順を優先順位として、入力の上限に入るものだけを入れる。
  */
-function seal(args: {
+export function seal(args: {
   system: string;
   writer: SectionWriter;
   required: Section[];
@@ -161,6 +171,27 @@ function seal(args: {
   });
 }
 
+/**
+ * 依頼に関係する記憶を、1項目1区画にして返す。記憶の予算で落とした項目は、記録に残すために notes へ入れる。
+ */
+// 1項目ずつ区画にする: 入力の上限で落とすときも項目の単位で落とし、どれを落としたかを記録に残せるようにするため
+function memorySections(
+  w: SectionWriter,
+  memory: MemoryInput | undefined,
+  carry: Carry,
+): Section[] {
+  if (memory === undefined) return [];
+  const { selected, droppedByBudget } = selectMemory(memory.items, carry.intent, memory.limits);
+  for (const dropped of droppedByBudget) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `memory[${dropped.item.id}]`,
+      reason: describeMemoryDrop(dropped, memory.limits),
+    });
+  }
+  return selected.map((item) => ({ name: `memory[${item.id}]`, text: `好み: ${item.body}` }));
+}
+
 /** 口出しの原文。AI の判断の区画とは見出しで分け、人間の指示として渡す */
 function interventionSection(w: SectionWriter, plan: InterventionPlan | undefined): Section[] {
   if (plan === undefined) return [];
@@ -197,6 +228,51 @@ function intentSection(w: SectionWriter, carry: Carry, budget: Budget): Section 
   };
 }
 
+/** 候補の種類ごとの、見せる候補と、予算で落とした候補・説明 */
+export type ShownCandidates = {
+  shown: Partial<Record<CandidateKind, readonly ShownCandidate[]>>;
+  dropped: { kind: CandidateKind; name: string; reason: 'count' | 'size' }[];
+  notesDropped: { kind: CandidateKind; name: string }[];
+};
+
+const CANDIDATE_LABELS: Record<CandidateKind, string> = {
+  checkpoint: 'チェックポイント',
+  vae: 'VAE',
+  lora: 'LoRA',
+  sampler: 'サンプラー',
+  scheduler: 'スケジューラ',
+  upscaler: 'Hires. fix の拡大の方式',
+  controlnetModel: 'ControlNet のモデル',
+  controlnetModule: 'ControlNet の前処理',
+};
+
+function candidateSections(w: SectionWriter, candidates: ShownCandidates | undefined): Section[] {
+  if (candidates === undefined) return [];
+  // 落とした候補と説明を記録に残す: 数百個の LoRA のうち何を見せなかったかを、後から追えるようにするため（M4:119）
+  for (const { kind, name, reason } of candidates.dropped) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `candidates.${kind}[${name}]`,
+      reason: reason === 'count' ? '候補の件数の予算に入らない' : '候補の文字数の予算に入らない',
+    });
+  }
+  for (const { kind, name } of candidates.notesDropped) {
+    w.notes.push({
+      kind: 'dropped',
+      section: `candidates.${kind}[${name}].note`,
+      reason: '候補の説明が文字数の予算に入らない',
+    });
+  }
+  return (Object.entries(candidates.shown) as [CandidateKind, readonly ShownCandidate[]][])
+    .filter(([, shown]) => shown.length > 0)
+    .map(([kind, shown]) => ({
+      name: `candidates.${kind}`,
+      text: `${CANDIDATE_LABELS[kind]}の候補: ${shown
+        .map((c) => (c.note === undefined ? c.name : `${c.name}（${c.note}）`))
+        .join(' / ')}`,
+    }));
+}
+
 /**
  * 考える役への入力。持ち回す状態だけから組み立てる。
  */
@@ -204,13 +280,16 @@ function intentSection(w: SectionWriter, carry: Carry, budget: Budget): Section 
 export function buildThinkInput(args: {
   carry: Carry;
   progress: Progress;
-  allowed: readonly ThinkParamKey[];
+  allowed: readonly ParamKey[];
   budget: Budget;
   window: ModelWindow;
+  memory?: MemoryInput;
   /** planInterventions の結果。載せた口出しは必須の区画にする */
   interventions?: InterventionPlan;
+  /** 候補を持つパラメータごとに、予算で絞って見せる候補（selectCandidates の結果） */
+  candidates?: ShownCandidates;
 }): BudgetedMessages {
-  const { carry, progress, allowed, budget, window, interventions } = args;
+  const { carry, progress, allowed, budget, window, memory, interventions, candidates } = args;
   const w = new SectionWriter();
   const remaining =
     progress.remainingIterations === undefined ? '' : `（残り ${progress.remainingIterations} 回）`;
@@ -222,12 +301,17 @@ export function buildThinkInput(args: {
     },
     // 口出しは入力の上限で削らない: 人間の指示が黙って消えないように。量は planInterventions の上限で締めてある
     ...interventionSection(w, interventions),
+    // 候補は入力の上限で削らない: 出力スキーマの enum と同じものなので、削ると選べる名前と見えている名前がずれるため。
+    // 量は selectCandidates の予算で締めてある
+    ...candidateSections(w, candidates),
   ];
   const optional: Section[] = [...referenceSections(carry)];
   if (carry.best !== undefined) optional.push(w.result('best', '最良', carry.best, budget, true));
   if (carry.latest !== undefined && carry.latest.iteration !== carry.best?.iteration) {
     optional.push(w.result('latest', '直近', carry.latest, budget, true));
   }
+  // 記憶は最良・直近より後ろに置く: 入力の上限で削るときは記憶から先に削る（architecture の削る順）
+  optional.push(...memorySections(w, memory, carry));
   return seal({
     system: THINK_SYSTEM,
     writer: w,
@@ -248,8 +332,9 @@ export function buildJudgeInput(args: {
   images: readonly PreviewImage[];
   budget: Budget;
   window: ModelWindow;
+  memory?: MemoryInput;
 }): BudgetedMessages {
-  const { carry, images, budget, window } = args;
+  const { carry, images, budget, window, memory } = args;
   if (images.length === 0) throw new ImageNotAllowedError('評価する画像が無い');
   if (images.length > budget.imagesPerJudge) {
     throw new ImageNotAllowedError(
@@ -265,6 +350,7 @@ export function buildJudgeInput(args: {
   if (carry.best !== undefined) {
     optional.push(w.result('best', 'これまでの最良', carry.best, budget, false));
   }
+  optional.push(...memorySections(w, memory, carry));
   return seal({
     system: JUDGE_SYSTEM,
     writer: w,
