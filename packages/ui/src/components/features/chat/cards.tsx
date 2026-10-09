@@ -126,6 +126,7 @@ export function GenerationProgress({
   steps,
   etaMs,
   previewSrc,
+  hint,
 }: {
   iteration?: number;
   /** 0〜1 */
@@ -135,6 +136,8 @@ export function GenerationProgress({
   etaMs?: number;
   /** 途中の画像（設定で有効なときだけ） */
   previewSrc?: string;
+  /** カードの下に添える一言（「できあがったら、画像の行で選べます」など） */
+  hint?: ReactNode;
 }) {
   const percent = progress === undefined ? undefined : Math.round(progress * 100);
   const details = [
@@ -177,6 +180,7 @@ export function GenerationProgress({
           className="size-32 rounded-md border border-border object-cover"
         />
       )}
+      {hint !== undefined && <div className="text-xs text-muted-foreground">{hint}</div>}
     </LogCard>
   );
 }
