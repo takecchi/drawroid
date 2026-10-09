@@ -346,6 +346,28 @@ describe('extractJson', () => {
   it('throws when there is no object', () => {
     expect(() => extractJson('わからない')).toThrow(SyntaxError);
   });
+
+  // 思考を本文に <think>…</think> で混ぜるモデル（json・text の出し方で使うとき）。思考の中の { や
+  // コードブロックを JSON として読まない
+  it('skips the thinking in <think> tags, even when it contains braces', () => {
+    expect(extractJson('<think>{"a":9} かな。いや {違う}</think>\n{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it('skips a code block inside the thinking and reads the one after it', () => {
+    expect(extractJson('<think>```json\n{"a":9}\n```</think>```json\n{"a":1}\n```')).toEqual({
+      a: 1,
+    });
+  });
+
+  it('skips the thinking when only the closing tag reaches the text', () => {
+    // 開きタグをチャットのテンプレートが入れ、本文には閉じタグから後だけが来るモデル
+    expect(extractJson('{"a":9} を考えた</think>\n{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it('throws when the output ends inside the thinking', () => {
+    // 出力の上限で思考の途中で切れたときは、思考の中の { を答えとして読まない
+    expect(() => extractJson('<think>{"a":9} を考えて')).toThrow(SyntaxError);
+  });
 });
 
 describe('describe', () => {
