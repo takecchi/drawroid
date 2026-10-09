@@ -3,8 +3,13 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
-import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
+import {
+  DEFAULT_BUDGET,
+  estimateMaxOutputTokens,
+  ManualGenerationRunner,
+  permissionOverridesSchema,
+} from '@drawroid/core';
+import { llmConfigSchema, outputLimitWarnings, type LlmConfig } from '@drawroid/llm';
 import {
   createFsDistillLog,
   createFsMemoryStore,
@@ -81,6 +86,12 @@ async function main() {
     memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
     log,
   });
+  // 値は書き換えない: 保存済みの小さい上限（以前の既定 1024 など）に、利用者が気づけるようにするだけ
+  const warnOutputLimits = (llm: LlmConfig) => {
+    for (const warning of outputLimitWarnings(llm, estimateMaxOutputTokens(DEFAULT_BUDGET))) {
+      log(`drawroid: 警告: ${warning.message}`);
+    }
+  };
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
     log(
@@ -89,6 +100,7 @@ async function main() {
   } else {
     const parsed = llmConfigSchema.safeParse(stored);
     if (parsed.success) {
+      warnOutputLimits(parsed.data);
       autoQueue.configure(parsed.data);
     } else {
       log(
@@ -102,6 +114,7 @@ async function main() {
     read: () => readLlmSettings(configPath),
     write: async (llm: LlmConfig) => {
       await writeLlmSettings(configPath, llm);
+      warnOutputLimits(llm);
       autoQueue.configure(llm);
       autoQueue.kick();
     },

@@ -89,6 +89,37 @@ describe('GET /settings/llm', () => {
     });
   });
 
+  it('warns when a stored output limit is below the estimate of the output, and leaves the value alone', async () => {
+    saved = {
+      providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:11434/v1' } },
+      roles: { think: { provider: 'local', model: 'qwen', maxOutputTokens: 1024 } },
+    };
+    const res = await makeApp({}).request('/settings/llm');
+    const body = (await res.json()) as {
+      config: { roles: { think: { maxOutputTokens: number } } };
+      outputLimitWarnings: { role: string; configKey: string; message: string }[];
+    };
+
+    expect(body.config.roles.think.maxOutputTokens).toBe(1024);
+    expect(body.outputLimitWarnings.map((w) => [w.role, w.configKey])).toEqual([
+      ['think', 'think'],
+      ['judge', 'think'],
+    ]);
+    expect(body.outputLimitWarnings[0]?.message).toContain(
+      'llm.roles.think.maxOutputTokens = 1024',
+    );
+    expect(written).toEqual([]);
+  });
+
+  it('gives no warning with the default output limit', async () => {
+    saved = {
+      providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:11434/v1' } },
+      roles: { think: { provider: 'local', model: 'qwen' } },
+    };
+    const res = await makeApp({}).request('/settings/llm');
+    expect(await res.json()).toMatchObject({ outputLimitWarnings: [] });
+  });
+
   it('answers 500 invalid_config when the stored settings are broken', async () => {
     saved = { providers: {} };
     const res = await makeApp({}).request('/settings/llm');
