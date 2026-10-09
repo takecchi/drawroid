@@ -10,10 +10,17 @@ export function describeStopConditions(conditions: StopConditions): string[] {
     ...(conditions.aiJudgement ? ['AI が意図どおりと判断したら'] : []),
     ...(conditions.maxIterations === undefined ? [] : [`${conditions.maxIterations} 回まで`]),
     ...(conditions.maxImages === undefined ? [] : [`${conditions.maxImages} 枚まで`]),
-    ...(conditions.maxDurationMs === undefined
-      ? []
-      : [`${conditions.maxDurationMs / 60_000} 分まで`]),
+    ...(conditions.maxDurationMs === undefined ? [] : [durationLimit(conditions.maxDurationMs)]),
   ];
+}
+
+// 1 分に満たない上限は秒で（1 秒に満たなければミリ秒で）書く: 分で割ったままだと、5 秒が「0.08333333333333333 分まで」になるため。
+// 1 分以上は分で書き、小数は2桁までにする: 人がフォームで 1.5 分と書けるので、整数へ丸めずに残す
+function durationLimit(ms: number): string {
+  if (ms < 1000) return `${ms} ミリ秒まで`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} 秒まで`;
+  return `${Number((seconds / 60).toFixed(2))} 分まで`;
 }
 
 // 入力欄の値は、すべて文字列で持つ: 数値の欄を number で持つと、入力途中の空欄や「-」を表せないため

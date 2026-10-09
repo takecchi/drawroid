@@ -9,6 +9,7 @@ import {
   stopConditionsBlocker,
   stopConditionsToForm,
   type StopConditionsFormValues,
+  describeStopConditions,
 } from './stop-conditions-form';
 
 const empty: StopConditionsFormValues = {
@@ -138,5 +139,18 @@ describe('changedConditions', () => {
       { label: '枚数の上限', submitted: 'なし', current: '6 枚' },
       { label: '時間の上限', submitted: 'なし', current: '1.5 分' },
     ]);
+  });
+});
+
+describe('describeStopConditions', () => {
+  it.each([
+    [400, '400 ミリ秒まで'],
+    [5_000, '5 秒まで'],
+    [59_500, '1 分まで'],
+    [90_000, '1.5 分まで'],
+    [100_000, '1.67 分まで'],
+    [600_000, '10 分まで'],
+  ])('writes a time limit of %i ms as %s', (maxDurationMs, text) => {
+    expect(describeStopConditions({ aiJudgement: false, maxDurationMs })).toEqual([text]);
   });
 });

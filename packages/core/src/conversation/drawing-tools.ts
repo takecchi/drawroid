@@ -148,9 +148,12 @@ export function describeStopConditions(conditions: StopConditions): string {
   return parts.join('・');
 }
 
-// 1 分に満たない上限は秒で書く: 分に丸めると「0 分まで」になり、人にも話す役にも意味が通らないため
+// 1 分に満たない上限は秒で書く: 分に丸めると「0 分まで」になり、人にも話す役にも意味が通らないため。
+// 1 秒に満たない上限はミリ秒で書く: 秒に丸めると同じく「0 秒まで」になるため。秒に丸めて 60 になるなら分で書く（「60 秒まで」にしない）
 function durationLimit(ms: number): string {
-  return ms < 60_000 ? `${Math.round(ms / 1000)} 秒まで` : `${Math.round(ms / 60_000)} 分まで`;
+  if (ms < 1000) return `${ms} ミリ秒まで`;
+  const seconds = Math.round(ms / 1000);
+  return seconds < 60 ? `${seconds} 秒まで` : `${Math.round(ms / 60_000)} 分まで`;
 }
 
 /** 描くツール（副作用のあるもの）。会話の実行器に、副作用の無いツール（createReadOnlyTools）と並べて渡す */
