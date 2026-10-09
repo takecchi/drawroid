@@ -19,7 +19,8 @@ export function describeMemoryDrop(
   dropped: MemorySelection['droppedByBudget'][number],
   limits: MemoryRoleLimits,
 ): string {
-  const frame = limits.always !== undefined && dropped.item.scope === 'always' ? 'always 枠の' : '';
+  const frame =
+    limits.always !== undefined && dropped.item.scope === 'always' ? ' always 枠の' : '';
   const measure = dropped.reason === 'count' ? '件数' : '文字数';
   return `記憶の${frame}${measure}の予算に入らない`;
 }
