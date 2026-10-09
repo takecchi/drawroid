@@ -409,6 +409,37 @@ function convert(tree: Root, idPrefix: string, options: MdastOptions): Out[] {
   return out;
 }
 
+/**
+ * 空行で終わる段落のまとまり（`root`）を、後ろに文字が増えても描き方が変わらないと言えるか。
+ * - `settled`: 言える。使い回してよい
+ * - `wait`: 最後の塊が、後ろの文字で続きうる（箇条書きは空行を挟んで続き、閉じていないコードの塊は空行を含む）。もっと後ろで切り直す
+ * - `never`: 中に、後ろの定義で link や脚注に変わりうるもの・後ろの文字まで続きうる生の HTML がある。このまとまりは使い回さない
+ *
+ * 迷う形は使い回さない側に倒す: 参照・脚注は、まだ定義の無い `[...]` が文字として残るので、`[` か `]` を含む文字も `never` にする。
+ * 定義そのものも `never` にする: 後ろのまとまりを別に解析すると、その定義が見えなくなるため
+ */
+export function settledVerdict(root: Root): 'settled' | 'wait' | 'never' {
+  const changes = (node: MNode): boolean => {
+    switch (node.type) {
+      case 'definition':
+      case 'footnoteDefinition':
+      case 'footnoteReference':
+      case 'linkReference':
+      case 'imageReference':
+      case 'html':
+        return true;
+      case 'text':
+        return /[[\]]/.test(node.value);
+      default:
+        return 'children' in node && (node.children as MNode[]).some(changes);
+    }
+  };
+  if (changes(root)) return 'never';
+  const last = root.children.at(-1);
+  if (last === undefined || last.type === 'list' || last.type === 'code') return 'wait';
+  return 'settled';
+}
+
 function withChildren(props: Record<string, unknown>, children: ReactNode[]) {
   if (children.length > 0) {
     const value = children.length > 1 ? children : children[0];
