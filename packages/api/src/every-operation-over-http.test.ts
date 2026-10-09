@@ -13,7 +13,7 @@ import {
   type LlmCall,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -26,9 +26,9 @@ const think: Script = (_call: LlmCall<unknown>, n: number) => ({
   params: {
     prompt: `girl, beach, take ${n + 1}`,
     negativePrompt: 'lowres',
-    seed: -1,
+    seed: 1,
     steps: 20,
-    cfg: 7,
+    cfgScale: 7,
   },
   rationale: `${n + 1} 回目の案`,
   intent: INTEGRATED,
@@ -65,7 +65,12 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     autoQueue: runner,
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },

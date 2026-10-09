@@ -1,0 +1,79 @@
+[
+  {
+    "name": "x/y/z plot",
+    "is_alwayson": false,
+    "is_img2img": false,
+    "args": [
+      {
+        "label": "X type",
+        "value": "Seed",
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": ["Nothing", "Seed"]
+      }
+    ]
+  },
+  {
+    "name": "controlnet",
+    "is_alwayson": true,
+    "is_img2img": false,
+    "args": [
+      {
+        "label": null,
+        "value": null,
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": null
+      },
+      {
+        "label": null,
+        "value": null,
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": null
+      },
+      {
+        "label": null,
+        "value": null,
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": null
+      }
+    ]
+  },
+  {
+    "name": "controlnet",
+    "is_alwayson": true,
+    "is_img2img": true,
+    "args": [
+      {
+        "label": null,
+        "value": null,
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": null
+      },
+      {
+        "label": null,
+        "value": null,
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": null
+      },
+      {
+        "label": null,
+        "value": null,
+        "minimum": null,
+        "maximum": null,
+        "step": null,
+        "choices": null
+      }
+    ]
+  }
+]

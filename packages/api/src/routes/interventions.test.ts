@@ -10,7 +10,7 @@ import {
   THINK_PARAM_KEYS,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
-import { FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { hc } from 'hono/client';
@@ -41,7 +41,12 @@ beforeEach(async () => {
   app = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
     autoQueue: {
       kick: () => undefined,
       stop: (jobId) => runner.stop(jobId),
