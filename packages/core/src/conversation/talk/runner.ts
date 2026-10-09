@@ -331,6 +331,8 @@ export class TalkRunner {
           state.phase = 'other';
         }
         const aborted = controller.signal.aborted;
+        // 前後の空行は返答に含めない: 思考のあとの改行だけが残った応答を、空の返答として扱うため
+        text = text.trim();
         const value: StepValue = {
           text,
           toolCalls: toolCalls.map(({ name, input }) => ({ name, input })),
