@@ -86,7 +86,7 @@ describe('buildParamsSchema', () => {
     const permissions = { ...allOff(), loras: { mode: 'auto' } } satisfies Permissions;
     const { schema } = buildParamsSchema(permissions, context);
 
-    const json = z.toJSONSchema(schema) as {
+    const json = z.toJSONSchema(schema) as unknown as {
       properties: { loras: { items: { properties: object } } };
     };
     expect(Object.keys(json.properties.loras.items.properties).sort()).toEqual(['name', 'weight']);
