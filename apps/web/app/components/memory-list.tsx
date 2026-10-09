@@ -1,5 +1,5 @@
 import { useMemoryList } from '@drawroid/swr';
-import { ErrorNote, Item, ItemList, Muted, Section, SubSection } from '@drawroid/ui';
+import { EmptyState, ErrorNote, Item, ItemList, Section, SubSection } from '@drawroid/ui';
 import { Link } from 'react-router';
 
 import { bodyHead } from '../lib/memory-form';
@@ -9,7 +9,7 @@ export function MemoryList() {
   return (
     <Section title="記憶">
       {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
-      {data?.items.length === 0 && <Muted>まだ無い。</Muted>}
+      {data?.items.length === 0 && <EmptyState title="まだ無い。" />}
       <ItemList>
         {data?.items.map((item) => (
           <Item key={item.id}>

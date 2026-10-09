@@ -1,5 +1,5 @@
 import type { InterventionsResponse } from '@drawroid/swr';
-import { AuthorMark, BulletList, Muted, Section } from '@drawroid/ui';
+import { AuthorMark, BulletList, EmptyState, Section } from '@drawroid/ui';
 
 import { formatTime } from '../lib/job-labels';
 
@@ -94,7 +94,7 @@ export function InterventionItem({
 export function InterventionList({ interventions }: { interventions: Intervention[] }) {
   return (
     <Section title={`人間の指示（${interventions.length}）`}>
-      {interventions.length === 0 && <Muted>まだ人間の指示は無い。</Muted>}
+      {interventions.length === 0 && <EmptyState title="まだ人間の指示は無い。" />}
       {interventions.map((intervention) => (
         <InterventionItem key={intervention.interventionId} intervention={intervention} />
       ))}
