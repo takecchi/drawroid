@@ -7,6 +7,7 @@ import { keys } from './keys.js';
 import type {
   BackendSettingsResponse,
   BackendStatus,
+  CandidateNotesResponse,
   CandidatesResponse,
   InterventionsResponse,
   IterationsResponse,
@@ -15,6 +16,7 @@ import type {
   LlmCallDetail,
   LlmCallsResponse,
   LlmSettingsResponse,
+  PermissionSettingsResponse,
   MemoryItemDetail,
   MemoryList,
   ReferencesResponse,
@@ -36,6 +38,13 @@ export function useBackendStatus() {
 export function useCandidates(kind: CandidateKind) {
   return useSWR<CandidatesResponse, ApiError>(keys.candidates(kind), () =>
     unwrap<CandidatesResponse>(() => client.backend.candidates[':kind'].$get({ param: { kind } })),
+  );
+}
+
+// ポーリングしない: 説明を変えるのは人間の操作だけで、保存の関数が置き直すため
+export function useCandidateNotes() {
+  return useSWR<CandidateNotesResponse, ApiError>(keys.candidateNotes, () =>
+    unwrap<CandidateNotesResponse>(() => client.backend['candidate-notes'].$get()),
   );
 }
 
@@ -143,6 +152,13 @@ export function useLlmSettings() {
 }
 
 // 変更の関数が mutate で取り直すので、ポーリングはしない: 選択を書き換えるのは人間の操作だけのため
+// ポーリングしない: 許可を変えるのは人間の操作だけで、保存の関数が置き直すため
+export function usePermissionSettings() {
+  return useSWR<PermissionSettingsResponse, ApiError>(keys.permissionSettings, () =>
+    unwrap<PermissionSettingsResponse>(() => client.settings.permissions.$get()),
+  );
+}
+
 export function useSelections(jobId: string | undefined) {
   return useSWR<SelectionsResponse, ApiError>(
     jobId === undefined ? null : keys.selections(jobId),
