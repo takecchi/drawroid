@@ -54,11 +54,12 @@ function generate(schema, hint = '') {
 }
 
 /**
- * @param {{ stopAfterIterations: number, rejectImages?: boolean }} options stopAfterIterations は見る役が何回目で止めてよいと言うか。
- *   rejectImages なら、画像を含む呼び出しを 400 で断る（画像を読めないモデルの代わり）
+ * @param {{ stopAfterIterations: number, rejectImages?: boolean, echoKey?: boolean }} options stopAfterIterations は見る役が何回目で止めてよいと言うか。
+ *   rejectImages なら、画像を含む呼び出しを 400 で断る（画像を読めないモデルの代わり）。
+ *   echoKey なら、どの呼び出しも 401 で断り、受け取った鍵（Authorization の値）を断りの本文に入れて返す（鍵を文に返すサーバの代わり）
  * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown) => void }>}
  */
-export async function startFakeLlm({ stopAfterIterations, rejectImages = false }) {
+export async function startFakeLlm({ stopAfterIterations, rejectImages = false, echoKey = false }) {
   let judgeCalls = 0;
   let stopAfter = stopAfterIterations;
   // 話す役が、どの経路で呼ばれたか。native に倒れて通っただけ、を見分けるために数える
@@ -78,6 +79,11 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false }
         return res.end('{}');
       }
       const request = JSON.parse(body);
+      if (echoKey) {
+        const key = String(req.headers.authorization ?? '').replace(/^Bearer /, '');
+        res.writeHead(401, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ error: { message: `invalid api key: ${key}` } }));
+      }
       if (rejectImages && body.includes('"image_url"')) {
         res.writeHead(400, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ error: { message: 'image input is not supported' } }));
