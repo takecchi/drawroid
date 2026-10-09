@@ -1,4 +1,3 @@
-import { conversationOfSource } from '@drawroid/core';
 import {
   deleteMemoryItem,
   isApiError,
@@ -119,36 +118,36 @@ function MemoryItemBody({
       <SubSection title="学んだ元">
         {detail.sources.length === 0 && <Muted>無い。</Muted>}
         <ItemList>
-          {detail.sources.map(({ jobId, job }) => {
-            const conversationId = conversationOfSource(jobId);
-            return conversationId !== undefined ? (
-              <Item key={jobId}>
+          {detail.sources.map((source) =>
+            source.kind === 'conversation' ? (
+              <Item key={`conversation:${source.conversationId}`}>
                 会話{' '}
                 <Link
-                  to={`/conversations/${encodeURIComponent(conversationId)}`}
+                  to={`/conversations/${encodeURIComponent(source.conversationId)}`}
                   className="underline underline-offset-2"
                 >
-                  <code>{conversationId}</code>
+                  <code>{source.conversationId}</code>
                 </Link>
               </Item>
             ) : (
-              <Item key={jobId}>
+              <Item key={source.jobId}>
                 <Link
-                  to={`/jobs/${encodeURIComponent(jobId)}`}
+                  to={`/jobs/${encodeURIComponent(source.jobId)}`}
                   className="underline underline-offset-2"
                 >
-                  <code>{jobId}</code>
+                  <code>{source.jobId}</code>
                 </Link>{' '}
-                {job === null ? (
+                {source.job === null ? (
                   '消えたジョブ'
                 ) : (
                   <>
-                    {job.kind} {formatTime(job.createdAt)} {job.request.slice(0, 60)}
+                    {source.job.kind} {formatTime(source.job.createdAt)}{' '}
+                    {source.job.request.slice(0, 60)}
                   </>
                 )}
               </Item>
-            );
-          })}
+            ),
+          )}
         </ItemList>
       </SubSection>
 

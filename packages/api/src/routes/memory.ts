@@ -1,4 +1,10 @@
-import { isMemoryId, memoryScopeSchema, type DistillBudget, type JobSpec } from '@drawroid/core';
+import {
+  conversationOfSource,
+  isMemoryId,
+  memoryScopeSchema,
+  type DistillBudget,
+  type JobSpec,
+} from '@drawroid/core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { validator } from 'hono/validator';
@@ -25,16 +31,30 @@ function message(error: unknown): string {
 }
 
 export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
-  async function describeSource(jobId: string, knownJobIds: ReadonlySet<string>) {
+  // 学んだ元の種類を分けて返す: 会話から学んだ印（conversation:<ID>）をジョブとして引くと、「消えたジョブ」と見えるため
+  async function describeSource(
+    source: string,
+    knownJobIds: ReadonlySet<string>,
+  ): Promise<
+    | { kind: 'conversation'; conversationId: string }
+    | {
+        kind: 'job';
+        jobId: string;
+        job: { kind: JobSpec['kind']; createdAt: string; request: string } | null;
+      }
+  > {
+    const conversationId = conversationOfSource(source);
+    if (conversationId !== undefined) return { kind: 'conversation', conversationId };
+    const jobId = source;
     // 一覧に在るものだけを引く: front matter は人間が書き換えられ、そのまま置き場所へ渡さないため
-    if (!knownJobIds.has(jobId)) return { jobId, job: null };
+    if (!knownJobIds.has(jobId)) return { kind: 'job', jobId, job: null };
     try {
       const spec: JobSpec = await store.readJob(jobId);
       const request = spec.kind === 'auto' ? spec.request : spec.request.prompt;
-      return { jobId, job: { kind: spec.kind, createdAt: spec.createdAt, request } };
+      return { kind: 'job', jobId, job: { kind: spec.kind, createdAt: spec.createdAt, request } };
     } catch {
       // 読めないジョブで項目の表示を止めない: 学んだ元が壊れていても、記憶そのものは見て直せるべきため
-      return { jobId, job: null };
+      return { kind: 'job', jobId, job: null };
     }
   }
 
@@ -58,7 +78,7 @@ export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
         if (item === null) return notFound(c, `記憶 ${id} は無い`);
         const knownJobIds = new Set(await store.listJobIds());
         const sources = await Promise.all(
-          item.sources.map((jobId) => describeSource(jobId, knownJobIds)),
+          item.sources.map((source) => describeSource(source, knownJobIds)),
         );
         return c.json({ item, sources }, 200);
       })
