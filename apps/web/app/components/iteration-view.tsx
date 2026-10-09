@@ -11,6 +11,7 @@ import {
   ImageCard,
   ImageGrid,
   ImageViewer,
+  Muted,
   Section,
   type ViewerImage,
 } from '@drawroid/ui';
@@ -116,6 +117,17 @@ function AdoptedSection({ adopted }: { adopted: NonNullable<Iteration['adopted']
   );
 }
 
+/**
+ * 画像の無い回の書き方。回の数と生成した枚数が食い違って見えるので、画像を作らずに止まった回はそう書く。
+ * 止まっていないジョブでは、その回を進めている途中である
+ */
+function noImagesNote(iteration: Iteration, stopped: boolean): string {
+  if (!stopped) return 'この回の画像はまだ無い（進めている途中）。';
+  return iteration.think === null
+    ? '考える前にジョブが止まり、この回は画像を作っていない。'
+    : '考える段まで進んだところでジョブが止まり、この回は画像を作っていない。';
+}
+
 // 回ごとの表示をここに閉じる: 口出しなど回に紐づく記録を足す場所を、この部品に限るため
 export function IterationView({
   jobId,
@@ -124,6 +136,7 @@ export function IterationView({
   verdicts,
   interventions = [],
   canPaintMask = false,
+  stopped = false,
   adopt,
   open,
 }: {
@@ -133,6 +146,8 @@ export function IterationView({
   verdicts: ReadonlyMap<string, SelectionVerdict>;
   /** この回に取り込んだ人間の指示。考える役の決定の前に出す */
   interventions?: Intervention[];
+  /** ジョブが止まったか。画像の無い回を「途中」と書くか「画像を作らずに止まった」と書くかを分ける */
+  stopped?: boolean;
   /** 画像にマスクを塗って送れるか。自動ジョブで、まだ止まっていないときだけ */
   canPaintMask?: boolean;
   /** 画像を「この画像で決める」で採れるか。自動ジョブだけ。止まったジョブは押せない理由を添える */
@@ -157,6 +172,7 @@ export function IterationView({
         <ExcludedSection excluded={iteration.excluded} />
       )}
       {iteration.think !== null && <ThinkSection think={iteration.think} />}
+      {iteration.images.length === 0 && <Muted>{noImagesNote(iteration, stopped)}</Muted>}
       <ImageGrid>
         {iteration.images.map((image) => {
           // 評価の並びは画像の並びと同じ: 見る役の出力が画像の枚数ぶんをちょうど返すため
@@ -218,9 +234,11 @@ export function IterationView({
       </ImageGrid>
       {iteration.judge !== null && <JudgeSection judge={iteration.judge} read={judge} />}
       {adopted !== null && <AdoptedSection adopted={adopted} />}
-      <Disclosure summary="生成の要求">
-        <CodeBlock>{JSON.stringify(iteration.request, null, 2)}</CodeBlock>
-      </Disclosure>
+      {iteration.request !== null && (
+        <Disclosure summary="生成の要求">
+          <CodeBlock>{JSON.stringify(iteration.request, null, 2)}</CodeBlock>
+        </Disclosure>
+      )}
       {calls.length > 0 && <LlmCallList jobId={jobId} calls={calls} />}
     </article>
   );
@@ -343,6 +361,7 @@ export function IterationList({
   verdicts,
   interventions = [],
   canPaintMask = false,
+  stopped = false,
   adopt,
 }: {
   jobId: string;
@@ -352,6 +371,7 @@ export function IterationList({
   verdicts: ReadonlyMap<string, SelectionVerdict>;
   interventions?: Intervention[];
   canPaintMask?: boolean;
+  stopped?: boolean;
   /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
   adopt?: { stopped: boolean };
 }) {
@@ -386,6 +406,7 @@ export function IterationList({
           iteration={iteration}
           verdicts={verdicts}
           canPaintMask={canPaintMask}
+          stopped={stopped}
           {...(adopt !== undefined && { adopt })}
           open={setViewing}
           interventions={interventions.filter(

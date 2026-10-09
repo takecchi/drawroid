@@ -76,6 +76,47 @@ describe('IterationList and what was sent to the backend', () => {
   });
 });
 
+describe('IterationList and an iteration that made no image', () => {
+  const imageless = (think: unknown): Iteration =>
+    ({ ...iteration, think, images: [], request: null }) as unknown as Iteration;
+  const renderStopped = (stopped: boolean, shown: Iteration) =>
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[iteration, shown]}
+        calls={[]}
+        verdicts={new Map()}
+        stopped={stopped}
+      />,
+    );
+
+  it('says the job stopped after thinking, without making an image, so the count of iterations and images can differ', () => {
+    renderStopped(true, { ...imageless({}), iteration: 2 });
+
+    expect(
+      screen.getByText('考える段まで進んだところでジョブが止まり、この回は画像を作っていない。'),
+    ).toBeTruthy();
+    // 画像を作った回には書かない
+    expect(screen.getAllByText(/この回は画像を作っていない/)).toHaveLength(1);
+    // 送っていない生成の要求は出さない
+    expect(screen.getAllByText('生成の要求')).toHaveLength(1);
+  });
+
+  it('says the job stopped before thinking when the iteration has not even thought', () => {
+    renderStopped(true, { ...imageless(null), iteration: 2 });
+
+    expect(screen.getByText('考える前にジョブが止まり、この回は画像を作っていない。')).toBeTruthy();
+  });
+
+  it('says the iteration is still going while the job runs', () => {
+    renderStopped(false, { ...imageless({}), iteration: 2 });
+
+    expect(screen.getByText('この回の画像はまだ無い（進めている途中）。')).toBeTruthy();
+    expect(screen.queryByText(/ジョブが止まり/)).toBeNull();
+  });
+});
+
 describe('IterationList and an iteration the human picked an image in', () => {
   const adoptedRecord = {
     by: 'human',
