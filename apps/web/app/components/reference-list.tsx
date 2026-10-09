@@ -1,5 +1,5 @@
 import type { ReferencesResponse } from '@drawroid/swr';
-import { AuthorMark, EmptyState, Section } from '@drawroid/ui';
+import { AuthorMark, Disclosure, EmptyState, Section } from '@drawroid/ui';
 
 import { formatTime } from '../lib/job-labels';
 
@@ -22,8 +22,13 @@ export function ReferenceItem({ reference }: { reference: Reference }) {
           : `要点: ${reference.gist}`}
       </p>
       {reference.sentInCall !== undefined && (
-        // 渡した呼び出しを出す: 参照画像を見る役に渡したのが1度だけかを、画面から確かめられるようにするため（M3:103）
-        <p className="text-xs">見る役に渡した呼び出し: {reference.sentInCall}</p>
+        // 外さずに畳む: 参照画像を見る役に渡したのが1度だけかを、画面から確かめられるようにするため（M3:103）。
+        // ID は作り手が確かめるためのもので、人が読む欄に並べると目障りになる
+        <Disclosure summary="詳しく">
+          <p className="text-xs">
+            見る役に渡した呼び出し: <code>{reference.sentInCall}</code>
+          </p>
+        </Disclosure>
       )}
     </AuthorMark>
   );

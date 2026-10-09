@@ -205,6 +205,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             verdicts={verdicts}
             interventions={interventions.data?.interventions ?? []}
             canPaintMask={data.spec.kind === 'auto' && live}
+            stopped={!live}
             {...(data.spec.kind === 'auto' && {
               adopt: { stopped: !live },
             })}

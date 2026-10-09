@@ -51,7 +51,7 @@ describe('UnattachedLlmCalls', () => {
     render(<UnattachedLlmCalls />);
 
     expect(
-      screen.getByText(/stop-parse \/ qwen \/ 入力 30 トークン \/ 出力 4 トークン/),
+      screen.getByText(/止める条件を読む \/ qwen \/ 入力 30 トークン \/ 出力 4 トークン/),
     ).toBeTruthy();
     expect(screen.getByText('20261009T000001Z-x')).toBeTruthy();
     expect(mocks.useLlmCall).not.toHaveBeenCalled();
@@ -60,6 +60,28 @@ describe('UnattachedLlmCalls', () => {
     // ジョブに属さない呼び出しとして読む（jobId は null）
     expect(mocks.useLlmCall).toHaveBeenCalledWith(null, '20261009T000002Z-b');
     expect(screen.getByText('10回まで')).toBeTruthy();
+  });
+
+  it.each([
+    ['think', '考える役'],
+    ['judge', '見る役'],
+    ['ref-gist', '参照画像の要点'],
+    ['distill', '覚える'],
+    ['stop-parse', '止める条件を読む'],
+    ['talk', '話す役'],
+  ] as const)('calls a %s call by its Japanese name, %s', (purpose, name) => {
+    mocks.useUnattachedLlmCalls.mockReturnValue({
+      data: {
+        calls: [{ ...call, purpose }],
+        total: { calls: 1, inputTokens: 30, outputTokens: 4, durationMs: 1200 },
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(<UnattachedLlmCalls />);
+
+    expect(screen.getByText(new RegExp(`^${name} / qwen / `))).toBeTruthy();
+    expect(screen.queryByText(new RegExp(`^${purpose} / `))).toBeNull();
   });
 
   it('says there is none yet', () => {
