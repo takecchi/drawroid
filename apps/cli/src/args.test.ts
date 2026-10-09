@@ -6,11 +6,24 @@ import { DEFAULT_PORT } from './listen.js';
 describe('parseCliArgs', () => {
   it('uses the default port when none is given', () => {
     expect(parseCliArgs([])).toEqual({
+      command: 'serve',
       port: DEFAULT_PORT,
       dataDir: undefined,
       backend: undefined,
       backendUrl: undefined,
     });
+  });
+
+  it('accepts doctor as the command, with the same options', () => {
+    expect(parseCliArgs(['doctor', '--data-dir', '/data'])).toMatchObject({
+      command: 'doctor',
+      dataDir: '/data',
+    });
+  });
+
+  it('refuses unknown commands and extra words', () => {
+    expect(() => parseCliArgs(['serve'])).toThrow(/doctor/);
+    expect(() => parseCliArgs(['doctor', 'now'])).toThrow(/doctor/);
   });
 
   it('accepts --port', () => {

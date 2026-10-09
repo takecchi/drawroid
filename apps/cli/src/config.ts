@@ -8,7 +8,7 @@ import { z } from 'zod';
 export const DEFAULT_BACKEND_URL = 'http://127.0.0.1:7860';
 export const DEFAULT_BACKEND_KIND: BackendKind = 'forge';
 
-const configSchema = z.object({
+export const configSchema = z.object({
   backend: z
     .object({
       kind: backendKindSchema.optional(),

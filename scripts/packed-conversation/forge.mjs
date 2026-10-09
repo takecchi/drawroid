@@ -111,6 +111,11 @@ export async function startFakeForge({ fixturesDir, genMs }) {
       const key = `${req.method} ${path}`;
       const route = ROUTES[key];
       if (route !== undefined) return send(res, 200, fixture(route));
+      // 版を読む口（drawroid doctor が使う）。中身は大きいので、読む欄（Version）だけを返す。
+      // 値の形（f<Forge の版>v<元の A1111 の版>-…）は Forge の git の tag からの推測で、実機では未確認
+      if (key === 'GET /internal/sysinfo') {
+        return send(res, 200, { Version: 'f2.0.1v1.10.1-previous-669-gdfdcbab6' });
+      }
       if (key === 'POST /sdapi/v1/interrupt') {
         stats.interrupts++;
         releaseHeld?.();

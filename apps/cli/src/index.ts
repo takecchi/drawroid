@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import {
   activeJobOfConversation,
   backfillJobEvents,
@@ -49,25 +45,32 @@ import { createBudgetSettings } from './budget-settings.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
+import { formatDoctorReport, runDoctor } from './doctor.js';
 import { createLlmSettings } from './llm-settings.js';
 import { createPermissionReader } from './permission-reader.js';
 import { wireGenerationProgress } from './progress-wiring.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
 import { createStopConditionParser } from './stop-condition-parser.js';
-import { pickWebRoot } from './web-root.js';
-
-// tsc の出力（dist）へは apps/web の成果物を写さず、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため。
-// 隣の web/ を先に見るのは配布用の bundle だけで、そちらは scripts/bundle.mjs が写す前に写し先を空にする
-function resolveWebRoot(): string {
-  return pickWebRoot(join(dirname(fileURLToPath(import.meta.url)), 'web'), () => {
-    const webPackageJson = createRequire(import.meta.url).resolve('@drawroid/web/package.json');
-    return join(dirname(webPackageJson), 'build', 'client');
-  });
-}
+import { resolveWebRoot } from './web-root.js';
 
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
   const root = resolveDataDir({ cliArg: args.dataDir, env: process.env.DRAWROID_HOME });
+  if (args.command === 'doctor') {
+    // データディレクトリは作らない: 確かめるだけで、何も書き換えない
+    const configPath = dataPaths(root).config;
+    process.stdout.write(`drawroid doctor\n  データディレクトリ: ${root}\n`);
+    const report = await runDoctor({
+      configPath,
+      backendKind: args.backend,
+      backendUrl: args.backendUrl,
+      env: process.env,
+      webRoot: resolveWebRoot,
+    });
+    process.stdout.write(formatDoctorReport(report));
+    process.exitCode = report.lacking === 0 ? 0 : 1;
+    return;
+  }
   const { sweptTempFiles } = await initDataDir(root);
   process.stdout.write(`drawroid: データディレクトリ ${root}\n`);
   if (sweptTempFiles.length > 0) {
