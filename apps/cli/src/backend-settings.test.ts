@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { BackendBusyError } from '@drawroid/api';
 import type { ForgeBackendOptions } from '@drawroid/backend-forge';
 import { StubBackend } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -76,13 +77,20 @@ describe('backend settings', () => {
     expect(await settings.read()).toEqual(view);
   });
 
-  it('lets a running generation finish on the old backend', async () => {
-    const { settings, backend, first, created } = await setup({});
+  it('refuses to reconnect while a generation runs, leaving config.json and the url as they were', async () => {
+    const { settings, backend, first } = await setup({ backend: { forgeUrl: 'http://old:7860' } });
     const running = backend.generate(request, new AbortController().signal);
-    await settings.write({ forgeUrl: 'http://new:7860' });
+    await expect(settings.write({ forgeUrl: 'http://new:7860' })).rejects.toBeInstanceOf(
+      BackendBusyError,
+    );
     await running;
     expect(first.requests).toHaveLength(1);
-    expect(created[0]?.backend.requests).toEqual([]);
+    expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
+      backend: { forgeUrl: 'http://old:7860' },
+    });
+    expect(await settings.read()).toMatchObject({ forgeUrl: 'http://old:7860' });
+    await settings.write({ forgeUrl: 'http://new:7860' });
+    expect(await settings.read()).toMatchObject({ forgeUrl: 'http://new:7860' });
   });
 
   it('keeps the other keys, the auth and the timeout in config.json after a write', async () => {

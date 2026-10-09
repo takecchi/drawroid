@@ -1,3 +1,4 @@
+import { BackendBusyError } from '@drawroid/api';
 import type {
   BackendCapabilities,
   Candidate,
@@ -10,13 +11,25 @@ import type {
 // 起動したまま Forge の URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる
 export class ReplaceableBackend implements ImageBackend {
   private current: ImageBackend;
+  private running = 0;
 
   constructor(initial: ImageBackend) {
     this.current = initial;
   }
 
-  replace(next: ImageBackend): void {
+  /**
+   * 中身を差し替え、前の中身を返す。生成が走っているあいだは BackendBusyError を投げて差し替えない。
+   */
+  // 走っているあいだは断る: 差し替えると「止める」が新しい側へ行き、古い Forge の生成を止める手段が無くなるため
+  replace(next: ImageBackend): ImageBackend {
+    if (this.running > 0) {
+      throw new BackendBusyError(
+        '生成が走っているあいだは繋ぎ直せない。生成が終わるか、止めてからやり直す',
+      );
+    }
+    const previous = this.current;
     this.current = next;
+    return previous;
   }
 
   probe(signal?: AbortSignal): Promise<BackendCapabilities> {
@@ -27,12 +40,15 @@ export class ReplaceableBackend implements ImageBackend {
     return this.current.listCandidates(kind, signal);
   }
 
-  // 呼んだ時点のバックエンドを握ったまま待つ: 走っている生成を途中で別のバックエンドへ移すことはできず、結果も古い側から返るため
-  generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
-    return this.current.generate(req, signal);
+  async generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
+    this.running += 1;
+    try {
+      return await this.current.generate(req, signal);
+    } finally {
+      this.running -= 1;
+    }
   }
 
-  // 古い側ではなく、いまの側へ送る: 差し替えた直後の「止める」は、繋ぎ直した先の Forge を止める操作として押されるため。古い側で走り続けている生成は止まらない（signal の abort で待ちは切れる）
   interrupt(): Promise<void> {
     return this.current.interrupt();
   }

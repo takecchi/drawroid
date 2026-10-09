@@ -3,10 +3,10 @@ import { StubBackend } from '@drawroid/core/testing';
 import { FsJobStore } from '@drawroid/storage-fs';
 import { describe, expect, it } from 'vitest';
 
-import type { BackendSettingsView } from '../backend-settings.js';
+import { BackendBusyError, type BackendSettingsView } from '../backend-settings.js';
 import { createApi } from '../index.js';
 
-function setup(initial: BackendSettingsView) {
+function setup(initial: BackendSettingsView, { busy = false } = {}) {
   let view = initial;
   const written: { forgeUrl: string }[] = [];
   const backend = new StubBackend();
@@ -19,6 +19,7 @@ function setup(initial: BackendSettingsView) {
       // 秘密を余分に載せて返す実装でも、API が漏らさないことを確かめるため、型を越えて返す
       read: async () => ({ ...view, auth: { username: 'u', password: 'secret' } }) as never,
       write: async (input) => {
+        if (busy) throw new BackendBusyError('生成が走っている');
         written.push(input);
         view = { ...view, forgeUrl: input.forgeUrl, forgeUrlSource: 'config' };
         return view;
@@ -56,6 +57,14 @@ describe('GET /settings/backend', () => {
 });
 
 describe('PUT /settings/backend', () => {
+  it('answers 409 with the reason while a generation runs', async () => {
+    const { put, written } = setup(initial, { busy: true });
+    const res = await put({ forgeUrl: 'http://gpu:7860' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: { kind: 'busy' } });
+    expect(written).toEqual([]);
+  });
+
   it('saves the url and returns the settings now in use', async () => {
     const { put, written } = setup(initial);
     const res = await put({ forgeUrl: 'http://gpu:7860' });

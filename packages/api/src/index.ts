@@ -9,6 +9,7 @@ import { jobsRoutes } from './routes/jobs.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
 
 export {
+  BackendBusyError,
   backendSettingsViewSchema,
   updateBackendSettingsSchema,
   type BackendSettingsPort,

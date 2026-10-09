@@ -16,7 +16,16 @@ export const updateBackendSettingsSchema = z.object({
 });
 export type UpdateBackendSettings = z.infer<typeof updateBackendSettingsSchema>;
 
+/** 生成が走っているあいだは繋ぎ直せないことを表す。API は 409 で返す */
+export class BackendBusyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BackendBusyError';
+  }
+}
+
 export interface BackendSettingsPort {
   read(): Promise<BackendSettingsView>;
+  /** 生成が走っていれば BackendBusyError を投げ、config.json も書かない */
   write(input: UpdateBackendSettings): Promise<BackendSettingsView>;
 }

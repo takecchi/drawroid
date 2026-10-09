@@ -1,3 +1,5 @@
+import { BackendBusyError } from '@drawroid/api';
+import { BackendError } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -33,25 +35,24 @@ describe('ReplaceableBackend', () => {
     expect(second.requests).toHaveLength(1);
   });
 
-  it('lets a running generation finish on the backend it started on', async () => {
+  it('refuses to replace while a generation runs, so interrupt still reaches it', async () => {
     const first = new StubBackend({ generateDelayMs: 20 });
     const second = new StubBackend();
     const backend = new ReplaceableBackend(first);
     const running = backend.generate(request, new AbortController().signal);
-    backend.replace(second);
-    const result = await running;
-    expect(result.images).toHaveLength(1);
-    expect(first.requests).toHaveLength(1);
+    expect(() => backend.replace(second)).toThrow(BackendBusyError);
+    await backend.interrupt();
+    expect(first.interruptCount).toBe(1);
+    await running;
     expect(second.requests).toEqual([]);
   });
 
-  it('sends interrupt to the current backend, not the one a generation started on', async () => {
+  it('can be replaced again once the generation has ended, even when it failed', async () => {
     const first = new StubBackend();
-    const second = new StubBackend();
+    first.failNextGenerate(new BackendError('failed', 'out of memory'));
     const backend = new ReplaceableBackend(first);
-    backend.replace(second);
-    await backend.interrupt();
-    expect(first.interruptCount).toBe(0);
-    expect(second.interruptCount).toBe(1);
+    await expect(backend.generate(request, new AbortController().signal)).rejects.toThrow();
+    const second = new StubBackend();
+    expect(backend.replace(second)).toBe(first);
   });
 });
