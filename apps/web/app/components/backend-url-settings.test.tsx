@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { saveBackendSettings, useBackendSettings } from '@drawroid/swr';
+import { ApiError, saveBackendSettings, useBackendSettings } from '@drawroid/swr';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -90,5 +90,127 @@ describe('BackendUrlSettings', () => {
     await user.type(screen.getByLabelText('バックエンドの URL'), 'http://');
 
     expect(screen.queryByText(/保存した/)).toBeNull();
+  });
+
+  // 欠けた形や {} で流さない: 本番の API が返す view（保存は urlSource 'config'）でしか起きない崩れを見落とすため
+  const view = (url: string, urlSource: 'cli' | 'config' | 'default') =>
+    ({ kind: 'forge', url, urlSource, auth: null, generateTimeoutMs: null }) as const;
+  const saveButton = () => screen.getByRole('button', { name: '保存' });
+
+  it('saves the URL without the spaces around it, and says the trimmed URL', async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveBackendSettings).mockResolvedValue(view('http://127.0.0.1:7861', 'config'));
+    render(<BackendUrlSettings />);
+
+    await user.clear(field());
+    await user.type(field(), '  http://127.0.0.1:7861  ');
+    await user.click(saveButton());
+
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7861' });
+    expect(await screen.findByText('保存した。http://127.0.0.1:7861 に繋ぐ。')).toBeTruthy();
+  });
+
+  it('cannot save a field of only spaces', async () => {
+    const user = userEvent.setup();
+    render(<BackendUrlSettings />);
+
+    await user.clear(field());
+    await user.type(field(), '   ');
+
+    expect(saveButton()).toHaveProperty('disabled', true);
+  });
+
+  it('can save again after a save, not left waiting', async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveBackendSettings).mockResolvedValue(view('http://127.0.0.1:7861', 'config'));
+    render(<BackendUrlSettings />);
+    await user.clear(field());
+    await user.type(field(), 'http://127.0.0.1:7861');
+
+    await user.click(saveButton());
+    await screen.findByText(/保存した。/);
+
+    expect(saveButton()).toHaveProperty('disabled', false);
+  });
+
+  describe('when the save fails', () => {
+    const busy = '生成が走っているあいだは繋ぎ直せない。生成が終わるか、止めてからやり直す';
+    const failSave = () =>
+      vi.mocked(saveBackendSettings).mockRejectedValue(new ApiError('busy', busy, 409));
+
+    it('shows why, does not say it saved, and keeps what was typed', async () => {
+      const user = userEvent.setup();
+      failSave();
+      render(<BackendUrlSettings />);
+      await user.clear(field());
+      await user.type(field(), 'http://127.0.0.1:7861');
+
+      await user.click(saveButton());
+
+      expect(await screen.findByText(`保存できない: ${busy}`)).toBeTruthy();
+      expect(screen.queryByText(/保存した。/)).toBeNull();
+      expect(field().value).toBe('http://127.0.0.1:7861');
+    });
+
+    it('can be tried again, not left waiting', async () => {
+      const user = userEvent.setup();
+      failSave();
+      render(<BackendUrlSettings />);
+      await user.type(field(), '1');
+
+      await user.click(saveButton());
+      await screen.findByText(/保存できない/);
+
+      expect(saveButton()).toHaveProperty('disabled', false);
+    });
+  });
+
+  // SWR は再取得のたびに別の data オブジェクトを返す。打っている途中の値を、読み直した設定で上書きしない
+  it('keeps what is being typed when the settings are read again', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useBackendSettings).mockReturnValue({
+      data: view('http://127.0.0.1:7860', 'default'),
+      error: undefined,
+    } as never);
+    const { rerender } = render(<BackendUrlSettings />);
+    await user.clear(field());
+    await user.type(field(), 'http://127.0.0.1:7861');
+
+    vi.mocked(useBackendSettings).mockReturnValue({
+      data: view('http://127.0.0.1:7860', 'default'),
+      error: undefined,
+    } as never);
+    rerender(<BackendUrlSettings />);
+
+    expect(field().value).toBe('http://127.0.0.1:7861');
+  });
+
+  it('does not show the start-up argument warning when the URL comes from config or the default', () => {
+    for (const urlSource of ['config', 'default'] as const) {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', urlSource),
+        error: undefined,
+      } as never);
+      const { unmount } = render(<BackendUrlSettings />);
+
+      expect(screen.queryByText(/注意: 起動時に --backend-url/)).toBeNull();
+      unmount();
+    }
+  });
+
+  // 引数で決まっていても、保存は今の起動の間は効く。同じ URL を押せなくすると、config.json へ書く手段が無くなる
+  it('can save the same URL as the start-up argument, as it is', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useBackendSettings).mockReturnValue({
+      data: view('http://gpu:7860', 'cli'),
+      error: undefined,
+    } as never);
+    vi.mocked(saveBackendSettings).mockResolvedValue(view('http://gpu:7860', 'config'));
+    render(<BackendUrlSettings />);
+
+    expect(saveButton()).toHaveProperty('disabled', false);
+    await user.click(saveButton());
+
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860' });
   });
 });
