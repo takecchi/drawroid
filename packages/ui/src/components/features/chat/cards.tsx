@@ -325,16 +325,19 @@ export function StopNotice({
 
 export type ChatStatus = 'queued' | 'waiting-llm' | 'job.held';
 
-const STATUS_TEXT: Record<ChatStatus, string> = {
+export const STATUS_TEXT: Record<ChatStatus, string> = {
   queued: '順番を待っています',
   'waiting-llm': '考えています',
   'job.held': '話を聞いています（描くのは待たせています）',
 };
 
-/** 今の状態の1行。確定しないので、次の状態か確定したイベントで消える */
+/**
+ * 今の状態の1行。確定しないので、次の状態か確定したイベントで消える。
+ * 読み上げには出さない: 現れては消える要素の変化は読み上げに届きにくいので、ChatLayout の常にある場所で知らせる。
+ */
 export function StatusLine({ status }: { status: ChatStatus }) {
   return (
-    <div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+    <div aria-hidden className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
       <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground" />
       {STATUS_TEXT[status]}
     </div>

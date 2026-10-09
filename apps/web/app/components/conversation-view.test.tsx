@@ -199,6 +199,23 @@ describe('ConversationView', () => {
     expect(screen.getByText(/描くのを止めた/)).toBeTruthy();
   });
 
+  it('announces thinking and listening in the same live region as the state changes', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    const region = screen.getByRole('status');
+
+    stream.emit({ type: 'status', status: 'waiting-llm' });
+    expect(region.textContent).toBe('考えています');
+
+    stream.emit({ type: 'job.held', jobId: JOB, held: true });
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('話を聞いています（描くのは待たせています）');
+
+    stream.emit({ type: 'job.held', jobId: JOB, held: false });
+    expect(region.textContent).toBe('考えています');
+  });
+
   it('says which image a human chose when the iteration was settled by the choice', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);

@@ -21,7 +21,13 @@ import {
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
-import { chatItems, isRunning, type ChatImage, type ChatItem } from '../lib/chat-state';
+import {
+  chatItems,
+  currentStatus,
+  isRunning,
+  type ChatImage,
+  type ChatItem,
+} from '../lib/chat-state';
 import { useConversationStream, type ConversationSource } from '../lib/conversation-stream';
 import { formatScore } from '../lib/format';
 import { describeStopConditions } from '../lib/stop-conditions-form';
@@ -347,6 +353,7 @@ export function ConversationView({
   return (
     <ChatLayout
       header={title}
+      status={currentStatus(chat)}
       log={
         <ChatLog
           followKey={`${items.length}:${last?.kind === 'assistant' || last?.kind === 'reasoning' ? last.text.length : ''}`}

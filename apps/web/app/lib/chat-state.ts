@@ -461,6 +461,11 @@ export function chatItems(state: ChatState): ChatItem[] {
   return items;
 }
 
+/** 今の状態（読み上げに知らせる）。行の並びの状態の行と同じ決め方にする */
+export function currentStatus(state: ChatState): ChatStatus | 'job.held' | undefined {
+  return state.held.size > 0 ? 'job.held' : state.status;
+}
+
 /** 話す役のターンか、会話のジョブが走っているか（止めるボタンを出すか） */
 export function isRunning(state: ChatState): boolean {
   let turnOpen = false;
