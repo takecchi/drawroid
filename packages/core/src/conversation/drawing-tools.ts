@@ -9,6 +9,7 @@ import {
   stopConditionsSchema,
   type InterventionRecord,
   type NewReference,
+  type ReferenceRecord,
   type StopConditions,
   type StopConditionsChange,
 } from '../job/types.js';
@@ -30,6 +31,8 @@ export type DrawingRunner = {
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
   /** 人間が選んだ画像を、走っているジョブに置く（お気に入りへの記録はしない） */
   adopt(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord>;
+  /** 走っているジョブに参照画像を添える。次の回の境目で、見る役が1度だけ見て要点にする */
+  addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
 };
 
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
@@ -89,6 +92,22 @@ function backendProblem(error: unknown): string {
 const MAX_REQUEST_CHARS = 2000;
 const MAX_INSTRUCTION_CHARS = 2000;
 
+/** 会話で添えた画像の指し方。uploadId は、話す役の入力の発言に「（添えた画像: …）」として載る */
+const attachmentsSchema = z
+  .array(
+    z.object({
+      uploadId: z.string().min(1),
+      note: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('用途の言葉（「この構図で」など）'),
+    }),
+  )
+  .optional();
+
 const startInputSchema = z.object({
   request: z.string().trim().min(1).max(MAX_REQUEST_CHARS).describe('描くものの要点'),
   stopConditions: stopConditionsSchema
@@ -101,21 +120,9 @@ const startInputSchema = z.object({
     .describe(
       '人間の許可を狭めるときだけ書く（使わないにする・候補の中の値で固定する・候補を絞る）。広げることはできない',
     ),
-  attachments: z
-    .array(
-      z.object({
-        uploadId: z.string().min(1),
-        note: z
-          .string()
-          .trim()
-          .min(1)
-          .max(200)
-          .optional()
-          .describe('用途の言葉（「この構図で」など）'),
-      }),
-    )
-    .optional()
-    .describe('人間がこの会話で添えた画像を、参照画像として使うとき'),
+  attachments: attachmentsSchema.describe(
+    '人間がこの会話で添えた画像を、参照画像として使うとき。発言の「（添えた画像: …）」の ID を書く',
+  ),
 });
 
 const adoptInputSchema = z.object({
@@ -127,10 +134,41 @@ const reviseInputSchema = z
   .object({
     instruction: z.string().trim().min(1).max(MAX_INSTRUCTION_CHARS).optional(),
     stopConditions: stopConditionsChangeSchema.optional(),
+    attachments: attachmentsSchema.describe(
+      '人間がこの会話で添えた画像を、描いている絵の参照画像に足すとき。発言の「（添えた画像: …）」の ID を書く',
+    ),
   })
-  .refine((input) => input.instruction !== undefined || input.stopConditions !== undefined, {
-    message: '指示か止める条件の変更のどちらかを書く',
-  });
+  .refine(
+    (input) =>
+      input.instruction !== undefined ||
+      input.stopConditions !== undefined ||
+      (input.attachments ?? []).length > 0,
+    { message: '指示・止める条件の変更・添えた画像のどれかを書く' },
+  );
+
+/**
+ * 会話で添えた画像を、参照画像の形で読む。1枚でもこの会話に無ければ、どれも使わずに理由を返す
+ * （一部だけ添えたまま進めると、人間が添えたつもりの画像が黙って欠けるため）
+ */
+async function readAttachments(
+  conversations: ConversationStore,
+  conversationId: string,
+  attachments: readonly { uploadId: string; note?: string | undefined }[],
+): Promise<{ ok: true; references: NewReference[] } | { ok: false; reason: string }> {
+  const references: NewReference[] = [];
+  for (const attachment of attachments) {
+    const upload = await conversations.readUpload(conversationId, attachment.uploadId);
+    if (upload === undefined) {
+      return { ok: false, reason: `添えた画像 ${attachment.uploadId} はこの会話に無い` };
+    }
+    references.push({
+      data: upload.data,
+      mediaType: upload.mediaType,
+      ...(attachment.note !== undefined && { note: attachment.note }),
+    });
+  }
+  return { ok: true, references };
+}
 
 /** 結果の文を、話す役へ返す result と画面に出す summary の両方に使う */
 function outcome(ok: boolean, text: string): TalkToolOutcome {
@@ -194,21 +232,13 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (!hasAnyStopCondition(stopConditions)) {
         return outcome(false, 'この止める条件では止まらない。回数か AI の判断を足す');
       }
-      const references: NewReference[] = [];
-      for (const attachment of input.attachments ?? []) {
-        const upload = await deps.conversations.readUpload(
-          context.conversationId,
-          attachment.uploadId,
-        );
-        if (upload === undefined) {
-          return outcome(false, `添えた画像 ${attachment.uploadId} はこの会話に無い`);
-        }
-        references.push({
-          data: upload.data,
-          mediaType: upload.mediaType,
-          ...(attachment.note !== undefined && { note: attachment.note }),
-        });
-      }
+      const attached = await readAttachments(
+        deps.conversations,
+        context.conversationId,
+        input.attachments ?? [],
+      );
+      if (!attached.ok) return outcome(false, attached.reason);
+      const references = attached.references;
       const budgets = await deps.budgets();
       const spec = await deps.jobs.createJob(
         {
@@ -236,12 +266,19 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
   const reviseDrawing: TalkTool = {
     name: 'revise_drawing',
     description:
-      '描いている絵に、人間の指示（「次は夕焼けにして」など）を伝える・止める条件を変える。次の回の境目から効く。描いている絵が無いときは使えない',
+      '描いている絵に、人間の指示（「次は夕焼けにして」など）を伝える・止める条件を変える・人間が添えた画像を参照画像に足す。次の回の境目から効く。描いている絵が無いときは使えない',
     inputSchema: reviseInputSchema,
     async run(raw, context) {
       const input = reviseInputSchema.parse(raw);
       const jobId = await activeJobOf(context);
       if (jobId === undefined) return outcome(false, '描いている絵が無い');
+      // 添えた画像は先に全部読む: 無い画像があれば、指示も止める条件も変えずに断るため
+      const attached = await readAttachments(
+        deps.conversations,
+        context.conversationId,
+        input.attachments ?? [],
+      );
+      if (!attached.ok) return outcome(false, attached.reason);
       const done: string[] = [];
       if (input.instruction !== undefined) {
         await deps.runner.addInstruction(jobId, input.instruction);
@@ -250,6 +287,12 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (input.stopConditions !== undefined) {
         const conditions = await deps.runner.changeStopConditions(jobId, input.stopConditions);
         done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
+      }
+      for (const reference of attached.references) {
+        await deps.runner.addReference(jobId, reference);
+      }
+      if (attached.references.length > 0) {
+        done.push(`参照画像を ${attached.references.length} 枚添えた`);
       }
       return outcome(true, `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`);
     },

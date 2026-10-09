@@ -20,7 +20,7 @@ import { clearTimeout, setTimeout } from 'node:timers';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
-import { startFakeForge } from './packed-conversation/forge.mjs';
+import { makePng, startFakeForge } from './packed-conversation/forge.mjs';
 import { startFakeLlm } from './packed-conversation/llm.mjs';
 import { freePort, packAndInstall, repoRoot, startDrawroid } from './packed-install-core.mjs';
 
@@ -504,6 +504,89 @@ try {
     (await narrowComposer.isEnabled()) && (await composerInView()),
     '狭い画面でも、止めるでターンが止まり、入力欄が画面の中に残る',
   );
+
+  // 10. 狭い画面で画像を2枚添えて描くよう頼むと、添えた画像は話す役の入力に ID で載り、話す役がその ID を start_drawing に写すと、
+  // ジョブの参照画像になる。偽の LLM は入力を読まないので、話す役の呼び出しを止めている間に、会話に置かれた ID を読んで台本に入れる
+  const { conversation: withImages } = await api(base, 'POST', '/api/conversations', {});
+  await narrow.goto(`${base}/conversations/${withImages.conversationId}`);
+  const attachButton = narrow.getByRole('button', { name: '画像を添える' });
+  await attachButton.waitFor();
+  await narrow.getByLabel('添える画像を選ぶ').setInputFiles([
+    { name: 'beach.png', mimeType: 'image/png', buffer: makePng(1) },
+    { name: 'sky.png', mimeType: 'image/png', buffer: makePng(2) },
+  ]);
+  const attachedList = narrow.getByRole('list', { name: '添える画像' });
+  await attachedList.getByRole('img', { name: 'sky.png' }).waitFor();
+  expect(
+    (await attachedList.getByRole('img').count()) === 2 &&
+      (await narrow.getByRole('button', { name: 'beach.png を外す' }).isVisible()) &&
+      (await narrow.getByRole('button', { name: 'sky.png を外す' }).isVisible()),
+    '狭い画面で、添えた画像が縮小版で並び、1枚ずつ名前つきの「外す」がある',
+  );
+  // 狭い画面に収まる: 横にはみ出さず、添えるボタン・入力欄・送るボタンが画面の中にある
+  const inView = async (/** @type {import('playwright-core').Locator} */ locator) => {
+    const box = await locator.boundingBox();
+    return box !== null && box.x >= 0 && box.x + box.width <= 390 && box.y + box.height <= 844;
+  };
+  const overflow = Number(
+    await narrow.evaluate(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    ),
+  );
+  expect(
+    overflow <= 0 &&
+      (await inView(attachButton)) &&
+      (await inView(narrowComposer)) &&
+      (await inView(narrow.getByRole('button', { name: '送る' }))) &&
+      (await inView(attachedList)),
+    `狭い画面で、画像を添えても横にはみ出さず、添える・入力・送るが画面の中にある（はみ出し ${overflow}px）`,
+  );
+  const heldBeforeAttach = llm.stats.heldTalkCalls;
+  llm.holdTalk();
+  await narrowComposer.fill('添えた2枚の雰囲気で描いて');
+  await narrowComposer.press('Enter');
+  await talkHeld(heldBeforeAttach + 1);
+  const said = /** @type {{ type: string, attachments?: { uploadId: string }[] }[]} */ (
+    (await api(base, 'GET', `/api/conversations/${withImages.conversationId}/events?limit=1000`))
+      .events
+  ).find((event) => event.type === 'user.message');
+  const uploadIds = (said?.attachments ?? []).map((attachment) => attachment.uploadId);
+  expect(uploadIds.length === 2, `発言に、添えた2枚の ID が載る（${uploadIds.join(', ')}）`);
+  const jobsBeforeAttach = new Set(
+    (await api(base, 'GET', '/api/jobs')).jobs.map(
+      (/** @type {{ jobId: string }} */ job) => job.jobId,
+    ),
+  );
+  llm.queueTalkTool('start_drawing', {
+    request: '添えた2枚の雰囲気で',
+    stopConditions: { aiJudgement: false, maxIterations: 1 },
+    attachments: uploadIds.map((uploadId) => ({ uploadId })),
+  });
+  llm.releaseTalk();
+  const narrowAttachLog = narrow.getByLabel('会話のログ');
+  await narrowAttachLog.getByText('画像を 2 枚添えた').waitFor();
+  await narrowAttachLog.getByText(REPLY).waitFor();
+  /** @type {string | undefined} */
+  let attachedJob;
+  const deadline = Date.now() + STEP_TIMEOUT_MS;
+  while (attachedJob === undefined && Date.now() < deadline) {
+    attachedJob = (await api(base, 'GET', '/api/jobs')).jobs
+      .map((/** @type {{ jobId: string }} */ job) => job.jobId)
+      .find((/** @type {string} */ jobId) => !jobsBeforeAttach.has(jobId));
+    if (attachedJob === undefined) await sleep(100);
+  }
+  const references =
+    attachedJob === undefined
+      ? []
+      : (await api(base, 'GET', `/api/jobs/auto/${attachedJob}/references`)).references;
+  expect(
+    references.length === 2,
+    `添えた2枚が、話す役の start_drawing でジョブの参照画像になる（${references.length} 枚）`,
+  );
+  expect((await attachedList.count()) === 0, '送ったあとは、添えた画像が入力欄から外れる');
+  // 9. は元の会話で頼む（この会話には、いま描いているジョブがある）
+  await narrow.goto(conversationUrl);
+  await narrowLog.getByText(missed).waitFor();
 
   // 9. 偽の Forge が止まっているときに描くよう頼むと、話す役は描き始めず（ジョブを作らず）、何が足りないかが画面に出る
   const jobsBefore = (await api(base, 'GET', '/api/jobs')).jobs.length;

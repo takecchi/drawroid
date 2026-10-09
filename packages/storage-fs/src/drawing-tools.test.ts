@@ -283,6 +283,62 @@ describe('revise_drawing and stop_drawing', () => {
     await runner.idle();
   });
 
+  it('adds the images attached in the conversation to the references of the drawing going on', async () => {
+    const { jobs, context, runner, conversations, conversationId } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const uploadId = await conversations.addUpload(
+      conversationId,
+      { data: STUB_PNG, mediaType: 'image/png' },
+      new Date(),
+    );
+
+    const revised = await run(
+      'revise_drawing',
+      { attachments: [{ uploadId, note: 'この色で' }] },
+      context,
+    );
+
+    expect(revised).toMatchObject({ ok: true });
+    expect(revised.summary).toContain('参照画像を 1 枚添えた');
+    // 口出しの記録の形は増やさない: 走っているジョブの参照画像（refs/）として置く
+    expect(await jobs.listReferences(jobId!)).toEqual([
+      expect.objectContaining({ mediaType: 'image/png', note: 'この色で' }),
+    ]);
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
+  it('changes nothing when one of the attached images is not in the conversation', async () => {
+    const { jobs, context, runner, conversations, conversationId } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const uploadId = await conversations.addUpload(
+      conversationId,
+      { data: STUB_PNG, mediaType: 'image/png' },
+      new Date(),
+    );
+
+    const revised = await run(
+      'revise_drawing',
+      {
+        instruction: '逆光にして',
+        attachments: [{ uploadId }, { uploadId: '20261009-000000-none' }],
+      },
+      context,
+    );
+
+    expect(revised.ok).toBe(false);
+    expect(revised.summary).toContain('20261009-000000-none');
+    expect(await jobs.listReferences(jobId!)).toEqual([]);
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
   it('stops the drawing going on', async () => {
     const { jobs, context, runner } = await setup();
     await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
