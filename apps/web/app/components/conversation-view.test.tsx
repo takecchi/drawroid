@@ -1035,8 +1035,35 @@ describe('ConversationView', () => {
         }),
       );
       const dialog = within(screen.getByRole('dialog', { name: /添えた画像 2 枚目/ }));
-      // 添えた画像は見る役の評価も選ぶボタンも持たない
-      expect(dialog.queryByRole('button', { name: /この画像で決める/ })).toBeNull();
+      // 添えた画像は見る役の評価も選ぶボタンも持たず、塗ることもできない
+      expect(
+        dialog.queryByRole('button', { name: /この画像で決める|この画像に決める/ }),
+      ).toBeNull();
+      expect(dialog.queryByRole('button', { name: /お気に入り|却下|マスクを塗る/ })).toBeNull();
+      expect(dialog.queryByText(/見る役の点/)).toBeNull();
+    });
+
+    it('names an attached image after the first 12 characters of a long message', async () => {
+      const { source } = fakeSource([
+        {
+          events: [
+            confirmed({
+              type: 'user.message',
+              text: '一二三四五六七八九十一二三四五',
+              attachments: [{ uploadId: 'u-1' }],
+            }),
+          ],
+          last: 1,
+          more: false,
+        },
+      ]);
+      renderView(source);
+
+      expect(
+        await screen.findByRole('button', {
+          name: '大きく見る: 添えた画像 1 枚目（「一二三四五六七八九十一二…」）',
+        }),
+      ).toBeTruthy();
     });
   });
 
@@ -1260,6 +1287,21 @@ describe('ConversationView', () => {
 
       expect(addMask).toHaveBeenCalledWith(JOB, { iteration: 2, index: 0 }, 'PNG-BASE64');
       expect(await dialog().findByText(/送った/)).toBeTruthy();
+      // 送ったら塗りかけは残らないので、閉じないとは言わず、Esc で閉じる
+      expect(dialog().queryByText(/Esc や窓の外を押しても閉じません/)).toBeNull();
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('closes on Escape while painting with nothing painted yet, without saying it stays open', async () => {
+      const { user, dialog } = await startPainting();
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+      loadOriginal(dialog);
+
+      expect(dialog().getByText(/塗っている間は前後へ送れません/)).toBeTruthy();
+      expect(dialog().queryByText(/Esc や窓の外を押しても閉じません/)).toBeNull();
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
     it('does not move to another image while painting, and says so', async () => {

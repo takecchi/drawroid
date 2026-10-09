@@ -4,7 +4,7 @@
 // 3. 塗りかけがある間は、Esc でも窓の外を押しても閉じない
 // 4. 「マスクを送る」で送ると、ジョブの口出しにマスクが入る（ジョブの詳細の塗る部品と同じ口）
 // 5. 閉じるボタンは、塗りかけを捨てて閉じる。開き直すと、塗る前の窓に戻る
-// 6. 狭い画面（390×844）でも、塗る面と送るボタンが画面の中に収まり、横にはみ出さない
+// 6. 狭い画面（390×844）でも広い画面でも、塗る面と送るボタンが画面の中に収まり、はみ出さない
 // 7. ジョブの詳細の人間の指示にも、塗ったマスクが、画像を 1 から数えた名前で出る
 // 偽の LLM と偽の Forge は check-packed-conversation の部品（scripts/packed-conversation/）を使う。ジョブは回を重ね続けるようにして、塗る間も止めない。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
@@ -52,7 +52,8 @@ let forge;
 let llm;
 try {
   const bin = await packAndInstall(work);
-  forge = await startFakeForge({ fixturesDir: FIXTURES, genMs: 500 });
+  // 原寸を画面より大きくする: 小さな画像では、塗る面の大きさの指定が無くても収まってしまい、収まりの確かめが効かないため
+  forge = await startFakeForge({ fixturesDir: FIXTURES, genMs: 500, imageSize: 1024 });
   llm = await startFakeLlm({ stopAfterIterations: ITERATIONS });
   const port = await freePort();
   ({ child } = await startDrawroid(
@@ -147,20 +148,25 @@ try {
       `${label}: 塗っている間は、塗る面を横になぞっても、右のキーでも、隣の画像へ送らない`,
     );
 
-    if (width < 768) {
-      // 6. 狭い画面でも、塗る面と送るボタンが画面の中に収まる
+    {
+      // 6. どの画面の幅でも、塗る面と送るボタンが画面の中に収まる（広い画面では、画面より高い原寸が縦にはみ出さない）
       const fits = await page.evaluate(`(() => {
         const dialog = document.querySelector('[role="dialog"]');
         const canvas = dialog.querySelector('canvas');
+        // 塗る面が重なる画像。画像がはみ出すと、塗る面（入れ物に合わせて置かれる）とずれ、塗った所と画像の所が食い違う
+        const image = canvas.parentElement.querySelector('img');
         const send = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'マスクを送る');
         const inside = (r) => r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
         send?.scrollIntoView({ block: 'nearest' });
-        return inside(canvas.getBoundingClientRect()) && send !== undefined && inside(send.getBoundingClientRect())
+        const a = canvas.getBoundingClientRect();
+        const b = image.getBoundingClientRect();
+        const same = Math.abs(a.width - b.width) <= 2 && Math.abs(a.height - b.height) <= 2;
+        return inside(a) && inside(b) && same && send !== undefined && inside(send.getBoundingClientRect())
           && document.documentElement.scrollWidth <= innerWidth;
       })()`);
       expect(
         Boolean(fits),
-        `${label}: 塗る面と「マスクを送る」が画面の中に収まり、横にはみ出さない`,
+        `${label}: 塗る面・その画像・「マスクを送る」が画面の中に収まり、塗る面と画像の大きさがそろい、横にはみ出さない`,
       );
     }
 
