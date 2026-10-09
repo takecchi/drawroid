@@ -24,10 +24,12 @@ import {
 let root: string;
 let store: FsJobStore;
 let app: ReturnType<typeof createApi>;
+let notified: string[];
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-api-selections-'));
   store = new FsJobStore(root);
+  notified = [];
   const backend = new StubBackend();
   let clock = Date.parse('2026-10-09T00:00:00Z');
   const now = () => new Date((clock += 1000));
@@ -55,6 +57,13 @@ beforeEach(async () => {
     llmSettings: { read: async () => undefined, write: async () => undefined },
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     conversations: memoryConversations(),
+    // 解けない Promise を返す口: 応答が蒸留を待つなら、この試験は終わらない
+    reselection: {
+      notify: (jobId: string) => {
+        notified.push(jobId);
+        return new Promise<never>(() => undefined);
+      },
+    },
     env: {},
     now,
   });
@@ -132,6 +141,23 @@ describe('selections of the images of a job', () => {
     expect(await selections(jobId)).toEqual([
       { imageKey: '10-1', verdict: 'favorite', score: 0.9, issues: ['指が崩れている'] },
     ]);
+  });
+
+  it('tells the background distiller about a changed selection and answers without waiting for it', async () => {
+    const jobId = await jobWithImages();
+
+    const res = await put(jobId, '10-1', { verdict: 'favorite' });
+
+    expect(res.status).toBe(200);
+    expect(notified).toEqual([jobId]);
+  });
+
+  it('does not tell the background distiller about a selection that was refused', async () => {
+    const jobId = await jobWithImages();
+
+    await put(jobId, '10-5', { verdict: 'favorite' });
+
+    expect(notified).toEqual([]);
   });
 
   it('keeps what a reselection replaced, down to clearing the choice', async () => {

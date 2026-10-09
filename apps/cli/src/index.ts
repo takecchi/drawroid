@@ -8,6 +8,7 @@ import {
   DEFAULT_BUDGET,
   ManualGenerationRunner,
   ProgressPreviews,
+  ReselectionDistiller,
 } from '@drawroid/core';
 import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
@@ -117,6 +118,16 @@ async function main() {
   }
   // 落ちる前の自動ジョブを再開する
   autoQueue.kick();
+  const reselection = new ReselectionDistiller({
+    store,
+    memory: memoryStore,
+    log: createFsDistillLog(root),
+    llm: () => autoQueue.currentLlm(),
+    onError: (error) =>
+      log(
+        `drawroid: 選び直しの蒸留に失敗した: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
   const llmSettings = {
     read: () => readLlmSettings(configPath),
     write: async (llm: LlmConfig) => {
@@ -137,6 +148,7 @@ async function main() {
       backendSettings,
       memoryStore,
       autoQueue,
+      reselection,
       budgetSettings: createBudgetSettings(configPath),
       progressPreviews: new ProgressPreviews(),
       generationProgressSettings: createGenerationProgressSettings(configPath),

@@ -98,5 +98,7 @@ export type ApiDeps = {
   conversations: ConversationsPort;
   /** API キーの環境変数が入っているかを確かめるため。値は応答に出さない */
   env: Readonly<Record<string, string | undefined>>;
+  /** 止まったジョブで選択が変わったときに、蒸留を裏で回す側へ知らせる。応答は待たない */
+  reselection?: { notify(jobId: string): void };
   now?: () => Date;
 };

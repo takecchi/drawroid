@@ -18,7 +18,7 @@ const bodySchema = z.object({
 });
 
 /** 回の画像への人間の最終選択（お気に入り・却下）。手動のジョブ・自動のジョブのどちらにも付けられる */
-export function selectionsRoutes({ store, now }: ApiDeps) {
+export function selectionsRoutes({ store, now, reselection }: ApiDeps) {
   async function hasJob(jobId: string): Promise<boolean> {
     // 一覧に在るものだけを通す: 外から来た文字列をそのまま置き場所へ渡さないため
     return (await store.listJobIds()).includes(jobId);
@@ -45,6 +45,8 @@ export function selectionsRoutes({ store, now }: ApiDeps) {
           verdict: c.req.valid('json').verdict,
           now: (now ?? (() => new Date()))(),
         });
+        // 蒸留を待たない: LLM を待つ間、選択の操作の応答が止まるため
+        reselection?.notify(jobId);
         return c.json({ selection }, 200);
       } catch (error) {
         if (error instanceof ImageNotFoundError) return notFound(c, error.message);
