@@ -1,4 +1,5 @@
 import type { CandidateKind } from '@drawroid/core';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
 import { type ApiError, unwrap } from './api-error.js';
@@ -9,6 +10,7 @@ import type {
   BackendStatus,
   BudgetSettingsResponse,
   GenerationProgressSettingsResponse,
+  JobDistillResponse,
   CandidateNotesResponse,
   CandidatesResponse,
   ConversationEventsResponse,
@@ -200,6 +202,36 @@ export function useConversationEvents(conversationId: string | undefined, after 
         }),
       ),
   );
+}
+
+/** 覚えたことの記録がまだ無い間に読み直す間隔。伸ばしながら、尽きたら止める（永遠には読まない） */
+export const JOB_DISTILL_RETRY_MS = [2_000, 4_000, 8_000, 16_000, 30_000, 60_000] as const;
+
+/**
+ * ジョブから覚えたこと。止まったジョブの蒸留は裏で走るので、記録がまだ無い間だけ、JOB_DISTILL_RETRY_MS の間隔で読み直す。
+ * 記録が出たら止める。読み直しが尽きても無ければ exhausted（蒸留が済んでいないか、記録を残せずに終わった）。
+ * jobId を渡さなければ読まない
+ */
+export function useJobDistill(jobId: string | undefined) {
+  const { data, error, mutate } = useSWR<JobDistillResponse, ApiError>(
+    jobId === undefined ? null : keys.jobDistill(jobId),
+    () =>
+      unwrap<JobDistillResponse>(() =>
+        client.jobs[':jobId'].distill.$get({ param: { jobId: jobId ?? '' } }),
+      ),
+  );
+  const [attempt, setAttempt] = useState(0);
+  const empty = data !== undefined && data.entries.length === 0;
+  useEffect(() => {
+    const delay = JOB_DISTILL_RETRY_MS[attempt];
+    if (!empty || delay === undefined) return;
+    const timer = setTimeout(() => {
+      void mutate().finally(() => setAttempt((n) => n + 1));
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [empty, attempt, mutate]);
+  const exhausted = empty && attempt >= JOB_DISTILL_RETRY_MS.length;
+  return { data, error, pending: empty && !exhausted, exhausted };
 }
 
 export function useGenerationProgressSettings() {
