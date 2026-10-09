@@ -25,6 +25,11 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
     event.preventDefault();
     const stopConditions = buildStopConditions(stopForm);
     if (!stopConditions.ok) return;
+    // ボタンの disabled だけに任せない: Enter での送信など、ボタンを通らない経路でも止まらないジョブを投入しないため
+    if (stopBlocker !== undefined) {
+      setError(stopBlocker);
+      return;
+    }
     setSending(true);
     setError(undefined);
     try {
