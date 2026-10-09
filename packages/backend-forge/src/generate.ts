@@ -1,3 +1,4 @@
+import { generationResponseSchema, readGenerationResponse } from '@drawroid/backend-sdapi';
 import {
   BackendError,
   type GenerationImages,
@@ -9,7 +10,7 @@ import type { ForgeClient } from './client.js';
 import { controlNetScript } from './controlnet.js';
 import { img2imgFields } from './img2img.js';
 import { resolveImages } from './images.js';
-import { buildTxt2imgPayload, generationResponseSchema, readTxt2imgResponse } from './txt2img.js';
+import { buildTxt2imgPayload } from './txt2img.js';
 
 /**
  * 中立の要求を、Forge の txt2img か img2img の1回の呼び出しに写す。
@@ -42,5 +43,5 @@ export async function generateWithForge(
     signal,
     timeoutMs: options.timeoutMs,
   });
-  return readTxt2imgResponse(res, req.batchSize, endpoint);
+  return readGenerationResponse(res, req.batchSize, { endpoint, product: client.product });
 }
