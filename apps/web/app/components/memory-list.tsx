@@ -20,7 +20,7 @@ export function MemoryList() {
               {bodyHead(item.body)}
             </Link>{' '}
             [{item.scope}] {item.tags.map((tag) => `#${tag}`).join(' ')}{' '}
-            {new Date(item.updatedAt).toLocaleString('ja-JP')} 学んだジョブ {item.sources.length}件
+            {new Date(item.updatedAt).toLocaleString('ja-JP')} 学んだ元 {item.sources.length}件
           </Item>
         ))}
       </ItemList>

@@ -44,7 +44,7 @@ describe('MemoryList', () => {
     );
     expect(screen.getByText(/\[always\]/)).toBeTruthy();
     expect(screen.getByText(/#hands #anatomy/)).toBeTruthy();
-    expect(screen.getByText(/学んだジョブ 2件/)).toBeTruthy();
+    expect(screen.getByText(/学んだ元 2件/)).toBeTruthy();
     expect(screen.queryByText('読めない項目')).toBeNull();
   });
 

@@ -1,3 +1,4 @@
+import { conversationOfSource } from '@drawroid/core';
 import {
   deleteMemoryItem,
   isApiError,
@@ -115,26 +116,39 @@ function MemoryItemBody({
         作成 {formatTime(base.createdAt)} / 更新 {formatTime(base.updatedAt)}
       </p>
 
-      <SubSection title="学んだジョブ">
+      <SubSection title="学んだ元">
         {detail.sources.length === 0 && <Muted>無い。</Muted>}
         <ItemList>
-          {detail.sources.map(({ jobId, job }) => (
-            <Item key={jobId}>
-              <Link
-                to={`/jobs/${encodeURIComponent(jobId)}`}
-                className="underline underline-offset-2"
-              >
-                <code>{jobId}</code>
-              </Link>{' '}
-              {job === null ? (
-                '消えたジョブ'
-              ) : (
-                <>
-                  {job.kind} {formatTime(job.createdAt)} {job.request.slice(0, 60)}
-                </>
-              )}
-            </Item>
-          ))}
+          {detail.sources.map(({ jobId, job }) => {
+            const conversationId = conversationOfSource(jobId);
+            return conversationId !== undefined ? (
+              <Item key={jobId}>
+                会話{' '}
+                <Link
+                  to={`/conversations/${encodeURIComponent(conversationId)}`}
+                  className="underline underline-offset-2"
+                >
+                  <code>{conversationId}</code>
+                </Link>
+              </Item>
+            ) : (
+              <Item key={jobId}>
+                <Link
+                  to={`/jobs/${encodeURIComponent(jobId)}`}
+                  className="underline underline-offset-2"
+                >
+                  <code>{jobId}</code>
+                </Link>{' '}
+                {job === null ? (
+                  '消えたジョブ'
+                ) : (
+                  <>
+                    {job.kind} {formatTime(job.createdAt)} {job.request.slice(0, 60)}
+                  </>
+                )}
+              </Item>
+            );
+          })}
         </ItemList>
       </SubSection>
 

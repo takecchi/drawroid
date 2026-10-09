@@ -165,4 +165,22 @@ describe('MemoryItemView sources', () => {
     );
     expect(screen.getByText(/消えたジョブ/)).toBeTruthy();
   });
+
+  it('links a conversation it learned from to that conversation, not to a job', () => {
+    mocks.useMemoryItem.mockReturnValue({
+      data: {
+        item: { ...detail.item, sources: ['conversation:20261009-094204-2c158a', 'job-1'] },
+        sources: [{ jobId: 'conversation:20261009-094204-2c158a', job: null }, detail.sources[0]],
+      },
+      error: undefined,
+      mutate: reload,
+    });
+    renderView();
+
+    expect(screen.getByRole('link', { name: '20261009-094204-2c158a' }).getAttribute('href')).toBe(
+      '/conversations/20261009-094204-2c158a',
+    );
+    expect(screen.getByRole('link', { name: 'job-1' }).getAttribute('href')).toBe('/jobs/job-1');
+    expect(screen.queryByText(/消えたジョブ/)).toBeNull();
+  });
 });
