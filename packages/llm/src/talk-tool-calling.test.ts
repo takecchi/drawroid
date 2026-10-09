@@ -153,4 +153,23 @@ describe('the talking role with toolCalling: json', () => {
     });
     expect(events.some((e) => e.type === 'tool.call' || e.type === 'job.started')).toBe(false);
   });
+
+  it('gives every tool call its own id, so each result goes with its own call', async () => {
+    const search = (query: string) =>
+      textStream(
+        JSON.stringify({ kind: 'tool', name: 'search_candidates', input: { kind: 'lora', query } }),
+      );
+    const events = await talk('json', 'text', [
+      search('ミク'),
+      search('初音'),
+      textStream(JSON.stringify({ kind: 'reply', text: '描けます。' })),
+    ]);
+
+    const calls = events.flatMap((e) => (e.type === 'tool.call' ? [e.callId] : []));
+    const results = events.flatMap((e) => (e.type === 'tool.result' ? [e.callId] : []));
+    expect(calls).toHaveLength(2);
+    // 画面は callId で呼び出しと結果を組にする: 同じ ID だと、2つめの結果が1つめの呼び出しに付く
+    expect(new Set(calls).size).toBe(2);
+    expect(results).toEqual(calls);
+  });
 });

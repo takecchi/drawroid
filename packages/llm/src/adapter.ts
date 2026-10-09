@@ -602,7 +602,13 @@ export class AiSdkLlm implements LlmPort {
               if (value.text !== '') yield { type: 'text-delta', text: value.text };
             }
           } else {
-            yield { type: 'tool-call', callId: `json-${i}`, name: value.name, input: value.input };
+            // ID は呼び出しごとに替える: 会話の中で tool.call と tool.result を組にする鍵なので、ステップをまたいで重ねない
+            yield {
+              type: 'tool-call',
+              callId: `json-${globalThis.crypto.randomUUID()}`,
+              name: value.name,
+              input: value.input,
+            };
           }
           yield { type: 'finish', attempts };
           return;

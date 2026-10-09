@@ -14,6 +14,7 @@ import {
   type HubMessage,
   type JobStore,
   type LlmCall,
+  type LlmPort,
 } from '@drawroid/core';
 import {
   MemoryConversationStore,
@@ -21,6 +22,7 @@ import {
   StubBackend,
   type Script,
 } from '@drawroid/core/testing';
+import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { FsJobStore } from './job-store.js';
@@ -45,11 +47,11 @@ const judge: Script = (call) => ({
   canStop: false,
 });
 
-async function setup() {
+async function setup(given?: LlmPort) {
   const conversations = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store: conversations });
   const store: JobStore = bridgeJobEvents(new FsJobStore(root), { hubs });
-  const llm = new ScriptedLlm(
+  const scripted = new ScriptedLlm(
     { think, judge },
     {
       reasoning: {
@@ -58,6 +60,7 @@ async function setup() {
       },
     },
   );
+  const llm = given ?? scripted;
   const runner = new JobRunner({
     store,
     llm,
@@ -67,7 +70,7 @@ async function setup() {
     onReasoning: relayJobReasoning({ store, hubs }),
   });
   const { conversationId } = await conversations.createConversation(new Date());
-  return { conversations, hubs, store, llm, runner, conversationId };
+  return { conversations, hubs, store, llm: scripted, runner, conversationId };
 }
 
 async function submit(store: JobStore, conversationId?: string) {
@@ -151,5 +154,115 @@ describe('the thinking of the jobs in a conversation', () => {
     runner.kick();
     await runner.idle();
     expect(received).toEqual([]);
+  });
+});
+
+describe('the thinking of the jobs in a conversation, in more detail', () => {
+  /** 思考を2つの増分に分けて出すモデル。台本の思考は1度に出るので、増分と累計の取り違えを見分けるため */
+  class SplitReasoningLlm extends ScriptedLlm {
+    override generateStructured<T>(call: LlmCall<T>) {
+      const onReasoning = call.onReasoning;
+      return super.generateStructured(
+        onReasoning === undefined
+          ? call
+          : {
+              ...call,
+              onReasoning: (text: string) => {
+                onReasoning(text.slice(0, 2));
+                onReasoning(text.slice(2));
+              },
+            },
+      );
+    }
+  }
+
+  it('flows each increment once, so the increments add up to the confirmed thinking', async () => {
+    const llm = new SplitReasoningLlm(
+      { think, judge },
+      { reasoning: { think: () => '考える思考', judge: () => '見る思考' } },
+    );
+    const { hubs, store, runner, conversationId } = await setup(llm);
+    const received: HubMessage[] = [];
+    await hubs.get(conversationId).subscribe(0, (message) => received.push(message));
+
+    const { jobId } = await submit(store, conversationId);
+    runner.kick();
+    await runner.idle();
+
+    const flowed = (role: 'think' | 'judge', iteration: number) =>
+      received
+        .flatMap((m) =>
+          m.kind === 'live' &&
+          m.event.type === 'delta.reasoning' &&
+          m.event.partId === `job:${jobId}:${iteration}:${role}`
+            ? [m.event.text]
+            : [],
+        )
+        .join('');
+    expect(flowed('think', 1)).toBe('考える思考');
+    expect(flowed('judge', 2)).toBe('見る思考');
+    const confirmedThink = received.find(
+      (m) => m.kind === 'confirmed' && m.event.type === 'job.think',
+    );
+    expect(confirmedThink?.kind === 'confirmed' && confirmedThink.event).toMatchObject({
+      reasoning: '考える思考',
+    });
+  });
+
+  it('does not flow the thinking of the call that reads a reference image into its gist', async () => {
+    const llm = new ScriptedLlm(
+      { think, judge, 'ref-gist': () => ({ gist: '逆光の海辺' }) },
+      {
+        reasoning: {
+          think: () => '考える思考',
+          judge: () => '見る思考',
+          'ref-gist': () => '要点の思考',
+        },
+      },
+    );
+    const { hubs, store, runner, conversationId } = await setup(llm);
+    const received: HubMessage[] = [];
+    await hubs.get(conversationId).subscribe(0, (message) => received.push(message));
+    const { jobId } = await submit(store, conversationId);
+    await store.addReference(
+      jobId,
+      {
+        data: await sharp({
+          create: { width: 64, height: 64, channels: 3, background: '#2266aa' },
+        })
+          .png()
+          .toBuffer(),
+        mediaType: 'image/png',
+      },
+      new Date(),
+    );
+
+    runner.kick();
+    await runner.idle();
+
+    expect(llm.calls.some((c) => c.purpose === 'ref-gist')).toBe(true);
+    expect(JSON.stringify(received)).not.toContain('要点の思考');
+    expect(JSON.stringify(await store.readStage(jobId, 1, 'judge'))).not.toContain('要点の思考');
+  });
+
+  it('puts no reasoning on job.think and job.judge when the model gives no thinking', async () => {
+    const { hubs, store, runner, conversationId } = await setup(new ScriptedLlm({ think, judge }));
+    const received: HubMessage[] = [];
+    await hubs.get(conversationId).subscribe(0, (message) => received.push(message));
+
+    await submit(store, conversationId);
+    runner.kick();
+    await runner.idle();
+
+    const stages = received.flatMap((m) =>
+      m.kind === 'confirmed' && (m.event.type === 'job.think' || m.event.type === 'job.judge')
+        ? [m.event]
+        : [],
+    );
+    expect(stages).toHaveLength(4);
+    for (const stage of stages) expect(stage).not.toHaveProperty('reasoning');
+    expect(received.some((m) => m.kind === 'live' && m.event.type === 'delta.reasoning')).toBe(
+      false,
+    );
   });
 });

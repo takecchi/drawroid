@@ -661,7 +661,7 @@ describe('AiSdkLlm.streamStep with toolCalling: json', () => {
     expect(parts.filter((p) => p.type !== 'finish')).toEqual([
       {
         type: 'tool-call',
-        callId: 'json-0',
+        callId: expect.stringMatching(/^json-/),
         name: 'search_candidates',
         input: { kind: 'lora', query: 'miku' },
       },
@@ -715,5 +715,46 @@ describe('AiSdkLlm.streamStep with toolCalling: json', () => {
     const finish = parts.at(-1);
     expect(finish?.type === 'finish' && finish.failure).toMatch(/ツールを呼べなかった/);
     expect(parts.some((p) => p.type === 'tool-call')).toBe(false);
+  });
+
+  it('takes back the text it streamed when the confirmed reply says something else', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        streamInPieces([
+          '{"kind":"reply","text":"下書き"}',
+          '\n```json\n{"kind":"reply","text":"清書"}\n```',
+        ]),
+      ],
+    });
+    const parts = await partsOf(adapter(model, jsonRole('text')).streamStep(stepCall()));
+
+    const streamed = parts.flatMap((p) => (p.type === 'text-delta' ? [p.text] : []));
+    expect(streamed[0]).toBe('下書き');
+    // 流した分は retry で捨てさせ、確定した本文だけを出し直す
+    const retry = parts.findIndex((p) => p.type === 'retry');
+    expect(retry).toBeGreaterThan(-1);
+    expect(
+      parts
+        .slice(retry + 1)
+        .flatMap((p) => (p.type === 'text-delta' ? [p.text] : []))
+        .join(''),
+    ).toBe('清書');
+  });
+
+  it('leaves the thinking tags out of the raw text it gives when the output keeps breaking', async () => {
+    const broken = () =>
+      streamOf({ text: '{"kind":"tool","name":"search_candidates","input":{"kind":"vae"}}' });
+    const model = new MockLanguageModelV4({
+      doStream: [
+        broken(),
+        broken(),
+        streamOf({ text: '<think>どう答えるか</think>描けると思います' }),
+      ],
+    });
+    const parts = await partsOf(adapter(model, jsonRole('text'), 2).streamStep(stepCall()));
+
+    expect(parts.flatMap((p) => (p.type === 'text-delta' ? [p.text] : []))).toEqual([
+      '描けると思います',
+    ]);
   });
 });
