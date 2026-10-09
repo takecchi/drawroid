@@ -4,7 +4,7 @@ import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import type { Permissions } from '../permissions/permission.js';
 import { buildParamsSchema } from '../think/params-schema.js';
 import { DEFAULT_BUDGET } from './budget.js';
-import { buildJudgeOutputSchema, buildThinkOutputSchema } from './schemas.js';
+import { buildJudgeOutputSchema, buildThinkOutputSchema, THINK_PARAM_KEYS } from './schemas.js';
 
 const budget = DEFAULT_BUDGET;
 
@@ -82,5 +82,17 @@ describe('buildJudgeOutputSchema', () => {
     const output = valid(1);
     output.images[0] = { score: 1.5, issues: [] };
     expect(buildJudgeOutputSchema(1, budget).safeParse(output).success).toBe(false);
+  });
+});
+
+describe('THINK_PARAM_KEYS', () => {
+  it('holds exactly the five parameters of the M2 range', () => {
+    expect([...THINK_PARAM_KEYS]).toEqual([
+      'prompt',
+      'negativePrompt',
+      'seed',
+      'steps',
+      'cfgScale',
+    ]);
   });
 });
