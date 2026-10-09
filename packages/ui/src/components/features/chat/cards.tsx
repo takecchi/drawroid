@@ -247,6 +247,9 @@ export interface ImageRowItem {
   verdict?: ImageVerdict | null;
   /** お気に入り・却下などの操作。画面が渡す */
   actions?: ReactNode;
+  /** 渡すと、画像を押して大きく見られる（ImageViewer）。viewerKey は窓の画像の key と同じ値 */
+  onOpen?: () => void;
+  viewerKey?: string;
 }
 
 /** 1回ぶんの画像。評価が来ていれば点数と問題点を重ねる */
@@ -274,6 +277,8 @@ export function ImageRow({
             src={image.src}
             alt={image.alt}
             verdict={image.verdict}
+            {...(image.onOpen !== undefined && { onOpen: image.onOpen })}
+            {...(image.viewerKey !== undefined && { viewerKey: image.viewerKey })}
             caption={
               (image.score !== undefined || (image.issues?.length ?? 0) > 0) && (
                 <>

@@ -108,3 +108,6 @@ jobs:
       # 同じ job に足す: 長い会話（数百行）を置き場所へ直に書いてから開き、画面の外の行の描画を飛ばしても（content-visibility: auto）、
       # 末尾を追い続けること（#164）・ページの中の検索で古い発言が見つかること・読み上げの木に残ることを、画面で見る。
       - run: pnpm check:packed-browser-long-conversation
+
+      # 同じ job に足す: 会話の画像を大きく見る窓が、名前・左右の送り（回をまたぐ）・Esc と焦点の戻り・狭い画面での収まりとスワイプで動くことを、画面で見る。
+      - run: pnpm check:packed-browser-image-viewer
