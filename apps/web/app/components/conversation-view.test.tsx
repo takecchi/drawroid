@@ -213,7 +213,10 @@ describe('ConversationView', () => {
       }),
     );
 
-    expect(screen.getByText('人が選んだ: 2 回目の画像 1 番')).toBeTruthy();
+    expect(
+      screen.getByText('この回は、人間が選んだ画像（2 回目の画像 1 番）で決まり。'),
+    ).toBeTruthy();
+    expect(screen.getByText('見る役（2 回目）')).toBeTruthy();
   });
 
   it('keeps the reasoning open while it streams and folds it once confirmed', async () => {

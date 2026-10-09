@@ -1,7 +1,6 @@
 import { formatImageKey, type SelectionVerdict } from '@drawroid/core';
 import { isApiError, jobImageUrls, setSelection, useSelections } from '@drawroid/swr';
 import {
-  AuthorMark,
   Button,
   ChatComposer,
   ChatLayout,
@@ -234,11 +233,12 @@ function renderItem(
       );
     case 'adopted':
       return (
-        <AuthorMark key={item.key} author="human" label="人間" className="max-w-[85%]">
-          <p className="break-words">
-            人が選んだ: {item.image.iteration} 回目の画像 {item.image.index + 1} 番
-          </p>
-        </AuthorMark>
+        <JudgeNote
+          key={item.key}
+          iteration={item.iteration}
+          canStop={false}
+          adopted={{ iteration: item.image.iteration, number: item.image.index + 1 }}
+        />
       );
     case 'job-stopped':
       return (
