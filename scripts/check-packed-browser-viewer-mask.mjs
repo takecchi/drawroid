@@ -226,12 +226,16 @@ try {
     await page.waitForFunction(`(() => { const b = document.querySelector('[role="log"]');
       return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`);
     const rowsAtEnd = Number(await rowsNow());
+    // 一瞬だけ出て消える形も数える: 終わってから数えるだけでは、末尾へ寄せた直後に消える点滅を見逃すため
+    await page.evaluate(`(() => { window.__markerSeen = 0; const log = document.querySelector('[role="log"]');
+      new MutationObserver(() => { if (log.querySelector('[aria-label="新しい行へ"]')) window.__markerSeen += 1; })
+        .observe(log, { childList: true, subtree: true }); })()`);
     // ジョブは回り続けているので、行が増えるのを待つ
     await page.waitForFunction(
       `document.querySelector('[role="log"] > div').children.length > ${rowsAtEnd}`,
     );
     expect(
-      (await marker.count()) === 0 && Boolean(await atEnd()),
+      Number(await page.evaluate('window.__markerSeen')) === 0 && Boolean(await atEnd()),
       `${label}: 末尾にいる間は、行が増えても「新しい行」の印を出さず、末尾を追う`,
     );
     await page.mouse.wheel(0, -3_000);
