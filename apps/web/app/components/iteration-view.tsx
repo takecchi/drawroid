@@ -1,7 +1,10 @@
+import type { SelectionVerdict } from '@drawroid/core';
+import { formatImageKey } from '@drawroid/core';
 import type { IterationsResponse } from '@drawroid/swr';
 
 import { readJudge, readThink } from '../lib/stage-output';
 import { LlmCallList, type LlmCallSummary } from './llm-call-view';
+import { SelectionControls } from './selection-controls';
 
 export type Iteration = IterationsResponse['iterations'][number];
 
@@ -70,10 +73,12 @@ export function IterationView({
   jobId,
   iteration,
   calls,
+  verdicts,
 }: {
   jobId: string;
   iteration: Iteration;
   calls: LlmCallSummary[];
+  verdicts: ReadonlyMap<string, SelectionVerdict>;
 }) {
   const judge = readJudge(iteration.judge);
   return (
@@ -84,6 +89,7 @@ export function IterationView({
         {iteration.images.map((image) => {
           // 評価の並びは画像の並びと同じ: 見る役の出力が画像の枚数ぶんをちょうど返すため
           const evaluation = judge?.images[image.index];
+          const imageKey = formatImageKey({ iteration: iteration.iteration, index: image.index });
           return (
             <figure key={image.index} style={{ margin: 0 }}>
               <a href={image.url}>
@@ -105,6 +111,11 @@ export function IterationView({
                   </>
                 )}
               </figcaption>
+              <SelectionControls
+                jobId={jobId}
+                imageKey={imageKey}
+                verdict={verdicts.get(imageKey) ?? null}
+              />
             </figure>
           );
         })}
@@ -124,11 +135,13 @@ export function IterationList({
   heading,
   iterations,
   calls,
+  verdicts,
 }: {
   jobId: string;
   heading: string;
   iterations: Iteration[];
   calls: LlmCallSummary[];
+  verdicts: ReadonlyMap<string, SelectionVerdict>;
 }) {
   return (
     <section>
@@ -139,6 +152,7 @@ export function IterationList({
           key={iteration.iteration}
           jobId={jobId}
           iteration={iteration}
+          verdicts={verdicts}
           calls={calls.filter((call) => call.iteration === iteration.iteration)}
         />
       ))}

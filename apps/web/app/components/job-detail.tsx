@@ -3,12 +3,14 @@ import {
   useIterations,
   useJob,
   useLlmCalls,
+  useSelections,
   type JobDetail as JobDetailData,
 } from '@drawroid/swr';
 import { Link } from 'react-router';
 
 import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
 import { IterationList } from './iteration-view';
+import { JobOperations } from './job-operations';
 import { LlmTotals } from './llm-call-view';
 import { StopReasonMessage } from './stop-reason-message';
 
@@ -111,6 +113,13 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const live = data !== undefined && data.state.status !== 'stopped';
   const iterations = useIterations(data === undefined ? undefined : jobId, { live });
   const llmCalls = useLlmCalls(data === undefined ? undefined : jobId, { live });
+  const selections = useSelections(data === undefined ? undefined : jobId);
+  // 外した選択（verdict が null）は入れない: 画像の側は「無い」を未選択として扱うため
+  const verdicts = new Map(
+    (selections.data?.selections ?? []).flatMap(({ imageKey, verdict }) =>
+      verdict === null ? [] : [[imageKey, verdict] as const],
+    ),
+  );
   if (data === undefined) {
     if (error === undefined) return null;
     return isApiError(error) && error.status === 404 ? (
@@ -125,6 +134,10 @@ export function JobDetail({ jobId }: { jobId: string }) {
     <>
       <JobHeader job={data} />
       <JobRequest spec={data.spec} />
+      <JobOperations job={data} />
+      {selections.error !== undefined && (
+        <p role="alert">お気に入り・却下を読めない: {selections.error.message}</p>
+      )}
       {iterations.error !== undefined && (
         <p role="alert">回を読めない: {iterations.error.message}</p>
       )}
@@ -138,6 +151,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
             heading={`回（${data.iterations.length}）`}
             iterations={iterations.data.iterations}
             calls={llmCalls.data?.calls ?? []}
+            verdicts={verdicts}
           />
           <InvalidList
             title="読めない回"
