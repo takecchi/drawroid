@@ -2,6 +2,7 @@ import type { AutoJobQueue as AutoJobQueuePort } from '@drawroid/api';
 import {
   basicPermissions,
   JobRunner,
+  type JobRunnerDeps,
   mergePermissions,
   type Budget,
   type CandidateNotes,
@@ -43,6 +44,8 @@ export type AutoJobQueueOptions = {
   /** 記憶の置き場所と蒸留の記録の置き場所。省けば記憶なしで回る */
   memory?: JobMemory;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
+  /** 考える役・見る役の思考の増分を受ける（会話へ流すため） */
+  onReasoning?: JobRunnerDeps['onReasoning'];
   log: (line: string) => void;
 };
 
@@ -70,6 +73,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
         mergePermissions(BASE_PERMISSIONS, (await options.permissions?.()) ?? {}),
       ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
       ...(options.memory !== undefined && { memory: options.memory }),
+      ...(options.onReasoning !== undefined && { onReasoning: options.onReasoning }),
       log: options.log,
     });
   }

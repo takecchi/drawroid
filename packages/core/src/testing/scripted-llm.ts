@@ -30,6 +30,10 @@ export type ScriptedLlmOptions = {
   roles?: Partial<Record<LlmRole, Partial<LlmRoleInfo>>>;
   /** streamStep の台本。省けば streamStep は失敗を投げる */
   talk?: TalkScript;
+  /** 用途ごとの、モデルが自分で出す思考。返した文を onReasoning へ流す（台本の値には入れない） */
+  reasoning?: Partial<
+    Record<LlmPurpose, (call: LlmCall<unknown>, n: number) => string | undefined>
+  >;
 };
 
 /** 1回の呼び出しが返す使用量（固定） */
@@ -67,7 +71,8 @@ export class ScriptedLlm implements LlmPort {
     this.counts.set(call.purpose, n + 1);
 
     const raw = await raceAbort(Promise.resolve(script(call as LlmCall<unknown>, n)), call.signal);
-    // 台本の値に思考の欄は無いので、思考を受ける呼び手には何も流さない
+    const thought = this.options.reasoning?.[call.purpose]?.(call as LlmCall<unknown>, n);
+    if (thought !== undefined) call.onReasoning?.(thought);
     const rawOutput = JSON.stringify(raw);
     const attempt = { rawOutput, usage: { ...SCRIPTED_USAGE }, durationMs: 1 };
     const parsed = call.schema.safeParse(raw);

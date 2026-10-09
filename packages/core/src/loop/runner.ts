@@ -121,6 +121,16 @@ export type JobRunnerDeps = {
   now?: () => Date;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
   newCallId?: (now: Date) => string;
+  /**
+   * 考える役・見る役が自分で出す思考の増分を受ける。画面に流すためで、次の入力には戻さない。
+   * 確定した思考は、段の出力（think.json・judge.json）の reasoning に残す
+   */
+  onReasoning?: (event: {
+    jobId: string;
+    iteration: number;
+    role: 'think' | 'judge';
+    text: string;
+  }) => void;
 };
 
 type Running = { jobId: string; controller: AbortController };
@@ -732,11 +742,13 @@ export class JobRunner {
     await store.writeStage(spec.jobId, iteration, 'plan', {
       excluded: excludedOf(paramsPlan.merged, paramsPlan.disabled, params.omitted),
     });
+    const thinking = this.collectReasoning(spec.jobId, iteration, 'think');
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
       schema: buildThinkOutputSchema(params, {
         withInterventions: plan.included.length > 0,
       }),
       signal,
+      onReasoning: thinking.add,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
     // 取り込んだ回を think.json より先に書く: think.json を「この回の考えるが済んだ」印にしているので、
@@ -745,7 +757,7 @@ export class JobRunner {
     for (const planned of plan.included) {
       await store.markInterventionApplied(spec.jobId, planned.interventionId, iteration);
     }
-    await store.writeStage(spec.jobId, iteration, 'think', outcome.value);
+    await store.writeStage(spec.jobId, iteration, 'think', thinking.into(outcome.value));
     return outcome.value;
   }
 
@@ -903,14 +915,33 @@ export class JobRunner {
       window: llm.describe('judge').window,
       ...this.memoryInput(memoryItems, budget.memory, 'judge'),
     });
+    const thinking = this.collectReasoning(spec.jobId, iteration, 'judge');
     const outcome = await this.callLlm(spec.jobId, iteration, 'judge', 'judge', messages, {
       schema: buildJudgeOutputSchema(imageCount),
       signal,
       sentImages: refs,
+      onReasoning: thinking.add,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `見る段: ${outcome.reason}` });
-    await store.writeStage(spec.jobId, iteration, 'judge', outcome.value);
+    await store.writeStage(spec.jobId, iteration, 'judge', thinking.into(outcome.value));
     return outcome.value;
+  }
+
+  /**
+   * 考える・見るの段で、モデルが自分で出す思考を受ける。増分は onReasoning へ流し、確定した思考は段の出力に足す。
+   */
+  // 段の出力（think.json・judge.json）に残す: 画面とファイルで見るためで、次の入力には戻さない
+  // （持ち回すのは carry の決まった欄だけで、組み立て器は段の出力の reasoning を読まない）
+  private collectReasoning(jobId: string, iteration: number, role: 'think' | 'judge') {
+    let text = '';
+    return {
+      add: (delta: string) => {
+        text += delta;
+        this.deps.onReasoning?.({ jobId, iteration, role, text: delta });
+      },
+      into: <T extends object>(value: T): T =>
+        text === '' ? value : { ...value, reasoning: text },
+    };
   }
 
   /**
@@ -931,15 +962,19 @@ export class JobRunner {
       sentImages?: AnyImageRef[];
       /** 記録を置いたあと、印を付ける前に、結果をファイルに残す */
       keepBeforeMarking?: (outcome: LlmCallOutcome<T>) => Promise<void>;
+      /** モデルが自分で出した思考を受ける（考える・見るの段だけ） */
+      onReasoning?: (text: string) => void;
     },
   ): Promise<LlmCallOutcome<T>> {
     const startedAt = this.now();
+    const onReasoning = options.onReasoning;
     const outcome = await this.deps.llm.generateStructured({
       role,
       purpose,
       schema: options.schema,
       messages,
       signal: options.signal,
+      ...(onReasoning === undefined ? {} : { onReasoning }),
     });
     const callId = this.newCallId(startedAt);
     const { provider, model } = this.deps.llm.describe(role);
