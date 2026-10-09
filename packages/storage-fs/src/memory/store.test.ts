@@ -204,3 +204,37 @@ describe('createFsMemoryStore', () => {
     });
   });
 });
+
+describe('createFsMemoryStore with ids and timestamps', () => {
+  it('reads a hand-written file whose name contains a dot, by list and by get', async () => {
+    await writeFile(
+      join(dir, 'prefer.v1.md'),
+      handWritten(
+        [
+          'tags: [ アニメ ]',
+          'scope: tagged',
+          'createdAt: 2026-10-09T15:40:00+09:00',
+          'updatedAt: 2026-10-09T15:40:00+09:00',
+        ].join('\n'),
+        '線は細く',
+      ),
+    );
+    const store = createFsMemoryStore(dir);
+
+    const { items, invalid } = await store.list();
+
+    expect(invalid).toEqual([]);
+    expect(items.map((i) => i.id)).toEqual(['prefer.v1']);
+    expect(await store.get('prefer.v1')).toMatchObject({ id: 'prefer.v1', body: '線は細く' });
+  });
+
+  it('keeps createdAt and updatedAt apart when they differ', async () => {
+    const store = createFsMemoryStore(dir);
+    const edited: MemoryItem = { ...fingers, updatedAt: '2026-10-10T09:00:00+09:00' };
+
+    await store.put(edited);
+
+    expect(await store.get('fingers')).toEqual(edited);
+    expect((await store.list()).items).toEqual([edited]);
+  });
+});
