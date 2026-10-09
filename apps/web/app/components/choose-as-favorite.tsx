@@ -48,15 +48,26 @@ export function ChooseAsFavorite({
   }
   return (
     <div className="space-y-1">
-      {/* 文字を折り返す: 狭い画面のカードや画像の枡より名前が長く、折り返さないと枠の外へはみ出すため */}
+      {/* 折り返すのは言葉のかたまりの境目だけ: ボタンの中でそのまま折り返すと、日本語はどの字の間でも折れ、
+          「決め / る」のように言葉の途中で切れるため。画像の枡は狭いので短い文にし、お気に入りになることは名前と title に残す */}
       <Button
         className="h-auto min-h-7 max-w-full px-2 py-1 text-left text-xs whitespace-normal"
         variant={prominent ? 'primary' : 'default'}
         disabled={pending}
         aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
+        title="お気に入りにする"
         onClick={() => void choose()}
       >
-        この画像に決める（お気に入りにする）
+        {/* 1つの span で包む: ボタンは flex なので、かたまりを直に並べると別々の子になり、横に並んだまま折り返さないため */}
+        <span className="min-w-0">
+          <span className="inline-block whitespace-nowrap">この画像に決める</span>
+          {prominent && (
+            <>
+              <wbr />
+              <span className="inline-block whitespace-nowrap">（お気に入りにする）</span>
+            </>
+          )}
+        </span>
       </Button>
       {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
     </div>
