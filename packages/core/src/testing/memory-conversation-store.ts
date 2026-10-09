@@ -93,6 +93,14 @@ export class MemoryConversationStore implements ConversationStore {
     return { events, last: events.at(-1)?.seq ?? after, more: later.length > limit };
   }
 
+  async readEventsBefore(
+    conversationId: string,
+    { before = Number.POSITIVE_INFINITY, limit }: { before?: number; limit: number },
+  ): Promise<ConversationEvent[]> {
+    const earlier = this.listOf(conversationId).filter((event) => event.seq < before);
+    return earlier.slice(Math.max(0, earlier.length - limit));
+  }
+
   async writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void> {
     this.listOf(conversationId);
     this.llmCalls.set(conversationId, [...(this.llmCalls.get(conversationId) ?? []), record]);

@@ -23,6 +23,30 @@ async function readAll(
   }
 }
 
+/** 末尾から読む1回ぶんの件数 */
+const TAIL_PAGE = 50;
+
+/**
+ * 閉じていないターンを、会話の末尾から探す。最後に閉じたターン（turn.ended）より前は読まない。
+ */
+// 頭から全部は読まない: 起動のたびに全会話の全イベントを読むと、会話が溜まるほど起動が遅くなる（イベント 3.8 万件で 7〜8 秒）。
+// ターンは会話ごとに1つずつしか走らないので、閉じていないターンは、最後に閉じたターンより後にしかない
+async function openTurnsAtTail(store: ConversationStore, conversationId: string) {
+  const started = new Set<number>();
+  const ended = new Set<number>();
+  let before: number | undefined;
+  for (;;) {
+    const events = await store.readEventsBefore(conversationId, { before, limit: TAIL_PAGE });
+    for (const event of events) {
+      if (event.type === 'turn.started') started.add(event.turn);
+      if (event.type === 'turn.ended') ended.add(event.turn);
+    }
+    if (ended.size > 0 || events.length < TAIL_PAGE) break;
+    before = events[0]?.seq;
+  }
+  return new Set([...started].filter((turn) => !ended.has(turn)));
+}
+
 /**
  * 起動のときに、turn.started があって turn.ended が無いターンを interrupted で閉じる。閉じた数を返す。
  */
@@ -34,11 +58,7 @@ export async function closeInterruptedTurns(deps: {
 }): Promise<number> {
   let closed = 0;
   for (const conversationId of await deps.store.listConversationIds()) {
-    const open = new Set<number>();
-    for (const event of await readAll(deps.store, conversationId)) {
-      if (event.type === 'turn.started') open.add(event.turn);
-      if (event.type === 'turn.ended') open.delete(event.turn);
-    }
+    const open = await openTurnsAtTail(deps.store, conversationId);
     for (const turn of [...open].sort((a, b) => a - b)) {
       await deps.hubs.get(conversationId).confirm({
         type: 'turn.ended',
