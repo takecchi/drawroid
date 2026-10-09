@@ -1,3 +1,4 @@
+import { Page } from '@drawroid/ui';
 import { useNavigate } from 'react-router';
 
 import { BackendStatus } from '../components/backend-status';
@@ -9,13 +10,12 @@ import { LlmSettings } from '../components/llm-settings';
 export default function Home() {
   const navigate = useNavigate();
   return (
-    <main style={{ maxWidth: 960, margin: '0 auto', padding: 16 }}>
-      <h1>drawroid</h1>
+    <Page title="drawroid">
       <BackendStatus />
       <BackendUrlSettings />
       <LlmSettings />
       <BudgetSettings />
       <GenerationForm onStarted={(jobId) => void navigate(`/jobs/${jobId}`)} />
-    </main>
+    </Page>
   );
 }

@@ -1,5 +1,16 @@
 import { CANDIDATE_KINDS, type CandidateKind } from '@drawroid/core';
 import { isApiError, saveCandidateNotes, useCandidateNotes, useCandidates } from '@drawroid/swr';
+import {
+  Button,
+  DescriptionList,
+  ErrorNote,
+  Field,
+  Input,
+  Muted,
+  OkNote,
+  Section,
+  SubSection,
+} from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import {
@@ -30,12 +41,12 @@ function NoteInput({
   onChange: (text: string) => void;
 }) {
   return (
-    <input
+    <Input
       type="text"
       aria-label={`${name} の説明`}
       value={text}
       onChange={(event) => onChange(event.target.value)}
-      size={50}
+      className="w-full max-w-lg"
     />
   );
 }
@@ -76,25 +87,27 @@ function KindSection({
   const names = namesOf(list);
   const shown = names.filter((name) => matchesFilter(name, filter));
   return (
-    <section aria-label={KIND_LABELS[kind]}>
-      <h3>{KIND_LABELS[kind]}</h3>
-      {error !== undefined && <p role="alert">候補を読めない: {error.message}</p>}
-      {data !== undefined && names.length === 0 && <p>候補が無い。</p>}
-      {names.length > 0 && shown.length === 0 && <p>絞った名前に合う候補が無い。</p>}
-      <dl>
-        {shown.map((name) => (
-          <div key={name}>
-            <dt>{name}</dt>
-            <dd>
-              <NoteInput
-                name={name}
-                text={notes[name] ?? ''}
-                onChange={(text) => onChange(name, text)}
-              />
-            </dd>
-          </div>
-        ))}
-      </dl>
+    // 名前付きの region を外へ残す: 画面の試験が region の名前で種類ごとの欄を引くため（SubSection は名前を持たない）
+    <section aria-label={KIND_LABELS[kind]} className="border-t border-border pt-3">
+      <SubSection title={KIND_LABELS[kind]}>
+        {error !== undefined && <ErrorNote>候補を読めない: {error.message}</ErrorNote>}
+        {data !== undefined && names.length === 0 && <Muted>候補が無い。</Muted>}
+        {names.length > 0 && shown.length === 0 && <Muted>絞った名前に合う候補が無い。</Muted>}
+        <DescriptionList>
+          {shown.map((name) => (
+            <div key={name}>
+              <dt>{name}</dt>
+              <dd>
+                <NoteInput
+                  name={name}
+                  text={notes[name] ?? ''}
+                  onChange={(text) => onChange(name, text)}
+                />
+              </dd>
+            </div>
+          ))}
+        </DescriptionList>
+      </SubSection>
     </section>
   );
 }
@@ -153,29 +166,28 @@ export function CandidateNotes() {
         );
 
   return (
-    <section>
-      <h2>候補の説明</h2>
-      <p>
+    <Section title="候補の説明">
+      <Muted>
         checkpoint・LoRA などに、人間の短い説明（{MAX_CANDIDATE_NOTE_CHARS}{' '}
         文字まで）を付ける。保存すると、次のジョブから考える役に渡る。
-      </p>
-      {error !== undefined && <p role="alert">説明を読めない: {error.message}</p>}
+      </Muted>
+      {error !== undefined && <ErrorNote>説明を読めない: {error.message}</ErrorNote>}
       {data?.problem !== undefined && (
-        <p role="alert">
+        <ErrorNote>
           説明のファイルを読めない: {data.problem}
           。いまは説明なしで動いている。保存すると、このファイルは画面の内容で置き換わる。
-        </p>
+        </ErrorNote>
       )}
       {notes !== undefined && (
-        <form onSubmit={(event) => void save(event)}>
-          <label>
-            名前で絞る{' '}
-            <input
+        <form onSubmit={(event) => void save(event)} className="space-y-3">
+          <Field label="名前で絞る">
+            <Input
               type="search"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
+              className="w-64"
             />
-          </label>
+          </Field>
           {CANDIDATE_KINDS.map((kind) => (
             <KindSection
               key={kind}
@@ -187,31 +199,32 @@ export function CandidateNotes() {
             />
           ))}
           {orphans.length > 0 && (
-            <section aria-label="今の候補に無い説明">
-              <h3>今の候補に無い説明</h3>
-              <p>バックエンドの候補に無い名前への説明。考える役には渡らない。</p>
-              <dl>
-                {orphans.map((name) => (
-                  <div key={name}>
-                    <dt>{name}</dt>
-                    <dd>
-                      {notes[name]}{' '}
-                      <button type="button" onClick={() => change(name, '')}>
-                        {name} の説明を消す
-                      </button>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+            <section aria-label="今の候補に無い説明" className="border-t border-border pt-3">
+              <SubSection title="今の候補に無い説明">
+                <Muted>バックエンドの候補に無い名前への説明。考える役には渡らない。</Muted>
+                <DescriptionList>
+                  {orphans.map((name) => (
+                    <div key={name}>
+                      <dt>{name}</dt>
+                      <dd>
+                        {notes[name]}{' '}
+                        <Button className="h-7 px-2 text-xs" onClick={() => change(name, '')}>
+                          {name} の説明を消す
+                        </Button>
+                      </dd>
+                    </div>
+                  ))}
+                </DescriptionList>
+              </SubSection>
             </section>
           )}
-          <button type="submit" disabled={saving}>
+          <Button type="submit" variant="primary" disabled={saving}>
             説明を保存
-          </button>
+          </Button>
         </form>
       )}
-      {saved && <p>保存した。次のジョブから考える役に渡る。</p>}
-      {problem !== undefined && <p role="alert">保存できない: {problem}</p>}
-    </section>
+      {saved && <OkNote>保存した。次のジョブから考える役に渡る。</OkNote>}
+      {problem !== undefined && <ErrorNote>保存できない: {problem}</ErrorNote>}
+    </Section>
   );
 }

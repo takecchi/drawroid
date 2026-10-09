@@ -1,6 +1,7 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { ReactNode } from 'react';
 
+import './app.css';
 import { SiteNav } from './components/site-nav';
 
 export function meta() {

@@ -8,6 +8,16 @@ import {
   useStopConditions,
   type JobDetail,
 } from '@drawroid/swr';
+import {
+  BulletList,
+  Button,
+  ErrorNote,
+  Muted,
+  OkNote,
+  Section,
+  SubSection,
+  Textarea,
+} from '@drawroid/ui';
 import { useState } from 'react';
 
 import { buildReferenceUpload, type AttachedReference } from '../lib/reference-upload';
@@ -39,13 +49,12 @@ function StopButton({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section>
-      <h3>止める</h3>
-      <button type="button" disabled={pending} onClick={() => void stop()}>
+    <SubSection title="止める">
+      <Button variant="danger" disabled={pending} onClick={() => void stop()}>
         ジョブを止める
-      </button>
-      {error !== undefined && <p role="alert">止められない: {error}</p>}
-    </section>
+      </Button>
+      {error !== undefined && <ErrorNote>止められない: {error}</ErrorNote>}
+    </SubSection>
   );
 }
 
@@ -72,22 +81,21 @@ function InstructionForm({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section>
-      <h3>人間の指示</h3>
-      <textarea
+    <SubSection title="人間の指示">
+      <Textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
         rows={3}
-        cols={60}
         aria-label="人間の指示"
       />
-      <br />
-      <button type="button" disabled={pending || text.trim() === ''} onClick={() => void send()}>
-        送る
-      </button>
-      {sent && <p>送った。次の回の「考える」から反映される</p>}
-      {error !== undefined && <p role="alert">送れない: {error}</p>}
-    </section>
+      <div>
+        <Button disabled={pending || text.trim() === ''} onClick={() => void send()}>
+          送る
+        </Button>
+      </div>
+      {sent && <OkNote>送った。次の回の「考える」から反映される</OkNote>}
+      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+    </SubSection>
   );
 }
 
@@ -124,19 +132,20 @@ function ReferenceForm({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section>
-      <h3>参照画像を添える</h3>
+    <SubSection title="参照画像を添える">
       <ReferenceAttacher items={items} onChange={setItems} disabled={pending} />
-      <button type="button" disabled={pending || items.length === 0} onClick={() => void send()}>
-        参照画像を送る
-      </button>
+      <div>
+        <Button disabled={pending || items.length === 0} onClick={() => void send()}>
+          参照画像を送る
+        </Button>
+      </div>
       {sent > 0 && (
-        <p>
+        <OkNote>
           {sent} 枚送った。次の回の境目で見る役が1度だけ見て要点にする（原寸の画像は毎回は渡さない）
-        </p>
+        </OkNote>
       )}
-      {error !== undefined && <p role="alert">送れない: {error}</p>}
-    </section>
+      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+    </SubSection>
   );
 }
 
@@ -161,14 +170,13 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
 
   if (data === undefined) {
     return (
-      <section>
-        <h3>止める条件を変える</h3>
+      <SubSection title="止める条件を変える">
         {loadError === undefined ? (
-          <p>今の止める条件を読み込んでいる</p>
+          <Muted>今の止める条件を読み込んでいる</Muted>
         ) : (
-          <p role="alert">今の止める条件を読めない: {loadError.message}</p>
+          <ErrorNote>今の止める条件を読めない: {loadError.message}</ErrorNote>
         )}
-      </section>
+      </SubSection>
     );
   }
 
@@ -197,26 +205,25 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section>
-      <h3>止める条件を変える</h3>
-      <div>
-        <p>いまの条件（次の回の境目から効く）</p>
-        <ul>
+    <SubSection title="止める条件を変える">
+      <div className="space-y-1">
+        <p className="text-sm">いまの条件（次の回の境目から効く）</p>
+        <BulletList>
           {describeConditions(current).map((line) => (
             <li key={line}>{line}</li>
           ))}
-        </ul>
+        </BulletList>
       </div>
       {changed.length > 0 && (
-        <div>
-          <p>投入時から変わった</p>
-          <ul>
+        <div className="space-y-1">
+          <p className="text-sm">投入時から変わった</p>
+          <BulletList>
             {changed.map((field) => (
               <li key={field.label}>
                 {field.label}: 投入時 {field.submitted} → いま {field.current}
               </li>
             ))}
-          </ul>
+          </BulletList>
         </div>
       )}
       <StopConditionsEditor
@@ -224,8 +231,8 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
         onChange={setDraft}
         confirm={{ label: '条件を変える', pending, onConfirm: () => void change() }}
       />
-      {error !== undefined && <p role="alert">変えられない: {error}</p>}
-    </section>
+      {error !== undefined && <ErrorNote>変えられない: {error}</ErrorNote>}
+    </SubSection>
   );
 }
 
@@ -234,12 +241,11 @@ export function JobOperations({ job }: { job: JobDetail }) {
   const { spec, state } = job;
   if (spec.kind !== 'auto' || state.status === 'stopped') return null;
   return (
-    <section>
-      <h2>操作</h2>
+    <Section title="操作">
       <StopButton jobId={spec.jobId} />
       <InstructionForm jobId={spec.jobId} />
       <ReferenceForm jobId={spec.jobId} />
       <StopConditionsChanger jobId={spec.jobId} />
-    </section>
+    </Section>
   );
 }

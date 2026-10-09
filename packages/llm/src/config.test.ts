@@ -54,12 +54,30 @@ describe('llmConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('keeps the output limit below the context limit, defaulting to the smaller of 4096 and half the context', () => {
+    const think = (role: object) =>
+      llmConfigSchema.safeParse({
+        ...base,
+        roles: { think: { provider: 'local', model: 'm', ...role } },
+      });
+    const parsed = (role: object) => {
+      const result = think(role);
+      if (!result.success) throw new Error(result.error.message);
+      return result.data.roles.think.maxOutputTokens;
+    };
+    expect(parsed({})).toBe(4096);
+    expect(parsed({ contextTokens: 4096 })).toBe(2048);
+    expect(parsed({ contextTokens: 32768 })).toBe(4096);
+    expect(parsed({ contextTokens: 32768, maxOutputTokens: 16384 })).toBe(16384);
+    expect(think({ contextTokens: 4096, maxOutputTokens: 4096 }).success).toBe(false);
+  });
+
   it('fills the defaults of a role', () => {
     expect(llmConfigSchema.parse(base).roles.think).toEqual({
       provider: 'local',
       model: 'qwen2.5vl:7b',
       contextTokens: 8192,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 4096,
       structuredOutput: 'native',
       imageInput: true,
     });

@@ -1,4 +1,5 @@
 import { useMemoryList } from '@drawroid/swr';
+import { ErrorNote, Item, ItemList, Muted, Section, SubSection } from '@drawroid/ui';
 import { Link } from 'react-router';
 
 import { bodyHead } from '../lib/memory-form';
@@ -6,31 +7,34 @@ import { bodyHead } from '../lib/memory-form';
 export function MemoryList() {
   const { data, error } = useMemoryList();
   return (
-    <section>
-      <h2>記憶</h2>
-      {error !== undefined && <p role="alert">一覧を読めない: {error.message}</p>}
-      {data?.items.length === 0 && <p>まだ無い。</p>}
-      <ul>
+    <Section title="記憶">
+      {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
+      {data?.items.length === 0 && <Muted>まだ無い。</Muted>}
+      <ItemList>
         {data?.items.map((item) => (
-          <li key={item.id}>
-            <Link to={`/memory/${encodeURIComponent(item.id)}`}>{bodyHead(item.body)}</Link> [
-            {item.scope}] {item.tags.map((tag) => `#${tag}`).join(' ')}{' '}
+          <Item key={item.id}>
+            <Link
+              to={`/memory/${encodeURIComponent(item.id)}`}
+              className="underline underline-offset-2"
+            >
+              {bodyHead(item.body)}
+            </Link>{' '}
+            [{item.scope}] {item.tags.map((tag) => `#${tag}`).join(' ')}{' '}
             {new Date(item.updatedAt).toLocaleString('ja-JP')} 学んだジョブ {item.sources.length}件
-          </li>
+          </Item>
         ))}
-      </ul>
+      </ItemList>
       {data !== undefined && data.invalid.length > 0 && (
-        <>
-          <h3>読めない項目</h3>
-          <ul>
+        <SubSection title="読めない項目">
+          <ItemList>
             {data.invalid.map(({ id, reason }) => (
-              <li key={id}>
+              <Item key={id}>
                 <code>{id}</code>: {reason}
-              </li>
+              </Item>
             ))}
-          </ul>
-        </>
+          </ItemList>
+        </SubSection>
       )}
-    </section>
+    </Section>
   );
 }

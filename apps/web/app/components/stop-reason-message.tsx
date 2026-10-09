@@ -1,4 +1,5 @@
 import type { StopReason } from '@drawroid/core';
+import { ErrorNote } from '@drawroid/ui';
 
 import { summarizeStopReason } from '../lib/stop-reason';
 import { BackendErrorMessage } from './backend-error-message';
@@ -8,14 +9,14 @@ export function StopReasonMessage({ reason }: { reason: StopReason }) {
   if (reason.kind !== 'error') return <p>止まった理由: {summarizeStopReason(reason)}</p>;
   if (reason.backendErrorKind === undefined) {
     return (
-      <div role="alert">
+      <ErrorNote className="space-y-1">
         <p>
           <strong>{summarizeStopReason(reason)}（結果の保存など）。</strong>
         </p>
         <p>
           <code>{reason.detail}</code>
         </p>
-      </div>
+      </ErrorNote>
     );
   }
   return <BackendErrorMessage kind={reason.backendErrorKind} message={reason.detail} />;

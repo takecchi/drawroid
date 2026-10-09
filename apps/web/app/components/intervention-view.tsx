@@ -1,5 +1,5 @@
 import type { InterventionsResponse } from '@drawroid/swr';
-import type { CSSProperties } from 'react';
+import { AuthorMark, BulletList, Muted, Section } from '@drawroid/ui';
 
 import { formatTime } from '../lib/job-labels';
 
@@ -7,21 +7,6 @@ export type Intervention = InterventionsResponse['interventions'][number];
 type StopConditionsIntervention = Extract<Intervention, { kind: 'stopConditions' }>;
 
 const MS_PER_MINUTE = 60_000;
-
-// 枠の色と左の線で分ける: 人間の指示と AI の判断が並ぶ記録で、文字を読まなくてもどちらかが分かるようにするため
-const MARK_COLORS = { human: '#d97706', ai: '#2563eb' } as const;
-
-export function markStyle(author: keyof typeof MARK_COLORS): CSSProperties {
-  return {
-    borderLeft: `4px solid ${MARK_COLORS[author]}`,
-    paddingLeft: 8,
-    marginBottom: 8,
-  };
-}
-
-export function AuthorLabel({ author, children }: { author: 'human' | 'ai'; children: string }) {
-  return <strong style={{ color: MARK_COLORS[author], fontSize: '0.85em' }}>{children}</strong>;
-}
 
 // 上限の null は「外した」と出す: 欄を省いた変更（触っていない）と、上限を外した変更を見分けられるようにするため
 function describeLimit(label: string, value: number | null, unit: string): string {
@@ -62,13 +47,12 @@ export function InterventionItem({
   showStatus?: boolean;
 }) {
   return (
-    <div style={markStyle('human')}>
-      <AuthorLabel author="human">人間の指示</AuthorLabel> {formatTime(intervention.receivedAt)}
+    <AuthorMark author="human" label="人間の指示" meta={formatTime(intervention.receivedAt)}>
       {intervention.kind === 'instruction' ? (
         <>
-          <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0' }}>{intervention.text}</p>
+          <p className="whitespace-pre-wrap">{intervention.text}</p>
           {showStatus && (
-            <p style={{ margin: '4px 0' }}>
+            <p>
               {intervention.appliedInIteration === undefined
                 ? '次の回の境目で取り込む'
                 : `${intervention.appliedInIteration} 回目の「考える」に取り込んだ`}
@@ -77,11 +61,11 @@ export function InterventionItem({
         </>
       ) : intervention.kind === 'mask' ? (
         <>
-          <p style={{ margin: '4px 0' }}>
+          <p>
             {intervention.image.iteration} 回目の画像 {intervention.image.index} にマスクを塗った
           </p>
           {showStatus && (
-            <p style={{ margin: '4px 0' }}>
+            <p>
               {intervention.usedInIteration === undefined
                 ? 'まだ inpaint に使っていない'
                 : `${intervention.usedInIteration} 回目の inpaint に使った`}
@@ -90,27 +74,26 @@ export function InterventionItem({
         </>
       ) : (
         <>
-          <p style={{ margin: '4px 0' }}>止める条件を変えた</p>
-          <ul style={{ margin: '4px 0' }}>
+          <p>止める条件を変えた</p>
+          <BulletList>
             {describeStopConditionsChange(intervention).map((line) => (
               <li key={line}>{line}</li>
             ))}
-          </ul>
+          </BulletList>
         </>
       )}
-    </div>
+    </AuthorMark>
   );
 }
 
 // 受けた順に並べ直さない: ストアが受けた順で返す約束で、ここで時刻の文字列を比べ直すと形式の違いで崩れるため
 export function InterventionList({ interventions }: { interventions: Intervention[] }) {
   return (
-    <section>
-      <h2>人間の指示（{interventions.length}）</h2>
-      {interventions.length === 0 && <p>まだ人間の指示は無い。</p>}
+    <Section title={`人間の指示（${interventions.length}）`}>
+      {interventions.length === 0 && <Muted>まだ人間の指示は無い。</Muted>}
       {interventions.map((intervention) => (
         <InterventionItem key={intervention.interventionId} intervention={intervention} />
       ))}
-    </section>
+    </Section>
   );
 }

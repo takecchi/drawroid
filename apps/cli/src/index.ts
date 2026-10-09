@@ -3,8 +3,14 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_BUDGET, ManualGenerationRunner, permissionOverridesSchema } from '@drawroid/core';
-import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
+import {
+  DEFAULT_BUDGET,
+  DEFAULT_BUDGETS,
+  estimateMaxOutputTokens,
+  ManualGenerationRunner,
+  permissionOverridesSchema,
+} from '@drawroid/core';
+import { llmConfigSchema, outputLimitWarnings, type LlmConfig } from '@drawroid/llm';
 import {
   createFsDistillLog,
   createFsMemoryStore,
@@ -82,6 +88,18 @@ async function main() {
     memory: { store: memoryStore, distillLog: createFsDistillLog(root) },
     log,
   });
+  // 値は書き換えない: 保存済みの小さい上限（以前の既定 1024 など）に、利用者が気づけるようにするだけ
+  const budgetSettings = createBudgetSettings(configPath);
+  // 今の設定の予算で見積もる: これから投入するジョブは、この予算で回るため。予算の設定が壊れていれば既定で見積もる
+  const warnOutputLimits = async (llm: LlmConfig) => {
+    const budgets = await budgetSettings.read().then(
+      ({ effective }) => effective,
+      () => DEFAULT_BUDGETS,
+    );
+    for (const warning of outputLimitWarnings(llm, estimateMaxOutputTokens(budgets))) {
+      log(`drawroid: 警告: ${warning.message}`);
+    }
+  };
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
     log(
@@ -90,6 +108,7 @@ async function main() {
   } else {
     const parsed = llmConfigSchema.safeParse(stored);
     if (parsed.success) {
+      await warnOutputLimits(parsed.data);
       autoQueue.configure(parsed.data);
     } else {
       log(
@@ -103,6 +122,7 @@ async function main() {
     read: () => readLlmSettings(configPath),
     write: async (llm: LlmConfig) => {
       await writeLlmSettings(configPath, llm);
+      await warnOutputLimits(llm);
       autoQueue.configure(llm);
       autoQueue.kick();
     },
@@ -118,7 +138,7 @@ async function main() {
       backendSettings,
       memoryStore,
       autoQueue,
-      budgetSettings: createBudgetSettings(configPath),
+      budgetSettings,
       llmSettings,
       stopConditionParser: createStopConditionParser({
         store,

@@ -81,6 +81,85 @@ function userTexts(model: MockLanguageModelV4, index: number): string[] {
   );
 }
 
+/** 出力の上限で切れた応答 */
+function cutAtLimit(text: string): GenerateResult {
+  return {
+    ...reply(text, { input: 100, output: 4096 }),
+    finishReason: { unified: 'length', raw: 'length' },
+  };
+}
+
+describe('AiSdkLlm.generateStructured when the output is cut at the limit', () => {
+  const half = valid.slice(0, 30);
+
+  it.each(['native', 'json', 'text'] as const)(
+    'stops at once in %s mode, naming the setting to raise and the size to raise it to',
+    async (structuredOutput) => {
+      const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half), reply(valid)] });
+      const outcome = await adapter(model, role({ structuredOutput })).generateStructured(call());
+
+      // 同じ上限で出し直しても同じ所で切れるので、出し直さない
+      expect(model.doGenerateCalls).toHaveLength(1);
+      expect(outcome.ok).toBe(false);
+      expect(outcome.attempts).toEqual([
+        { rawOutput: half, usage: { inputTokens: 100, outputTokens: 4096 }, durationMs: 10 },
+      ]);
+      if (!outcome.ok) {
+        expect(outcome.reason).toContain(
+          '考える役の出力が、出力の上限（maxOutputTokens = 4096）で切れた',
+        );
+        expect(outcome.reason).toContain(
+          '「出力の上限（トークン）」（config.json の llm.roles.think.maxOutputTokens）を 8192 以上に上げる',
+        );
+        expect(outcome.reason).toContain('llm.roles.think.contextTokens、いま 8192');
+        expect(outcome.reason).toContain('考える過程（reasoning）');
+      }
+    },
+  );
+
+  it('treats a server error that says the output stopped at length the same way, keeping the original message', async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error(
+          'structured output was incomplete (finish_reason=length); increase the output budget',
+        );
+      },
+    });
+    const outcome = await adapter(model, role({ maxOutputTokens: 1024 })).generateStructured(
+      call(),
+    );
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.reason).toContain('llm.roles.think.maxOutputTokens）を 2048 以上に上げる');
+      expect(outcome.reason).toContain(
+        '元のエラー: structured output was incomplete (finish_reason=length)',
+      );
+    }
+  });
+
+  it('points at the settings of the think role when the judge role uses them', async () => {
+    const model = new MockLanguageModelV4({ doGenerate: [cutAtLimit(half)] });
+    const config = role({ maxOutputTokens: 1024 });
+    const llm = new AiSdkLlm(
+      { think: config, judge: config },
+      { think: { providerName: 'local', model }, judge: { providerName: 'local', model } },
+      { validationRetries: 2, networkRetries: 0, configKeys: { think: 'think', judge: 'think' } },
+    );
+    const outcome = await llm.generateStructured(call({ role: 'judge' }));
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.reason).toContain(
+        '見る役の出力が、出力の上限（maxOutputTokens = 1024）で切れた',
+      );
+      expect(outcome.reason).toContain(
+        '見る役は考える役の設定を使っているので、LLM の設定の考える役の「出力の上限（トークン）」（config.json の llm.roles.think.maxOutputTokens）',
+      );
+    }
+  });
+});
+
 describe('AiSdkLlm.generateStructured', () => {
   it('returns the validated value with tokens and time of the call', async () => {
     const model = new MockLanguageModelV4({ doGenerate: [reply(valid)] });
@@ -259,7 +338,7 @@ describe('describe', () => {
     expect(adapter(model, role({ contextTokens: 4096 })).describe('judge')).toEqual({
       provider: 'local',
       model: 'qwen',
-      window: { contextTokens: 4096, maxOutputTokens: 1024 },
+      window: { contextTokens: 4096, maxOutputTokens: 2048 },
       imageInput: true,
     });
   });
