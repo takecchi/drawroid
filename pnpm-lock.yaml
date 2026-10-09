@@ -228,6 +228,25 @@ importers:
         specifier: ^5.0.0
         version: 5.0.3(@types/node@22.20.5)(jsdom@30.1.2)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.28.2)(yaml@2.9.1))
 
+  packages/backend-a1111:
+    dependencies:
+      '@drawroid/backend-sdapi':
+        specifier: workspace:*
+        version: link:../backend-sdapi
+      '@drawroid/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/backend-forge:
     dependencies:
       '@drawroid/backend-sdapi':
