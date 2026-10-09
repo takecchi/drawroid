@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import { generationRequestSchema } from '../backend.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import {
   effectivePermissions,
   mergePermissions,
+  permissionOverridesSchema,
   permissionSchema,
+  permissionsSchema,
+  REQUIRED_PARAM_KEYS,
   type Permissions,
 } from './permission.js';
 
@@ -102,5 +106,43 @@ describe('permissionSchema', () => {
 
   it('rejects a mode it does not know', () => {
     expect(permissionSchema.safeParse({ mode: 'ask-human' }).success).toBe(false);
+  });
+});
+
+describe('permissions for the fields a generation cannot do without', () => {
+  it.each(REQUIRED_PARAM_KEYS)('does not let %s be turned off', (key) => {
+    expect(permissionsSchema.safeParse({ ...allAuto(), [key]: { mode: 'off' } }).success).toBe(
+      false,
+    );
+    expect(permissionOverridesSchema.safeParse({ [key]: { mode: 'off' } }).success).toBe(false);
+  });
+
+  it.each(REQUIRED_PARAM_KEYS)('lets %s be left to the AI or fixed', (key) => {
+    expect(permissionOverridesSchema.safeParse({ [key]: { mode: 'auto' } }).success).toBe(true);
+    expect(
+      permissionOverridesSchema.safeParse({ [key]: { mode: 'fixed', value: 1 } }).success,
+    ).toBe(true);
+  });
+
+  it('still lets the other parameters be turned off', () => {
+    expect(
+      permissionsSchema.safeParse({ ...allAuto(), vae: { mode: 'off' }, hiresFix: { mode: 'off' } })
+        .success,
+    ).toBe(true);
+  });
+
+  it('covers exactly the request fields the backend has no default for', () => {
+    const withoutDefault = PARAM_KEYS.filter(
+      (key) =>
+        Object.hasOwn(generationRequestSchema.shape, key) &&
+        !generationRequestSchema.shape[key as keyof typeof generationRequestSchema.shape].safeParse(
+          undefined,
+        ).success,
+    );
+    expect([...withoutDefault].sort()).toEqual([...REQUIRED_PARAM_KEYS].sort());
+  });
+
+  it('rejects an override for a parameter it does not know', () => {
+    expect(permissionOverridesSchema.safeParse({ denoise: { mode: 'off' } }).success).toBe(false);
   });
 });

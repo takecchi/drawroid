@@ -44,16 +44,25 @@ import {
   type ThinkParamKey,
 } from './schemas.js';
 import { checkStopAtBoundary, effectiveStopConditions, hasAnyStopCondition } from './stop.js';
-import { PARAM_KEYS } from '../params/param-key.js';
+import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import type { Permissions } from '../permissions/permission.js';
 import { buildParamsSchema } from '../think/params-schema.js';
 
-// M2 の allowed を #15 の許可の形に直す。M4 の許可の設定を runner につなぐまでのつなぎ（4-7a で置き換える）
-function permissionsAllowing(allowed: readonly ThinkParamKey[]): Permissions {
+// M2 の allowed と既定値を、#15・#21 の許可の形に直す。M4 の許可の設定を runner につなぐまでのつなぎ（4-7a で置き換える）。
+// 任せない欄のうち既定値のあるものは「固定」にする: #21 は必須の欄を「使わない」にさせないため
+function permissionsAllowing(
+  allowed: readonly ThinkParamKey[],
+  defaults: GenerationDefaults,
+): Permissions {
+  const fixed: Partial<Record<ParamKey, unknown>> = { prompt: '', ...defaults };
   return Object.fromEntries(
     PARAM_KEYS.map((key) => [
       key,
-      (allowed as readonly string[]).includes(key) ? { mode: 'auto' } : { mode: 'off' },
+      (allowed as readonly string[]).includes(key)
+        ? { mode: 'auto' }
+        : key in fixed
+          ? { mode: 'fixed', value: fixed[key] }
+          : { mode: 'off' },
     ]),
   ) as Permissions;
 }
@@ -378,7 +387,7 @@ export class JobRunner {
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
       schema: buildThinkOutputSchema(
-        buildParamsSchema(permissionsAllowing(allowed), { shown: {}, budget }),
+        buildParamsSchema(permissionsAllowing(allowed, this.deps.defaults), { shown: {}, budget }),
         budget,
         { withInterventions: plan.included.length > 0 },
       ),
