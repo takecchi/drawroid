@@ -1,7 +1,13 @@
 import type { LlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
 import type { GeneratedImage } from '../backend.js';
-import type { JobSpec, JobState, NewJobSpec } from './types.js';
+import type {
+  InterventionRecord,
+  JobSpec,
+  JobState,
+  NewIntervention,
+  NewJobSpec,
+} from './types.js';
 
 /** 回の中の段の出力。ファイルがあることが、その段が済んだことを表す */
 export type StageName = 'think' | 'request' | 'judge';
@@ -18,6 +24,15 @@ export interface JobStore {
   writeJob(spec: JobSpec): Promise<void>;
   readState(jobId: string): Promise<JobState>;
   writeState(jobId: string, state: JobState): Promise<void>;
+
+  /** 口出しを置く。interventionId は置き場所が決め、その名前の順が受けた順になる */
+  addIntervention(
+    jobId: string,
+    intervention: NewIntervention,
+    now: Date,
+  ): Promise<InterventionRecord>;
+  /** 受けた順 */
+  listInterventions(jobId: string): Promise<InterventionRecord[]>;
 
   /** 段の出力が無ければ undefined */
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown>;

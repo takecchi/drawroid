@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkStopAtBoundary, type StopCheck } from './stop.js';
+import { checkStopAtBoundary, effectiveStopConditions, type StopCheck } from './stop.js';
 
 const base: StopCheck = {
   conditions: { aiJudgement: true },
@@ -55,5 +55,38 @@ describe('checkStopAtBoundary', () => {
       judgeSaysStop: true,
     };
     expect(checkStopAtBoundary(check)?.kind).toBe('ai');
+  });
+});
+
+describe('effectiveStopConditions', () => {
+  const base = { aiJudgement: true, maxIterations: 5, maxImages: 20 };
+
+  it('is the job conditions as they are while nothing has been changed', () => {
+    expect(effectiveStopConditions(base, [])).toEqual(base);
+  });
+
+  it('changes only the fields a change names', () => {
+    expect(effectiveStopConditions(base, [{ maxIterations: 8 }])).toEqual({
+      aiJudgement: true,
+      maxIterations: 8,
+      maxImages: 20,
+    });
+  });
+
+  it('lets a later change win over an earlier one', () => {
+    expect(
+      effectiveStopConditions(base, [
+        { maxIterations: 8 },
+        { maxIterations: 3, aiJudgement: false },
+      ]),
+    ).toEqual({ aiJudgement: false, maxIterations: 3, maxImages: 20 });
+  });
+
+  it('removes a limit when a change sets it to null, and adds one the job did not have', () => {
+    expect(effectiveStopConditions(base, [{ maxImages: null, maxDurationMs: 60_000 }])).toEqual({
+      aiJudgement: true,
+      maxIterations: 5,
+      maxDurationMs: 60_000,
+    });
   });
 });

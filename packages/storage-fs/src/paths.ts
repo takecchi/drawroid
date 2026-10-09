@@ -52,10 +52,14 @@ export function iterationDirName(iteration: number): string {
 function jobFiles(dir: string) {
   const iterations = join(dir, 'iterations');
   const llmCalls = join(dir, 'llm-calls');
+  const interventions = join(dir, 'interventions');
   return {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
+    interventions,
+    /** 口出し1件 */
+    intervention: (interventionId: string) => join(interventions, `${interventionId}.json`),
     llmCalls,
     llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
     iterations,

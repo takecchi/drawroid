@@ -3,14 +3,17 @@ import { access, mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 import {
+  interventionRecordSchema,
   jobSpecSchema,
   jobStateSchema,
   type GeneratedImage,
   type ImageRef,
+  type InterventionRecord,
   type JobSpec,
   type JobState,
   type JobStore,
   type LlmCallRecord,
+  type NewIntervention,
   type NewJobSpec,
   type PreviewImage,
   type StageName,
@@ -144,6 +147,38 @@ export class FsJobStore implements JobStore {
 
   async writeState(jobId: string, state: JobState): Promise<void> {
     await writeJsonAtomic(this.paths.jobFiles(jobId).state, jobStateSchema.parse(state));
+  }
+
+  async addIntervention(
+    jobId: string,
+    intervention: NewIntervention,
+    now: Date,
+  ): Promise<InterventionRecord> {
+    const files = this.paths.jobFiles(jobId);
+    await mkdir(files.interventions, { recursive: true });
+    for (;;) {
+      // jobId と同じ形の名前にする: 名前の順がそのまま受けた順になり、連番を数える読み書きが要らないため
+      const interventionId = formatJobId(now, this.randomSuffix());
+      const path = files.intervention(interventionId);
+      if (await exists(path)) continue;
+      const record = interventionRecordSchema.parse({
+        ...intervention,
+        interventionId,
+        receivedAt: now.toISOString(),
+      });
+      await writeJsonAtomic(path, record);
+      return record;
+    }
+  }
+
+  async listInterventions(jobId: string): Promise<InterventionRecord[]> {
+    const files = this.paths.jobFiles(jobId);
+    const names = (await listNames(files.interventions)).filter((name) => name.endsWith('.json'));
+    const records: InterventionRecord[] = [];
+    for (const name of names) {
+      records.push(await readValid(join(files.interventions, name), interventionRecordSchema));
+    }
+    return records;
   }
 
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown> {

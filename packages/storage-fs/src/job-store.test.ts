@@ -133,6 +133,44 @@ describe('FsJobStore jobs', () => {
   });
 });
 
+describe('FsJobStore interventions', () => {
+  it('lists interventions in the order they were received, from the files alone', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await jobs.addIntervention(
+      a.jobId,
+      { stopConditions: { maxIterations: 3 } },
+      new Date('2026-10-09T06:31:00Z'),
+    );
+    await jobs.addIntervention(
+      a.jobId,
+      { stopConditions: { maxIterations: null } },
+      new Date('2026-10-09T06:32:00Z'),
+    );
+
+    const listed = await jobs.listInterventions(a.jobId);
+    expect(listed.map((i) => i.stopConditions)).toEqual([
+      { maxIterations: 3 },
+      { maxIterations: null },
+    ]);
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).interventions)).toHaveLength(2);
+  });
+
+  it('has no interventions for a job nobody has spoken to', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.listInterventions(a.jobId)).toEqual([]);
+  });
+
+  it('refuses a stop condition change that changes nothing', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(
+      jobs.addIntervention(a.jobId, { stopConditions: {} }, new Date('2026-10-09T06:31:00Z')),
+    ).rejects.toThrow();
+  });
+});
+
 describe('FsJobStore stages', () => {
   it('tells a stage that has not run yet by the missing file', async () => {
     const jobs = store();

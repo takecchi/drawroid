@@ -1,4 +1,23 @@
-import type { StopConditions, StopReason } from '../job/types.js';
+import type { StopConditions, StopConditionsChange, StopReason } from '../job/types.js';
+
+/**
+ * 実際に効いている止める条件。job.json の条件に、走行中の変更を受けた順に重ねる。
+ */
+export function effectiveStopConditions(
+  base: StopConditions,
+  changes: readonly StopConditionsChange[],
+): StopConditions {
+  const conditions: StopConditions = { ...base };
+  for (const change of changes) {
+    if (change.aiJudgement !== undefined) conditions.aiJudgement = change.aiJudgement;
+    for (const key of ['maxIterations', 'maxDurationMs', 'maxImages'] as const) {
+      const value = change[key];
+      if (value === null) delete conditions[key];
+      else if (value !== undefined) conditions[key] = value;
+    }
+  }
+  return conditions;
+}
 
 export type StopCheck = {
   conditions: StopConditions;

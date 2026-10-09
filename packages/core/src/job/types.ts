@@ -9,13 +9,41 @@ export const stopConditionsSchema = z.object({
 });
 export type StopConditions = z.infer<typeof stopConditionsSchema>;
 
+const limitChange = z.number().int().positive().nullable().optional();
+
+/** 走行中の止める条件の変更。書いた欄だけを変え、上限の欄の null はその上限を外す */
+export const stopConditionsChangeSchema = z
+  .object({
+    aiJudgement: z.boolean().optional(),
+    maxIterations: limitChange,
+    maxDurationMs: limitChange,
+    maxImages: limitChange,
+  })
+  .strict()
+  .refine((change) => Object.keys(change).length > 0, { message: '変える欄が無い' });
+export type StopConditionsChange = z.infer<typeof stopConditionsChangeSchema>;
+
+/**
+ * interventions/<interventionId>.json の中身。人間の口出し1件で、受けたまま書き換えない。
+ */
+// 止める条件の変更を job.json に書き込まない: job.json は依頼の原文の記録で、実際の条件と二重に持つことになるため（Issue #5 の E）
+export const interventionRecordSchema = z.object({
+  interventionId: z.string().min(1),
+  receivedAt: z.iso.datetime({ offset: true }),
+  stopConditions: stopConditionsChangeSchema,
+});
+export type InterventionRecord = z.infer<typeof interventionRecordSchema>;
+/** addIntervention に渡す形（interventionId と receivedAt は置き場所が決める） */
+export type NewIntervention = Omit<InterventionRecord, 'interventionId' | 'receivedAt'>;
+
 const jobIdentity = {
   jobId: z.string().min(1),
   createdAt: z.iso.datetime({ offset: true }),
 };
 
 /**
- * job.json の中身。ジョブを作ったときに決まり、止める条件の変更のほかは書き換えない。
+ * job.json の中身。ジョブを作ったときに決まり、書き換えない。
+ * 走行中の止める条件の変更は interventions/ に置き、回の境目でここの止める条件に重ねる。
  * manual は M1 の単発生成（回が1つの手動ジョブ）、auto は M2 のループ。
  */
 export const jobSpecSchema = z.discriminatedUnion('kind', [

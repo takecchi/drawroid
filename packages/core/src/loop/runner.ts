@@ -2,7 +2,14 @@ import type { ZodType } from 'zod';
 
 import { generationRequestSchema, type GenerationRequest, type ImageBackend } from '../backend.js';
 import type { ImageRef, JobStore } from '../job/store.js';
-import type { AutoJobSpec, JobState, StopReason } from '../job/types.js';
+import {
+  stopConditionsChangeSchema,
+  type AutoJobSpec,
+  type JobState,
+  type StopConditions,
+  type StopConditionsChange,
+  type StopReason,
+} from '../job/types.js';
 import type {
   BudgetedMessages,
   LlmCallOutcome,
@@ -21,7 +28,7 @@ import {
   type ThinkOutput,
   type ThinkParamKey,
 } from './schemas.js';
-import { checkStopAtBoundary } from './stop.js';
+import { checkStopAtBoundary, effectiveStopConditions } from './stop.js';
 
 /** AI に任せていないパラメータの値（M2 では解像度など） */
 export type GenerationDefaults = {
@@ -57,6 +64,13 @@ class StopJob extends Error {
 }
 
 const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
+
+export class StopConditionsNotChangeableError extends Error {
+  constructor(jobId: string, why: string) {
+    super(`ジョブ ${jobId} の止める条件は変えられない: ${why}`);
+    this.name = 'StopConditionsNotChangeableError';
+  }
+}
 
 export function defaultCallId(now: Date): string {
   return `${now.toISOString().replaceAll(/[-:.]/g, '')}-${crypto.randomUUID().slice(0, 6)}`;
@@ -99,6 +113,32 @@ export class JobRunner {
     const state = await this.deps.store.readState(jobId);
     if (state.status === 'stopped') return;
     await this.deps.store.writeState(jobId, this.stopped(state, HUMAN_STOP));
+  }
+
+  /**
+   * 走行中・待ち行列のジョブの止める条件を変える。走っている段には触れず、次の回の境目から効く。
+   * 変更を重ねたあとの、実際の止める条件を返す。
+   */
+  async changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions> {
+    const { store } = this.deps;
+    const parsed = stopConditionsChangeSchema.parse(change);
+    const spec = await store.readJob(jobId);
+    if (spec.kind !== 'auto') {
+      throw new StopConditionsNotChangeableError(jobId, '止める条件の無い手動のジョブ');
+    }
+    if ((await store.readState(jobId)).status === 'stopped') {
+      throw new StopConditionsNotChangeableError(jobId, 'もう止まっている');
+    }
+    await store.addIntervention(jobId, { stopConditions: parsed }, this.now());
+    return this.stopConditions(spec);
+  }
+
+  private async stopConditions(spec: AutoJobSpec): Promise<StopConditions> {
+    const interventions = await this.deps.store.listInterventions(spec.jobId);
+    return effectiveStopConditions(
+      spec.stopConditions,
+      interventions.map((intervention) => intervention.stopConditions),
+    );
   }
 
   private async drain(): Promise<void> {
@@ -159,11 +199,13 @@ export class JobRunner {
     let state = initial;
     for (;;) {
       signal.throwIfAborted();
-      const stop = await this.checkBoundary(spec, state);
+      // 境目ごとに読み直す: 回の途中で届いた変更を、走っている段に触れずに次の回から効かせるため
+      const conditions = await this.stopConditions(spec);
+      const stop = await this.checkBoundary(spec, conditions, state);
       if (stop !== undefined) throw new StopJob(stop);
 
       const iteration = state.carry.completedIterations + 1;
-      const think = await this.think(spec, state.carry, iteration, signal);
+      const think = await this.think(spec, conditions, state.carry, iteration, signal);
       const imageCount = await this.generate(spec, iteration, think, signal);
       const judge = await this.judge(spec, state.carry, iteration, imageCount, signal);
 
@@ -178,6 +220,7 @@ export class JobRunner {
 
   private async checkBoundary(
     spec: AutoJobSpec,
+    conditions: StopConditions,
     state: RunningState,
   ): Promise<StopReason | undefined> {
     const done = state.carry.completedIterations;
@@ -186,7 +229,7 @@ export class JobRunner {
         ? undefined
         : ((await this.deps.store.readStage(spec.jobId, done, 'judge')) as JudgeOutput | undefined);
     return checkStopAtBoundary({
-      conditions: spec.stopConditions,
+      conditions,
       completedIterations: done,
       imagesGenerated: state.imagesGenerated,
       elapsedMs: this.now().getTime() - Date.parse(state.startedAt),
@@ -196,6 +239,7 @@ export class JobRunner {
 
   private async think(
     spec: AutoJobSpec,
+    conditions: StopConditions,
     carry: Carry,
     iteration: number,
     signal: AbortSignal,
@@ -204,7 +248,7 @@ export class JobRunner {
     const done = await store.readStage(spec.jobId, iteration, 'think');
     if (done !== undefined) return done as ThinkOutput;
 
-    const max = spec.stopConditions.maxIterations;
+    const max = conditions.maxIterations;
     const messages = buildThinkInput({
       carry,
       progress: {

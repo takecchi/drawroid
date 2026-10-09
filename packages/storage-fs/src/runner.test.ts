@@ -9,12 +9,14 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_BUDGET,
   JobRunner,
+  StopConditionsNotChangeableError,
   THINK_PARAM_KEYS,
   type AutoJobSpec,
   type GenerationRequest,
   type GenerationResult,
   type JobState,
   type LlmCall,
+  type StopConditionsChange,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import sharp from 'sharp';
@@ -368,4 +370,103 @@ describe('a job resumes after the process is killed (:74)', () => {
     // 子と親で callId の形が違い名前の順が混ざるので、回の番号の集まりで見る
     expect(thinkRecords.map((r) => r.iteration).sort()).toEqual([1, 2, 3]);
   }, 20_000);
+});
+
+/** n 回目（1始まり）の生成の途中で、渡した処理を待つバックエンド */
+class BackendWithHook extends BigImageBackend {
+  private generated = 0;
+
+  constructor(private readonly during: (n: number) => Promise<void>) {
+    super();
+  }
+
+  override async generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
+    this.generated += 1;
+    await this.during(this.generated);
+    return super.generate(req, signal);
+  }
+}
+
+/** n 回目の生成の途中で止める条件を変えるジョブを、待ち行列に入れる */
+async function submitChangedDuring(
+  n: number,
+  conditions: AutoJobSpec['stopConditions'],
+  change: StopConditionsChange,
+) {
+  const job = { jobId: '' };
+  const backend = new BackendWithHook(async (k) => {
+    if (k === n) await set.runner.changeStopConditions(job.jobId, change);
+  });
+  const set = setup({ scripts: { think, judge: judge() }, backend });
+  const spec = await submit(set.store, conditions);
+  job.jobId = spec.jobId;
+  return { ...set, spec };
+}
+
+describe('the stop conditions can be changed while the job runs (M3:101)', () => {
+  it('stops at the lowered iteration limit, finishing the iteration that was being generated', async () => {
+    const { store, runner, spec } = await submitChangedDuring(
+      2,
+      { aiJudgement: false, maxIterations: 5 },
+      { maxIterations: 2 },
+    );
+    runner.kick();
+    await runner.idle();
+
+    const state = await stoppedState(store, spec.jobId);
+    expect(state.reason).toEqual({ kind: 'limit:iterations', detail: '2 回に達した' });
+    expect(await iterationDirs(spec.jobId)).toEqual(['0001', '0002']);
+    expect(await store.readStage(spec.jobId, 2, 'judge')).toBeDefined();
+  });
+
+  it('keeps going past the original limit once it is raised', async () => {
+    const { store, runner, spec } = await submitChangedDuring(
+      1,
+      { aiJudgement: false, maxIterations: 1 },
+      { maxIterations: 3 },
+    );
+    runner.kick();
+    await runner.idle();
+
+    expect((await stoppedState(store, spec.jobId)).carry.completedIterations).toBe(3);
+  });
+
+  it('applies a change made while the job waits in the queue from its first boundary', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge(1) } });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 });
+    expect(
+      await runner.changeStopConditions(spec.jobId, { aiJudgement: false, maxIterations: 2 }),
+    ).toEqual({ aiJudgement: false, maxIterations: 2 });
+    runner.kick();
+    await runner.idle();
+
+    const state = await stoppedState(store, spec.jobId);
+    expect(state.reason.kind).toBe('limit:iterations');
+    expect(state.carry.completedIterations).toBe(2);
+  });
+
+  it('leaves job.json as it was submitted', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 });
+    await runner.changeStopConditions(spec.jobId, { maxIterations: 1, maxImages: 10 });
+    runner.kick();
+    await runner.idle();
+
+    expect(await store.readJob(spec.jobId)).toEqual(spec);
+    expect((await store.listInterventions(spec.jobId)).map((i) => i.stopConditions)).toEqual([
+      { maxIterations: 1, maxImages: 10 },
+    ]);
+  });
+
+  it('refuses to change a job that has already stopped', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 1 });
+    runner.kick();
+    await runner.idle();
+
+    await expect(runner.changeStopConditions(spec.jobId, { maxIterations: 3 })).rejects.toThrow(
+      StopConditionsNotChangeableError,
+    );
+    expect(await store.listInterventions(spec.jobId)).toEqual([]);
+  });
 });
