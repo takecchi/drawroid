@@ -46,6 +46,7 @@ function makeApp(env: Record<string, string | undefined>) {
         saved = c;
       },
     },
+    stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     env,
   });
 }

@@ -23,6 +23,7 @@ export function stubDeps(root = '/nonexistent-drawroid-test-root'): ApiDeps {
     },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
+    stopConditionParser: { parse: notUsed },
     env: {},
   };
 }

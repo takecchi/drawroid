@@ -20,6 +20,7 @@ import { createBackendSettings, forgeBackendOptions } from './backend-settings.j
 import { readConfig, resolveForgeUrlWithSource } from './config.js';
 import { listen } from './listen.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
+import { createStopConditionParser } from './stop-condition-parser.js';
 
 // apps/web の成果物を dist へ写さずに、依存として解決した場所から配る: 写すと前回のビルドの古いファイルが dist に残り続けるため
 function resolveWebRoot(): string {
@@ -102,6 +103,10 @@ async function main() {
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,
+      stopConditionParser: createStopConditionParser({
+        store,
+        currentLlm: () => autoQueue.currentLlm(),
+      }),
       env: process.env,
     },
   });

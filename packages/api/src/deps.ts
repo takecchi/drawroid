@@ -25,6 +25,7 @@ export type LlmSettingsStore = {
 };
 
 import type { BackendSettingsPort } from './backend-settings.js';
+import type { StopConditionParser } from './stop-conditions.js';
 
 export type ApiDeps = {
   backend: ImageBackend;
@@ -35,6 +36,7 @@ export type ApiDeps = {
   /** 自動ジョブの依頼を要約へ切り詰めるときの予算 */
   budget: Budget;
   llmSettings: LlmSettingsStore;
+  stopConditionParser: StopConditionParser;
   /** API キーの環境変数が入っているかを確かめるため。値は応答に出さない */
   env: Readonly<Record<string, string | undefined>>;
   now?: () => Date;
