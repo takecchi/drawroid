@@ -1,0 +1,42 @@
+{
+  "callId": "20260101T000006000Z-000001",
+  "iteration": 1,
+  "role": "think",
+  "purpose": "think",
+  "provider": "scripted",
+  "model": "scripted-think",
+  "startedAt": "2026-01-01T00:00:06.000Z",
+  "durationMs": 1,
+  "usage": { "inputTokens": 100, "outputTokens": 20 },
+  "attempts": [
+    {
+      "rawOutput": "{\"params\":{\"prompt\":\"girl, beach, sunset, take 1\",\"negativePrompt\":\"lowres\",\"seed\":1,\"steps\":20,\"cfgScale\":7},\"rationale\":\"1 回目の案\",\"intent\":\"夕暮れの海辺に立つ白いワンピースの少女、アニメ調\"}",
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "durationMs": 1
+    }
+  ],
+  "outcome": {
+    "ok": true,
+    "value": {
+      "params": {
+        "prompt": "girl, beach, sunset, take 1",
+        "negativePrompt": "lowres",
+        "steps": 20,
+        "cfgScale": 7,
+        "seed": 1
+      },
+      "rationale": "1 回目の案"
+    }
+  },
+  "jobId": "20260101-000000-000000",
+  "input": {
+    "system": "あなたは Stable Diffusion の生成パラメータを決める役である。\n依頼の要点・最良の結果・直近の評価を読み、次の回のパラメータを決める。\nprompt と negativePrompt は英語のタグ列で書く。rationale は短く書く。",
+    "user": [
+      {
+        "type": "text",
+        "text": "依頼の要点:\n夕暮れの海辺に立つ白いワンピースの少女、アニメ調\nこれから 1 回目（残り 2 回）。決めてよいパラメータ: prompt, negativePrompt, steps, cfgScale, seed\n参照画像の要点:\n- 白いワンピースの裾が風になびく構図"
+      }
+    ]
+  },
+  "budget": { "estimatedInputTokens": 191, "inputTokenLimit": 7168, "notes": [] }
+}

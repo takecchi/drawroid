@@ -1,0 +1,94 @@
+{
+  "calls": [
+    {
+      "callId": "20260101T000003000Z-000000",
+      "iteration": 1,
+      "role": "judge",
+      "purpose": "ref-gist",
+      "provider": "scripted",
+      "model": "scripted-judge",
+      "startedAt": "2026-01-01T00:00:03.000Z",
+      "durationMs": 1,
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "callId": "20260101T000006000Z-000001",
+      "iteration": 1,
+      "role": "think",
+      "purpose": "think",
+      "provider": "scripted",
+      "model": "scripted-think",
+      "startedAt": "2026-01-01T00:00:06.000Z",
+      "durationMs": 1,
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "callId": "20260101T000007000Z-000002",
+      "iteration": 1,
+      "role": "judge",
+      "purpose": "judge",
+      "provider": "scripted",
+      "model": "scripted-judge",
+      "startedAt": "2026-01-01T00:00:07.000Z",
+      "durationMs": 1,
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "callId": "20260101T000013000Z-000003",
+      "iteration": 2,
+      "role": "think",
+      "purpose": "think",
+      "provider": "scripted",
+      "model": "scripted-think",
+      "startedAt": "2026-01-01T00:00:13.000Z",
+      "durationMs": 1,
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "callId": "20260101T000014000Z-000004",
+      "iteration": 2,
+      "role": "judge",
+      "purpose": "judge",
+      "provider": "scripted",
+      "model": "scripted-judge",
+      "startedAt": "2026-01-01T00:00:14.000Z",
+      "durationMs": 1,
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "callId": "20260101T000019000Z-000005",
+      "iteration": null,
+      "role": "think",
+      "purpose": "distill",
+      "provider": "scripted",
+      "model": "scripted-think",
+      "startedAt": "2026-01-01T00:00:19.000Z",
+      "durationMs": 1,
+      "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "ok": true,
+      "attempts": 1
+    }
+  ],
+  "byIteration": [
+    { "iteration": 1, "calls": 3, "inputTokens": 300, "outputTokens": 60, "durationMs": 3 },
+    { "iteration": 2, "calls": 2, "inputTokens": 200, "outputTokens": 40, "durationMs": 2 },
+    { "iteration": null, "calls": 1, "inputTokens": 100, "outputTokens": 20, "durationMs": 1 }
+  ],
+  "total": { "calls": 6, "inputTokens": 600, "outputTokens": 120, "durationMs": 6 },
+  "invalid": [
+    {
+      "callId": "20260101T000099000Z-broken",
+      "reason": "<データディレクトリ>/jobs/20260101-000000-000000/llm-calls/20260101T000099000Z-broken.json を読めない: Unexpected end of JSON input"
+    }
+  ]
+}
