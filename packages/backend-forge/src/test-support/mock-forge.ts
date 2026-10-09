@@ -13,6 +13,10 @@ const FIXTURE_ROUTES: Record<string, string> = {
   'GET /sdapi/v1/cmd-flags': 'cmd-flags.json',
   'GET /sdapi/v1/upscalers': 'upscalers.json',
   'GET /sdapi/v1/latent-upscale-modes': 'latent-upscale-modes.json',
+  'GET /sdapi/v1/scripts': 'scripts.json',
+  'GET /sdapi/v1/script-info': 'script-info.json',
+  'GET /controlnet/model_list': 'controlnet-model-list.json',
+  'GET /controlnet/module_list': 'controlnet-module-list.json',
 };
 
 export function fixture(name: string): unknown {
@@ -68,6 +72,8 @@ export async function startMockForge(): Promise<MockForge> {
     Object.entries(FIXTURE_ROUTES).map(([key, file]) => [key, json(200, fixture(file))]),
   );
   routes.set('POST /sdapi/v1/txt2img', fakeTxt2img);
+  // img2img の応答は txt2img と同じ形（modules/api/models.py の ImageToImageResponse）
+  routes.set('POST /sdapi/v1/img2img', fakeTxt2img);
   routes.set('POST /sdapi/v1/interrupt', json(200, {}));
   const requests: RecordedRequest[] = [];
   const server = createServer((req, res) => {

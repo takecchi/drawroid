@@ -3,8 +3,8 @@ import { STUB_PNG } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ForgeClient } from './client.js';
+import { generateWithForge } from './generate.js';
 import { json, startMockForge, type MockForge } from './test-support/mock-forge.js';
-import { generateWithForge } from './txt2img.js';
 
 let forge: MockForge;
 let client: ForgeClient;
@@ -173,29 +173,5 @@ describe('generateWithForge response', () => {
       kind: 'bad_response',
       message: expect.stringContaining('中断') as unknown,
     });
-  });
-});
-
-describe('generateWithForge with fields it cannot pass on yet', () => {
-  it('refuses them by name instead of drawing something other than what was asked', async () => {
-    await expect(
-      generate({
-        loras: [{ name: 'detail-tweaker-xl', weight: 0.8, unetWeight: 0.5 }],
-        hiresFix: {
-          upscaler: 'Latent',
-          scale: 2,
-          steps: 0,
-          denoisingStrength: 0.5,
-          cfgScale: 5,
-        },
-        controlnet: [{ image: 'refs/r1.png', model: 'canny [0123abcd]' }],
-      }),
-    ).rejects.toMatchObject({
-      kind: 'failed',
-      message: expect.stringContaining(
-        'controlnet, loras[].unetWeight, hiresFix.cfgScale',
-      ) as unknown,
-    });
-    expect(forge.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
   });
 });

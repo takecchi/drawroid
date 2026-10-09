@@ -72,7 +72,25 @@ describe('listForgeCandidates for Hires. fix and ControlNet', () => {
     ]);
   });
 
-  it('offers no ControlNet candidates while the adapter cannot use ControlNet', async () => {
+  it('names ControlNet models with their hash, which Forge needs to find them, showing the bare name', async () => {
+    expect(await listForgeCandidates(client, 'controlnetModel')).toEqual([
+      { name: 'diffusers_xl_canny_full [2b69fca4]', label: 'diffusers_xl_canny_full' },
+      { name: 'control_v11f1p_sd15_depth [cfd03158]', label: 'control_v11f1p_sd15_depth' },
+    ]);
+  });
+
+  it("lists ControlNet preprocessors, leaving out Forge's own None", async () => {
+    expect(await listForgeCandidates(client, 'controlnetModule')).toEqual([
+      { name: 'canny' },
+      { name: 'depth_anything' },
+      { name: 'lineart_anime' },
+    ]);
+  });
+
+  it('offers no ControlNet candidates when Forge has not loaded ControlNet', async () => {
+    forge.route('GET /controlnet/model_list', json(404, { detail: 'Not Found' }));
+    forge.route('GET /controlnet/module_list', json(404, { detail: 'Not Found' }));
+
     expect(await listForgeCandidates(client, 'controlnetModel')).toEqual([]);
     expect(await listForgeCandidates(client, 'controlnetModule')).toEqual([]);
   });
