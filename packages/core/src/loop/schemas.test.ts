@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
+import type { Permissions } from '../permissions/permission.js';
+import { buildParamsSchema } from '../think/params-schema.js';
 import { DEFAULT_BUDGET } from './budget.js';
 import { buildJudgeOutputSchema, buildThinkOutputSchema } from './schemas.js';
 
 const budget = DEFAULT_BUDGET;
+
+/** 渡したパラメータだけを AI に任せ、残りは使わない許可から、パラメータの部分を組み立てる */
+function paramsAllowing(keys: readonly ParamKey[]) {
+  const permissions = Object.fromEntries(
+    PARAM_KEYS.map((key) => [key, keys.includes(key) ? { mode: 'auto' } : { mode: 'off' }]),
+  ) as Permissions;
+  return buildParamsSchema(permissions, { shown: {}, budget });
+}
 
 function paramKeysOf(schema: ReturnType<typeof buildThinkOutputSchema>): string[] {
   const json = z.toJSONSchema(schema) as unknown as {
@@ -14,22 +25,21 @@ function paramKeysOf(schema: ReturnType<typeof buildThinkOutputSchema>): string[
 
 describe('buildThinkOutputSchema', () => {
   it('contains only the allowed parameters', () => {
-    expect(paramKeysOf(buildThinkOutputSchema(['prompt', 'seed'], budget))).toEqual([
-      'prompt',
-      'seed',
-    ]);
+    expect(paramKeysOf(buildThinkOutputSchema(paramsAllowing(['prompt', 'seed']), budget))).toEqual(
+      ['prompt', 'seed'],
+    );
   });
 
   it('does not hand a disallowed parameter through even if the model returns it', () => {
-    const parsed = buildThinkOutputSchema(['prompt'], budget).parse({
-      params: { prompt: 'girl, beach', cfg: 20 },
+    const parsed = buildThinkOutputSchema(paramsAllowing(['prompt']), budget).parse({
+      params: { prompt: 'girl, beach', cfgScale: 20 },
       rationale: '逆光にする',
     });
     expect(parsed.params).toEqual({ prompt: 'girl, beach' });
   });
 
   it('rejects a prompt longer than the budget', () => {
-    const result = buildThinkOutputSchema(['prompt'], budget).safeParse({
+    const result = buildThinkOutputSchema(paramsAllowing(['prompt']), budget).safeParse({
       params: { prompt: 'a'.repeat(budget.text.prompt + 1) },
       rationale: '',
     });
@@ -37,7 +47,7 @@ describe('buildThinkOutputSchema', () => {
   });
 
   it('rejects a long rationale so the model cannot stream its thoughts', () => {
-    const result = buildThinkOutputSchema(['prompt'], budget).safeParse({
+    const result = buildThinkOutputSchema(paramsAllowing(['prompt']), budget).safeParse({
       params: { prompt: 'girl' },
       rationale: 'あ'.repeat(budget.text.rationale + 1),
     });

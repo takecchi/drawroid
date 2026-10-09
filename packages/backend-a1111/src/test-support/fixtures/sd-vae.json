@@ -1,0 +1,10 @@
+[
+  {
+    "model_name": "sdxl_vae.safetensors",
+    "filename": "/webui/models/VAE/sdxl_vae.safetensors"
+  },
+  {
+    "model_name": "anime-vae.pt",
+    "filename": "/webui/models/VAE/anime/anime-vae.pt"
+  }
+]

@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ManualGenerationRunner, type MemoryItem } from '@drawroid/core';
+import {
+  DEFAULT_BUDGET,
+  generationRequestSchema,
+  ManualGenerationRunner,
+  type MemoryItem,
+} from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -28,6 +33,10 @@ beforeEach(async () => {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
+    autoQueue: { kick: () => undefined, stop: async () => undefined },
+    budget: DEFAULT_BUDGET,
+    llmSettings: { read: async () => undefined, write: async () => undefined },
+    env: {},
   });
 });
 
@@ -130,16 +139,13 @@ describe('GET /memory/:id', () => {
     const spec = await jobs.createJob(
       {
         kind: 'manual',
-        request: {
+        request: generationRequestSchema.parse({
           prompt: 'a cat',
-          negativePrompt: '',
-          loras: [],
           steps: 4,
           cfgScale: 7,
           width: 64,
           height: 64,
-          batchSize: 1,
-        },
+        }),
       },
       { status: 'queued' },
       new Date('2026-10-01T00:00:00Z'),

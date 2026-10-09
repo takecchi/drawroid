@@ -23,7 +23,7 @@ function worstThink(b: Budget): ThinkParams {
     negativePrompt: full(b.text.negativePrompt),
     seed: 4294967295,
     steps: 150,
-    cfg: 30,
+    cfgScale: 30,
   };
 }
 
