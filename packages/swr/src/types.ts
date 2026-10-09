@@ -11,6 +11,15 @@ export type CandidatesResponse = InferResponseType<
 >;
 export type JobsResponse = InferResponseType<typeof client.jobs.$get, 200>;
 export type JobDetail = InferResponseType<(typeof client.jobs)[':jobId']['$get'], 200>;
+/** notes は候補の名前 → 説明。problem は、説明のファイルが読めなかったときの理由（そのとき notes は空） */
+export type CandidateNotesResponse = InferResponseType<
+  (typeof client.backend)['candidate-notes']['$get'],
+  200
+>;
+/** 保存するときに送る、候補の名前 → 説明の全部 */
+export type CandidateNotesInput = InferRequestType<
+  (typeof client.backend)['candidate-notes']['$put']
+>['json'];
 export type BackendSettingsResponse = InferResponseType<typeof client.settings.backend.$get, 200>;
 export type MemoryList = InferResponseType<typeof client.memory.$get, 200>;
 export type MemoryItemDetail = InferResponseType<(typeof client.memory)[':id']['$get'], 200>;

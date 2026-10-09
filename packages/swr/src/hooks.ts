@@ -7,6 +7,7 @@ import { keys } from './keys.js';
 import type {
   BackendSettingsResponse,
   BackendStatus,
+  CandidateNotesResponse,
   CandidatesResponse,
   InterventionsResponse,
   IterationsResponse,
@@ -37,6 +38,13 @@ export function useBackendStatus() {
 export function useCandidates(kind: CandidateKind) {
   return useSWR<CandidatesResponse, ApiError>(keys.candidates(kind), () =>
     unwrap<CandidatesResponse>(() => client.backend.candidates[':kind'].$get({ param: { kind } })),
+  );
+}
+
+// ポーリングしない: 説明を変えるのは人間の操作だけで、保存の関数が置き直すため
+export function useCandidateNotes() {
+  return useSWR<CandidateNotesResponse, ApiError>(keys.candidateNotes, () =>
+    unwrap<CandidateNotesResponse>(() => client.backend['candidate-notes'].$get()),
   );
 }
 

@@ -2,6 +2,7 @@
 export const keys = {
   backend: '/api/backend',
   candidates: (kind: string) => `/api/backend/candidates/${kind}`,
+  candidateNotes: '/api/backend/candidate-notes',
   backendSettings: '/api/settings/backend',
   memory: '/api/memory',
   memoryItem: (id: string) => `/api/memory/${id}`,
