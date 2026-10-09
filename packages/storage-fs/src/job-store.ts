@@ -379,28 +379,30 @@ export class FsJobStore implements JobStore {
   async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {
     const files = this.jobFiles(jobId);
     await mkdir(files.refs, { recursive: true });
+    // 口出しと同じく受けた順の連番にし、refs/<refId>.json を排他的に置いて番号を取る。
+    // 画像のファイルで取り合わない: 拡張子が違うと、同じ番号を2件が取れてしまうため
     for (;;) {
-      const refId = formatJobId(now, this.randomSuffix());
-      if (await exists(files.refMeta(refId))) continue;
+      const refId = formatSequenceId((await this.lastSequence(files.refs)) + 1);
       const record = referenceRecordSchema.parse({
         refId,
         receivedAt: now.toISOString(),
         mediaType: reference.mediaType,
         ...(reference.note === undefined ? {} : { note: reference.note }),
       });
-      // 画像を先に、refs/<refId>.json を後に置く: 一覧は .json だけを数えるので、途中で落ちても画像の無い参照が見えないため
+      if (!(await createJsonExclusive(files.refMeta(refId), record))) continue;
       await writeFileAtomic(files.ref(refId, extensionOf(record.mediaType)), reference.data);
-      await writeJsonAtomic(files.refMeta(refId), record);
       return record;
     }
   }
 
   async listReferences(jobId: string): Promise<ReferenceRecord[]> {
     const files = this.jobFiles(jobId);
-    const names = (await listNames(files.refs)).filter((name) => name.endsWith('.json'));
     const records: ReferenceRecord[] = [];
-    for (const name of names) {
-      records.push(await readValid(join(files.refs, name), referenceRecordSchema));
+    for (const name of await this.sequenceNames(files.refs)) {
+      const record = await readValid(join(files.refs, name), referenceRecordSchema);
+      // 番号を取ったあと画像を置く前に落ちた参照は見せない: 渡す画像が無いため
+      if (await exists(files.ref(record.refId, extensionOf(record.mediaType))))
+        records.push(record);
     }
     return records;
   }
@@ -459,9 +461,9 @@ export class FsJobStore implements JobStore {
     return `${relative(this.paths.root, dir).split('\\').join('/')}/${name}`;
   }
 
-  // refId も jobId と同じ形なので、同じ検査を通してからパスを組む: 外から来た refId でデータディレクトリの外を指させないため
+  // 連番の形かを確かめてからパスを組む: 外から来た refId でデータディレクトリの外を指させないため
   private refFiles(jobId: string, refId: string) {
-    if (!isJobId(refId)) throw new Error(`refId の形ではない: ${refId}`);
+    if (!isSequenceId(refId)) throw new Error(`refId の形ではない: ${refId}`);
     const files = this.jobFiles(jobId);
     return {
       meta: files.refMeta(refId),

@@ -520,6 +520,42 @@ describe('FsJobStore references', () => {
       .toBuffer();
   }
 
+  it('lists references in the order they arrived, even within the same second', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const sameSecond = new Date('2026-10-09T06:31:00Z');
+    const data = await reference(16, 16);
+    const added: string[] = [];
+    for (let n = 1; n <= 10; n += 1) {
+      added.push(
+        (
+          await jobs.addReference(
+            a.jobId,
+            { data, mediaType: 'image/png', note: `${n}` },
+            sameSecond,
+          )
+        ).refId,
+      );
+    }
+
+    expect((await jobs.listReferences(a.jobId)).map((r) => r.refId)).toEqual(added);
+  });
+
+  it('keeps every reference received at once, whatever the image format', async () => {
+    const jobs = new FsJobStore(root);
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    const data = await reference(16, 16);
+    const formats = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+    await Promise.all(
+      Array.from({ length: 9 }, (_, n) =>
+        jobs.addReference(a.jobId, { data, mediaType: formats[n % 3]! }, new Date()),
+      ),
+    );
+
+    expect(new Set((await jobs.listReferences(a.jobId)).map((r) => r.refId)).size).toBe(9);
+  });
+
   it('keeps references under refs/ in the order they arrived', async () => {
     const jobs = store();
     const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
