@@ -1,6 +1,9 @@
-import { createAutoJob, isApiError } from '@drawroid/swr';
-import { Button, ErrorNote, Field, Input, Textarea } from '@drawroid/ui';
+import { PARAM_KEYS, type ParamKey, type Permission } from '@drawroid/core';
+import { createAutoJob, isApiError, usePermissionSettings } from '@drawroid/swr';
+import { Button, ErrorNote, Field, Input, Muted, Textarea } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
+
+import { buildOverrides, toRows, type Rows } from '../lib/permission-form';
 
 import { buildReferenceUploads, type AttachedReference } from '../lib/reference-upload';
 import {
@@ -8,6 +11,7 @@ import {
   DEFAULT_STOP_CONDITIONS_FORM,
   stopConditionsBlocker,
 } from '../lib/stop-conditions-form';
+import { PermissionTable } from './permission-table';
 import { ReferenceAttacher } from './reference-attacher';
 import { StopConditionsEditor } from './stop-conditions-editor';
 
@@ -18,6 +22,9 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
   const [stopForm, setStopForm] = useState(DEFAULT_STOP_CONDITIONS_FORM);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
   const [references, setReferences] = useState<AttachedReference[]>([]);
+  // はじめは全部「全体の既定のまま」: 何も触らなければ、これまでどおり全体の既定で回る
+  const [permissionRows, setPermissionRows] = useState<Rows>(() => toRows({}));
+  const globalPermissions = usePermissionSettings();
   const [error, setError] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
 
@@ -34,6 +41,12 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
       setError(stopBlocker);
       return;
     }
+    const permissions = buildOverrides(permissionRows);
+    if (!permissions.ok) {
+      setError(permissions.reason);
+      return;
+    }
+    const overridden = PARAM_KEYS.some((key) => permissions.value[key] !== undefined);
     setSending(true);
     setError(undefined);
     try {
@@ -48,6 +61,8 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
         batchSize: batch,
         // 空のときは載せない: 参照画像の無い投入の body を、これまでと同じ形に保つため
         ...(uploads.value.length === 0 ? {} : { references: uploads.value }),
+        // 書いた欄が無ければ載せない: 上書きの無い投入の body を、これまでと同じ形に保つため
+        ...(overridden ? { permissions: permissions.value } : {}),
       });
       onCreated(jobId);
     } catch (caught) {
@@ -70,6 +85,23 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
       </Field>
       <ReferenceAttacher items={references} onChange={setReferences} disabled={sending} />
       <StopConditionsEditor values={stopForm} onChange={setStopForm} />
+      <details className="space-y-2">
+        <summary className="cursor-pointer">このジョブだけの許可</summary>
+        <Muted>
+          書いた欄だけが、このジョブで全体の既定より優先される。投入したあとに全体の既定を変えても、ここで書いた欄は変わらない。
+        </Muted>
+        {globalPermissions.error !== undefined && (
+          <ErrorNote>全体の既定の許可を読めない: {globalPermissions.error.message}</ErrorNote>
+        )}
+        <PermissionTable
+          rows={permissionRows}
+          effective={
+            (globalPermissions.data?.permissions ?? {}) as Partial<Record<ParamKey, Permission>>
+          }
+          defaults={{ option: '全体の既定のまま', note: '全体の既定' }}
+          onChange={setPermissionRows}
+        />
+      </details>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="1回の枚数（1〜8）">
           <Input
