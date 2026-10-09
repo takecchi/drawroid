@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
 import { notFound } from '../errors.js';
+import { readAllIterationViews, summarizeJudge } from '../iterations.js';
 
 export function jobsRoutes({ store }: ApiDeps) {
   return new Hono()
@@ -26,20 +27,18 @@ export function jobsRoutes({ store }: ApiDeps) {
       if (!(await store.listJobIds()).includes(jobId)) {
         return notFound(c, `ジョブ ${jobId} は無い`);
       }
-      const [spec, state, generations] = await Promise.all([
+      const [spec, state, read] = await Promise.all([
         store.readJob(jobId),
         store.readState(jobId),
-        store.listGenerations(jobId),
+        // listGenerations で一括しない: 壊れた回が1つあると詳細ごと失敗するため
+        readAllIterationViews(store, jobId),
       ]);
-      const iterations = generations.map(({ iteration, request, images }) => ({
+      const iterations = read.iterations.map(({ iteration, request, judge, images }) => ({
         iteration,
         request,
-        images: images.map(({ index, seed }) => ({
-          index,
-          seed,
-          url: `/api/files/jobs/${jobId}/iterations/${iteration}/images/${index}.png`,
-        })),
+        images,
+        judge: summarizeJudge(judge),
       }));
-      return c.json({ spec, state, iterations }, 200);
+      return c.json({ spec, state, iterations, invalid: read.invalid }, 200);
     });
 }

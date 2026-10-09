@@ -3,10 +3,20 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 import { ForgeBackend, type ForgeBackendOptions } from '@drawroid/backend-forge';
-import { ManualGenerationRunner } from '@drawroid/core';
-import { dataPaths, FsJobStore, initDataDir, resolveDataDir } from '@drawroid/storage-fs';
+import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
+import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
+import {
+  createFsMemoryStore,
+  dataPaths,
+  FsJobStore,
+  initDataDir,
+  readLlmSettings,
+  resolveDataDir,
+  writeLlmSettings,
+} from '@drawroid/storage-fs';
 
 import { parseCliArgs } from './args.js';
+import { AutoJobQueue } from './auto-job-queue.js';
 import { createBackendSettings, forgeBackendOptions } from './backend-settings.js';
 import { readConfig, resolveForgeUrlWithSource } from './config.js';
 import { listen } from './listen.js';
@@ -30,14 +40,15 @@ async function main() {
   }
 
   // どのアダプタを使うかを決めるのは、組み立ての根であるここだけ
-  const config = await readConfig(dataPaths(root).config);
+  const configPath = dataPaths(root).config;
+  const config = await readConfig(configPath);
   const { forgeUrl, source } = resolveForgeUrlWithSource(args.forgeUrl, config);
   const createBackend = (options: ForgeBackendOptions) => new ForgeBackend(options);
   const backend = new ReplaceableBackend(
     createBackend(forgeBackendOptions(forgeUrl, config.backend)),
   );
   const backendSettings = createBackendSettings({
-    configPath: dataPaths(root).config,
+    configPath,
     backend,
     createBackend,
     initial: { forgeUrl, source, config },
@@ -46,10 +57,54 @@ async function main() {
   const manualRunner = new ManualGenerationRunner({ backend, store });
   process.stdout.write(`drawroid: Forge ${forgeUrl}\n`);
 
+  const log = (line: string) => process.stdout.write(`${line}\n`);
+  const autoQueue = new AutoJobQueue({
+    store,
+    backend,
+    env: process.env,
+    budget: DEFAULT_BUDGET,
+    log,
+  });
+  const stored = await readLlmSettings(configPath);
+  if (stored === undefined) {
+    log(
+      'drawroid: LLM が未設定。PUT /api/settings/llm で設定するまで、自動ジョブは待ち行列に留まる',
+    );
+  } else {
+    const parsed = llmConfigSchema.safeParse(stored);
+    if (parsed.success) {
+      autoQueue.configure(parsed.data);
+    } else {
+      log(
+        `drawroid: config.json の llm が不正なので未設定のまま進む: ${parsed.error.issues[0]?.message ?? ''}`,
+      );
+    }
+  }
+  // 落ちる前の自動ジョブを再開する
+  autoQueue.kick();
+  const llmSettings = {
+    read: () => readLlmSettings(configPath),
+    write: async (llm: LlmConfig) => {
+      await writeLlmSettings(configPath, llm);
+      autoQueue.configure(llm);
+      autoQueue.kick();
+    },
+  };
+
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),
-    deps: { backend, store, manualRunner, backendSettings },
+    deps: {
+      backend,
+      store,
+      manualRunner,
+      backendSettings,
+      memoryStore: createFsMemoryStore(dataPaths(root).memory),
+      autoQueue,
+      budget: DEFAULT_BUDGET,
+      llmSettings,
+      env: process.env,
+    },
   });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
 }

@@ -7,11 +7,50 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 const sdModelsSchema = z.array(z.object({ title: z.string(), model_name: z.string() }));
 const sdModulesSchema = z.array(z.object({ model_name: z.string(), filename: z.string() }));
+const samplersSchema = z.array(z.object({ name: z.string() }));
+const schedulersSchema = z.array(
+  z.object({ name: z.string(), label: z.string(), aliases: z.array(z.string()).nullish() }),
+);
 
-const txt2imgResponseSchema = z.object({
-  images: z.array(z.string()),
-  info: z.string(),
-});
+/**
+ * サンプラとスケジューラの名前を、Forge の一覧に照らす。無ければ、生成を頼む前に失敗させる。
+ */
+// Forge は知らない名前を失敗にせず、黙って既定のものに置き換えて描く（modules/sd_samplers.py の
+// get_sampler_and_scheduler と fix_p_invalid_sampler_and_scheduler、modules/api/api.py の txt2img・img2img）。
+// そのまま渡すと、request.json の名前と実際に描いた名前が食い違うため（Issue #41）。
+// 照らし方は Forge が引き当てる形に揃える: サンプラは名前だけ（別名では引かない）、または「サンプラ名 スケジューラ名」の形。
+// スケジューラは name か label
+async function assertKnownSamplersAndSchedulers(
+  client: ForgeClient,
+  req: GenerationRequest,
+  signal: AbortSignal,
+): Promise<void> {
+  const samplers = [req.sampler, req.hiresFix?.sampler].filter((n) => n !== undefined);
+  const schedulers = [req.scheduler, req.hiresFix?.scheduler].filter((n) => n !== undefined);
+  if (samplers.length === 0 && schedulers.length === 0) return;
+
+  const knownSamplers = new Set(
+    (await client.getJson('/sdapi/v1/samplers', samplersSchema, { signal })).map((s) => s.name),
+  );
+  const schedulerList = await client.getJson('/sdapi/v1/schedulers', schedulersSchema, { signal });
+  const knownSchedulers = new Set(schedulerList.flatMap((s) => [s.name, s.label]));
+  const schedulerSuffixes = schedulerList.flatMap((s) => [s.label, s.name, ...(s.aliases ?? [])]);
+
+  for (const name of samplers) {
+    const known =
+      knownSamplers.has(name) ||
+      schedulerSuffixes.some(
+        (suffix) =>
+          name.endsWith(` ${suffix}`) && knownSamplers.has(name.slice(0, -suffix.length - 1)),
+      );
+    if (!known) throw new BackendError('failed', `サンプラ ${name} が Forge に無い`);
+  }
+  for (const name of schedulers) {
+    if (!knownSchedulers.has(name)) {
+      throw new BackendError('failed', `スケジューラ ${name} が Forge に無い`);
+    }
+  }
+}
 
 // info は JSON の文字列で返る。使う欄だけを見る
 const txt2imgInfoSchema = z.looseObject({
@@ -21,16 +60,13 @@ const txt2imgInfoSchema = z.looseObject({
   index_of_first_image: z.number().int().nonnegative().nullish(),
 });
 
-export async function generateWithForge(
-  client: ForgeClient,
-  req: GenerationRequest,
-  options: { signal: AbortSignal; timeoutMs: number },
-): Promise<GenerationResult> {
-  const payload = await buildTxt2imgPayload(client, req, options.signal);
-  const res = await client.postJson('/sdapi/v1/txt2img', payload, txt2imgResponseSchema, options);
-  return readTxt2imgResponse(res, req.batchSize);
-}
+// txt2img と img2img は同じ形で返す（modules/api/models.py の TextToImageResponse・ImageToImageResponse）
+export const generationResponseSchema = z.object({
+  images: z.array(z.string()),
+  info: z.string(),
+});
 
+/** txt2img と img2img に共通の欄と、txt2img だけの Hires. fix の欄 */
 export async function buildTxt2imgPayload(
   client: ForgeClient,
   req: GenerationRequest,
@@ -43,6 +79,7 @@ export async function buildTxt2imgPayload(
   if (req.vae !== undefined) {
     overrideSettings.forge_additional_modules = [await resolveModulePath(client, req.vae, signal)];
   }
+  await assertKnownSamplersAndSchedulers(client, req, signal);
   return {
     prompt: withLoras(req.prompt, req.loras),
     negative_prompt: req.negativePrompt,
@@ -55,21 +92,41 @@ export async function buildTxt2imgPayload(
     height: req.height,
     batch_size: req.batchSize,
     n_iter: 1,
-    ...(req.hiresFix !== undefined && {
-      enable_hr: true,
-      hr_upscaler: req.hiresFix.upscaler,
-      hr_scale: req.hiresFix.scale,
-      hr_second_pass_steps: req.hiresFix.steps,
-      denoising_strength: req.hiresFix.denoisingStrength,
-      // 省かない: Forge は省いた hr_additional_modules を None のまま「含むか」を調べて落ちる。[] は「内蔵のものだけ」の意味になり、指定した VAE が二段目で外れる
-      hr_additional_modules: ['Use same choices'],
-    }),
+    ...(req.hiresFix !== undefined && (await hiresFixFields(client, req, req.hiresFix, signal))),
     // /sdapi/v1/options で全体の設定を書き換えない: 人間が同じ Forge を画面から使っていても、その状態を汚さないため
     override_settings: overrideSettings,
     override_settings_restore_afterwards: true,
     // Forge 側の出力フォルダに保存させない: データの置き場所は drawroid のデータディレクトリだけにするため
     save_images: false,
     send_images: true,
+  };
+}
+
+async function hiresFixFields(
+  client: ForgeClient,
+  req: GenerationRequest,
+  hires: NonNullable<GenerationRequest['hiresFix']>,
+  signal: AbortSignal,
+): Promise<Record<string, unknown>> {
+  return {
+    enable_hr: true,
+    hr_upscaler: hires.upscaler,
+    hr_scale: hires.scale,
+    hr_second_pass_steps: hires.steps,
+    denoising_strength: hires.denoisingStrength,
+    // 省かない: Forge は省いた hr_additional_modules を None のまま「含むか」を調べて落ちる。[] は「内蔵のものだけ」の意味になり、指定した VAE が二段目で外れる
+    hr_additional_modules: ['Use same choices'],
+    // 省かない: Forge の hr_cfg の既定は 1.0 で、1.0 のとき二段目はネガティブプロンプトを黙って無視する（modules/processing.py）
+    hr_cfg: hires.cfgScale ?? req.cfgScale,
+    ...(hires.checkpoint !== undefined && {
+      hr_checkpoint_name: await resolveCheckpoint(client, hires.checkpoint, signal),
+    }),
+    // 「同じ」は欄を省いて表す: API には画面の 'Use same sampler' を None に直す処理が無く、その文字列を送ると落ちる（modules/txt2img.py）
+    ...(hires.sampler !== undefined && { hr_sampler_name: hires.sampler }),
+    ...(hires.scheduler !== undefined && { hr_scheduler: hires.scheduler }),
+    // 二段目のプロンプトにも LoRA を書く: 二段目のプロンプトの LoRA は、一段目とは別に読まれるため
+    ...(hires.prompt !== undefined && { hr_prompt: withLoras(hires.prompt, req.loras) }),
+    ...(hires.negativePrompt !== undefined && { hr_negative_prompt: hires.negativePrompt }),
   };
 }
 
@@ -99,7 +156,7 @@ async function resolveModulePath(
   return found.filename;
 }
 
-function withLoras(prompt: string, loras: GenerationRequest['loras']): string {
+export function withLoras(prompt: string, loras: GenerationRequest['loras']): string {
   if (loras.length === 0) return prompt;
   for (const lora of loras) {
     if (/[:<>]/.test(lora.name)) {
@@ -109,28 +166,37 @@ function withLoras(prompt: string, loras: GenerationRequest['loras']): string {
       );
     }
   }
-  const tags = loras.map((l) => `<lora:${l.name}:${l.weight}>`).join(' ');
+  // 3つ目の値が UNet の重みになる（sd_forge_lora/extra_networks_lora.py）
+  const tags = loras
+    .map((l) =>
+      l.unetWeight === undefined
+        ? `<lora:${l.name}:${l.weight}>`
+        : `<lora:${l.name}:${l.weight}:${l.unetWeight}>`,
+    )
+    .join(' ');
   return prompt === '' ? tags : `${prompt} ${tags}`;
 }
 
 export function readTxt2imgResponse(
-  res: z.infer<typeof txt2imgResponseSchema>,
+  res: z.infer<typeof generationResponseSchema>,
   batchSize: number,
+  endpoint: 'txt2img' | 'img2img' = 'txt2img',
 ): GenerationResult {
   let info: z.infer<typeof txt2imgInfoSchema>;
   try {
     info = txt2imgInfoSchema.parse(JSON.parse(res.info));
   } catch (error) {
-    throw new BackendError('bad_response', 'txt2img の info が読めない', { cause: error });
+    throw new BackendError('bad_response', `${endpoint} の info が読めない`, { cause: error });
   }
-  // バッチが2枚以上のとき、Forge は格子画像を先頭に足すことがある。index_of_first_image が個々の画像の始まりを指す
+  // バッチが2枚以上のとき、Forge は格子画像を先頭に足すことがある。index_of_first_image が個々の画像の始まりを指す。
+  // 枚数ぶんだけ切り出す: ControlNet の検出マップなど、生成した画像でないものが末尾に付くことがあるため（modules/api/api.py）
   const first = info.index_of_first_image ?? 0;
   const encoded = res.images.slice(first, first + batchSize);
   if (encoded.length !== batchSize) {
     throw new BackendError(
       'bad_response',
       // Forge は interrupt されても失敗を返さず、そこまでに描けた画像だけを返す
-      `txt2img が ${batchSize} 枚を返すはずが ${encoded.length} 枚だった。Forge の画面などで生成が中断された可能性がある`,
+      `${endpoint} が ${batchSize} 枚を返すはずが ${encoded.length} 枚だった。Forge の画面などで生成が中断された可能性がある`,
     );
   }
   const images = encoded.map((b64, i) => {
@@ -138,7 +204,7 @@ export function readTxt2imgResponse(
     if (!PNG_SIGNATURE.every((byte, j) => png[j] === byte)) {
       throw new BackendError(
         'bad_response',
-        'txt2img の画像が PNG ではない。Forge の設定の画像形式（samples_format）を png にする',
+        `${endpoint} の画像が PNG ではない。Forge の設定の画像形式（samples_format）を png にする`,
       );
     }
     return {

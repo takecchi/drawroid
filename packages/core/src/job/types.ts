@@ -57,19 +57,50 @@ export const stopReasonSchema = z.object({
 });
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
+// 欄を閉じない: M4 で考える役が決めてよいパラメータが許可の設定しだいで増え、閉じると読み直しで黙って消えるため
+const thinkParamsSchema = z.looseObject({
+  prompt: z.string().optional(),
+  negativePrompt: z.string().optional(),
+  seed: z.number().optional(),
+  steps: z.number().optional(),
+  cfgScale: z.number().optional(),
+});
+
+const carriedResultSchema = z.object({
+  iteration: z.number().int().positive(),
+  imageIndex: z.number().int().nonnegative(),
+  score: z.number(),
+  params: thinkParamsSchema,
+  issues: z.array(z.string()),
+  nextChange: z.string(),
+});
+
+/** 自動ジョブが回をまたいで持ち回す状態の要約 */
+export const carrySchema = z.object({
+  intent: z.string(),
+  completedIterations: z.number().int().nonnegative(),
+  best: carriedResultSchema.optional(),
+  latest: carriedResultSchema.optional(),
+});
+
+// carry は auto のジョブだけが持つ。manual は回が1つで、持ち回すものが無い
+const carryField = { carry: carrySchema.optional() };
+
 /**
  * state.json の中身。どの段まで済んだかは持たない（段の出力ファイルの有無が正）。
  */
 // 段の進み具合をここに写さない: 出力ファイルと二重に持つと、落ちたときにずれるため
 export const jobStateSchema = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('queued') }),
+  z.object({ status: z.literal('queued'), ...carryField }),
   z.object({
     status: z.literal('running'),
+    ...carryField,
     startedAt: z.iso.datetime({ offset: true }),
     imagesGenerated: z.number().int().nonnegative(),
   }),
   z.object({
     status: z.literal('stopped'),
+    ...carryField,
     startedAt: z.iso.datetime({ offset: true }).optional(),
     stoppedAt: z.iso.datetime({ offset: true }),
     imagesGenerated: z.number().int().nonnegative(),

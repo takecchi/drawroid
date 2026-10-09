@@ -3,6 +3,7 @@ import type {
   BackendCapabilities,
   Candidate,
   CandidateKind,
+  GenerationImages,
   GenerationRequest,
   GenerationResult,
   ImageBackend,
@@ -40,10 +41,14 @@ export class ReplaceableBackend implements ImageBackend {
     return this.current.listCandidates(kind, signal);
   }
 
-  async generate(req: GenerationRequest, signal: AbortSignal): Promise<GenerationResult> {
+  async generate(
+    req: GenerationRequest,
+    signal: AbortSignal,
+    images?: GenerationImages,
+  ): Promise<GenerationResult> {
     this.running += 1;
     try {
-      return await this.current.generate(req, signal);
+      return await this.current.generate(req, signal, images);
     } finally {
       this.running -= 1;
     }
