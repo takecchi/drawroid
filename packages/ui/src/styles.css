@@ -8,6 +8,21 @@
  */
 @import 'shadcn/tailwind.css';
 @import 'tw-animate-css';
+/*
+ * 書体。**自前で配る**（`@fontsource/*`。画面を開くたびに外のフォント配信へ取りに行かない）。
+ * 使う太さだけを読む——IBM Plex Sans JP は太さ1つで Unicode の区間ごとに 100 余りの断片へ割れていて、
+ * 画面が実際に使う字の断片しか落ちてこない（`unicode-range`）。組は alteroid の Web UI と同じ。
+ *
+ * - IBM Plex Sans JP: 本文と見出し（日本語が主なので、日本語を持つ書体を主にする）
+ * - Michroma: ロゴ（ブランドの印）だけ（`font-display`）。0 と O の見分けがつかないので、数字・件数・id には使わない
+ * - IBM Plex Mono: 識別子・プロンプト・生のログ（`font-mono`）。Plex Sans JP と骨格が揃う
+ */
+@import '@fontsource/ibm-plex-sans-jp/400.css';
+@import '@fontsource/ibm-plex-sans-jp/500.css';
+@import '@fontsource/ibm-plex-sans-jp/600.css';
+@import '@fontsource/michroma/400.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
 
 /*
  * **このパッケージ自身の class を、Tailwind を回す側（apps/web・Storybook）のビルドにも拾わせる。**
@@ -27,12 +42,24 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * **色の名前は shadcn の既定のまま。** `shadcn add` が吐く部品は、この名前
- * （`bg-muted` / `text-muted-foreground` / `bg-primary` …）を書き換えずにそのまま使える。
+ * **色の名前は shadcn の既定のまま、値を alteroid の Web UI のものにしてある。**
+ * `shadcn add` が吐く部品は、この名前（`bg-muted` / `text-muted-foreground` /
+ * `bg-accent` / `bg-primary` …）を**書き換えずに**そのまま使える。
  *
- * shadcn に無いものだけを足してある（値は仮）:
- * - `ok` / `warn` —— 状態の色（成功・注意）
- * - `human` / `ai` —— 人間の操作と AI の判断を見分ける色
+ * 値の考え方（暗い側が既定。`apps/web/app/root.tsx` の `<html class="dark">`）:
+ * - 地（`background` / `card`）は無彩色ではなく青紫へ少し振ってある（色相 272）。
+ *   描いている間ずっと開けたままにする画面なので、真っ黒より目が疲れにくく、面の段差が色で読める
+ * - 主色（`primary`）は淡いラベンダー。**主な操作・選択中・焦点にだけ使う**。
+ *   飾りに撒くと、どこを押せばよいかが色から読めなくなる
+ * - 状態の色は色相を離してある: `ok` はミント（175）、`warn` は琥珀（75）、
+ *   `destructive` は珊瑚（20）。主色（285）とどれも紛れない
+ *
+ * shadcn に無いものだけを足してある:
+ * - `ok` / `warn` —— 状態の色（成功・注意）。`-foreground` は、その色を地に塗ったときの文字
+ * - `human` / `ai` —— 人間の操作と AI の判断を見分ける色（drawroid だけのもの）。状態の色・主色と
+ *   紛れないよう、`human` は若草（125）、`ai` は空色（230）に置いた。どちらも「注意」や「成功」に見えない
+ * - `--safe-*` —— 切り欠き・ホームインジケータの取り分
+ * - `font-display` —— ロゴ（ブランドの印）の書体。数字・id には使わない（上の書体の節）
  */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -74,81 +101,115 @@
   --color-ai: var(--ai);
   --color-ai-foreground: var(--ai-foreground);
   --font-sans:
-    system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', 'Noto Sans CJK JP', 'Segoe UI',
-    Roboto, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+    'IBM Plex Sans JP', ui-sans-serif, system-ui, -apple-system, 'Hiragino Sans', sans-serif;
+  --font-display: 'Michroma', 'IBM Plex Sans JP', ui-sans-serif, sans-serif;
+  --font-mono:
+    'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  /* 以下は shadcn に無い色。値は仮 */
-  --ok: oklch(0.527 0.154 150.069);
-  --ok-foreground: oklch(0.985 0 0);
-  --warn: oklch(0.666 0.179 58.318);
-  --warn-foreground: oklch(0.145 0 0);
-  /* #d97706 相当 */
-  --human: oklch(0.646 0.176 58.7);
-  --human-foreground: oklch(0.145 0 0);
-  /* #2563eb 相当 */
-  --ai: oklch(0.546 0.215 262.9);
-  --ai-foreground: oklch(0.985 0 0);
+  /* 角丸は shadcn の既定（0.625rem）より少し小さく締める。 */
+  --radius: 0.5rem;
+  --background: oklch(0.975 0.006 280);
+  --foreground: oklch(0.22 0.03 275);
+  --card: oklch(0.995 0.003 280);
+  --card-foreground: oklch(0.22 0.03 275);
+  --popover: oklch(0.995 0.003 280);
+  --popover-foreground: oklch(0.22 0.03 275);
+  --primary: oklch(0.49 0.2 285);
+  --primary-foreground: oklch(0.985 0.01 285);
+  --secondary: oklch(0.935 0.014 280);
+  --secondary-foreground: oklch(0.28 0.04 278);
+  --muted: oklch(0.945 0.01 280);
+  --muted-foreground: oklch(0.5 0.028 275);
+  --accent: oklch(0.93 0.03 285);
+  --accent-foreground: oklch(0.3 0.08 285);
+  --destructive: oklch(0.56 0.2 22);
+  --border: oklch(0.88 0.016 278);
+  --input: oklch(0.86 0.018 278);
+  --ring: oklch(0.55 0.2 285);
+  /*
+   * グラフの系列の色（順に使う。5つ目は「その他」用の無彩色）。状態の色（ok / warn / destructive）とは
+   * 色相を離してある——グラフの系列が「注意」や「失敗」に見えないように。値は alteroid のものをそのまま使う。
+   */
+  --chart-1: oklch(0.5 0.2 290);
+  --chart-2: oklch(0.62 0.16 125);
+  --chart-3: oklch(0.47 0.2 345);
+  --chart-4: oklch(0.62 0.12 230);
+  --chart-5: oklch(0.6 0.02 276);
+  /* 明るい面の上で読める濃さ */
+  --ok: oklch(0.56 0.12 175);
+  --ok-foreground: oklch(0.985 0.01 285);
+  --warn: oklch(0.6 0.14 65);
+  --warn-foreground: oklch(0.985 0.01 285);
+  --human: oklch(0.55 0.14 125);
+  --human-foreground: oklch(0.985 0.01 285);
+  --ai: oklch(0.55 0.13 235);
+  --ai-foreground: oklch(0.985 0.01 285);
+
+  /*
+   * 切り欠き・ホームインジケータの取り分。**対応していない環境では 0 になる**ので、
+   * 広い画面の見た目は変わらない。0 以外を返すのは viewport に `viewport-fit=cover` が在るときだけ。
+   */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --ok: oklch(0.723 0.219 149.579);
-  --ok-foreground: oklch(0.145 0 0);
-  --warn: oklch(0.769 0.188 70.08);
-  --warn-foreground: oklch(0.145 0 0);
-  --human: oklch(0.769 0.188 70.08);
-  --human-foreground: oklch(0.145 0 0);
-  --ai: oklch(0.707 0.165 254.624);
-  --ai-foreground: oklch(0.145 0 0);
+  --background: oklch(0.165 0.022 272);
+  --foreground: oklch(0.94 0.012 280);
+  --card: oklch(0.2 0.026 272);
+  --card-foreground: oklch(0.94 0.012 280);
+  --popover: oklch(0.225 0.03 272);
+  --popover-foreground: oklch(0.94 0.012 280);
+  --primary: oklch(0.8 0.12 285);
+  --primary-foreground: oklch(0.2 0.05 280);
+  --secondary: oklch(0.26 0.03 272);
+  --secondary-foreground: oklch(0.92 0.014 280);
+  --muted: oklch(0.25 0.028 272);
+  --muted-foreground: oklch(0.7 0.03 276);
+  --accent: oklch(0.29 0.05 280);
+  --accent-foreground: oklch(0.95 0.02 285);
+  --destructive: oklch(0.71 0.17 20);
+  --border: oklch(0.8 0.05 280 / 13%);
+  --input: oklch(0.8 0.05 280 / 18%);
+  --ring: oklch(0.8 0.12 285);
+  --chart-1: oklch(0.6 0.17 290);
+  --chart-2: oklch(0.65 0.15 120);
+  --chart-3: oklch(0.54 0.2 345);
+  --chart-4: oklch(0.665 0.115 218);
+  --chart-5: oklch(0.62 0.02 276);
+  /* 暗い面の上で読める明るさ */
+  --ok: oklch(0.83 0.12 175);
+  --ok-foreground: oklch(0.2 0.05 280);
+  --warn: oklch(0.84 0.14 75);
+  --warn-foreground: oklch(0.2 0.05 280);
+  --human: oklch(0.82 0.13 125);
+  --human-foreground: oklch(0.2 0.05 280);
+  --ai: oklch(0.8 0.1 230);
+  --ai-foreground: oklch(0.2 0.05 280);
+}
+
+/*
+ * **光の縁。** いま選ばれているもの（帯の現在地・選択中の行）の左端に、主色の細い線を1本だけ光らせる。
+ * **光ってよいのはこれと焦点の輪だけ**——光るものが画面に1つなら、それがそのまま「いまここ」の印になる。
+ *
+ * 置く側は `position` を持たなくてよい（ここで `relative` にする）。
+ */
+@utility lumen-edge {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.375rem;
+    left: 0;
+    width: 2px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+    box-shadow: 0 0 8px var(--color-primary);
+  }
 }
 
 @layer base {
@@ -166,6 +227,25 @@
 
   body {
     @apply bg-background font-sans text-foreground;
+    -webkit-font-smoothing: antialiased;
+    /* 日本語の行は詰まって見えやすい。本文の既定を少しだけ開ける。 */
+    line-height: 1.6;
+  }
+
+  /* 数字は桁を揃える（回の番号・枚数・時刻が縦に並ぶ画面が多い）。 */
+  table,
+  time,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 35%, transparent);
+  }
+
+  button,
+  [role='button'] {
+    cursor: pointer;
   }
 
   /* class の無い link だけを link らしく塗る: 帯やボタンとして class を持つ link の見た目を、土台が上書きしないため */
@@ -175,5 +255,14 @@
 
   code {
     @apply font-mono text-[0.9em] break-all;
+  }
+
+  /*
+   * 焦点の輪。shadcn の部品は自前の `focus-visible:ring-*` を持つが、素の要素
+   * （画面が直に置いた `<a>` / `<summary>` など）にも同じ色の輪を出す。
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
   }
 }

@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react-vite';
 
 import './preview.css';
+import { drawroidDark } from './theme';
 
 const preview: Preview = {
   parameters: {
@@ -11,10 +12,11 @@ const preview: Preview = {
       },
     },
     backgrounds: { disable: true },
+    docs: { theme: drawroidDark },
   },
   decorators: [
     (Story, context) => {
-      const theme = typeof context.globals.theme === 'string' ? context.globals.theme : 'light';
+      const theme = typeof context.globals.theme === 'string' ? context.globals.theme : 'dark';
       document.documentElement.classList.toggle('dark', theme === 'dark');
       return <Story />;
     },
@@ -26,15 +28,15 @@ const preview: Preview = {
         title: 'Theme',
         icon: 'mirror',
         items: [
-          { value: 'light', title: 'Light', icon: 'sun' },
           { value: 'dark', title: 'Dark', icon: 'moon' },
+          { value: 'light', title: 'Light', icon: 'sun' },
         ],
         dynamicTitle: true,
       },
     },
   },
   initialGlobals: {
-    theme: 'light',
+    theme: 'dark',
   },
 };
 

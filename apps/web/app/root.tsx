@@ -10,7 +10,8 @@ export function meta() {
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ja">
+    // 暗い側を既定にする: テーマ（`@drawroid/ui` の styles.css）は暗い側を主に色を決めてあるため
+    <html lang="ja" className="dark">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
