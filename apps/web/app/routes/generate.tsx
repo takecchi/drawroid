@@ -11,9 +11,14 @@ export default function Generate() {
   const navigate = useNavigate();
   return (
     <Page title="生成と設定">
-      <BackendStatus />
-      <BackendUrlSettings />
-      <LlmSettings />
+      {/* 案内（SetupNotice）からのリンクの行き先 */}
+      <div id="backend" className="scroll-mt-4 space-y-6">
+        <BackendStatus />
+        <BackendUrlSettings />
+      </div>
+      <div id="llm" className="scroll-mt-4">
+        <LlmSettings />
+      </div>
       <BudgetSettings />
       <GenerationForm onStarted={(jobId) => void navigate(`/jobs/${jobId}`)} />
     </Page>

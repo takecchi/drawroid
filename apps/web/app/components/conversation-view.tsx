@@ -33,6 +33,7 @@ import { formatScore } from '../lib/format';
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
 import { AdoptButton } from './adopt-button';
+import { SetupNotice } from './setup-notice';
 
 /** 発言と止めるの送り先。どちらも HTTP API（会話 C）に乗る。画面にだけある経路は作らない */
 export interface ConversationActions {
@@ -439,6 +440,7 @@ export function ConversationView({
         <ChatLog
           followKey={`${items.length}:${last?.kind === 'assistant' || last?.kind === 'reasoning' ? last.text.length : ''}`}
         >
+          <SetupNotice />
           {error !== undefined && <ErrorNote>会話を読めない: {error}</ErrorNote>}
           {loaded && items.length === 0 && (
             <Muted className="py-12 text-center">
