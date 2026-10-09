@@ -147,7 +147,7 @@ export function GenerationProgress({
   etaMs?: number;
   /** 途中の画像（設定で有効なときだけ） */
   previewSrc?: string;
-  /** カードの下に添える一言（「できあがったら、画像の行で選べます」など） */
+  /** カードの下に添える一言（「できあがったら、画像の行で選べる」など） */
   hint?: ReactNode;
 }) {
   const percent = progress === undefined ? undefined : Math.round(progress * 100);
