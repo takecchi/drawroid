@@ -18,6 +18,13 @@ const DOCUMENTS: Record<string, string> = {
     '',
     '後の段落。',
   ].join('\n'),
+  'a definition placed before the paragraphs that use it': [
+    '[g]: https://example.com/g',
+    '',
+    '[^n]: 先に置いた脚注',
+    '',
+    '後の段落で [参照][g] と脚注[^n] を使う。',
+  ].join('\n'),
   'footnotes referred to across paragraphs': [
     '本文[^1] と [^b]。',
     '',
