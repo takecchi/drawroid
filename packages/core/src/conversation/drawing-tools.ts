@@ -13,9 +13,10 @@ import {
 } from '../job/types.js';
 import { createCarry } from '../loop/carry.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
+import { InterventionRejectedError } from '../loop/runner.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
-import { ImageNotFoundError, formatImageKey, selectImage } from '../selection/selection.js';
+import { formatImageKey, selectImage } from '../selection/selection.js';
 import { narrowPermissions } from './drawing.js';
 import type { ConversationStore } from './store.js';
 import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js';
@@ -248,19 +249,26 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (iteration === undefined) return outcome(false, 'まだ画像が1枚もできていない');
       const image = { iteration, index: input.index ?? 0 };
       const key = formatImageKey(image);
+      const generation = await deps.jobs.readGeneration(jobId, iteration);
+      if (generation === undefined || image.index >= generation.images.length) {
+        return outcome(false, `画像 ${key} は無い`);
+      }
+      // ジョブに採らせてから、お気に入りを書く: 採らせる前にジョブが止まったら、何も書かずに失敗にするため
       try {
-        await selectImage({
-          store: deps.jobs,
-          jobId,
-          imageKey: key,
-          verdict: 'favorite',
-          now: deps.now(),
-        });
         await deps.runner.adopt(jobId, image);
       } catch (error) {
-        if (error instanceof ImageNotFoundError) return outcome(false, `画像 ${key} は無い`);
+        if (error instanceof InterventionRejectedError) {
+          return outcome(false, `絵がもう止まっていて、画像 ${key} を採れなかった`);
+        }
         throw error;
       }
+      await selectImage({
+        store: deps.jobs,
+        jobId,
+        imageKey: key,
+        verdict: 'favorite',
+        now: deps.now(),
+      });
       return outcome(true, `画像 ${key} をお気に入りにして採った`);
     },
   };

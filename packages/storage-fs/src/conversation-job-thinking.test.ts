@@ -23,7 +23,7 @@ import {
   type Script,
 } from '@drawroid/core/testing';
 import sharp from 'sharp';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FsJobStore } from './job-store.js';
 
@@ -264,5 +264,99 @@ describe('the thinking of the jobs in a conversation, in more detail', () => {
     expect(received.some((m) => m.kind === 'live' && m.event.type === 'delta.reasoning')).toBe(
       false,
     );
+  });
+
+  it('drops the thinking of a try that was retried, on the screen and in the stage output', async () => {
+    /** 考える役の最初の呼び出しだけ、思考を流してから出し直しになるモデル */
+    class RetryingLlm extends ScriptedLlm {
+      private retried = false;
+      override generateStructured<T>(call: LlmCall<T>) {
+        if (call.purpose === 'think' && !this.retried) {
+          this.retried = true;
+          call.onReasoning?.('捨てる考え');
+          call.onRetry?.();
+        }
+        return super.generateStructured(call);
+      }
+    }
+    const llm = new RetryingLlm(
+      { think, judge },
+      { reasoning: { think: () => '残す考え', judge: () => '見る思考' } },
+    );
+    const { hubs, store, runner, conversationId } = await setup(llm);
+    const received: HubMessage[] = [];
+    await hubs.get(conversationId).subscribe(0, (message) => received.push(message));
+
+    const { jobId } = await submit(store, conversationId);
+    runner.kick();
+    await runner.idle();
+
+    // 画面は増分を継ぎ足し、replace のときは置き換える
+    let shown = '';
+    for (const m of received) {
+      if (
+        m.kind === 'live' &&
+        m.event.type === 'delta.reasoning' &&
+        m.event.partId === `job:${jobId}:1:think`
+      ) {
+        shown = m.event.replace === true ? m.event.text : shown + m.event.text;
+      }
+    }
+    expect(shown).toBe('残す考え');
+    expect(await store.readStage(jobId, 1, 'think')).toMatchObject({ reasoning: '残す考え' });
+    const confirmedThink = received.find(
+      (m) => m.kind === 'confirmed' && m.event.type === 'job.think',
+    );
+    expect(confirmedThink?.kind === 'confirmed' && confirmedThink.event).toMatchObject({
+      reasoning: '残す考え',
+    });
+  });
+
+  it('does not add the thinking of a stage that was held and run again to the thinking of the first run', async () => {
+    /** 考える役の最初の呼び出しは、思考を流したあと abort されるまで返らないモデル */
+    class HangingLlm extends ScriptedLlm {
+      thinking = false;
+      override generateStructured<T>(call: LlmCall<T>) {
+        if (call.purpose === 'think' && !this.thinking) {
+          this.thinking = true;
+          call.onReasoning?.('途中の考え');
+          return new Promise<never>((_, reject) =>
+            call.signal.addEventListener(
+              'abort',
+              () => reject(Object.assign(new Error('止めた'), { name: 'AbortError' })),
+              { once: true },
+            ),
+          );
+        }
+        return super.generateStructured(call);
+      }
+    }
+    const llm = new HangingLlm(
+      { think, judge },
+      { reasoning: { think: () => '考え直した', judge: () => '見る思考' } },
+    );
+    const { hubs, store, runner, conversationId } = await setup(llm);
+    const received: HubMessage[] = [];
+    await hubs.get(conversationId).subscribe(0, (message) => received.push(message));
+    const { jobId } = await submit(store, conversationId);
+    runner.kick();
+    await vi.waitFor(() => expect(llm.thinking).toBe(true));
+
+    const release = runner.holdLlmStages(jobId);
+    release();
+    await runner.idle();
+
+    let shown = '';
+    for (const m of received) {
+      if (
+        m.kind === 'live' &&
+        m.event.type === 'delta.reasoning' &&
+        m.event.partId === `job:${jobId}:1:think`
+      ) {
+        shown = m.event.replace === true ? m.event.text : shown + m.event.text;
+      }
+    }
+    expect(shown).toBe('考え直した');
+    expect(await store.readStage(jobId, 1, 'think')).toMatchObject({ reasoning: '考え直した' });
   });
 });

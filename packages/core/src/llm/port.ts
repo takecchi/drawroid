@@ -79,6 +79,11 @@ export type LlmCall<T> = {
    * 思考を出さないモデル・設定（reasoning: none）では呼ばれない
    */
   onReasoning?: (text: string) => void;
+  /**
+   * 出力がスキーマに合わず、出し直す。それまでに onReasoning へ流した思考は捨てる
+   * （残す思考は、成功した試行の思考だけにするため）
+   */
+  onRetry?: () => void;
 };
 
 /** 話す役に渡すツール。実行は core が行い、LLM には名前・説明・引数のスキーマだけを渡す */

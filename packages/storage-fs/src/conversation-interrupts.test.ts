@@ -98,6 +98,8 @@ type SetupOptions = {
   hangs?: Record<number, string>;
   /** start_drawing の実行を、open() まで待たせる */
   gateStartDrawing?: boolean;
+  /** adopt_image がジョブに採らせる直前に割り込む（その間にジョブが止まる競合を作るため） */
+  beforeAdopt?: (jobRunner: JobRunner, jobId: string) => Promise<void>;
 };
 
 async function setup(options: SetupOptions = {}) {
@@ -119,9 +121,22 @@ async function setup(options: SetupOptions = {}) {
     permissions,
     onLlmStagesHeld: relayJobHeld({ store: jobs, hubs }),
   });
+  const beforeAdopt = options.beforeAdopt;
   const drawing = createDrawingTools({
     jobs,
-    runner: jobRunner,
+    runner:
+      beforeAdopt === undefined
+        ? jobRunner
+        : {
+            kick: () => jobRunner.kick(),
+            stop: (jobId) => jobRunner.stop(jobId),
+            addInstruction: (jobId, text) => jobRunner.addInstruction(jobId, text),
+            changeStopConditions: (jobId, change) => jobRunner.changeStopConditions(jobId, change),
+            adopt: async (jobId, image) => {
+              await beforeAdopt(jobRunner, jobId);
+              return jobRunner.adopt(jobId, image);
+            },
+          },
     conversations,
     humanPermissions: async () => permissions,
     candidateNames: async () => [],
@@ -712,5 +727,33 @@ describe('interrupting and adopting, in more detail', () => {
     expect(await jobs.readAdopted(jobId, 2)).toMatchObject({ image: { iteration: 2, index: 0 } });
     expect(await jobs.readSelection(jobId, '2-0')).toMatchObject({ verdict: 'favorite' });
     expect(await jobs.readSelection(jobId, '1-0')).toBeUndefined();
+  });
+
+  it('writes no favorite when the job stops just before adopt_image hands it the image', async () => {
+    const judging = blocking(judge, (n) => n === 0);
+    const { say, talk, conversationId, jobs, jobRunner, submit, events } = await setup({
+      judge: judging.script,
+      talk: (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'adopt_image', input: {} }] }
+          : { text: '採れませんでした' },
+      // ツールがジョブを見つけたあと、採らせる前に、人間がジョブを止めたつもり
+      beforeAdopt: async (runner, jobId) => {
+        await runner.stop(jobId);
+        await runner.idle();
+      },
+    });
+    const jobId = await submit({ aiJudgement: false, maxIterations: 3 });
+    jobRunner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+
+    await say('これでいい');
+    await within(talk.idle(conversationId));
+    await within(jobRunner.idle());
+
+    expect((await events()).find((e) => e.type === 'tool.result')).toMatchObject({ ok: false });
+    expect(await jobs.listSelections(jobId)).toEqual([]);
+    expect(await jobs.listInterventions(jobId)).toEqual([]);
+    expect(await stoppedReason(jobs, jobId)).toBe('human');
   });
 });
