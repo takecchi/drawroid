@@ -283,7 +283,7 @@ describe('runDoctor', () => {
     expect(roleLines[1]).toMatch(/^ {2}よい +考える役（a の think-model、.*と1往復できた/);
     // 見る役には画像を渡すので断られ、画像なしなら通ることから、画像が原因と名指す
     expect(roleLines[2]).toMatch(
-      /^ {2}足りない +見る役（a の judge-model、.*このモデルが画像を読めないか/,
+      /^ {2}足りない +見る役（a の judge-model、.*画像を渡すと返事が来ない/,
     );
   });
 
