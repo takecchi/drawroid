@@ -2,7 +2,7 @@ import { Disclosure, Page } from '@drawroid/ui';
 
 import { BackendStatus } from '../components/backend-status';
 import { BackendUrlSettings } from '../components/backend-url-settings';
-import { BudgetSettings } from '../components/budget-settings';
+import { BudgetInvalidNotice, BudgetSettings } from '../components/budget-settings';
 import { DoctorCheck } from '../components/doctor-check';
 import { LlmSettings } from '../components/llm-settings';
 
@@ -21,6 +21,7 @@ export default function Settings() {
       <div id="llm" className="scroll-mt-4">
         <LlmSettings />
       </div>
+      <BudgetInvalidNotice />
       <Disclosure id="budgets" className="scroll-mt-4" summary="詳しい設定（LLM に渡す量の予算）">
         <BudgetSettings />
       </Disclosure>
