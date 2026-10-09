@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { prettifyError } from 'zod';
 
 import { backendSettingsViewSchema, updateBackendSettingsSchema } from '../backend-settings.js';
 import type { ApiDeps } from '../deps.js';
@@ -13,7 +14,7 @@ export function backendSettingsRoutes({ backendSettings }: ApiDeps) {
     .put('/', async (c) => {
       const body: unknown = await c.req.json().catch(() => undefined);
       const input = updateBackendSettingsSchema.safeParse(body);
-      if (!input.success) return invalidRequest(c, input.error.message);
+      if (!input.success) return invalidRequest(c, prettifyError(input.error));
       return c.json(toView(await backendSettings.write(input.data)), 200);
     });
 }
