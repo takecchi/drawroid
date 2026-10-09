@@ -12,7 +12,12 @@ import { DEFAULT_MODEL_WINDOW } from '../../loop/budget.js';
 import type { MemoryItem } from '../item.js';
 import type { MemoryStore } from '../store.js';
 import { DEFAULT_DISTILL_BUDGET } from './budget.js';
-import type { SelectionMaterial, StoppedJobMaterial } from './input.js';
+import {
+  buildReselectionDistillInput,
+  buildStoppedJobDistillInput,
+  type SelectionMaterial,
+  type StoppedJobMaterial,
+} from './input.js';
 import type { DistillEntry, DistillLog } from './log.js';
 import { distillReselection, distillStoppedJob, type DistillDeps } from './run.js';
 import { buildDistillOutputSchema } from './schema.js';
@@ -467,5 +472,212 @@ describe('distilling again after the selections change', () => {
     expect(result).toBeNull();
     expect(llm.calls).toHaveLength(0);
     expect(await log.read(JOB)).toEqual([]);
+  });
+});
+
+describe('the distill output schema at its limits', () => {
+  const schema = buildDistillOutputSchema(['shown'], budget);
+  const parse = (override: { body?: string; tags?: string[] }) =>
+    schema.safeParse({ operations: [{ ...fingers, ...override }] }).success;
+
+  it('accepts a body, a tag list and a tag exactly as long as the limits', () => {
+    expect(parse({ body: 'あ'.repeat(budget.output.body) })).toBe(true);
+    expect(parse({ tags: Array.from({ length: budget.output.tags }, () => 'タグ') })).toBe(true);
+    expect(parse({ tags: ['あ'.repeat(budget.output.tag)] })).toBe(true);
+  });
+
+  it('rejects one tag more than the limit and a tag one character longer than the limit', () => {
+    expect(parse({ tags: Array.from({ length: budget.output.tags + 1 }, () => 'タグ') })).toBe(
+      false,
+    );
+    expect(parse({ tags: ['あ'.repeat(budget.output.tag + 1)] })).toBe(false);
+  });
+});
+
+describe('distilling when the budget leaves a preference out of the input', () => {
+  const always = Array.from({ length: 300 }, (_, n) =>
+    memoryItem(`m${String(n).padStart(3, '0')}`, { scope: 'always', body: '元の好み' }),
+  );
+
+  it('does not edit a preference it did not show, and records the failure', async () => {
+    const hidden = 'm299';
+    const { llm, store, log, deps } = setup(
+      () => ({
+        operations: [{ op: 'edit', id: hidden, body: 'AI の案', tags: [], scope: 'always' }],
+      }),
+      always,
+    );
+
+    await distillStoppedJob(deps, material());
+
+    const [entry] = await log.read(JOB);
+    expect(llm.calls).toHaveLength(1);
+    expect(entry!.shown.memory).not.toContain(hidden);
+    expect(entry!.failure).toBeDefined();
+    expect(entry!.applied).toEqual([]);
+    expect(store.items.get(hidden)?.body).toBe('元の好み');
+  });
+});
+
+describe('adding a preference under a new id', () => {
+  it('never overwrites an existing preference when the id generator returns its id first', async () => {
+    const taken = memoryItem('taken', { body: '元の好み', tags: ['実写'] });
+    const ids = ['taken', 'fresh'];
+    const { store, log, deps } = setup(() => ({ operations: [fingers] }), [taken]);
+
+    await distillStoppedJob({ ...deps, newMemoryId: () => ids.shift()! }, material());
+
+    expect(store.items.get('taken')).toEqual(taken);
+    expect(store.items.get('fresh')).toMatchObject({ body: fingers.body, sources: [JOB] });
+    expect((await log.read(JOB))[0]!.applied).toMatchObject([{ op: 'add', id: 'fresh' }]);
+  });
+});
+
+describe('clipping to the distill budget', () => {
+  it('clips an over-long intervention, intent, stop reason and issue list, and records each in the budget notes', () => {
+    const { messages } = buildStoppedJobDistillInput({
+      material: material({
+        intent: 'あ'.repeat(budget.intentChars + 100),
+        stopReason: { kind: 'ai', detail: 'い'.repeat(budget.stopDetailChars + 80) },
+        interventions: [{ id: 'i1', text: 'う'.repeat(budget.interventionChars + 50) }],
+        selections: [
+          {
+            imageKey: '1-0',
+            verdict: 'rejected',
+            issues: Array.from({ length: budget.issuesPerSelection + 2 }, (_, n) => `問題${n}`),
+          },
+        ],
+      }),
+      memory: [],
+      budget,
+      window: DEFAULT_MODEL_WINDOW,
+    });
+
+    const clipped = messages.report.notes.filter((n) => n.kind === 'clipped');
+    expect(clipped).toContainEqual({
+      kind: 'clipped',
+      section: 'intent',
+      from: budget.intentChars + 100,
+      to: budget.intentChars,
+    });
+    expect(clipped).toContainEqual({
+      kind: 'clipped',
+      section: 'stopReason',
+      from: budget.stopDetailChars + 80,
+      to: budget.stopDetailChars,
+    });
+    expect(clipped).toContainEqual({
+      kind: 'clipped',
+      section: 'intervention[i1]',
+      from: budget.interventionChars + 50,
+      to: budget.interventionChars,
+    });
+    expect(clipped).toContainEqual({
+      kind: 'clipped',
+      section: 'selection[1-0].issues',
+      from: budget.issuesPerSelection + 2,
+      to: budget.issuesPerSelection,
+    });
+    expect(textOf(messages)).not.toContain(`問題${budget.issuesPerSelection}`);
+  });
+});
+
+describe('what a stopped-job distillation reports as shown', () => {
+  it('leaves out of shown the preferences that the input limit dropped', () => {
+    const items = Array.from({ length: 4 }, (_, n) =>
+      memoryItem(`anime-${n}`, { tags: ['アニメ'], body: '線は細く、彩度は控えめ'.repeat(5) }),
+    );
+    const build = (window: typeof DEFAULT_MODEL_WINDOW) =>
+      buildStoppedJobDistillInput({ material: material(), memory: items, budget, window });
+    const full = build(DEFAULT_MODEL_WINDOW);
+    const tight = build({
+      contextTokens: full.messages.report.estimatedInputTokens - 1 + 1024,
+      maxOutputTokens: 1024,
+    });
+
+    const droppedIds = tight.messages.report.notes
+      .filter((n) => n.kind === 'dropped' && n.reason === '入力の上限に入らない')
+      .map((n) => n.section.slice('memory['.length, -1));
+    expect(droppedIds.length).toBeGreaterThan(0);
+    expect(tight.shown.memory.map((i) => i.id)).toEqual(
+      full.shown.memory.map((i) => i.id).filter((id) => !droppedIds.includes(id)),
+    );
+    expect(tight.shown.memory.length + droppedIds.length).toBe(items.length);
+  });
+});
+
+describe('the memory in a reselection distillation', () => {
+  const intent = 'アニメ調の少女';
+  const reselect = (memory: readonly MemoryItem[]) =>
+    buildReselectionDistillInput({
+      material: {
+        jobId: JOB,
+        intent,
+        changes: [{ imageKey: '1-0', verdict: 'favorite', issues: [] }],
+      },
+      memory,
+      budget,
+      window: DEFAULT_MODEL_WINDOW,
+    });
+  const learnedItem = (id: string, body: string) =>
+    memoryItem(id, { body, sources: [JOB], tags: ['アニメ'] });
+  const relatedItem = (id: string, body: string) => memoryItem(id, { body, tags: ['アニメ'] });
+  const many = (make: typeof learnedItem, prefix: string, count: number, body: string) =>
+    Array.from({ length: count }, (_, n) => make(`${prefix}${String(n).padStart(2, '0')}`, body));
+  const chars = (items: readonly MemoryItem[]) => items.reduce((sum, i) => sum + i.body.length, 0);
+  const droppedMemory = (input: ReturnType<typeof reselect>) =>
+    input.messages.report.notes.filter(
+      (n) => n.kind === 'dropped' && n.section.startsWith('memory['),
+    );
+
+  it('keeps the learned and the related preferences together within the count limit', () => {
+    const learned = many(learnedItem, 'learned-', 8, 'あ'.repeat(20));
+    const related = many(relatedItem, 'related-', 8, 'い'.repeat(20));
+
+    const { shown } = reselect([...learned, ...related]);
+
+    expect(shown.memory.length).toBeLessThanOrEqual(budget.memory.maxCount!);
+    expect(chars(shown.memory)).toBeLessThanOrEqual(budget.memory.maxSize!);
+    expect(shown.memory.slice(0, 8).map((i) => i.id)).toEqual(
+      expect.arrayContaining(learned.map((i) => i.id)),
+    );
+  });
+
+  it('keeps the learned and the related preferences together within the size limit', () => {
+    const learned = many(learnedItem, 'learned-', 3, 'あ'.repeat(100));
+    const related = many(relatedItem, 'related-', 5, 'い'.repeat(100));
+
+    const { shown } = reselect([...learned, ...related]);
+
+    expect(chars(shown.memory)).toBeLessThanOrEqual(budget.memory.maxSize!);
+    expect(shown.memory.map((i) => i.id)).toEqual(expect.arrayContaining(learned.map((i) => i.id)));
+  });
+
+  it('shows every learned preference, not only the first', () => {
+    const learned = many(learnedItem, 'learned-', 3, '好み');
+
+    const { shown } = reselect(learned);
+
+    expect(shown.memory.map((i) => i.id).sort()).toEqual(learned.map((i) => i.id));
+  });
+
+  it('records every learned preference it left out when only the learned ones overflow', () => {
+    const learned = many(learnedItem, 'learned-', budget.memory.maxCount! + 2, '好み');
+
+    const input = reselect(learned);
+
+    expect(input.shown.memory).toHaveLength(budget.memory.maxCount!);
+    expect(droppedMemory(input)).toHaveLength(learned.length - input.shown.memory.length);
+  });
+
+  it('records every related preference it left out when only the related ones overflow', () => {
+    const learned = many(learnedItem, 'learned-', 2, '好み');
+    const related = many(relatedItem, 'related-', budget.memory.maxCount! + 2, '好み');
+
+    const input = reselect([...learned, ...related]);
+
+    const before = learned.length + related.length;
+    expect(input.shown.memory).toHaveLength(budget.memory.maxCount!);
+    expect(droppedMemory(input)).toHaveLength(before - input.shown.memory.length);
   });
 });

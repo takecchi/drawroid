@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { type MemoryItem, memoryItemSchema } from './item.js';
-import { selectMemory } from './select.js';
+import { DEFAULT_MEMORY_LIMITS } from './limits.js';
+import { describeMemoryDrop, selectMemory } from './select.js';
 
 function item(overrides: Partial<MemoryItem> & Pick<MemoryItem, 'id'>): MemoryItem {
   return {
@@ -194,4 +195,88 @@ describe('selectMemory with a separate frame for always items', () => {
 
     expect(selected).toHaveLength(2);
   });
+});
+
+describe('selectMemory accounting', () => {
+  it('counts every relevant item as either selected or dropped, however many there are', () => {
+    const items = Array.from({ length: 120 }, (_, n) =>
+      item({ id: `m${String(n).padStart(3, '0')}`, scope: 'always' }),
+    );
+
+    const { selected, droppedByBudget } = selectMemory(items, '少女', {
+      maxCount: 200,
+      maxSize: 10_000,
+    });
+
+    expect(selected).toHaveLength(120);
+    expect(selected.length + droppedByBudget.length).toBe(120);
+  });
+
+  it('does not describe a dropped tagged item as dropped from the always frame', () => {
+    const items = [
+      item({ id: 'always', scope: 'always' }),
+      item({ id: 'anime-1', tags: ['アニメ'], updatedAt: '2026-10-09T00:00:00Z' }),
+      item({ id: 'anime-2', tags: ['アニメ'] }),
+    ];
+    const limits = { maxCount: 1, maxSize: 10_000, always: { maxCount: 1, maxSize: 10_000 } };
+
+    const { droppedByBudget } = selectMemory(items, 'アニメ', limits);
+
+    expect(droppedByBudget.map((d) => d.item.id)).toEqual(['anime-2']);
+    expect(describeMemoryDrop(droppedByBudget[0]!, limits)).not.toContain('always 枠');
+  });
+
+  it('drops always items that exceed the always frame size limit and reports them as size drops', () => {
+    const items = [
+      item({ id: 'a', body: 'あ'.repeat(6), scope: 'always', updatedAt: '2026-10-09T00:00:00Z' }),
+      item({ id: 'b', body: 'い'.repeat(6), scope: 'always', updatedAt: '2026-10-08T00:00:00Z' }),
+      item({ id: 'c', body: 'う'.repeat(6), scope: 'always', updatedAt: '2026-10-07T00:00:00Z' }),
+    ];
+    const limits = { maxCount: 10, maxSize: 10_000, always: { maxCount: 10, maxSize: 10 } };
+
+    const { selected, droppedByBudget } = selectMemory(items, '少女', limits);
+
+    expect(ids(selected)).toEqual(['a']);
+    expect(droppedByBudget.map((d) => [d.item.id, d.reason])).toEqual([
+      ['b', 'size'],
+      ['c', 'size'],
+    ]);
+  });
+});
+
+describe('DEFAULT_MEMORY_LIMITS', () => {
+  // 既定値そのものと比べると、既定値を変えても試験が一緒に通ってしまうので、数を直に書く
+  const always = Array.from({ length: 250 }, (_, n) =>
+    item({ id: `always-${String(n).padStart(3, '0')}`, body: 'あ'.repeat(50), scope: 'always' }),
+  );
+  const tagged = Array.from({ length: 250 }, (_, n) =>
+    item({
+      id: `anime-${String(n).padStart(3, '0')}`,
+      body: 'い'.repeat(50),
+      tags: ['アニメ'],
+    }),
+  );
+  const chars = (items: readonly MemoryItem[]) => items.reduce((sum, i) => sum + i.body.length, 0);
+
+  it.each([
+    { role: 'think' as const, count: 8, size: 400, alwaysCount: 5, alwaysSize: 200 },
+    { role: 'judge' as const, count: 5, size: 240, alwaysCount: 4, alwaysSize: 160 },
+  ])(
+    'keeps what the $role role receives within its count and character limits',
+    ({ role, count, size, alwaysCount, alwaysSize }) => {
+      const { selected } = selectMemory(
+        [...always, ...tagged],
+        'アニメ調の少女',
+        DEFAULT_MEMORY_LIMITS[role],
+      );
+
+      const selectedAlways = selected.filter((i) => i.scope === 'always');
+      const selectedTagged = selected.filter((i) => i.scope === 'tagged');
+      expect(selectedAlways.length).toBeLessThanOrEqual(alwaysCount);
+      expect(chars(selectedAlways)).toBeLessThanOrEqual(alwaysSize);
+      expect(selectedTagged.length).toBeGreaterThan(0);
+      expect(selectedTagged.length).toBeLessThanOrEqual(count);
+      expect(chars(selectedTagged)).toBeLessThanOrEqual(size);
+    },
+  );
 });
