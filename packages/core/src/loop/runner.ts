@@ -63,10 +63,12 @@ import type { PackLimits } from '../budget/pack.js';
 import type { ParamKey } from '../params/param-key.js';
 import { toGenerationRequest } from '../permissions/generation-request.js';
 import {
+  type EffectivePermissions,
   effectivePermissions,
   mergePermissions,
   type Permissions,
 } from '../permissions/permission.js';
+import { excludedOf } from '../think/excluded.js';
 import { buildParamsSchema, type ParamsSchema } from '../think/params-schema.js';
 import type { ShownCandidates } from './inputs.js';
 import type { InputImageRef } from '../backend.js';
@@ -132,6 +134,9 @@ type BackendView = {
 };
 type ParamsPlan = {
   permissions: Permissions;
+  /** 使えないものを落とす前の許可（人間が決めたもの） */
+  merged: Permissions;
+  disabled: EffectivePermissions['disabled'];
   candidates: ShownCandidates;
   /** 元画像に選べる画像（img2img を AI に任せる回だけ） */
   sources: { key: ImageSourceKey; ref: InputImageRef }[];
@@ -444,7 +449,7 @@ export class JobRunner {
     defaults: Permissions,
     signal: AbortSignal,
   ): Promise<void> {
-    const permissions = this.jobPermissions(spec, defaults, view.capabilities, false);
+    const { permissions } = this.jobPermissions(spec, defaults, view.capabilities, false);
     try {
       for (const kind of candidateKindsToList(permissions)) {
         view.lists[kind] ??= await this.deps.backend.listCandidates(kind, signal);
@@ -497,10 +502,10 @@ export class JobRunner {
     defaults: Permissions,
     capabilities: BackendCapabilities,
     hasMask: boolean,
-  ): Permissions {
+  ): EffectivePermissions & { merged: Permissions } {
     // ジョブの上書きを後に重ねる: 全体の既定が走行中に変わっても、ジョブで決めた許可は変えないため
     const merged = mergePermissions(defaults, spec.permissions ?? {});
-    return effectivePermissions(merged, { capabilities, hasMask }).permissions;
+    return { merged, ...effectivePermissions(merged, { capabilities, hasMask }) };
   }
 
   /** その回の許可・見せる候補・元画像の候補・マスク・考える役の出力スキーマのパラメータの部分 */
@@ -512,7 +517,12 @@ export class JobRunner {
     mask: MaskIntervention | undefined,
   ): ParamsPlan {
     // マスクが無ければ inpaint は「使わない」になり、出力スキーマに現れない。ループはマスクを待たずに進む（M4:121）
-    const permissions = this.jobPermissions(spec, defaults, view.capabilities, mask !== undefined);
+    const { permissions, merged, disabled } = this.jobPermissions(
+      spec,
+      defaults,
+      view.capabilities,
+      mask !== undefined,
+    );
     const candidates = shownCandidatesFor({
       permissions,
       lists: view.lists,
@@ -522,7 +532,7 @@ export class JobRunner {
     });
     const sources = permissions.img2img.mode === 'auto' ? imageSourcesOf(carry) : [];
     const params = this.paramsSchema(permissions, candidates, sources);
-    return { permissions, candidates, sources, mask, params };
+    return { permissions, merged, disabled, candidates, sources, mask, params };
   }
 
   private paramsSchema(
@@ -686,6 +696,10 @@ export class JobRunner {
       ...this.memoryInput(memoryItems, 'think'),
     });
     const params = this.paramsShownIn(messages, paramsPlan);
+    // LLM を呼ぶ前に書く: 考える役に見せた形を残し、呼び出しの途中で落ちても何を外したかが残るようにするため
+    await store.writeStage(spec.jobId, iteration, 'plan', {
+      excluded: excludedOf(paramsPlan.merged, paramsPlan.disabled, params.omitted),
+    });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
       schema: buildThinkOutputSchema(params, budget, {
         withInterventions: plan.included.length > 0,

@@ -111,6 +111,12 @@ export {
   type Permissions,
 } from './permissions/permission.js';
 export {
+  type ExcludedParam,
+  type ExcludedReason,
+  excludedOf,
+  iterationPlanSchema,
+} from './think/excluded.js';
+export {
   buildParamsSchema,
   type OmittedReason,
   type ParamsSchema,
