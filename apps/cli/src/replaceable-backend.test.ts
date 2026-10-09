@@ -1,20 +1,18 @@
 import { BackendBusyError } from '@drawroid/api';
-import { BackendError } from '@drawroid/core';
+import { BackendError, generationRequestSchema } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { describe, expect, it } from 'vitest';
 
 import { ReplaceableBackend } from './replaceable-backend.js';
 
-const request = {
+// schema を通して作る: 要求に欄が足されても、既定値のある欄はここで埋まるため
+const request = generationRequestSchema.parse({
   prompt: 'a cat',
-  negativePrompt: '',
-  loras: [],
   steps: 4,
   cfgScale: 7,
   width: 64,
   height: 64,
-  batchSize: 1,
-};
+});
 
 describe('ReplaceableBackend', () => {
   it('delegates to the backend it was given', async () => {
