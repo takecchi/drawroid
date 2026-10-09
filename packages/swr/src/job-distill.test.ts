@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 // ジョブから覚えたことを読むフックが、記録がまだ無い間だけ間隔を伸ばしながら読み直し、記録が出たら止め、尽きたら止めることを見る試験。
 // fetch と setTimeout を差し替える
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
-import { SWRConfig } from 'swr';
+import { mutate, SWRConfig } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { JOB_DISTILL_RETRY_MS, useJobDistill } from './hooks.js';
+import { keys } from './keys.js';
+import { recheckJobDistill } from './mutations.js';
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -33,6 +35,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -91,5 +94,73 @@ describe('useJobDistill', () => {
     await passes(total);
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('after a person chose an image of the stopped job', () => {
+    // recheckJobDistill は既定の取り置きに印を置くので、既定の取り置きで読み、終わったら空にする
+    const onDefaultCache = ({ children }: { children: ReactNode }) =>
+      createElement(SWRConfig, { value: { dedupingInterval: 0 } }, children);
+    afterEach(async () => {
+      await mutate(keys.jobDistill('job-1'), undefined, { revalidate: false });
+      await mutate(keys.jobDistillWait('job-1'), undefined, { revalidate: false });
+    });
+    const entries = (n: number) =>
+      json(200, {
+        entries: Array.from({ length: n }, (_, i) => ({
+          kind: i === 0 ? 'stopped' : 'reselection',
+          at: `2026-10-10T05:0${i}:00.000Z`,
+          added: [],
+          edited: [],
+        })),
+      });
+
+    it('reads again, with the same growing waits, until the reselection adds an entry', async () => {
+      fetchMock.mockImplementation(async () => entries(1));
+      const { result } = renderHook(() => useJobDistill('job-1'), { wrapper: onDefaultCache });
+      await passes(0);
+      // 記録があるので、選び直すまでは読み直さない
+      await passes(total);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result.current.pending).toBe(false);
+
+      await act(() => recheckJobDistill('job-1'));
+      expect(result.current.pending).toBe(true);
+      await passes(JOB_DISTILL_RETRY_MS[0]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      fetchMock.mockImplementation(async () => entries(2));
+      await passes(JOB_DISTILL_RETRY_MS[1]);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(result.current.pending).toBe(false);
+      expect(result.current.data?.entries).toHaveLength(2);
+
+      await passes(total * 2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('gives up after the same bound when the reselection adds nothing', async () => {
+      fetchMock.mockImplementation(async () => entries(1));
+      const { result } = renderHook(() => useJobDistill('job-1'), { wrapper: onDefaultCache });
+      await passes(0);
+
+      await act(() => recheckJobDistill('job-1'));
+      for (const ms of JOB_DISTILL_RETRY_MS) await passes(ms);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1 + JOB_DISTILL_RETRY_MS.length);
+      expect(result.current.exhausted).toBe(true);
+      await passes(total * 2);
+      expect(fetchMock).toHaveBeenCalledTimes(1 + JOB_DISTILL_RETRY_MS.length);
+    });
+
+    it('does not read again a job nobody chose an image of', async () => {
+      fetchMock.mockImplementation(async () => entries(1));
+      renderHook(() => useJobDistill('job-1'), { wrapper: onDefaultCache });
+      await passes(0);
+      const before = fetchMock.mock.calls.length;
+
+      await act(() => recheckJobDistill('job-2'));
+      await passes(total);
+
+      expect(fetchMock).toHaveBeenCalledTimes(before);
+    });
   });
 });

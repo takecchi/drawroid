@@ -39,6 +39,7 @@ export {
   saveBudgetSettings,
   saveCandidateNotes,
   saveGenerationProgressSettings,
+  recheckJobDistill,
   conversationStreamUrl,
   createConversation,
   interruptConversation,

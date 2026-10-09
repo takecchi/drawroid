@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { clearTimeout, setTimeout } from 'node:timers';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { URL } from 'node:url';
 
 import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
 import { makePng, startFakeForge } from './packed-conversation/forge.mjs';
@@ -521,6 +522,16 @@ try {
     '狭い画面で、止まりのカードに最良の画像・何回目の何番・点・決めるボタン（名前つき）・続けるときの一言が、画面の幅の中に出る',
   );
   const favoritesBefore = await favorites();
+  // 押したあとに読まれる「覚えたこと」を数える（選び直しの蒸留で増える記録を、押したジョブだけ読み直す）
+  /** @type {string[]} */
+  const distillReads = [];
+  /** @param {import('playwright-core').Request} request */
+  const onRequest = (request) => {
+    if (/\/api\/jobs\/[^/]+\/distill$/.test(new URL(request.url()).pathname)) {
+      distillReads.push(new URL(request.url()).pathname);
+    }
+  };
+  narrow.on('request', onRequest);
   await chooseBest.click();
   await bestCard.getByText('お気に入り', { exact: true }).waitFor();
   expect(
@@ -533,6 +544,14 @@ try {
     .getByText(/^(覚えた: |直した: |整理できなかった: |新しく覚えたことは無い。)/)
     .first()
     .waitFor();
+  // 選び直しの蒸留の記録が増えるまで読み直し、増えたら「選び直したことを整理しています」が消える
+  await until(() => distillReads.length > 0, '押したジョブの「覚えたこと」を読み直す');
+  await learnedCard.getByText('選び直したことを整理しています').waitFor({ state: 'hidden' });
+  narrow.off('request', onRequest);
+  expect(
+    new Set(distillReads).size === 1,
+    `「この画像に決める（お気に入りにする）」を押すと、そのジョブの「覚えたこと」だけを読み直す（${[...new Set(distillReads)].join(', ')}）`,
+  );
   const learnedBox = await learnedCard.boundingBox();
   expect(
     learnedBox !== null &&
