@@ -218,7 +218,7 @@ export function IterationView({
       </ImageGrid>
       {iteration.judge !== null && <JudgeSection judge={iteration.judge} read={judge} />}
       {adopted !== null && <AdoptedSection adopted={adopted} />}
-      <Disclosure summary="request">
+      <Disclosure summary="生成の要求">
         <CodeBlock>{JSON.stringify(iteration.request, null, 2)}</CodeBlock>
       </Disclosure>
       {calls.length > 0 && <LlmCallList jobId={jobId} calls={calls} />}
