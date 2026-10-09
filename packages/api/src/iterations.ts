@@ -1,4 +1,5 @@
 import {
+  type AdoptedRecord,
   type ExcludedParam,
   type GenerationRequest,
   iterationPlanSchema,
@@ -15,6 +16,8 @@ export type IterationView = {
   excluded: ExcludedParam[] | null;
   request: GenerationRequest | null;
   judge: unknown;
+  /** 人間がこの回の画像を選んで見る役を省いた回の記録。選んでいない回は null */
+  adopted: AdoptedRecord | null;
   images: ImageView[];
 };
 
@@ -31,10 +34,11 @@ export async function readIterationView(
   jobId: string,
   iteration: number,
 ): Promise<IterationView> {
-  const [think, plan, judge, generation] = await Promise.all([
+  const [think, plan, judge, adopted, generation] = await Promise.all([
     store.readStage(jobId, iteration, 'think'),
     store.readStage(jobId, iteration, 'plan'),
     store.readStage(jobId, iteration, 'judge'),
+    store.readAdopted(jobId, iteration),
     store.readGeneration(jobId, iteration),
   ]);
   return {
@@ -43,6 +47,7 @@ export async function readIterationView(
     excluded: plan === undefined ? null : iterationPlanSchema.parse(plan).excluded,
     request: generation?.request ?? null,
     judge: judge ?? null,
+    adopted: adopted ?? null,
     images: (generation?.images ?? []).map(({ index, seed }) => ({
       index,
       seed,

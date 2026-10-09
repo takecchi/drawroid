@@ -35,6 +35,30 @@ afterEach(async () => {
   await rm(env.root, { recursive: true, force: true });
 });
 
+describe('GET /jobs/:jobId/iterations/:iteration and the human choice', () => {
+  it('returns the adopted record of an iteration the human picked an image in', async () => {
+    const adopted = {
+      by: 'human',
+      image: { iteration: 2, index: 0 },
+      score: 1,
+      interventionId: 'iv-1',
+      adoptedAt: '2026-10-09T00:30:00.000Z',
+    } as const;
+    await env.store.writeAdopted(jobId, 2, adopted);
+
+    const res = await env.api.request(`/jobs/${jobId}/iterations/2`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ iteration: 2, judge: null, adopted });
+  });
+
+  it('returns adopted as null for an iteration the judge evaluated', async () => {
+    const res = await env.api.request(`/jobs/${jobId}/iterations/1`);
+
+    expect(await res.json()).toMatchObject({ judge: { canStop: true }, adopted: null });
+  });
+});
+
 describe('GET /jobs/:jobId', () => {
   it('returns the stop reason, the stop conditions and a per-iteration summary', async () => {
     const res = await env.api.request(`/jobs/${jobId}`);
