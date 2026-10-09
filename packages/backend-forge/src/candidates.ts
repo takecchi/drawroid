@@ -28,8 +28,8 @@ export async function listForgeCandidates(
     }
     case 'lora': {
       const loras = await client.getJson('/sdapi/v1/loras', lorasSchema, signal);
-      // name に alias を使う: プロンプトの <lora:…> で Forge が引き当てるのは alias であるため
-      return loras.map((l) => withLabel(l.alias || l.name, l.name));
+      // name に alias を使わない: Forge は <lora:…> を name でも alias でも引き当てるが、alias が他の LoRA と重なると、その alias では引き当てなくなるため（sd_forge_lora/networks.py）
+      return loras.map((l) => withLabel(l.name, l.alias ?? undefined));
     }
     case 'sampler': {
       const samplers = await client.getJson('/sdapi/v1/samplers', samplersSchema, signal);
