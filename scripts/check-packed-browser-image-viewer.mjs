@@ -155,16 +155,35 @@ try {
     // 押したら元に戻す（次の画面の幅でも、同じ形から確かめるため）
     await dialog.getByRole('button', { name: 'お気に入りを外す: 1 回目の画像 1 番' }).click();
     await favorite.waitFor();
-    // このジョブは止まっているので、「この画像で決める」は押せず、理由が出る
-    const adopt = dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' });
+    // このジョブは止まっているので、採る口（「この画像で決める」）も押せない理由も出ず、止まりのカードと同じ
+    // 「この画像に決める（お気に入りにする）」になる。押すとお気に入りになり、採る口は呼ばれない（ジョブの口出しに adopt が増えない）
     expect(
-      await adopt.isDisabled(),
-      `${label}: 止まったジョブでは、窓の中の「この画像で決める」も押せない`,
+      (await dialog
+        .getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' })
+        .count()) === 0 && (await dialog.getByText(/決められない/).count()) === 0,
+      `${label}: 止まったジョブでは、窓の中に採る口も押せない理由も出ない`,
     );
-    await dialog.getByText('描くのはもう止まっているので、決められない').waitFor();
+    await dialog
+      .getByRole('button', { name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番' })
+      .click();
+    await dialog.getByText('お気に入り', { exact: true }).waitFor();
+    const { interventions } = /** @type {{ interventions: { kind: string }[] }} */ (
+      await (
+        await fetch(`${base}/api/jobs/auto/${jobId}/interventions`, {
+          signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+        })
+      ).json()
+    );
+    expect(
+      interventions.every((intervention) => intervention.kind !== 'adopt'),
+      `${label}: 窓の中の「この画像に決める（お気に入りにする）」でお気に入りになり、採る口は呼ばれない`,
+    );
+    // 押したら元に戻す（次の画面の幅でも、同じ形から確かめるため）
+    await dialog.getByRole('button', { name: 'お気に入りを外す: 1 回目の画像 1 番' }).click();
+    await favorite.waitFor();
     expect(
       true,
-      `${label}: 窓の中で、見る役の点と言葉が読め、お気に入りを付け外しでき、「この画像で決める」が理由つきで出る`,
+      `${label}: 窓の中で、見る役の点と言葉が読め、お気に入りを付け外しでき、止まったジョブでは「この画像に決める（お気に入りにする）」が出る`,
     );
 
     for (let step = 0; step < PER_ITERATION; step += 1) await page.keyboard.press('ArrowRight');
