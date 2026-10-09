@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { writeFileAtomic, writeJsonAtomic } from './atomic.js';
+import { createJsonExclusive, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 
 let dir: string;
 
@@ -64,4 +64,16 @@ describe('a process killed while writing', () => {
       expect(parsed.payload).toHaveLength(256 * 1024);
     }
   }, 30_000);
+});
+
+describe('createJsonExclusive', () => {
+  it('places a file only when the name is free, leaving the first one as it was', async () => {
+    const path = join(dir, '000001.json');
+
+    expect(await createJsonExclusive(path, { n: 1 })).toBe(true);
+    expect(await createJsonExclusive(path, { n: 2 })).toBe(false);
+
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ n: 1 });
+    expect(await readdir(dir)).toEqual(['000001.json']);
+  });
 });

@@ -33,7 +33,7 @@ import {
 import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
 
-import { writeFileAtomic, writeJsonAtomic } from './atomic.js';
+import { createJsonExclusive, writeFileAtomic, writeJsonAtomic } from './atomic.js';
 import { dataPaths, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
 
 export class ImageAlreadySentError extends Error {
@@ -121,6 +121,20 @@ const JOB_ID_PATTERN = /^\d{8}-\d{6}-[0-9a-z]+$/;
 /** パスに使ってよい jobId の形か。外から来た文字列を、ディレクトリを抜ける形のままパスにしないための門 */
 export function isJobId(value: string): boolean {
   return JOB_ID_PATTERN.test(value);
+}
+
+// 0 で埋める: 名前の順で並べても番号の順になり、人間がディレクトリを開いて読めるように
+const SEQUENCE_DIGITS = 6;
+const SEQUENCE_ID_PATTERN = /^\d{6,}$/;
+
+/** ジョブの中で受けた順に振る番号（口出しの ID） */
+export function formatSequenceId(sequence: number): string {
+  return String(sequence).padStart(SEQUENCE_DIGITS, '0');
+}
+
+/** パスに使ってよい連番の形か */
+export function isSequenceId(value: string): boolean {
+  return SEQUENCE_ID_PATTERN.test(value);
 }
 
 export type FsJobStoreOptions = {
@@ -254,29 +268,40 @@ export class FsJobStore implements JobStore {
   ): Promise<InterventionRecord> {
     const files = this.jobFiles(jobId);
     await mkdir(files.interventions, { recursive: true });
+    // 受けた順の連番にする: 時刻と乱数の名前だと、同じ秒に受けた2件の名前の順が受けた順にならず、
+    // 止める条件の変更を重ねる順や人間の指示の順が入れ替わるため。
+    // 同じ番号を同時に取りに来たら、排他的に置けなかった側が次の番号を取り直す
     for (;;) {
-      // jobId と同じ形の名前にする: 名前の順がそのまま受けた順になり、連番を数える読み書きが要らないため
-      const interventionId = formatJobId(now, this.randomSuffix());
-      const path = files.intervention(interventionId);
-      if (await exists(path)) continue;
+      const interventionId = formatSequenceId((await this.lastSequence(files.interventions)) + 1);
       const record = interventionRecordSchema.parse({
         ...intervention,
         interventionId,
         receivedAt: now.toISOString(),
       });
-      await writeJsonAtomic(path, record);
-      return record;
+      if (await createJsonExclusive(files.intervention(interventionId), record)) return record;
     }
   }
 
   async listInterventions(jobId: string): Promise<InterventionRecord[]> {
     const files = this.jobFiles(jobId);
-    const names = (await listNames(files.interventions)).filter((name) => name.endsWith('.json'));
     const records: InterventionRecord[] = [];
-    for (const name of names) {
+    for (const name of await this.sequenceNames(files.interventions)) {
       records.push(await readValid(join(files.interventions, name), interventionRecordSchema));
     }
     return records;
+  }
+
+  /** 連番の名前のファイルを、番号の順に返す */
+  private async sequenceNames(dir: string): Promise<string[]> {
+    return (await listNames(dir))
+      .filter((name) => name.endsWith('.json') && isSequenceId(name.slice(0, -'.json'.length)))
+      .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
+  }
+
+  private async lastSequence(dir: string): Promise<number> {
+    const names = await this.sequenceNames(dir);
+    const last = names.at(-1);
+    return last === undefined ? 0 : Number.parseInt(last, 10);
   }
 
   async markInterventionApplied(
@@ -284,8 +309,10 @@ export class FsJobStore implements JobStore {
     interventionId: string,
     iteration: number,
   ): Promise<void> {
-    // interventionId も jobId と同じ形なので、同じ検査を通してからパスを組む
-    if (!isJobId(interventionId)) throw new Error(`interventionId の形ではない: ${interventionId}`);
+    // 連番の形かを確かめてからパスを組む: 外から来た ID でジョブのディレクトリの外を指させないため
+    if (!isSequenceId(interventionId)) {
+      throw new Error(`interventionId の形ではない: ${interventionId}`);
+    }
     const path = this.jobFiles(jobId).intervention(interventionId);
     const record = await readValid(path, interventionRecordSchema);
     if (record.kind !== 'instruction') {
@@ -382,28 +409,30 @@ export class FsJobStore implements JobStore {
   async addReference(jobId: string, reference: NewReference, now: Date): Promise<ReferenceRecord> {
     const files = this.jobFiles(jobId);
     await mkdir(files.refs, { recursive: true });
+    // 口出しと同じく受けた順の連番にし、refs/<refId>.json を排他的に置いて番号を取る。
+    // 画像のファイルで取り合わない: 拡張子が違うと、同じ番号を2件が取れてしまうため
     for (;;) {
-      const refId = formatJobId(now, this.randomSuffix());
-      if (await exists(files.refMeta(refId))) continue;
+      const refId = formatSequenceId((await this.lastSequence(files.refs)) + 1);
       const record = referenceRecordSchema.parse({
         refId,
         receivedAt: now.toISOString(),
         mediaType: reference.mediaType,
         ...(reference.note === undefined ? {} : { note: reference.note }),
       });
-      // 画像を先に、refs/<refId>.json を後に置く: 一覧は .json だけを数えるので、途中で落ちても画像の無い参照が見えないため
+      if (!(await createJsonExclusive(files.refMeta(refId), record))) continue;
       await writeFileAtomic(files.ref(refId, extensionOf(record.mediaType)), reference.data);
-      await writeJsonAtomic(files.refMeta(refId), record);
       return record;
     }
   }
 
   async listReferences(jobId: string): Promise<ReferenceRecord[]> {
     const files = this.jobFiles(jobId);
-    const names = (await listNames(files.refs)).filter((name) => name.endsWith('.json'));
     const records: ReferenceRecord[] = [];
-    for (const name of names) {
-      records.push(await readValid(join(files.refs, name), referenceRecordSchema));
+    for (const name of await this.sequenceNames(files.refs)) {
+      const record = await readValid(join(files.refs, name), referenceRecordSchema);
+      // 番号を取ったあと画像を置く前に落ちた参照は見せない: 渡す画像が無いため
+      if (await exists(files.ref(record.refId, extensionOf(record.mediaType))))
+        records.push(record);
     }
     return records;
   }
@@ -462,9 +491,9 @@ export class FsJobStore implements JobStore {
     return `${relative(this.paths.root, dir).split('\\').join('/')}/${name}`;
   }
 
-  // refId も jobId と同じ形なので、同じ検査を通してからパスを組む: 外から来た refId でデータディレクトリの外を指させないため
+  // 連番の形かを確かめてからパスを組む: 外から来た refId でデータディレクトリの外を指させないため
   private refFiles(jobId: string, refId: string) {
-    if (!isJobId(refId)) throw new Error(`refId の形ではない: ${refId}`);
+    if (!isSequenceId(refId)) throw new Error(`refId の形ではない: ${refId}`);
     const files = this.jobFiles(jobId);
     return {
       meta: files.refMeta(refId),
