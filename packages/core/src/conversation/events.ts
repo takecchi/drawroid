@@ -227,7 +227,13 @@ export const liveEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('status'),
-    status: z.enum(['queued', 'waiting-llm', 'job.paused']),
+    status: z.enum(['queued', 'waiting-llm']),
+  }),
+  z.object({
+    type: z.literal('job.held'),
+    jobId: z.string().min(1),
+    /** 人間の発言を聞くあいだ、そのジョブの LLM の段を待たせているか。解けたら false */
+    held: z.boolean(),
   }),
 ]);
 export type LiveEvent = z.infer<typeof liveEventSchema>;

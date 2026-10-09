@@ -49,7 +49,7 @@ export type AutoJobQueueOptions = {
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   /** 考える役・見る役の思考の増分を受ける（会話へ流すため） */
   onReasoning?: JobRunnerDeps['onReasoning'];
-  /** ジョブの LLM の段が待たされ始めた・解けたとき（会話へ job.paused を流すため） */
+  /** ジョブの LLM の段が待たされ始めた・解けたとき（会話へ job.held を流すため） */
   onLlmStagesHeld?: JobRunnerDeps['onLlmStagesHeld'];
   log: (line: string) => void;
 };

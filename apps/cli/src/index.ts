@@ -149,13 +149,13 @@ async function main() {
     }),
     // 会話に属するジョブの、考える役・見る役の思考の増分を、その会話へ流す
     onReasoning: relayJobReasoning({ store, hubs: conversationHubs }),
-    // 話す役のターンがジョブの LLM の段を待たせている間、会話へ確定しない job.paused を流す
+    // 話す役のターンがジョブの LLM の段を待たせている間、会話へ確定しない job.held を流す
     onLlmStagesHeld: relayJobHeld({
       store,
       hubs: conversationHubs,
       onError: (error) =>
         log(
-          `drawroid: job.paused を会話へ流せなかった: ${error instanceof Error ? error.message : String(error)}`,
+          `drawroid: job.held を会話へ流せなかった: ${error instanceof Error ? error.message : String(error)}`,
         ),
     }),
     log,

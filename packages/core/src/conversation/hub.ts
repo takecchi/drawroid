@@ -17,7 +17,7 @@ type Subscriber = {
   closed: boolean;
 };
 
-/** 写しの鍵。増分は部品ごと、進み具合はジョブの回ごと、状態は1つだけ持つ */
+/** 写しの鍵。増分は部品ごと、進み具合はジョブの回ごと、待ちはジョブごと、状態は1つだけ持つ */
 function copyKeyOf(event: LiveEvent): string {
   switch (event.type) {
     case 'delta.text':
@@ -27,6 +27,8 @@ function copyKeyOf(event: LiveEvent): string {
       return `progress:${event.jobId}:${event.iteration}`;
     case 'status':
       return 'status';
+    case 'job.held':
+      return `held:${event.jobId}`;
   }
 }
 
@@ -42,7 +44,7 @@ function endsCopy(event: ConversationEvent, key: string): boolean {
     case 'job.judge':
       return key === `part:job:${event.jobId}:${event.iteration}:judge`;
     case 'job.stopped':
-      return key.startsWith(`progress:${event.jobId}:`);
+      return key.startsWith(`progress:${event.jobId}:`) || key === `held:${event.jobId}`;
     case 'turn.ended':
       return key === 'status';
     default:
@@ -90,6 +92,12 @@ export class ConversationHub {
   /** 確定しない部品を流す。写しを更新し、ファイルには書かない */
   live(event: LiveEvent): void {
     const key = copyKeyOf(event);
+    // 待ちが解けたら写しを捨てる: 後から購読した画面に、解けた待ちを渡さないため（流すのは、開いている画面を解くため）
+    if (event.type === 'job.held' && !event.held) {
+      this.copies.delete(key);
+      this.fanOut({ kind: 'live', event });
+      return;
+    }
     const copy = this.copies.get(key);
     // 増分は足し込んで、ここまでの全文を写しにする: 後から購読した画面が、写し1つで続きを出せるように
     if (

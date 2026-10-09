@@ -140,7 +140,7 @@ export type JobRunnerDeps = {
   now?: () => Date;
   /**
    * ジョブの LLM の段を待たせる口（holdLlmStages）が、待たせ始めた・全部解けた（または、待たせたままジョブが終わった）ときに呼ばれる。
-   * 話す役のターンが job.paused を流すのに使う
+   * 話す役のターンが job.held を流すのに使う
    */
   onLlmStagesHeld?: (jobId: string, held: boolean) => void;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
