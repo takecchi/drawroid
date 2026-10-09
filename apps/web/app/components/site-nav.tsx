@@ -9,6 +9,7 @@ export function SiteNav() {
       <Link to="/jobs">ジョブ</Link>
       <Link to="/memory">記憶</Link>
       <Link to="/permissions">許可</Link>
+      <Link to="/candidates">候補の説明</Link>
     </nav>
   );
 }

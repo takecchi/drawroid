@@ -23,5 +23,6 @@ describe('SiteNav', () => {
     expect(hrefOf('ジョブ')).toBe('/jobs');
     expect(hrefOf('記憶')).toBe('/memory');
     expect(hrefOf('許可')).toBe('/permissions');
+    expect(hrefOf('候補の説明')).toBe('/candidates');
   });
 });

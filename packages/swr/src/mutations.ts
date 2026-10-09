@@ -14,6 +14,8 @@ import type {
   AddMaskResponse,
   AddReferenceResponse,
   BackendSettingsResponse,
+  CandidateNotesInput,
+  CandidateNotesResponse,
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
   LlmSettingsInput,
@@ -88,6 +90,21 @@ export async function savePermissionSettings(
   );
   // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
   await mutate(keys.permissionSettings, saved, { revalidate: false });
+  return saved;
+}
+
+/**
+ * 候補の説明を、全部まとめて置き換える。書いた説明は、次のジョブから考える役に渡る。
+ * 長すぎる説明や多すぎる件数は ApiError（kind: 'invalid_request'）を投げる
+ */
+export async function saveCandidateNotes(
+  notes: CandidateNotesInput,
+): Promise<CandidateNotesResponse> {
+  const saved = await unwrap<CandidateNotesResponse>(() =>
+    client.backend['candidate-notes'].$put({ json: notes }),
+  );
+  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
+  await mutate(keys.candidateNotes, saved, { revalidate: false });
   return saved;
 }
 
