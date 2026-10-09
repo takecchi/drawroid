@@ -111,6 +111,30 @@ describe('backend settings', () => {
     });
   });
 
+  it('fails the write and keeps using the old url when config.json cannot be written', async () => {
+    const first = new StubBackend();
+    const backend = new ReplaceableBackend(first);
+    const created: StubBackend[] = [];
+    const unwritablePath = join(dir, 'no-such-dir', 'config.json');
+    const settings = createBackendSettings({
+      configPath: unwritablePath,
+      backend,
+      createBackend: () => {
+        const next = new StubBackend();
+        created.push(next);
+        return next;
+      },
+      initial: { forgeUrl: 'http://old:7860', source: 'config', config: {} },
+    });
+
+    await expect(settings.write({ forgeUrl: 'http://new:7860' })).rejects.toThrow();
+    await backend.generate(request, new AbortController().signal);
+
+    expect(first.requests).toHaveLength(1);
+    expect(created.flatMap((b) => b.requests)).toEqual([]);
+    expect(await settings.read()).toMatchObject({ forgeUrl: 'http://old:7860' });
+  });
+
   it('creates config.json when it does not exist yet', async () => {
     const { settings } = await setup({});
     await rm(configPath);
