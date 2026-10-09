@@ -116,6 +116,62 @@ describe('runDoctor', () => {
     expect(text).not.toContain(secret);
   });
 
+  it('checks each distinct assignment once: roles sharing a provider and model are checked together', async () => {
+    const providers = {
+      a: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' },
+      b: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' },
+    };
+    // 考える役と見る役が同じ割り当てで、話す役だけが別
+    const shared = await setup({
+      llm: {
+        providers,
+        // 繋がらない所へ再試行を重ねない: 確かめの数と並びだけを見る
+        networkRetries: 0,
+        roles: {
+          think: { provider: 'a', model: 'm1' },
+          talk: { provider: 'a', model: 'm2' },
+        },
+      },
+    });
+    const sharedTrips = shared.text.split('\n').filter((line) => line.includes('1往復'));
+    expect(sharedTrips).toHaveLength(2);
+    expect(sharedTrips[0]).toContain('話す役（a の m2');
+    expect(sharedTrips[1]).toContain('考える役・見る役（a の m1');
+
+    // 同じモデルの名前でも、サーバ（provider）が違えば別の割り当て
+    const servers = await setup({
+      llm: {
+        providers,
+        // 繋がらない所へ再試行を重ねない: 確かめの数と並びだけを見る
+        networkRetries: 0,
+        roles: {
+          think: { provider: 'a', model: 'm' },
+          judge: { provider: 'b', model: 'm' },
+          talk: { provider: 'a', model: 'm' },
+        },
+      },
+    });
+    const serverTrips = servers.text.split('\n').filter((line) => line.includes('1往復'));
+    expect(serverTrips).toHaveLength(2);
+    expect(serverTrips[0]).toContain('話す役・考える役（a の m');
+    expect(serverTrips[1]).toContain('見る役（b の m');
+  });
+
+  it('flags a judge model that is set not to read images, without calling it', async () => {
+    const { text } = await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' } },
+        roles: {
+          think: { provider: 'a', model: 'm1' },
+          judge: { provider: 'a', model: 'm2', imageInput: false },
+        },
+      },
+    });
+    expect(text).toMatch(
+      /足りない {2}見る役（a の m2、.*imageInput: false.*\n {12}→ 見る役に画像を読めるモデルを割り当て/,
+    );
+  });
+
   it('says which product is running when it differs from the configured kind', async () => {
     // Forge にだけある口（sd-modules）に答えるので、Forge が動いていると見なす
     const url = await startBackend({

@@ -63,15 +63,26 @@ async function runDoctor(bin, dataDir, config, env) {
 }
 
 /**
+ * 偽の LLM は model の名前で役を見分ける。roles を省けば、全部の役が talk-model を使う（割り当てが1つ）
  * @param {string} llmUrl
  * @param {'native' | 'json'} toolCalling
+ * @param {Record<string, unknown>} [roles]
  */
-function llmConfig(llmUrl, toolCalling) {
+function llmConfig(llmUrl, toolCalling, roles) {
   return {
     providers: { local: { type: 'openai-compatible', baseURL: llmUrl, apiKeyEnv: 'DOCTOR_KEY' } },
-    roles: { think: { provider: 'local', model: 'talk-model', toolCalling } },
+    roles: roles ?? { think: { provider: 'local', model: 'talk-model', toolCalling } },
   };
 }
+
+const SEPARATE_ROLES = {
+  think: { provider: 'local', model: 'think-model' },
+  judge: { provider: 'local', model: 'judge-model' },
+  talk: { provider: 'local', model: 'talk-model' },
+};
+
+/** @param {string} output */
+const roundTripLines = (output) => output.split('\n').filter((line) => line.includes('1往復'));
 
 /** @type {import('node:child_process').ChildProcess | undefined} */
 let child;
@@ -122,6 +133,61 @@ try {
       '鍵は、環境変数の名前と入っているかだけを出し、値は出さない',
       output,
     );
+    expect(
+      roundTripLines(output).length === 1 && output.includes('話す役・考える役・見る役（'),
+      '全部の役が同じ割り当てなら、1往復の確かめは1回で済ませる',
+      output,
+    );
+  }
+
+  // doctor: 考える役・見る役・話す役が別のモデル。役ごとに1往復を確かめ、見る役には画像を渡す
+  {
+    llm.queueTalkTool('doctor_ping', {});
+    const { code, output } = await runDoctor(
+      bin,
+      join(work, 'doctor-roles'),
+      { backend: { url: forge.url }, llm: llmConfig(llm.url, 'native', SEPARATE_ROLES) },
+      { DOCTOR_KEY: SECRET },
+    );
+    console.log(output);
+    expect(code === 0, '役ごとに別のモデルでも、揃っていれば終了コード 0', output);
+    expect(
+      roundTripLines(output).length === 3,
+      '割り当てが別の役は、それぞれ1往復を確かめる',
+      output,
+    );
+    for (const line of [
+      '話す役（local の talk-model',
+      '考える役（local の think-model',
+      '見る役（local の judge-model',
+      '画像を1枚渡して1往復できた',
+    ]) {
+      expect(output.includes(line), `役ごとの出力に「${line}」がある`, output);
+    }
+  }
+
+  // doctor: 見る役のモデルが画像を読めない（画像を含む呼び出しを断る）。画像が原因だと名指す
+  {
+    const blind = await startFakeLlm({ stopAfterIterations: 1, rejectImages: true });
+    try {
+      blind.queueTalkTool('doctor_ping', {});
+      const { code, output } = await runDoctor(
+        bin,
+        join(work, 'doctor-blind-judge'),
+        { backend: { url: forge.url }, llm: llmConfig(blind.url, 'native', SEPARATE_ROLES) },
+        { DOCTOR_KEY: SECRET },
+      );
+      console.log(output);
+      expect(code === 1, '見る役が画像を読めなければ終了コード 1', output);
+      expect(
+        output.includes('足りない  見る役（local の judge-model') &&
+          output.includes('このモデルは画像を読めない可能性がある'),
+        '見る役が画像を読めないことを名指す',
+        output,
+      );
+    } finally {
+      await blind.close();
+    }
   }
 
   // doctor: 繋がらない場合。バックエンドも LLM も、誰も待ち受けていないポートを指す

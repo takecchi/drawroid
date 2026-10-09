@@ -294,10 +294,13 @@ export class JobRunner {
     );
     // その回をまだ見る役が見ていなければ、走っている LLM の呼び出しをやり直させる: 見る役の呼び出しが走っていると、
     // 返るまで選択が効かず、見終えたあとの選択（job.adopted の出ない差し替え）になるため。やり直した段は選択を見て見る役を飛ばす。
-    // 会話のターンが待たせている間（話す役の adopt_image）は、もともと走っていないので何も起きない
+    // 会話のターンが待たせている間（話す役の adopt_image）は、もともと走っていないので何も起きない。
+    // 人が選んで済んだ回（adopted.json があり judge.json が無い）も、見る役はもう呼ばれないので切らない:
+    // 切ると、後の回の LLM の呼び出しを呼び直させ、トークンを無駄に払うため
     if (
       this.running?.jobId === jobId &&
-      (await this.deps.store.readStage(jobId, image.iteration, 'judge')) === undefined
+      (await this.deps.store.readStage(jobId, image.iteration, 'judge')) === undefined &&
+      (await this.deps.store.readAdopted(jobId, image.iteration)) === undefined
     ) {
       this.running.gate.restartStage();
     }
