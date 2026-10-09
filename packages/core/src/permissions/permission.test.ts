@@ -17,6 +17,25 @@ const allAuto = (): Permissions =>
     ParamKey,
     { mode: 'auto' }
   >;
+// 生成の要求の各欄に合う値。固定の値は、要求の該当する欄と同じ形でなければならない
+const FIXED_SAMPLES: Record<ParamKey, unknown> = {
+  prompt: 'girl, beach',
+  negativePrompt: 'lowres',
+  checkpoint: 'animeMix.safetensors',
+  vae: 'vae.pt',
+  loras: [{ name: 'detail', weight: 0.6 }],
+  sampler: 'Euler a',
+  scheduler: 'Karras',
+  steps: 28,
+  cfgScale: 6.5,
+  seed: 1234,
+  width: 512,
+  height: 768,
+  hiresFix: { upscaler: 'Latent', scale: 2, steps: 0, denoisingStrength: 0.5 },
+  img2img: { image: 'refs/r1.png', denoisingStrength: 0.5 },
+  inpaint: { image: 'refs/r1.png', mask: 'masks/m1.png', denoisingStrength: 0.75 },
+  controlnet: [{ image: 'refs/r1.png', model: 'canny' }],
+};
 const nothingMissing = { capabilities: { unavailable: [] }, hasMask: true };
 
 describe('mergePermissions', () => {
@@ -120,7 +139,8 @@ describe('permissions for the fields a generation cannot do without', () => {
   it.each(REQUIRED_PARAM_KEYS)('lets %s be left to the AI or fixed', (key) => {
     expect(permissionOverridesSchema.safeParse({ [key]: { mode: 'auto' } }).success).toBe(true);
     expect(
-      permissionOverridesSchema.safeParse({ [key]: { mode: 'fixed', value: 1 } }).success,
+      permissionOverridesSchema.safeParse({ [key]: { mode: 'fixed', value: FIXED_SAMPLES[key] } })
+        .success,
     ).toBe(true);
   });
 
@@ -167,5 +187,39 @@ describe('the shape of the permissions', () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe('fixed values', () => {
+  it.each(PARAM_KEYS)('takes a fixed %s in the shape the generation request uses', (key) => {
+    expect(
+      permissionOverridesSchema.safeParse({ [key]: { mode: 'fixed', value: FIXED_SAMPLES[key] } })
+        .success,
+    ).toBe(true);
+  });
+
+  it.each([
+    ['steps', 'twenty'],
+    ['steps', 0],
+    ['cfgScale', '7'],
+    ['checkpoint', ''],
+    ['loras', [{ weight: 1 }]],
+    ['hiresFix', { scale: 2 }],
+  ] as const)('refuses a fixed %s of %j and names the field that is wrong', (key, value) => {
+    const result = permissionOverridesSchema.safeParse({ [key]: { mode: 'fixed', value } });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path.slice(0, 2)).toEqual([key, 'value']);
+  });
+
+  it('refuses a fixed permission without a value', () => {
+    expect(permissionOverridesSchema.safeParse({ vae: { mode: 'fixed' } }).success).toBe(false);
+  });
+
+  it('checks the fixed values of the global permissions too', () => {
+    expect(
+      permissionsSchema.safeParse({ ...allAuto(), width: { mode: 'fixed', value: 'wide' } })
+        .success,
+    ).toBe(false);
   });
 });
