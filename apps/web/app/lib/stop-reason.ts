@@ -9,6 +9,7 @@ const SUMMARIES: Record<Exclude<StopReason['kind'], 'error'>, string> = {
   'limit:duration': '時間の上限',
   'limit:images': '枚数の上限',
   human: '人が止めた',
+  adopted: '人が画像を選んだ',
 };
 
 // ジョブの記録には繋いでいたバックエンドの種類が残らないので、いま使っている種類で言う
