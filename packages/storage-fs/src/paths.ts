@@ -56,6 +56,8 @@ function jobFiles(dir: string) {
     dir,
     spec: join(dir, 'job.json'),
     state: join(dir, 'state.json'),
+    /** ジョブが止まったときと選び直したときの蒸留の記録 */
+    distill: join(dir, 'distill.json'),
     llmCalls,
     llmCall: (callId: string) => join(llmCalls, `${callId}.json`),
     iterations,
