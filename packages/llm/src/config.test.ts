@@ -76,6 +76,19 @@ describe('llmConfigSchema', () => {
     expect(result.error?.issues[0]?.message).not.toContain('providers に無い');
   });
 
+  it('names the talking role as the talking role when its provider name is wrong', () => {
+    const result = llmConfigSchema.safeParse({
+      ...base,
+      roles: { ...base.roles, talk: { provider: 'locl', model: 'x' } },
+    });
+    expect(result.error?.issues.map(({ path, message }) => ({ path, message }))).toEqual([
+      {
+        path: ['roles', 'talk', 'provider'],
+        message: '話す役の provider「locl」が、定義した provider（local）に無い',
+      },
+    ]);
+  });
+
   it('says no provider is defined yet when the list is empty', () => {
     const result = llmConfigSchema.safeParse({ providers: {}, roles: base.roles });
     expect(result.error?.issues[0]?.message).toBe(

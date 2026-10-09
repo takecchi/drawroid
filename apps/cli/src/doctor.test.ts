@@ -376,6 +376,26 @@ describe('runDoctor', () => {
     expect(byFlag.text).not.toContain(hint);
   });
 
+  it('does not tell to give doctor --backend-url when the URL came from config.json or from doctor own --backend-url', async () => {
+    const hint = 'drawroid doctor にも同じ --backend-url を付ける';
+    // drawroid doctor の入り方: 引数に URL が無ければ undefined を渡し、config.json の backend.url から決める
+    const byConfig = await setup(
+      { backend: { url: 'http://127.0.0.1:9' } },
+      { backendUrl: undefined },
+    );
+    expect(byConfig.text).toMatch(
+      /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（config\.json の backend\.url）/,
+    );
+    expect(byConfig.text).not.toContain(hint);
+
+    // doctor に --backend-url を付けたときは、backendUrlSource を渡さずに URL だけを渡す
+    const byOwnFlag = await setup(undefined);
+    expect(byOwnFlag.text).toMatch(
+      /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（--backend-url で指定）/,
+    );
+    expect(byOwnFlag.text).not.toContain(hint);
+  });
+
   it('reports a missing web build as lacking', async () => {
     const { text } = await setup(undefined, { webRoot: () => '/nonexistent/web' });
     expect(text).toMatch(/足りない {2}\/nonexistent\/web に index\.html が無い\n {12}→ /);
