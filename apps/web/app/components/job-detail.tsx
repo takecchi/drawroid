@@ -14,12 +14,23 @@ export function JobDetail({ jobId }: { jobId: string | undefined }) {
           <p>
             <code>{data.spec.jobId}</code> 状態: {data.state.status}
           </p>
-          {data.state.status === 'stopped' && data.state.reason.kind === 'error' && (
-            <BackendErrorMessage
-              kind={data.state.reason.backendErrorKind ?? 'unknown'}
-              message={data.state.reason.detail}
-            />
-          )}
+          {data.state.status === 'stopped' &&
+            data.state.reason.kind === 'error' &&
+            (data.state.reason.backendErrorKind === undefined ? (
+              <div role="alert">
+                <p>
+                  <strong>Forge の外で失敗した（結果の保存など）。</strong>
+                </p>
+                <p>
+                  <code>{data.state.reason.detail}</code>
+                </p>
+              </div>
+            ) : (
+              <BackendErrorMessage
+                kind={data.state.reason.backendErrorKind}
+                message={data.state.reason.detail}
+              />
+            ))}
           {data.iterations.map((iteration) => (
             <div key={iteration.iteration}>
               <h3>{iteration.iteration} 回目</h3>
