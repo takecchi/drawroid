@@ -1,4 +1,4 @@
-import { useLlmCall, type LlmCallsResponse } from '@drawroid/swr';
+import { useLlmCall, useUnattachedLlmCalls, type LlmCallsResponse } from '@drawroid/swr';
 import {
   CodeBlock,
   Disclosure,
@@ -21,7 +21,8 @@ function tokens(value: number | null): string {
   return value === null ? '不明' : String(value);
 }
 
-function CallBody({ jobId, callId }: { jobId: string; callId: string }) {
+/** jobId が null なら、ジョブに属さない呼び出し */
+function CallBody({ jobId, callId }: { jobId: string | null; callId: string }) {
   const { data, error } = useLlmCall(jobId, callId);
   if (data === undefined) {
     return error === undefined ? (
@@ -62,7 +63,7 @@ function CallBody({ jobId, callId }: { jobId: string; callId: string }) {
 }
 
 // 開くまで取らない: 全呼び出しの入力を、見ない人にも毎回運ばないため
-function CallDetails({ jobId, callId }: { jobId: string; callId: string }) {
+function CallDetails({ jobId, callId }: { jobId: string | null; callId: string }) {
   const [opened, setOpened] = useState(false);
   return (
     <Disclosure summary="中身を見る" onToggle={(event) => setOpened(event.currentTarget.open)}>
@@ -71,7 +72,14 @@ function CallDetails({ jobId, callId }: { jobId: string; callId: string }) {
   );
 }
 
-export function LlmCallList({ jobId, calls }: { jobId: string; calls: LlmCallSummary[] }) {
+/** jobId が null なら、ジョブに属さない呼び出しの一覧 */
+export function LlmCallList({
+  jobId,
+  calls,
+}: {
+  jobId: string | null;
+  calls: readonly LlmCallSummary[];
+}) {
   return (
     <SubSection title="LLM 呼び出し" level={4}>
       <ItemList>
@@ -119,6 +127,44 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
           ))}
         </TableBody>
       </Table>
+    </Section>
+  );
+}
+
+/**
+ * ジョブに属さない LLM 呼び出し（止める条件の変換など）の一覧と合計。新しい順に出す。
+ */
+// PRD:140 の「全ての LLM 呼び出しについて…UI で見られる」のうち、ジョブの詳細からは辿れないもの
+export function UnattachedLlmCalls() {
+  const { data, error } = useUnattachedLlmCalls();
+  return (
+    <Section title="ジョブに属さない LLM 呼び出し">
+      <Muted>止める条件の自然言語の変換など、ジョブを作る前の呼び出しの記録。</Muted>
+      {error !== undefined && <ErrorNote>読めない: {error.message}</ErrorNote>}
+      {data !== undefined && (
+        <>
+          <p className="text-sm">
+            {data.total.calls} 回 / 入力 {tokens(data.total.inputTokens)} トークン / 出力{' '}
+            {tokens(data.total.outputTokens)} トークン / {formatDuration(data.total.durationMs)}
+          </p>
+          {data.calls.length === 0 ? (
+            <Muted>まだ無い。</Muted>
+          ) : (
+            <LlmCallList jobId={null} calls={data.calls} />
+          )}
+          {data.invalid.length > 0 && (
+            <SubSection title="読めない記録" level={4}>
+              <ItemList>
+                {data.invalid.map(({ callId, reason }) => (
+                  <Item key={callId}>
+                    <code>{callId}</code>: {reason}
+                  </Item>
+                ))}
+              </ItemList>
+            </SubSection>
+          )}
+        </>
+      )}
     </Section>
   );
 }

@@ -49,6 +49,9 @@ export function SiteNav() {
       <NavLink to="/candidates" className={siteNavLinkClass}>
         候補の説明
       </NavLink>
+      <NavLink to="/llm-calls" className={siteNavLinkClass}>
+        LLM の記録
+      </NavLink>
     </SiteHeader>
   );
 }

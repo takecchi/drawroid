@@ -116,8 +116,11 @@ export interface JobStore {
   writeLlmCall(record: LlmCallRecord): Promise<void>;
   /** 呼び出しの順（＝ callId の順）。1つでも読めなければ失敗する（ループの内部向け） */
   listLlmCalls(jobId: string | null): Promise<LlmCallRecord[]>;
-  /** 画面向けに、読めないファイルを外して理由を返す。listLlmCalls は1件の破損で全体が失敗するので、閲覧には使えない */
-  listLlmCallRecords(jobId: string): Promise<{
+  /**
+   * 画面向けに、読めないファイルを外して理由を返す。listLlmCalls は1件の破損で全体が失敗するので、閲覧には使えない。
+   * jobId が null なら、ジョブに属さない記録（止める条件の変換など）を読む
+   */
+  listLlmCallRecords(jobId: string | null): Promise<{
     records: LlmCallRecord[];
     invalid: { callId: string; reason: string }[];
   }>;

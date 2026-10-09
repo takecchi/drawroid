@@ -8,6 +8,7 @@ export default [
   route('memory/:id', 'routes/memory-item.tsx'),
   route('permissions', 'routes/permissions.tsx'),
   route('candidates', 'routes/candidates.tsx'),
+  route('llm-calls', 'routes/llm-calls.tsx'),
   route('jobs', 'routes/jobs.tsx'),
   route('jobs/new', 'routes/new-job.tsx'),
   route('jobs/:jobId', 'routes/job.tsx'),
