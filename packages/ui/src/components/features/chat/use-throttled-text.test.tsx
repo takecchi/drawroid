@@ -57,3 +57,16 @@ describe('a streaming reply', () => {
     expect(settled).toBe(fresh);
   });
 });
+
+// 描き直しの間隔は、定数ではなく時間そのもので見る: 定数ごと変えると、待つ時間も一緒に変わって試験が気づかないため（#192 の 50 ms）
+describe('a streaming reply, in milliseconds', () => {
+  it('is not drawn again 49 ms after the last draw, and is at 50 ms', () => {
+    const { container, rerender } = render(streaming('夕'));
+    rerender(streaming('夕暮れ'));
+
+    act(() => vi.advanceTimersByTime(49));
+    expect(drawn(container)).toBe('夕');
+    act(() => vi.advanceTimersByTime(1));
+    expect(drawn(container)).toBe('夕暮れ');
+  });
+});

@@ -46,7 +46,8 @@ function resumeAfter(lastEventId: string | undefined, after: string | undefined)
   return 0;
 }
 
-const defaultHeartbeat = (beat: () => void) => {
+/** 既定のハートビート: HEARTBEAT_MS ごとに鳴らす。止める関数を返す（試験が既定の間隔を偽の時計で見るために出す） */
+export const defaultHeartbeat = (beat: () => void) => {
   const timer = setInterval(beat, HEARTBEAT_MS);
   return () => clearInterval(timer);
 };
