@@ -7,6 +7,7 @@
 // 5. 思考が流れている間に入力欄から次の発言を送ると、前のターンが打ち切られ、新しい発言を読んだターンが始まる。返答は二重に残らない
 // 6. 見る役が済む前に「この画像でいい」と言うと、会話に「選んだ」が出て（job.adopted）、待たせていたジョブはその画像で止まる
 // 7. 狭い画面（390×844）でも、流れる・止めるが同じように動き、入力欄が画面の外へ押し出されない
+// 8. 画像の行の「この画像で決める」で選ぶと、会話に「選んだ」が出て（job.adopted）、ジョブはその画像で止まる（adopt_image と同じ口）
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -347,6 +348,39 @@ try {
       (await page.getByRole('button', { name: /^お気に入りを外す: 1 回目の画像 1 番/ }).count()) >=
         1,
     '待たせていた見る役は呼ばれ直さず、ジョブはその画像をお気に入りにして止まる',
+  );
+
+  // 8. 画面の「この画像で決める」: 見る役が済む前に、画像の行のボタンで選ぶ。確かめてから決めると、会話に「選んだ」が出て
+  // （job.adopted）、見ていた見る役は切られて呼ばれ直さず、ジョブは「人が画像を選んだ」で止まる。会話の adopt_image と同じ口を通る
+  const adoptedBefore = await log
+    .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
+    .count();
+  const stoppedBefore = await log.getByText('人が画像を選んだ').count();
+  const cutBefore = relay.stats.judgeCut;
+  relay.holdJudge();
+  await say('夕焼けの犬を描いて');
+  await until(() => relay?.stats.judgeHeld === 2, '見る役の返事を止める');
+  const adoptButton = page
+    .getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番', exact: true })
+    .last();
+  await adoptButton.click();
+  await page.getByRole('button', { name: '決める: 1 回目の画像 1 番', exact: true }).click();
+  await page.getByText('この画像で決めた（選んだ）').waitFor();
+  await log
+    .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
+    .nth(adoptedBefore)
+    .waitFor();
+  await log.getByText('人が画像を選んだ').nth(stoppedBefore).waitFor();
+  await stopButton.waitFor({ state: 'hidden' });
+  expect(
+    relay.stats.judgeCut === cutBefore + 1,
+    '画面の「この画像で決める」で選ぶと、会話に「選んだ」が出て、見ていた見る役は切られ、ジョブはその画像で止まる',
+  );
+  // 止まったジョブの画像は、もう決められない
+  expect(
+    (await adoptButton.isDisabled()) ||
+      (await page.getByText('描くのはもう止まっているので、決められない').count()) > 0,
+    '止まったジョブの画像は「この画像で決める」を押せず、理由が出る',
   );
 
   expect(

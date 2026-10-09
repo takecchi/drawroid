@@ -21,6 +21,7 @@ import { manualJobsRoutes } from './routes/manual-jobs.js';
 import { memoryRoutes } from './routes/memory.js';
 import { permissionSettingsRoutes } from './routes/permission-settings.js';
 import { selectionsRoutes } from './routes/selections.js';
+import { adoptRoutes } from './routes/adopt.js';
 import { stopConditionParseRoutes } from './routes/stop-condition-parse.js';
 import { stopConditionsRoutes } from './routes/stop-conditions.js';
 
@@ -66,6 +67,7 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs', jobsRoutes(deps))
     .route('/memory', memoryRoutes(deps))
     .route('/jobs', selectionsRoutes(deps))
+    .route('/jobs', adoptRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps))
     .route('/stop-conditions', stopConditionParseRoutes(deps))

@@ -114,3 +114,7 @@ export type SetSelectionResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['selections'][':imageKey']['$put'],
   200
 >;
+export type AdoptImageResponse = InferResponseType<
+  (typeof client.jobs)[':jobId']['adopt']['$post'],
+  200
+>;

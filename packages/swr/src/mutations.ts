@@ -31,6 +31,7 @@ import type {
   SavedMemoryItem,
   SaveMemoryInput,
   SetSelectionResponse,
+  AdoptImageResponse,
   StopConditionsDraftResponse,
 } from './types.js';
 
@@ -305,6 +306,26 @@ export async function setSelection(
   );
   await mutate(keys.selections(jobId));
   return set;
+}
+
+/**
+ * 画面の「採る」ボタン。人間が選んだ画像をジョブに採らせ、お気に入りにする（会話の adopt_image と同じ口）。
+ * ジョブが止まっていれば 409、画像が無ければ 404 の ApiError を投げる
+ */
+export async function adoptImage(
+  jobId: string,
+  image: { iteration: number; index: number },
+): Promise<AdoptImageResponse> {
+  const adopted = await unwrap<AdoptImageResponse>(() =>
+    client.jobs[':jobId'].adopt.$post({ param: { jobId }, json: image }),
+  );
+  // 選択（お気に入り）と、ジョブの状態・回（止まった・人が選んだ）を取り直す
+  await Promise.all([
+    mutate(keys.selections(jobId)),
+    mutate(keys.iterations(jobId)),
+    refreshJob(jobId),
+  ]);
+  return adopted;
 }
 
 // 一覧も取り直す: 止めた・口出しした直後に、一覧の状態が古いまま残らないようにするため
