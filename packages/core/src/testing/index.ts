@@ -17,3 +17,4 @@ export {
   type ScriptedStep,
   type TalkScript,
 } from './scripted-llm.js';
+export { MemoryConversationStore } from './memory-conversation-store.js';
