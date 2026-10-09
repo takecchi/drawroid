@@ -67,6 +67,7 @@ export function ChatLog({
 /**
  * 会話の画面の骨組み。ログが伸び、入力欄は下に留まる。
  * 高さは画面の高さから上の帯の分を引く: ページ全体を伸ばすと、入力欄が画面の外へ押し出されるため。
+ * 上の帯があるのは狭い画面だけ（`MobileTopBar` の `h-14`）。広い画面の行き先は脇にあるので、画面の高さをそのまま使う。
  */
 export function ChatLayout({
   header,
@@ -81,7 +82,7 @@ export function ChatLayout({
   status?: ChatStatus;
 }) {
   return (
-    <div className="flex h-[calc(100dvh-3.25rem)] flex-col">
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col md:h-dvh">
       {header !== undefined && (
         <div className="border-b border-border">
           <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-2">{header}</div>
