@@ -57,12 +57,13 @@ export const stopReasonSchema = z.object({
 });
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
-const thinkParamsSchema = z.object({
+// 欄を閉じない: M4 で考える役が決めてよいパラメータが許可の設定しだいで増え、閉じると読み直しで黙って消えるため
+const thinkParamsSchema = z.looseObject({
   prompt: z.string().optional(),
   negativePrompt: z.string().optional(),
   seed: z.number().optional(),
   steps: z.number().optional(),
-  cfg: z.number().optional(),
+  cfgScale: z.number().optional(),
 });
 
 const carriedResultSchema = z.object({

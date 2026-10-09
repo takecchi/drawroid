@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { BackendBusyError } from '@drawroid/api';
 import type { ForgeBackendOptions } from '@drawroid/backend-forge';
+import { generationRequestSchema } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -21,16 +22,14 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const request = {
+// schema を通して作る: 要求に欄が足されても、既定値のある欄はここで埋まるため
+const request = generationRequestSchema.parse({
   prompt: 'a cat',
-  negativePrompt: '',
-  loras: [],
   steps: 4,
   cfgScale: 7,
   width: 64,
   height: 64,
-  batchSize: 1,
-};
+});
 
 async function setup(config: object, source: 'cli' | 'config' | 'default' = 'config') {
   await writeFile(configPath, JSON.stringify(config));
@@ -109,6 +108,30 @@ describe('backend settings', () => {
       auth: { username: 'u', password: 'secret' },
       generateTimeoutMs: 5000,
     });
+  });
+
+  it('fails the write and keeps using the old url when config.json cannot be written', async () => {
+    const first = new StubBackend();
+    const backend = new ReplaceableBackend(first);
+    const created: StubBackend[] = [];
+    const unwritablePath = join(dir, 'no-such-dir', 'config.json');
+    const settings = createBackendSettings({
+      configPath: unwritablePath,
+      backend,
+      createBackend: () => {
+        const next = new StubBackend();
+        created.push(next);
+        return next;
+      },
+      initial: { forgeUrl: 'http://old:7860', source: 'config', config: {} },
+    });
+
+    await expect(settings.write({ forgeUrl: 'http://new:7860' })).rejects.toThrow();
+    await backend.generate(request, new AbortController().signal);
+
+    expect(first.requests).toHaveLength(1);
+    expect(created.flatMap((b) => b.requests)).toEqual([]);
+    expect(await settings.read()).toMatchObject({ forgeUrl: 'http://old:7860' });
   });
 
   it('creates config.json when it does not exist yet', async () => {

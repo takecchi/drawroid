@@ -8,8 +8,15 @@ export {
   useJobs,
   useLlmCall,
   useLlmCalls,
+  useMemoryItem,
+  useMemoryList,
 } from './hooks.js';
-export { saveBackendSettings, startManualJob } from './mutations.js';
+export {
+  deleteMemoryItem,
+  saveBackendSettings,
+  saveMemoryItem,
+  startManualJob,
+} from './mutations.js';
 export type {
   BackendSettingsResponse,
   BackendStatus,
@@ -19,4 +26,8 @@ export type {
   JobsResponse,
   LlmCallDetail,
   LlmCallsResponse,
+  MemoryItemDetail,
+  MemoryList,
+  SaveMemoryInput,
+  SavedMemoryItem,
 } from './types.js';

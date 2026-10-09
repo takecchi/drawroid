@@ -1,5 +1,13 @@
-import type { Budget, ImageBackend, JobStore, ManualGenerationRunner } from '@drawroid/core';
+import type {
+  Budget,
+  ImageBackend,
+  JobStore,
+  ManualGenerationRunner,
+  MemoryStore,
+} from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
+
+import type { BackendSettingsPort } from './backend-settings.js';
 
 /** 自動ジョブの待ち行列。JobRunner をそのまま渡せる形にしてある */
 export type AutoJobQueue = { kick(): void; stop(jobId: string): Promise<void> };
@@ -9,11 +17,10 @@ export type LlmSettingsStore = {
   write(config: LlmConfig): Promise<void>;
 };
 
-import type { BackendSettingsPort } from './backend-settings.js';
-
 export type ApiDeps = {
   backend: ImageBackend;
   store: JobStore;
+  memoryStore: MemoryStore;
   manualRunner: ManualGenerationRunner;
   backendSettings: BackendSettingsPort;
   autoQueue: AutoJobQueue;

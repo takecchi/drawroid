@@ -6,6 +6,7 @@ import { ForgeBackend, type ForgeBackendOptions } from '@drawroid/backend-forge'
 import { DEFAULT_BUDGET, ManualGenerationRunner } from '@drawroid/core';
 import { llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import {
+  createFsMemoryStore,
   dataPaths,
   FsJobStore,
   initDataDir,
@@ -43,7 +44,6 @@ async function main() {
   const config = await readConfig(configPath);
   const { forgeUrl, source } = resolveForgeUrlWithSource(args.forgeUrl, config);
   const createBackend = (options: ForgeBackendOptions) => new ForgeBackend(options);
-  // 手動の生成も自動ジョブも、この入れ物を通す: どちらかが中身を直に握ると、繋ぎ直しても古い Forge を使い続け、生成中に繋ぎ直しを断る判定からも漏れるため
   const backend = new ReplaceableBackend(
     createBackend(forgeBackendOptions(forgeUrl, config.backend)),
   );
@@ -99,6 +99,7 @@ async function main() {
       store,
       manualRunner,
       backendSettings,
+      memoryStore: createFsMemoryStore(dataPaths(root).memory),
       autoQueue,
       budget: DEFAULT_BUDGET,
       llmSettings,

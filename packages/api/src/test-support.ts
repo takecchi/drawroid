@@ -11,7 +11,7 @@ import {
   type LlmCallRecord,
 } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
-import { dataPaths, FsJobStore } from '@drawroid/storage-fs';
+import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 
 import { createApi } from './index.js';
@@ -23,15 +23,16 @@ export async function setup() {
   const api = createApi({
     backend,
     store,
+    memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
-    backendSettings: {
-      read: () => Promise.reject(new Error('この試験では使わない')),
-      write: () => Promise.reject(new Error('この試験では使わない')),
-    },
     autoQueue: { kick: () => undefined, stop: async () => undefined },
     budget: DEFAULT_BUDGET,
     llmSettings: { read: async () => undefined, write: async () => undefined },
     env: {},
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
   return { root, store, api, paths: dataPaths(root) };
 }
