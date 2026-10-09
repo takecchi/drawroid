@@ -9,6 +9,7 @@ import { interventionsRoutes } from './routes/interventions.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { llmSettingsRoutes } from './routes/llm-settings.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
+import { selectionsRoutes } from './routes/selections.js';
 
 export type { ApiDeps, AutoJobQueue, LlmSettingsStore } from './deps.js';
 export type { ApiErrorBody } from './errors.js';
@@ -22,6 +23,7 @@ export function createApi(deps: ApiDeps) {
     .route('/jobs/auto', autoJobsRoutes(deps))
     .route('/jobs/auto', interventionsRoutes(deps))
     .route('/jobs', jobsRoutes(deps))
+    .route('/jobs', selectionsRoutes(deps))
     .route('/files', filesRoutes(deps))
     .route('/settings/llm', llmSettingsRoutes(deps));
 }

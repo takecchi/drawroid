@@ -470,6 +470,37 @@ describe('FsJobStore LLM call records', () => {
   });
 });
 
+describe('FsJobStore selections', () => {
+  const favorite = {
+    imageKey: '2-1',
+    verdict: 'favorite' as const,
+    selectedAt: '2026-10-09T06:31:00.000Z',
+  };
+
+  it('keeps one selection per image under selections/, overwriting a reselection', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    expect(await jobs.readSelection(a.jobId, '2-1')).toBeUndefined();
+
+    await jobs.writeSelection(a.jobId, favorite);
+    const changed = { ...favorite, verdict: null, previous: 'favorite' as const };
+    await jobs.writeSelection(a.jobId, changed);
+
+    expect(await jobs.readSelection(a.jobId, '2-1')).toEqual(changed);
+    expect(await jobs.listSelections(a.jobId)).toEqual([changed]);
+    expect(await readdir(dataPaths(root).jobFiles(a.jobId).selections)).toEqual(['2-1.json']);
+  });
+
+  it('refuses an image key that could point outside the job', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(spec, queued, new Date('2026-10-09T06:30:00Z'));
+    await expect(jobs.readSelection(a.jobId, '../../job')).rejects.toThrow();
+    await expect(
+      jobs.writeSelection(a.jobId, { ...favorite, imageKey: '../state' }),
+    ).rejects.toThrow();
+  });
+});
+
 describe('FsJobStore references', () => {
   async function reference(width: number, height: number): Promise<Uint8Array> {
     return sharp({ create: { width, height, channels: 3, background: '#2266aa' } })
