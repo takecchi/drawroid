@@ -88,7 +88,13 @@ export {
   type IterationConditions,
   mergePermissions,
   type Permission,
+  permissionOverridesSchema,
   permissionSchema,
+  permissionsSchema,
+  REQUIRED_PARAM_KEYS,
+  type RequiredParamKey,
+  type RequiredPermission,
+  requiredPermissionSchema,
   type Permissions,
 } from './permissions/permission.js';
 export {
@@ -99,3 +105,4 @@ export {
   type ParsedParams,
   parseParams,
 } from './think/params-schema.js';
+export { toGenerationRequest } from './permissions/generation-request.js';
