@@ -121,22 +121,45 @@ export function roleProviderOf(role: RoleValues, names: readonly string[]): stri
 }
 
 /**
- * provider を1つ足した値。足す前に、既定で選んである provider（1つだけのときの名前）を役の値として持たせる。
- * 持たせないと、2つ目を足した途端に既定が効かなくなり、選んで見えていた役が「選ぶ」に戻るため
+ * provider の並びを差し替えた値。名前が1つだけだったところに2つ目の名前が付くなら、既定で選んである provider
+ * （1つだけのときの名前）を役の値として持たせる。持たせないと、2つ目の名前が付いた途端に既定が効かなくなり、
+ * 選んで見えていた役が「選ぶ」に戻るため
  */
-export function withProviderAdded(values: LlmSettingsFormValues): LlmSettingsFormValues {
-  const names = definedProviderNames(values.providers);
+function withProviders(
+  values: LlmSettingsFormValues,
+  providers: ProviderRow[],
+): LlmSettingsFormValues {
+  const before = definedProviderNames(values.providers);
+  // 名前が1つのまま変わるとき（打ち直し）は持たせない: 持たせると、1文字打つごとに古い名前が「（定義に無い）」で残るため
+  if (before.length !== 1 || definedProviderNames(providers).length < 2) {
+    return { ...values, providers };
+  }
   const pin = (role: RoleValues): RoleValues => ({
     ...role,
-    provider: roleProviderOf(role, names),
+    provider: roleProviderOf(role, before),
   });
   return {
     ...values,
-    providers: [...values.providers, emptyProviderRow()],
+    providers,
     think: pin(values.think),
     judge: pin(values.judge),
     talk: pin(values.talk),
   };
+}
+
+export function withProviderAdded(values: LlmSettingsFormValues): LlmSettingsFormValues {
+  return withProviders(values, [...values.providers, emptyProviderRow()]);
+}
+
+export function withProviderChanged(
+  values: LlmSettingsFormValues,
+  index: number,
+  row: ProviderRow,
+): LlmSettingsFormValues {
+  return withProviders(
+    values,
+    values.providers.map((current, i) => (i === index ? row : current)),
+  );
 }
 
 function buildRole(

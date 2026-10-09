@@ -135,6 +135,22 @@ describe('LlmSettings', () => {
     expect(saved.roles.judge.provider).toBe('local');
   });
 
+  it('keeps the provider each role showed as chosen when a second name is typed into a row added before', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+    expect(input('考える役の provider').value).toBe('local');
+
+    await user.type(input('provider 2番目 の名前'), 'cloud');
+
+    expect(input('考える役の provider').value).toBe('local');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('local');
+  });
+
   it('does not choose for the person when two providers are defined and the role has none', async () => {
     const user = userEvent.setup();
     mocks.useLlmSettings.mockReturnValue({
@@ -155,6 +171,8 @@ describe('LlmSettings', () => {
 
     // 足しても、どれかを選んだことにはしない（既定が効くのは1つだけのときに限る）
     await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    expect(think().value).toBe('');
+    await user.type(input('provider 3番目 の名前'), 'other');
     expect(think().value).toBe('');
     await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
     expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('');
