@@ -128,6 +128,25 @@ describe('POST /jobs/auto', () => {
     expect(kicks).toBe(0);
   });
 
+  it('rejects stop conditions that would never stop the job, saying why, and creates nothing', async () => {
+    const res = await post('/jobs/auto', { request: 'x', stopConditions: { aiJudgement: false } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: { kind: 'invalid_request', message: expect.stringContaining('止める条件') },
+    });
+    expect(await store.listJobIds()).toEqual([]);
+    expect(kicks).toBe(0);
+  });
+
+  it.each([
+    ['the AI judgement alone', { aiJudgement: true }],
+    ['an iteration limit alone', { aiJudgement: false, maxIterations: 3 }],
+    ['an image limit alone', { aiJudgement: false, maxImages: 6 }],
+    ['a time limit alone', { aiJudgement: false, maxDurationMs: 60_000 }],
+  ])('accepts %s as a way to stop', async (_name, stopConditions) => {
+    await create({ request: 'x', stopConditions });
+  });
+
   it('rejects a body that is not JSON with 400', async () => {
     const res = await app.request('/jobs/auto', { method: 'POST', body: 'not json' });
     expect(res.status).toBe(400);

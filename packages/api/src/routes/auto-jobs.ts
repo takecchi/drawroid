@@ -8,9 +8,19 @@ import { describeIssues, invalidRequest, notFound } from '../errors.js';
 const DEFAULT_STOP_CONDITIONS: StopConditions = { aiJudgement: true, maxIterations: 10 };
 const DEFAULT_BATCH_SIZE = 1;
 
+// 止まらないジョブを作らせない: 人間が止めるまで回り続け、GPU と LLM を使い続けるため
+const stoppableConditionsSchema = stopConditionsSchema.refine(
+  (c) =>
+    c.aiJudgement ||
+    c.maxIterations !== undefined ||
+    c.maxImages !== undefined ||
+    c.maxDurationMs !== undefined,
+  { message: '止める条件に、AI の判断か、回数・枚数・時間の上限を1つ以上入れる' },
+);
+
 const createBodySchema = z.object({
   request: z.string().min(1),
-  stopConditions: stopConditionsSchema.optional(),
+  stopConditions: stoppableConditionsSchema.optional(),
   batchSize: z.number().int().min(1).max(8).optional(),
 });
 
