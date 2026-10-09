@@ -11,17 +11,24 @@ function LogCard({
   icon,
   title,
   aside,
+  label,
   className,
   children,
 }: {
   icon: ReactNode;
   title: ReactNode;
   aside?: ReactNode;
+  /** 読み上げでの、カードのまとまりの名前 */
+  label?: string;
   className?: string;
   children?: ReactNode;
 }) {
   return (
-    <div className={cn('max-w-[85%] rounded-lg border border-border bg-card text-sm', className)}>
+    <div
+      role={label === undefined ? undefined : 'group'}
+      aria-label={label}
+      className={cn('max-w-[85%] rounded-lg border border-border bg-card text-sm', className)}
+    >
       <div className="flex items-center gap-2 px-3 py-2">
         <span className="shrink-0 text-muted-foreground [&_svg]:size-4">{icon}</span>
         <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
@@ -61,6 +68,7 @@ export function ToolCallCard({
     <LogCard
       icon={<Wrench />}
       title={<span className="font-mono text-xs">{name}</span>}
+      label={`ツール ${name}: ${label}`}
       aside={
         <span
           className={cn('flex shrink-0 items-center gap-1 text-xs [&_svg]:size-3.5', className)}
