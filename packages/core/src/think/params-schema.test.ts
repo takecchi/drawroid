@@ -122,13 +122,42 @@ describe('buildParamsSchema', () => {
     expect(omitted.inpaint).toBeUndefined();
   });
 
-  it('keeps hires fix and image-source parameters out until their choices can be offered', () => {
+  it('keeps image-source parameters out until their choices can be offered', () => {
     const { schema, omitted } = buildParamsSchema(allAuto(), context);
 
-    for (const key of ['hiresFix', 'img2img', 'inpaint', 'controlnet'] as const) {
+    for (const key of ['img2img', 'inpaint', 'controlnet'] as const) {
       expect(jsonSchemaKeys(schema)).not.toContain(key);
       expect(omitted[key]).toBe('not-supported-yet');
     }
+  });
+});
+
+describe('buildParamsSchema for Hires. fix', () => {
+  const permissions = { ...allOff(), hiresFix: { mode: 'auto' } } satisfies Permissions;
+  const withUpscalers: ParamsSchemaContext = {
+    ...context,
+    shown: { ...context.shown, upscaler: [{ name: 'Latent' }, { name: 'R-ESRGAN 4x+' }] },
+  };
+  const hires = { upscaler: 'Latent', scale: 1.5, steps: 0, denoisingStrength: 0.5 };
+
+  it('offers Hires. fix with only the upscalers that were shown', () => {
+    const { schema } = buildParamsSchema(permissions, withUpscalers);
+
+    expect(schema.safeParse({ hiresFix: hires }).success).toBe(true);
+    expect(schema.safeParse({ hiresFix: { ...hires, upscaler: 'SwinIR_4x' } }).success).toBe(false);
+  });
+
+  it('keeps the upscale within the range the screens offer', () => {
+    const { schema } = buildParamsSchema(permissions, withUpscalers);
+
+    expect(schema.safeParse({ hiresFix: { ...hires, scale: 8 } }).success).toBe(false);
+  });
+
+  it('does not offer Hires. fix when no upscaler was shown', () => {
+    const { schema, omitted } = buildParamsSchema(permissions, context);
+
+    expect(jsonSchemaKeys(schema)).not.toContain('hiresFix');
+    expect(omitted.hiresFix).toBe('no-candidates-shown');
   });
 });
 

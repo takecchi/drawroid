@@ -47,9 +47,21 @@ const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSche
   seed: () => request.seed.unwrap().max(4294967295),
   width: () => request.width,
   height: () => request.height,
-  // アップスケーラーの候補をポートから取れないので、名前を AI に作らせないよう、取れるまで入れない
-  hiresFix: () => 'not-supported-yet',
-  // 元画像・マスクの選び方が未決（#5 の G・H）で、要求にも欄がまだ無いので、決まるまで入れない
+  // 拡大の方式は、見せた候補（upscaler）だけから選ばせる。名前を AI に作らせないため
+  // 二段目のチェックポイント・サンプラー・プロンプトなどは出させない: 省けば一段目と同じで足り、出させると出力が伸びるだけのため
+  hiresFix: (context) => {
+    const upscaler = shownEnum(context, 'upscaler');
+    if (typeof upscaler === 'string') return upscaler;
+    return z.object({
+      upscaler,
+      // Forge・A1111 の画面の範囲。大きくするほど生成が重くなる
+      scale: request.hiresFix.unwrap().shape.scale.min(1).max(4),
+      // 0 は一段目と同じ steps
+      steps: request.hiresFix.unwrap().shape.steps.max(150),
+      denoisingStrength: request.hiresFix.unwrap().shape.denoisingStrength,
+    });
+  },
+  // 要求の欄は入った（#30）が、元画像・マスク・参照画像の選び方が未決（#5 の G・H）なので、決まるまで入れない
   img2img: () => 'not-supported-yet',
   inpaint: () => 'not-supported-yet',
   controlnet: () => 'not-supported-yet',
