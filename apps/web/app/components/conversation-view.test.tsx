@@ -702,6 +702,32 @@ describe('ConversationView', () => {
     ).toBe(raw);
   });
 
+  // 要約からはジョブの ID を省き、全文（話す役に返したもの）は「詳しく」に残す。文は実行器が start_drawing の結果に残したもの
+  it('leaves the job ID out of the summary of a tool row, keeping the whole result folded', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    const result = 'ジョブ 20261009-222644-6484ae で描き始めた。止める条件: 1000 回まで';
+
+    stream.emit(
+      confirmed({
+        type: 'tool.call',
+        turn: 1,
+        callId: 'c1',
+        name: 'start_drawing',
+        input: { request: '猫' },
+      }),
+    );
+    stream.emit(
+      confirmed({ type: 'tool.result', turn: 1, callId: 'c1', ok: true, summary: result }),
+    );
+
+    const card = await screen.findByRole('group', { name: 'ツール 描き始める: 済み' });
+    expect(within(card).getByText('ジョブで描き始めた。')).toBeTruthy();
+    const whole = within(card).getByText(result);
+    expect(whole.closest('details')?.open).toBe(false);
+  });
+
   it('shows a row for each kind of streamed event', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);
