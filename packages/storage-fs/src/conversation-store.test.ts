@@ -94,6 +94,17 @@ describe('FsConversationStore', () => {
     expect(await store.readEventsBefore(id, { before: 1, limit: 5 })).toEqual([]);
   });
 
+  it('keeps seq order in a large page read many files at a time', async () => {
+    const store = new FsConversationStore(root);
+    const { conversationId: id } = await store.createConversation(at);
+    for (let i = 1; i <= 75; i++) await store.appendEvent(id, said(`${i}`), at);
+
+    const page = await store.readEvents(id, { limit: 1000 });
+
+    expect(page.events.map((e) => e.seq)).toEqual(Array.from({ length: 75 }, (_, i) => i + 1));
+    expect(page).toMatchObject({ last: 75, more: false });
+  });
+
   it('numbers events added at the same time without gaps or duplicates', async () => {
     const store = new FsConversationStore(root);
     const { conversationId: id } = await store.createConversation(at);

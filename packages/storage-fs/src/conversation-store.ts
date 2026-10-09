@@ -27,6 +27,8 @@ const UPLOAD_EXTENSIONS: Record<ConversationUpload['mediaType'], string> = {
 
 /** 1ページの既定の件数。画面は more を見て続きを読む */
 export const DEFAULT_EVENT_PAGE_SIZE = 200;
+/** イベントのファイルを同時に読む数。全部を一度に開くと、ページが大きいときにファイルを開ける数の上限に当たりうるため */
+const EVENT_READ_CONCURRENCY = 32;
 
 const EVENT_FILE_PATTERN = new RegExp(`^\\d{${EVENT_SEQ_DIGITS},}\\.json$`);
 
@@ -173,10 +175,7 @@ export class FsConversationStore implements ConversationStore {
     const later = (await this.eventNames(files.events)).filter(
       (name) => Number.parseInt(name, 10) > after,
     );
-    const events: ConversationEvent[] = [];
-    for (const name of later.slice(0, limit)) {
-      events.push(await readValid(`${files.events}/${name}`, conversationEventSchema));
-    }
+    const events = await this.readEventFiles(files.events, later.slice(0, limit));
     return { events, last: events.at(-1)?.seq ?? after, more: later.length > limit };
   }
 
@@ -188,11 +187,7 @@ export class FsConversationStore implements ConversationStore {
     const earlier = (await this.eventNames(files.events)).filter(
       (name) => Number.parseInt(name, 10) < before,
     );
-    const events: ConversationEvent[] = [];
-    for (const name of earlier.slice(Math.max(0, earlier.length - limit))) {
-      events.push(await readValid(`${files.events}/${name}`, conversationEventSchema));
-    }
-    return events;
+    return this.readEventFiles(files.events, earlier.slice(Math.max(0, earlier.length - limit)));
   }
 
   async addUpload(conversationId: string, upload: ConversationUpload, now: Date): Promise<string> {
@@ -224,6 +219,21 @@ export class FsConversationStore implements ConversationStore {
       }
     }
     return undefined;
+  }
+
+  /** イベントのファイルを読み、名前の順（seq の順）に返す。少しずつまとめて並べて読む */
+  // 1つずつ待たない: 長い会話を開くとき、1ページ（最大 1000 件）を順に読むと、それだけで数百 ms かかるため
+  private async readEventFiles(dir: string, names: string[]): Promise<ConversationEvent[]> {
+    const events: ConversationEvent[] = [];
+    for (let i = 0; i < names.length; i += EVENT_READ_CONCURRENCY) {
+      const chunk = names.slice(i, i + EVENT_READ_CONCURRENCY);
+      events.push(
+        ...(await Promise.all(
+          chunk.map((name) => readValid(`${dir}/${name}`, conversationEventSchema)),
+        )),
+      );
+    }
+    return events;
   }
 
   /** イベントのファイルを、seq の順に返す */

@@ -86,6 +86,16 @@ describe('reading conversations', () => {
     expect(urls.at(-1)).toContain(`/api/conversations/${ID}/events?after=5`);
   });
 
+  it('asks for a larger page when told how many to read', async () => {
+    fetchMock.mockImplementation(async () => json(200, page));
+
+    await loadConversationEvents(ID, 5, 1000);
+
+    const url = new URL(requestOf(fetchMock.mock.calls[0]!).url, 'http://localhost');
+    expect(url.pathname).toBe(`/api/conversations/${ID}/events`);
+    expect(Object.fromEntries(url.searchParams)).toEqual({ after: '5', limit: '1000' });
+  });
+
   it('gives the URL to open the stream from after a seq', () => {
     expect(conversationStreamUrl(ID, 7)).toBe(`/api/conversations/${ID}/stream?after=7`);
   });
