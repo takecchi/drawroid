@@ -213,6 +213,35 @@ try {
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'detached' });
 
+    // 8. 末尾にいる間は、行が増えても「新しい行」の印を出さない。上を読んでいる間に行が増えたら出し、押すと末尾へ戻る
+    const logBox = page.getByRole('log', { name: '会話のログ' });
+    const marker = page.getByRole('button', { name: '新しい行へ' });
+    const atEnd = () =>
+      page.evaluate(`(() => { const b = document.querySelector('[role="log"]');
+        return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`);
+    const rowsNow = () =>
+      page.evaluate(`document.querySelector('[role="log"] > div').children.length`);
+    await logBox.hover();
+    await page.mouse.wheel(0, 100_000);
+    await page.waitForFunction(`(() => { const b = document.querySelector('[role="log"]');
+      return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`);
+    const rowsAtEnd = Number(await rowsNow());
+    // ジョブは回り続けているので、行が増えるのを待つ
+    await page.waitForFunction(
+      `document.querySelector('[role="log"] > div').children.length > ${rowsAtEnd}`,
+    );
+    expect(
+      (await marker.count()) === 0 && Boolean(await atEnd()),
+      `${label}: 末尾にいる間は、行が増えても「新しい行」の印を出さず、末尾を追う`,
+    );
+    await page.mouse.wheel(0, -3_000);
+    await marker.waitFor();
+    expect(true, `${label}: 上を読んでいる間に行が増えたら、「新しい行」の印を出す`);
+    await marker.click();
+    await page.waitForFunction(`(() => { const b = document.querySelector('[role="log"]');
+      return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`);
+    expect((await marker.count()) === 0, `${label}: 「新しい行」を押すと末尾へ戻り、印は消える`);
+
     expect(
       problems.length === 0,
       `${label}: コンソールのエラー・失敗した読み込みが無い${problems.length === 0 ? '' : `:\n${problems.join('\n')}`}`,
