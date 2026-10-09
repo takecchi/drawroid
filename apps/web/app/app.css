@@ -1,9 +1,20 @@
 /*
  * 画面の CSS の入口。**テーマ（色・土台の指定）は `@drawroid/ui` が持つ**
  * （`packages/ui/src/styles.css`）。ここは Tailwind を回す側（apps/web の Vite）が
- * 読む1枚目で、テーマを取り込むだけにしてある。
+ * 読む1枚目で、テーマを取り込むほかは、画面の外枠の指定（読み込みの代わりの画面の案内）だけを置く。
  *
  * apps/web 自身の `app/` は Tailwind の自動検出がそのまま拾う（Vite の root の下）。
  * `@drawroid/ui` の部品が使う class は、テーマの側の `@source` が拾わせる。
  */
 @import '@drawroid/ui/styles.css';
+
+/* 読み込みの代わりの画面（root の HydrateFallback）で、時間が経ってから出す案内。JS が動かなくても出るよう CSS だけで出す */
+.hydrate-slow-hint {
+  opacity: 0;
+  animation: hydrate-slow-hint-reveal 0s linear 8s forwards;
+}
+@keyframes hydrate-slow-hint-reveal {
+  to {
+    opacity: 1;
+  }
+}
