@@ -161,6 +161,47 @@ const OLDEST = {
 const AT_END = `(() => { const box = document.querySelector('[role="log"]');
   return box.scrollTop + box.clientHeight >= box.scrollHeight - 4; })()`;
 
+// 末尾に着かなかったときに、何を見ていたかを残す: CI でだけ落ちる揺れを、ログだけで見分けるため
+const LOG_STATE = `(() => { const box = document.querySelector('[role="log"]');
+  if (box === null) return 'ログが無い';
+  const rows = box.firstElementChild === null ? [] : [...box.firstElementChild.children];
+  const last = rows.at(-1);
+  return JSON.stringify({
+    scrollTop: Math.round(box.scrollTop),
+    clientHeight: box.clientHeight,
+    scrollHeight: box.scrollHeight,
+    fromEnd: Math.round(box.scrollHeight - box.clientHeight - box.scrollTop),
+    rows: rows.length,
+    lastRow: last === undefined ? null : last.textContent.slice(0, 80),
+  }); })()`;
+
+/**
+ * 末尾に着くのを待つ。着かなければ、ログの状態（スクロール位置・背・行数・末尾の行）を添えて落とす
+ * @param {import('playwright-core').Page} page
+ * @param {string} where どの段で待っていたか
+ */
+async function waitAtEnd(page, where) {
+  try {
+    await page.waitForFunction(AT_END);
+  } catch (error) {
+    const state = await page.evaluate(LOG_STATE).catch(() => '読めない');
+    throw new Error(`${where}: 末尾に着かなかった。ログの状態: ${String(state)}`, { cause: error });
+  }
+}
+
+/**
+ * 末尾に居ることを確かめる。居なければ、ログの状態を添えて落とす
+ * @param {import('playwright-core').Page} page
+ * @param {string} message
+ */
+async function expectAtEnd(page, message) {
+  if (await page.evaluate(AT_END)) {
+    expect(true, message);
+    return;
+  }
+  expect(false, `${message}。ログの状態: ${String(await page.evaluate(LOG_STATE))}`);
+}
+
 /** @param {string} text いちばん古い行が描画を飛ばされているか（行の箱ではなく、中身が飛ばされる） */
 const oldestSkipped = (text) => `(() => {
   const row = [...document.querySelectorAll('[role="log"] > div > *')]
@@ -204,19 +245,16 @@ try {
   // --- 長い会話 ---
   await page.goto(`${base}/conversations/${ids.long}`);
   await log.getByText(OLDEST.long).waitFor({ state: 'attached' });
-  await page.waitForFunction(AT_END);
+  await waitAtEnd(page, '長い会話を開いたあと');
   // 画像が読み込まれて背が伸びるのを待つ。そのあとも末尾に居る
   await sleep(2_000);
-  expect(
-    Boolean(await page.evaluate(AT_END)),
-    '長い会話を開くと末尾に着き、画像が読み込まれても末尾に居る',
-  );
+  await expectAtEnd(page, '長い会話を開くと末尾に着き、画像が読み込まれても末尾に居る');
   // 新しい行が増えても末尾を追う（LLM は繋いでいないので、ターンは失敗で閉じ、その行が足される）
   await say(ids.long, '長い会話の、いちばん新しい発言');
   await log.getByText('長い会話の、いちばん新しい発言').waitFor();
-  await page.waitForFunction(AT_END);
+  await waitAtEnd(page, '長い会話に新しい行が増えたあと');
   await sleep(1_000);
-  expect(Boolean(await page.evaluate(AT_END)), '新しい行が増えても、末尾を追い続ける');
+  await expectAtEnd(page, '新しい行が増えても、末尾を追い続ける');
   expect(
     (await page.evaluate(oldestSkipped(OLDEST.long))) === true,
     '長い会話では、画面の外のいちばん古い行の描画を飛ばしている',
@@ -237,7 +275,7 @@ try {
   // --- 短い会話 ---
   await page.goto(`${base}/conversations/${ids.short}`);
   await log.getByText(OLDEST.short).waitFor({ state: 'attached' });
-  await page.waitForFunction(AT_END);
+  await waitAtEnd(page, '短い会話を開いたあと');
   const shortOutside = await page.evaluate(`(() => {
     const row = [...document.querySelectorAll('[role="log"] > div > *')]
       .find((el) => el.textContent.includes(${JSON.stringify(OLDEST.short)}));
@@ -259,7 +297,7 @@ try {
   });
   await page.goto(`${base}/conversations/${ids.crossing}`);
   await log.getByText(OLDEST.crossing).waitFor({ state: 'attached' });
-  await page.waitForFunction(AT_END);
+  await waitAtEnd(page, '途中で線を越える会話を開いたあと');
   await sleep(1_500);
   expect(
     (await page.evaluate(oldestSkipped(OLDEST.crossing))) === false,
@@ -293,12 +331,12 @@ try {
   // 末尾へ戻し、行が増えると、描画を飛ばし始め、末尾も追い続ける
   await page.evaluate(`(() => { const box = document.querySelector('[role="log"]');
     box.scrollTop = box.scrollHeight; })()`);
-  await page.waitForFunction(AT_END);
+  await waitAtEnd(page, '末尾へ戻したあと');
   await say(ids.crossing, '越えたあとの発言');
   await log.getByText('越えたあとの発言').waitFor();
-  await page.waitForFunction(AT_END);
+  await waitAtEnd(page, '線を越えたあとに行が増えたあと');
   await sleep(1_000);
-  expect(Boolean(await page.evaluate(AT_END)), '線を越えたあとも、末尾を追い続ける');
+  await expectAtEnd(page, '線を越えたあとも、末尾を追い続ける');
   expect(
     (await page.evaluate(oldestSkipped(OLDEST.crossing))) === true,
     '末尾へ戻ったあとは、画面の外の行の描画を飛ばす',
