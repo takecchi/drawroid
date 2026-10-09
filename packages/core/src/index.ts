@@ -22,3 +22,6 @@ export {
   isBackendError,
   type BackendErrorKind,
 } from './backend-error.js';
+export * from './job/manual.js';
+export * from './job/store.js';
+export * from './job/types.js';

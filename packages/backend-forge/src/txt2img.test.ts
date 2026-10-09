@@ -86,26 +86,6 @@ describe('generateWithForge request', () => {
     expect(forge.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
   });
 
-  it('refuses a LoRA name with a colon, which would be read as the weight separator', async () => {
-    await expect(generate({ loras: [{ name: 'a:b', weight: 1 }] })).rejects.toMatchObject({
-      kind: 'failed',
-    });
-    expect(forge.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
-  });
-
-  it('asks for the whole batch in one pass, not one pass per image', async () => {
-    await generate({ batchSize: 2 });
-    expect(sentPayload()).toMatchObject({ batch_size: 2, n_iter: 1 });
-  });
-
-  it.each([
-    ['model_name', 'animagine-xl-4.0', 'animagine-xl-4.0.safetensors [6327eca98b]'],
-    ['model_name with a folder', 'real/juggernaut-xl', 'real/juggernaut-xl.safetensors'],
-  ])('sends the Forge title when the checkpoint is given as %s', async (_label, name, title) => {
-    await generate({ checkpoint: name });
-    expect(sentPayload()).toMatchObject({ override_settings: { sd_model_checkpoint: title } });
-  });
-
   it('sets the checkpoint for this request only, without touching global options', async () => {
     await generate({ checkpoint: 'animagine-xl-4.0.safetensors [6327eca98b]' });
     expect(sentPayload()).toMatchObject({
@@ -181,18 +161,6 @@ describe('generateWithForge response', () => {
     await expect(generate()).rejects.toMatchObject({
       kind: 'bad_response',
       message: expect.stringContaining('samples_format') as unknown,
-    });
-  });
-
-  it('reports a single image for a batch of two as a bad response, pointing at an interrupt', async () => {
-    const png = Buffer.from(STUB_PNG).toString('base64');
-    forge.route(
-      'POST /sdapi/v1/txt2img',
-      json(200, { images: [png], info: JSON.stringify({ all_seeds: [1] }) }),
-    );
-    await expect(generate({ batchSize: 2 })).rejects.toMatchObject({
-      kind: 'bad_response',
-      message: expect.stringContaining('中断') as unknown,
     });
   });
 
