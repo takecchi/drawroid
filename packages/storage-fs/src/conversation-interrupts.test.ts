@@ -456,6 +456,64 @@ describe('a human message while the job of the conversation is running', () => {
     expect(judging.signals).toHaveLength(2);
     expect(await stoppedReason(jobs, jobId)).toBe('limit:iterations');
   });
+
+  it('holds a job that started after the turn began, as soon as a message comes in, even while a tool runs', async () => {
+    const judging = blocking(judge, (n) => n === 0);
+    const {
+      say,
+      talk,
+      conversationId,
+      jobs,
+      jobRunner,
+      submit,
+      received,
+      types,
+      openTool,
+      toolEntered,
+    } = await setup({
+      judge: judging.script,
+      gateStartDrawing: true,
+      talk: (_call, n) =>
+        n === 0
+          ? {
+              text: '描きます。',
+              toolCalls: [
+                {
+                  name: 'start_drawing',
+                  input: {
+                    request: '夕暮れの海辺の少女',
+                    stopConditions: { aiJudgement: false, maxIterations: 1 },
+                  },
+                },
+              ],
+            }
+          : { text: 'はい' },
+    });
+    const heldFlags = () =>
+      received.flatMap((m) =>
+        m.kind === 'live' && m.event.type === 'job.held' ? [m.event.held] : [],
+      );
+
+    await say('描いて');
+    await vi.waitFor(() => expect(toolEntered.value).toBe(true));
+    // ターンが始まった後に、会話のジョブが走り出す（ターンの始めには、待たせるジョブが無かった）
+    const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
+    jobRunner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    expect(heldFlags()).toEqual([]);
+
+    // ツールの実行中なのでターンはまだ終わらないが、発言が来た時点でジョブの LLM の段を待たせる
+    await say('待って');
+    await vi.waitFor(() => expect(heldFlags()).toEqual([true]));
+    expect(judging.signals[0]!.aborted).toBe(true);
+    expect(await types()).not.toContain('turn.ended');
+
+    openTool();
+    await within(talk.idle(conversationId));
+    await within(jobRunner.idle());
+    expect(heldFlags()).toEqual([true, false]);
+    expect(await stoppedReason(jobs, jobId)).toBe('limit:iterations');
+  });
 });
 
 describe('a human message in the middle of a talk turn', () => {
