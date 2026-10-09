@@ -11,6 +11,7 @@ import {
   DEFAULT_BUDGET,
   JobRunner,
   ManualGenerationRunner,
+  resolveBudgets,
   type LlmCall,
 } from '@drawroid/core';
 import { ScriptedLlm, STUB_PNG, type Script } from '@drawroid/core/testing';
@@ -82,7 +83,10 @@ beforeEach(async () => {
     memoryStore: createFsMemoryStore(dataPaths(root).memory),
     manualRunner: new ManualGenerationRunner({ backend, store }),
     autoQueue: runner,
-    budget: DEFAULT_BUDGET,
+    budgetSettings: {
+      read: async () => ({ overrides: {}, effective: resolveBudgets({}) }),
+      write: notUsed,
+    },
     stopConditionParser: { parse: notUsed },
     backendSettings: { read: notUsed, write: notUsed },
     llmSettings: { read: async () => undefined, write: async () => undefined },
