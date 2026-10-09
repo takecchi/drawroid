@@ -24,6 +24,7 @@ import {
   LogRow,
   MessageRow,
   Muted,
+  OkNote,
   ReasoningBlock,
   StatusLine,
   StopNotice,
@@ -31,7 +32,16 @@ import {
   ToolCallCard,
   type ViewerImage,
 } from '@drawroid/ui';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Link } from 'react-router';
 
 import {
@@ -67,6 +77,46 @@ interface PendingAttachment {
   id: string;
   file: File;
   url: string;
+}
+
+/** ジョブを見分ける言葉に使う、依頼の文の頭の文字数 */
+const JOB_NAME_CHARS = 12;
+
+/**
+ * 会話の中のジョブを見分ける言葉。依頼の文の頭（12 文字、長ければ「…」）。依頼の文が無いジョブ（手動の生成）は「手動の生成」。
+ * 同じ会話に2つ以上のジョブがあると、どれも「1 回目の画像 1 番」になり、読み上げや声の操作で聞き分けられないため
+ */
+export function jobNameOf(request: string | undefined): string {
+  const text = request?.trim() ?? '';
+  if (text === '') return '手動の生成';
+  return text.length > JOB_NAME_CHARS ? `${text.slice(0, JOB_NAME_CHARS)}…` : text;
+}
+
+/**
+ * 会話のジョブ ID → ジョブを見分ける言葉。会話の「描き始めた」（job.started）から作る。
+ * 同じ言葉のジョブ（同じ依頼で描き直したなど）は、2つ目から「（2）」「（3）」を添えて別の名前にする
+ */
+function jobNamesOf(items: readonly ChatItem[]): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  const used = new Map<string, number>();
+  for (const item of items) {
+    if (item.kind !== 'job-started' || names.has(item.jobId)) continue;
+    const name = jobNameOf(item.request);
+    const count = (used.get(name) ?? 0) + 1;
+    used.set(name, count);
+    names.set(item.jobId, count === 1 ? name : `${name}（${count}）`);
+  }
+  return names;
+}
+
+const JobNames = createContext<ReadonlyMap<string, string>>(new Map());
+
+/**
+ * 画像の呼び方（「猫を描いて 1 回目の画像 1 番」）。回も枚も 1 から数える（人が選んだ回の表示と同じ）。
+ * 会話に描き始めた記録が無いジョブ（読み込みの途中など）は、ジョブの言葉を付けない
+ */
+function imageNameOf(jobName: string | undefined, iteration: number, index: number): string {
+  return `${jobName === undefined ? '' : `${jobName} `}${iteration} 回目の画像 ${index + 1} 番`;
 }
 
 /** 設定の画面の欄への道。名前は設定の画面の欄の名前にそろえる */
@@ -172,8 +222,7 @@ function ImageChoices({
   chosen: boolean;
 }) {
   const imageKey = formatImageKey({ iteration, index });
-  // 1 から数える: 人が選んだ回の表示（「N 回目の画像 M 番」）と同じ呼び方にするため
-  const imageLabel = `${iteration} 回目の画像 ${index + 1} 番`;
+  const imageLabel = imageNameOf(useContext(JobNames).get(jobId), iteration, index);
   return (
     <div className="space-y-1">
       <VerdictButtons jobId={jobId} imageKey={imageKey} imageLabel={imageLabel} verdict={verdict} />
@@ -250,9 +299,10 @@ function ViewerImageDetails({
   );
 }
 
-const PAINTING_LOCK = '塗っている間は前後へ送れません。';
+const PAINTING_LOCK = '塗っている間は前後へ送れない。';
 const PAINTING_HOLD =
-  '塗りかけがある間は、Esc や窓の外を押しても閉じません（閉じるボタンは、塗りかけを捨てて閉じます）。';
+  '塗りかけがある間は、Esc や窓の外を押しても閉じない（閉じるボタンは、塗りかけを捨てて閉じる）。';
+const MASK_SENT = 'マスクを送った。次の回で描き直す。';
 
 /**
  * 会話の画像を大きく見る窓。止まっていないジョブの画像には、窓の中でマスクを塗って送れる（ジョブの詳細と同じ口）。
@@ -292,12 +342,20 @@ function ConversationImageViewer({
         },
   );
   const holding = painted !== undefined && painting.strokes.length > 0;
+  // 送ったら、塗る形を閉じて見る形に戻す（前後へ送れ、Esc で閉じる）。送ったことは、その画像の下に短く出す
+  const [sentKey, setSentKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!painting.sent || paintingKey === null) return;
+    setSentKey(paintingKey);
+    setPaintingKey(null);
+  }, [painting.sent, paintingKey]);
   return (
     <ImageViewer
       images={images}
       openKey={viewing}
       onOpenKeyChange={(key) => {
         setPaintingKey(null);
+        setSentKey(null);
         onViewingChange(key);
       }}
       keepOpen={holding}
@@ -333,12 +391,20 @@ function ConversationImageViewer({
         });
         const stopped = stoppedJobs.has(source.jobId);
         return (
-          <ViewerImageDetails
-            {...source}
-            stopped={stopped}
-            chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
-            {...(!stopped && { onPaint: () => setPaintingKey(image.key) })}
-          />
+          <div className="space-y-2">
+            {sentKey === image.key && <OkNote>{MASK_SENT}</OkNote>}
+            <ViewerImageDetails
+              {...source}
+              stopped={stopped}
+              chosen={chosenImages.has(`${source.jobId}:${imageKey}`)}
+              {...(!stopped && {
+                onPaint: () => {
+                  setSentKey(null);
+                  setPaintingKey(image.key);
+                },
+              })}
+            />
+          </div>
         );
       }}
     />
@@ -361,6 +427,7 @@ function ImagesItem({
 }) {
   // 選択は今の API（selections）から読む: 会話のイベントには選択を写さないため
   const { data } = useSelections(item.jobId);
+  const jobName = useContext(JobNames).get(item.jobId);
   const verdicts = new Map(
     (data?.selections ?? []).flatMap(({ imageKey, verdict }) =>
       verdict === null ? [] : [[imageKey, verdict] as const],
@@ -374,8 +441,7 @@ function ImagesItem({
         const imageKey = formatImageKey({ iteration: item.iteration, index: image.index });
         const urls = jobImageUrls(item.jobId, item.iteration, image.index);
         const verdict = verdicts.get(imageKey) ?? null;
-        // 1 から数える: 人が選んだ回の表示（「N 回目の画像 M 番」）と同じ呼び方にするため
-        const imageLabel = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
+        const imageLabel = imageNameOf(jobName, item.iteration, image.index);
         const viewerKey = viewerKeyOf(item.jobId, imageKey);
         return {
           key: imageKey,
@@ -529,8 +595,8 @@ function BestChoice({
   const imageKey = formatImageKey({ iteration, index });
   const verdict =
     data?.selections.find((selection) => selection.imageKey === imageKey)?.verdict ?? null;
-  // 1 から数える: 画像の行（「N 回目の画像 M 番」）と同じ呼び方にするため
-  const imageLabel = `${iteration} 回目の画像 ${index + 1} 番`;
+  // 画像の行と同じ呼び方にする
+  const imageLabel = imageNameOf(useContext(JobNames).get(jobId), iteration, index);
   const urls = jobImageUrls(jobId, iteration, index);
   return (
     <section
@@ -673,6 +739,7 @@ function viewerImagesOf(
   items: readonly ChatItem[],
   conversationId: string,
 ): (ViewerImage & { source?: ViewerSource })[] {
+  const jobNames = jobNamesOf(items);
   return items.flatMap((item) =>
     item.kind === 'user'
       ? item.attachments.map((uploadId, index) =>
@@ -682,7 +749,7 @@ function viewerImagesOf(
         ? []
         : item.images.map((image) => {
             const urls = jobImageUrls(item.jobId, item.iteration, image.index);
-            const title = `${item.iteration} 回目の画像 ${image.index + 1} 番`;
+            const title = imageNameOf(jobNames.get(item.jobId), item.iteration, image.index);
             return {
               key: viewerKeyOf(
                 item.jobId,
@@ -1010,8 +1077,14 @@ export function ConversationView({
     [items, conversationId],
   );
   const last = items.at(-1);
+  // 名前の中身が変わったときだけ作り直す: 返答の増分のたびに作り直すと、確定した画像の行まで描き直すことになるため
+  const jobNamesKey = JSON.stringify([...jobNamesOf(items)]);
+  const jobNames = useMemo(
+    () => new Map(JSON.parse(jobNamesKey) as [string, string][]),
+    [jobNamesKey],
+  );
   return (
-    <>
+    <JobNames.Provider value={jobNames}>
       <ConversationImageViewer
         images={viewerImages}
         viewing={viewing}
@@ -1067,6 +1140,6 @@ export function ConversationView({
           />
         }
       />
-    </>
+    </JobNames.Provider>
   );
 }
