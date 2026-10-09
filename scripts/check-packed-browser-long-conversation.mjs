@@ -6,7 +6,8 @@
 // 3. 画面の外の古い発言が、読み上げの木（CDP の Accessibility.getFullAXTree）に残っている
 // 確かめが空振りしないよう、画面の外の古い行が実際に描画を飛ばされていることも見る（checkVisibility の contentVisibilityAuto）。
 // 短い会話（線より短い）: 画面の外の行も描画を飛ばさない（速いスクロールを重くしないため）。
-// 途中で線を越える会話: 上を読んでいる間に越えても、読んでいる行がずれない。越えたあとは描画を飛ばし、末尾も追い続ける。
+// 途中で線を越える会話: 上を読んでいる間に越えても、読んでいる行がずれない（飛ばし始めるのは末尾へ戻ってから）。
+// 末尾へ戻ったあとは描画を飛ばし、末尾も追い続ける。
 // 会話は、組み立てた @drawroid/storage-fs で置き場所へ直に書いてから起動する（LLM を繋がずに長い会話を作るため）。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -269,17 +270,17 @@ try {
   await say(ids.crossing, '線を越える発言');
   await log.getByText('線を越える発言').waitFor({ state: 'attached' });
   await sleep(1_500);
-  expect(
-    (await page.evaluate(oldestSkipped(OLDEST.crossing))) === true,
-    '線を越えたあとは、画面の外の行の描画を飛ばす',
-  );
   const moved = Number(
     await page.evaluate(
       `Math.abs(window.__readingRow.getBoundingClientRect().top - ${String(reading)})`,
     ),
   );
   expect(moved < 4, `上を読んでいる間に線を越えても、読んでいる行がずれない（${moved}px）`);
-  // 末尾へ戻すと、また末尾を追う
+  expect(
+    (await page.evaluate(oldestSkipped(OLDEST.crossing))) === false,
+    '上を読んでいる間は、線を越えても描画を飛ばし始めない',
+  );
+  // 末尾へ戻し、行が増えると、描画を飛ばし始め、末尾も追い続ける
   await page.evaluate(`(() => { const box = document.querySelector('[role="log"]');
     box.scrollTop = box.scrollHeight; })()`);
   await page.waitForFunction(AT_END);
@@ -288,6 +289,10 @@ try {
   await page.waitForFunction(AT_END);
   await sleep(1_000);
   expect(Boolean(await page.evaluate(AT_END)), '線を越えたあとも、末尾を追い続ける');
+  expect(
+    (await page.evaluate(oldestSkipped(OLDEST.crossing))) === true,
+    '末尾へ戻ったあとは、画面の外の行の描画を飛ばす',
+  );
 
   expect(
     problems.length === 0,

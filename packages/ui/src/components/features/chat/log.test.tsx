@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ChatLog } from './log';
+import { ChatLog, SKIP_OFFSCREEN_AFTER_ROWS } from './log';
 
 /** 背が伸びたことを試験から知らせる ResizeObserver の代わり */
 let grow: () => void = () => {};
@@ -122,5 +122,45 @@ describe('ChatLog', () => {
     grow();
 
     expect(log.scrollTop).toBe(1200);
+  });
+});
+
+describe('ChatLog in a long conversation', () => {
+  const view = (rowCount: number) => (
+    <ChatLog followKey={rowCount} rowCount={rowCount}>
+      <p>行</p>
+    </ChatLog>
+  );
+  const skipping = () =>
+    screen.getByRole('log').firstElementChild?.hasAttribute('data-skip-offscreen') ?? false;
+
+  it('does not skip drawing the rows out of view while the conversation is short', () => {
+    render(view(SKIP_OFFSCREEN_AFTER_ROWS));
+    expect(skipping()).toBe(false);
+  });
+
+  it('starts skipping once the conversation grows past the line while following the end', () => {
+    const { rerender } = render(view(SKIP_OFFSCREEN_AFTER_ROWS));
+    rerender(view(SKIP_OFFSCREEN_AFTER_ROWS + 1));
+    expect(skipping()).toBe(true);
+  });
+
+  it('waits to start skipping while a person reads above, until they come back to the end', () => {
+    const { rerender } = render(view(SKIP_OFFSCREEN_AFTER_ROWS));
+    const log = screen.getByRole('log');
+    const size = { scrollHeight: 1000, clientHeight: 400 };
+    sizeOf(log, size);
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+
+    rerender(view(SKIP_OFFSCREEN_AFTER_ROWS + 1));
+    expect(skipping()).toBe(false);
+
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    rerender(view(SKIP_OFFSCREEN_AFTER_ROWS + 2));
+    expect(skipping()).toBe(true);
   });
 });

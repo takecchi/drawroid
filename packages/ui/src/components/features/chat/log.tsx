@@ -37,9 +37,9 @@ export function LogRow({
   return (
     <div
       // 飛ばすかは、ログの側の印（data-skip-offscreen）で切り替える: 行ごとに渡すと、長さの線を越えたときに全部の行を作り直すことになるため。
-      // 背の見積もり（contain-intrinsic-size: auto）は短い会話でも付けておく: 飛ばさない間は何もしないが、描いた背を覚えるので、
-      // 会話が長さの線を越えた瞬間に、描いたことのある行が見積もりの背へ縮んで、行がずれることが無いため
-      className="[contain-intrinsic-size:auto_var(--row-estimate)] group-data-[skip-offscreen]/log:[content-visibility:auto] md:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
+      // 背の見積もり（contain-intrinsic-size）も飛ばす間だけ付ける: 短い会話でも付けると、描いた背を覚える手間が毎フレーム全部の行に掛かり、
+      // 流れている間に 20 ms を超えるフレームが CPU 4x・200 行で 12% → 50% に増えたため
+      className="group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate)] group-data-[skip-offscreen]/log:[content-visibility:auto] md:group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
       style={
         {
           '--row-estimate': `${Math.round(estimate)}px`,
@@ -72,6 +72,12 @@ export function ChatLog({
   const contentRef = useRef<HTMLDivElement>(null);
   // 描き直しを起こさない値で持つ: 背が伸びたときの観測の中から読むため
   const following = useRef(true);
+  // 画面の外の描画を飛ばし始めるのは、線を越えて、かつ末尾を追っているときだけ。一度始めたら、線より短くなるまで続ける。
+  // 上を読んでいる間に越えても始めない: 飛ばし始めた瞬間、描いた背を覚えていない上の行が見積もりの背に縮み、読んでいる行が大きくずれるため
+  // （末尾を追っている間なら、末尾へ寄せ直すので画面は動かない）
+  const skipping = useRef(false);
+  if (rowCount <= SKIP_OFFSCREEN_AFTER_ROWS) skipping.current = false;
+  else if (following.current) skipping.current = true;
   const lastTop = useRef(0);
   const lastHeight = useRef(0);
   useEffect(() => {
@@ -122,7 +128,7 @@ export function ChatLog({
     >
       <div
         ref={contentRef}
-        data-skip-offscreen={rowCount > SKIP_OFFSCREEN_AFTER_ROWS ? '' : undefined}
+        data-skip-offscreen={skipping.current ? '' : undefined}
         className="group/log mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6"
       >
         {children}
