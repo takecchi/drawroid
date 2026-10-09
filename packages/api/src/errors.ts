@@ -41,3 +41,8 @@ export function describeIssues(error: ZodError): string {
     )
     .join('; ');
 }
+
+// 500 にしない: 人間が手で触って壊したファイルは、サーバの不具合ではなくデータの問題として画面に見せたいため
+export function invalidFile(c: Context, message: string) {
+  return c.json(errorBody('invalid_file', message), 422);
+}
