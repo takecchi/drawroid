@@ -60,6 +60,8 @@ class MemoryJobStore implements JobStore {
   }
   // 以下は自動ジョブ（M2）の口。手動の生成は使わない
   readStage = notUsed;
+  readAdopted = notUsed;
+  writeAdopted = notUsed;
   writeStage = notUsed;
   loadPreview = notUsed;
   markSent = notUsed;
