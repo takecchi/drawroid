@@ -141,12 +141,23 @@ export function describeImageBackendContract(
       });
     });
 
+    it('reports nothing running from progress, when it has one, while idle', async () => {
+      await withBackend(target.connected, async (backend) => {
+        if (backend.progress === undefined) return;
+        expect(await backend.progress(new AbortController().signal)).toBeUndefined();
+      });
+    });
+
     it('reports an unreachable backend as unreachable on every call', async () => {
       await withBackend(target.unreachable, async (backend) => {
         const calls = [
           () => backend.probe(),
           () => backend.listCandidates('checkpoint'),
           () => backend.generate(request, new AbortController().signal),
+          // progress は任意: 持つ backend だけ、繋がらないことを同じ種類で返す
+          ...(backend.progress === undefined
+            ? []
+            : [async () => backend.progress?.(new AbortController().signal)]),
         ];
         for (const call of calls) {
           const error: unknown = await call().then(

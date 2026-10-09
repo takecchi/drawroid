@@ -4,7 +4,13 @@ import { solidPng } from '@drawroid/storage-fs/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { A1111Backend } from './a1111-backend.js';
-import { startMockA1111, unusedUrl, type MockA1111 } from './test-support/mock-a1111.js';
+import {
+  fixture,
+  json,
+  startMockA1111,
+  unusedUrl,
+  type MockA1111,
+} from './test-support/mock-a1111.js';
 
 describeImageBackendContract('A1111Backend against the mock A1111 (v1.10.1 fixtures)', {
   connected: async () => {
@@ -185,5 +191,66 @@ describe('A1111Backend', () => {
     );
     expect(error).toBeInstanceOf(BackendError);
     expect((error as BackendError).message).toContain('A1111 が起動しているか');
+  });
+
+  describe('progress', () => {
+    const PROGRESS = 'GET /sdapi/v1/progress';
+    const signal = () => new AbortController().signal;
+    const progressRequests = () => a1111.requests.filter((r) => r.path === '/sdapi/v1/progress');
+
+    it('reads the fraction, the steps and the remaining time of a running generation', async () => {
+      a1111.route(PROGRESS, json(200, fixture('progress-running.json')));
+      expect(await backend.progress(signal())).toEqual({
+        fraction: 0.4385714285714286,
+        step: 12,
+        steps: 28,
+        etaSeconds: 5.73,
+      });
+    });
+
+    it('returns undefined when nothing is running', async () => {
+      expect(await backend.progress(signal())).toBeUndefined();
+    });
+
+    it('asks to skip the current image, and attaches no preview, unless one is requested', async () => {
+      a1111.route(
+        PROGRESS,
+        json(200, {
+          ...(fixture('progress-running.json') as object),
+          current_image: Buffer.from(STUB_PNG).toString('base64'),
+        }),
+      );
+      const b = backend;
+      expect(await b.progress(signal())).not.toHaveProperty('preview');
+      expect(await b.progress(signal(), { includePreview: false })).not.toHaveProperty('preview');
+      expect(progressRequests().map((r) => r.search)).toEqual([
+        '?skip_current_image=true',
+        '?skip_current_image=true',
+      ]);
+    });
+
+    it('attaches the preview as a PNG when one is requested', async () => {
+      a1111.route(
+        PROGRESS,
+        json(200, {
+          ...(fixture('progress-running.json') as object),
+          current_image: Buffer.from(STUB_PNG).toString('base64'),
+        }),
+      );
+      const progress = await backend.progress(signal(), { includePreview: true });
+      expect(progressRequests().map((r) => r.search)).toEqual(['?skip_current_image=false']);
+      expect(progress?.preview).toEqual({ data: STUB_PNG, mediaType: 'image/png' });
+    });
+
+    it('classifies an unreachable backend as unreachable', async () => {
+      const error: unknown = await new A1111Backend({ baseUrl: await unusedUrl() })
+        .progress(signal())
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+      expect(error).toBeInstanceOf(BackendError);
+      expect((error as BackendError).kind).toBe('unreachable');
+    });
   });
 });

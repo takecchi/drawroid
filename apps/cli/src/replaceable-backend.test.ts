@@ -3,6 +3,7 @@ import {
   BackendError,
   generationRequestSchema,
   type GenerationImages,
+  type GenerationProgress,
   type GenerationRequest,
 } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
@@ -29,7 +30,46 @@ class ImageRecordingBackend extends StubBackend {
   }
 }
 
+// progress を持つ backend。受け取った引数を残す: 包みが引数を落としても型では見つからないため
+class ProgressBackend extends StubBackend {
+  readonly calls: { signal: AbortSignal; options: { includePreview?: boolean } | undefined }[] = [];
+
+  constructor(private readonly reported: GenerationProgress | undefined) {
+    super();
+  }
+
+  progress(signal: AbortSignal, options?: { includePreview?: boolean }) {
+    this.calls.push({ signal, options });
+    return Promise.resolve(this.reported);
+  }
+}
+
 describe('ReplaceableBackend', () => {
+  it('asks the backend it holds for the progress, passing the arguments on', async () => {
+    const reported = { fraction: 0.5, step: 2, steps: 4, etaSeconds: null };
+    const inner = new ProgressBackend(reported);
+    const backend = new ReplaceableBackend(inner);
+    const signal = new AbortController().signal;
+
+    expect(await backend.progress(signal, { includePreview: true })).toEqual(reported);
+    expect(inner.calls).toEqual([{ signal, options: { includePreview: true } }]);
+  });
+
+  it('reports nothing running when the backend it holds has no progress', async () => {
+    const backend = new ReplaceableBackend(new StubBackend());
+    expect(await backend.progress(new AbortController().signal)).toBeUndefined();
+  });
+
+  it('asks the replacement for the progress once it has been replaced', async () => {
+    const first = new ProgressBackend(undefined);
+    const second = new ProgressBackend({ fraction: 1, step: null, steps: null, etaSeconds: null });
+    const backend = new ReplaceableBackend(first);
+    backend.replace(second);
+    await backend.progress(new AbortController().signal);
+    expect(first.calls).toEqual([]);
+    expect(second.calls).toHaveLength(1);
+  });
+
   it('passes the input images on to the backend it holds', async () => {
     const inner = new ImageRecordingBackend();
     const backend = new ReplaceableBackend(inner);

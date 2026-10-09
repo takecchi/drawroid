@@ -4,6 +4,7 @@ import type {
   Candidate,
   CandidateKind,
   GenerationImages,
+  GenerationProgress,
   GenerationRequest,
   GenerationResult,
   ImageBackend,
@@ -56,5 +57,13 @@ export class ReplaceableBackend implements ImageBackend {
 
   interrupt(): Promise<void> {
     return this.current.interrupt();
+  }
+
+  // 中身が持たなければ undefined: 持たないアダプタは「何も走っていない」と同じに見えてよい（画面は「生成中」とだけ出す）
+  async progress(
+    signal: AbortSignal,
+    options?: { includePreview?: boolean },
+  ): Promise<GenerationProgress | undefined> {
+    return this.current.progress?.(signal, options);
   }
 }

@@ -1,9 +1,15 @@
 import { describeImageBackendContract, STUB_PNG } from '@drawroid/core/testing';
-import { generationRequestSchema } from '@drawroid/core';
+import { BackendError, generationRequestSchema } from '@drawroid/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ForgeBackend } from './forge-backend.js';
-import { startMockForge, unusedUrl, type MockForge } from './test-support/mock-forge.js';
+import {
+  fixture,
+  json,
+  startMockForge,
+  unusedUrl,
+  type MockForge,
+} from './test-support/mock-forge.js';
 
 describeImageBackendContract('ForgeBackend against the mock Forge', {
   connected: async () => {
@@ -75,5 +81,68 @@ describe('ForgeBackend', () => {
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ kind: 'timeout' });
+  });
+
+  describe('progress', () => {
+    const PROGRESS = 'GET /sdapi/v1/progress';
+    const signal = () => new AbortController().signal;
+    const progressRequests = () => forge.requests.filter((r) => r.path === '/sdapi/v1/progress');
+
+    it('reads the fraction, the steps and the remaining time of a running generation', async () => {
+      forge.route(PROGRESS, json(200, fixture('progress-running.json')));
+      expect(await new ForgeBackend({ baseUrl: forge.url }).progress(signal())).toEqual({
+        fraction: 0.4385714285714286,
+        step: 12,
+        steps: 28,
+        etaSeconds: 5.73,
+      });
+    });
+
+    it('returns undefined when nothing is running', async () => {
+      expect(await new ForgeBackend({ baseUrl: forge.url }).progress(signal())).toBeUndefined();
+    });
+
+    it('asks to skip the current image, and attaches no preview, unless one is requested', async () => {
+      forge.route(
+        PROGRESS,
+        json(200, {
+          ...(fixture('progress-running.json') as object),
+          current_image: Buffer.from(STUB_PNG).toString('base64'),
+        }),
+      );
+      const b = new ForgeBackend({ baseUrl: forge.url });
+      expect(await b.progress(signal())).not.toHaveProperty('preview');
+      expect(await b.progress(signal(), { includePreview: false })).not.toHaveProperty('preview');
+      expect(progressRequests().map((r) => r.search)).toEqual([
+        '?skip_current_image=true',
+        '?skip_current_image=true',
+      ]);
+    });
+
+    it('attaches the preview as a PNG when one is requested', async () => {
+      forge.route(
+        PROGRESS,
+        json(200, {
+          ...(fixture('progress-running.json') as object),
+          current_image: Buffer.from(STUB_PNG).toString('base64'),
+        }),
+      );
+      const progress = await new ForgeBackend({ baseUrl: forge.url }).progress(signal(), {
+        includePreview: true,
+      });
+      expect(progressRequests().map((r) => r.search)).toEqual(['?skip_current_image=false']);
+      expect(progress?.preview).toEqual({ data: STUB_PNG, mediaType: 'image/png' });
+    });
+
+    it('classifies an unreachable backend as unreachable', async () => {
+      const error: unknown = await new ForgeBackend({ baseUrl: await unusedUrl() })
+        .progress(signal())
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+      expect(error).toBeInstanceOf(BackendError);
+      expect((error as BackendError).kind).toBe('unreachable');
+    });
   });
 });
