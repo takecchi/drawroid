@@ -330,6 +330,37 @@ describe('adopting an image the human chose', () => {
     });
   });
 
+  it('cuts the judge call in flight for the chosen iteration, without holding the stages', async () => {
+    const judging = blocking(judge, (n) => n === 0);
+    const { store, runner, llm, heldEvents } = setup({ judge: judging.script });
+    const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 });
+    runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+
+    await runner.adopt(jobId, { iteration: 1, index: 0 });
+    await runner.idle();
+
+    expect(judging.signals[0]!.aborted).toBe(true);
+    expect(llm.calls.filter((c) => c.purpose === 'judge')).toHaveLength(1);
+    expect(await store.readAdopted(jobId, 1)).toMatchObject({ image: { iteration: 1, index: 0 } });
+    expect(heldEvents).toEqual([]);
+  });
+
+  it('leaves the call in flight alone for a choice of an iteration the judge already saw', async () => {
+    const judging = blocking(judge, (n) => n === 1);
+    const { store, runner, llm } = setup({ judge: judging.script });
+    const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
+    runner.kick();
+    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+
+    await runner.adopt(jobId, { iteration: 1, index: 1 });
+    judging.answer(1);
+    await runner.idle();
+
+    expect(judging.signals[1]!.aborted).toBe(false);
+    expect(llm.calls.filter((c) => c.purpose === 'judge')).toHaveLength(2);
+  });
+
   it('refuses an image that does not exist, and writes nothing', async () => {
     const judging = blocking(judge, (n) => n === 0);
     const { store, runner } = setup({ judge: judging.script });
