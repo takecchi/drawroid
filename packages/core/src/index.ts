@@ -51,3 +51,11 @@ export * from './job/store.js';
 export * from './job/types.js';
 export * from './loop/runner.js';
 export * from './loop/stop.js';
+export {
+  MEMORY_SCOPES,
+  memoryItemSchema,
+  memoryScopeSchema,
+  type MemoryItem,
+  type MemoryScope,
+} from './memory/item.js';
+export { type MemorySelection, selectMemory } from './memory/select.js';
