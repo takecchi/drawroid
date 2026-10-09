@@ -11,6 +11,7 @@ const iteration = {
   think: null,
   excluded: null,
   judge: null,
+  adopted: null,
   images: [{ index: 0, seed: 7, url: '/api/jobs/job-1/images/1-0.png', previewUrl: '/p.webp' }],
   request: {},
 } as unknown as Iteration;
@@ -42,6 +43,41 @@ describe('IterationList and masks', () => {
 
     renderList();
     expect(screen.queryByRole('button', { name: 'マスクを塗る' })).toBeNull();
+  });
+});
+
+describe('IterationList and an iteration the human picked an image in', () => {
+  const adoptedRecord = {
+    by: 'human',
+    image: { iteration: 1, index: 1 },
+    score: 1,
+    interventionId: 'iv-1',
+    adoptedAt: '2026-10-09T00:30:00.000Z',
+  };
+  const twoImages = [
+    { index: 0, seed: 7, url: '/a.png', previewUrl: '/a.webp' },
+    { index: 1, seed: 8, url: '/b.png', previewUrl: '/b.webp' },
+  ];
+
+  it('shows that a human chose, which image, and score 1 instead of an empty evaluation', () => {
+    renderList(false, { ...iteration, images: twoImages, adopted: adoptedRecord } as Iteration);
+
+    const section = screen.getByRole('heading', { name: '評価' }).closest('section');
+    expect(section?.textContent).toContain('人が選んだ');
+    expect(section?.textContent).toContain('画像 2 番');
+    expect(section?.textContent).toContain('score 1.00');
+    expect(screen.getAllByText(/人が選んだ \/ score 1.00/)).toHaveLength(1);
+  });
+
+  it('keeps showing the judge evaluation as before for an iteration the judge evaluated', () => {
+    renderList(false, {
+      ...iteration,
+      judge: { images: [{ score: 0.5, issues: [] }], nextChange: '次', canStop: false },
+      adopted: null,
+    } as unknown as Iteration);
+
+    expect(screen.getByRole('heading', { name: '見る役の評価' })).toBeTruthy();
+    expect(screen.queryByText(/人が選んだ/)).toBeNull();
   });
 });
 

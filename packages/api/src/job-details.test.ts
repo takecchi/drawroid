@@ -35,6 +35,30 @@ afterEach(async () => {
   await rm(env.root, { recursive: true, force: true });
 });
 
+describe('GET /jobs/:jobId/iterations/:iteration and the human choice', () => {
+  it('returns the adopted record of an iteration the human picked an image in', async () => {
+    const adopted = {
+      by: 'human',
+      image: { iteration: 2, index: 0 },
+      score: 1,
+      interventionId: 'iv-1',
+      adoptedAt: '2026-10-09T00:30:00.000Z',
+    } as const;
+    await env.store.writeAdopted(jobId, 2, adopted);
+
+    const res = await env.api.request(`/jobs/${jobId}/iterations/2`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ iteration: 2, judge: null, adopted });
+  });
+
+  it('returns adopted as null for an iteration the judge evaluated', async () => {
+    const res = await env.api.request(`/jobs/${jobId}/iterations/1`);
+
+    expect(await res.json()).toMatchObject({ judge: { canStop: true }, adopted: null });
+  });
+});
+
 describe('GET /jobs/:jobId', () => {
   it('returns the stop reason, the stop conditions and a per-iteration summary', async () => {
     const res = await env.api.request(`/jobs/${jobId}`);
@@ -60,6 +84,32 @@ describe('GET /jobs/:jobId', () => {
         { iteration: 2, request: null, images: [], judge: null },
       ],
       invalid: [],
+    });
+  });
+
+  it('summarizes an iteration the human picked an image in, instead of leaving its scores empty', async () => {
+    await env.store.writeGeneration(jobId, 2, request, {
+      images: [
+        { png: await png(64, 64), seed: 1, metadata: {} },
+        { png: await png(64, 64), seed: 2, metadata: {} },
+      ],
+      metadata: {},
+    });
+    await env.store.writeAdopted(jobId, 2, {
+      by: 'human',
+      image: { iteration: 2, index: 1 },
+      score: 1,
+      interventionId: 'iv-1',
+      adoptedAt: '2026-10-09T00:30:00.000Z',
+    });
+
+    const res = await env.api.request(`/jobs/${jobId}`);
+
+    const body = (await res.json()) as { iterations: { iteration: number; judge: unknown }[] };
+    expect(body.iterations.find((i) => i.iteration === 2)?.judge).toEqual({
+      canStop: false,
+      scores: [0, 1],
+      adopted: true,
     });
   });
 

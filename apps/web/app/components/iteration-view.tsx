@@ -98,6 +98,18 @@ function JudgeSection({ judge, read }: { judge: unknown; read: ReturnType<typeof
   );
 }
 
+function AdoptedSection({ adopted }: { adopted: NonNullable<Iteration['adopted']> }) {
+  return (
+    <AuthorMark as="section" author="human" label="人間">
+      <h4 className="font-semibold">評価</h4>
+      <p>
+        人が選んだ（{adopted.image.iteration} 回目の画像 {adopted.image.index + 1} 番）: score{' '}
+        {formatScore(adopted.score)}
+      </p>
+    </AuthorMark>
+  );
+}
+
 // 回ごとの表示をここに閉じる: 口出しなど回に紐づく記録を足す場所を、この部品に限るため
 export function IterationView({
   jobId,
@@ -117,6 +129,7 @@ export function IterationView({
   canPaintMask?: boolean;
 }) {
   const judge = readJudge(iteration.judge);
+  const adopted = iteration.judge === null ? iteration.adopted : null;
   return (
     <article className="space-y-3 border-t border-border pt-3 first:border-t-0 first:pt-0">
       <h3 className="text-sm font-semibold">{iteration.iteration} 回目</h3>
@@ -147,6 +160,11 @@ export function IterationView({
               caption={
                 <>
                   <div>seed {image.seed ?? '不明'}</div>
+                  {adopted !== null &&
+                    adopted.image.iteration === iteration.iteration &&
+                    adopted.image.index === image.index && (
+                      <div>人が選んだ / score {formatScore(adopted.score)}</div>
+                    )}
                   {evaluation !== undefined && (
                     <>
                       <div>score {formatScore(evaluation.score)}</div>
@@ -174,6 +192,7 @@ export function IterationView({
         })}
       </ImageGrid>
       {iteration.judge !== null && <JudgeSection judge={iteration.judge} read={judge} />}
+      {adopted !== null && <AdoptedSection adopted={adopted} />}
       <Disclosure summary="request">
         <CodeBlock>{JSON.stringify(iteration.request, null, 2)}</CodeBlock>
       </Disclosure>

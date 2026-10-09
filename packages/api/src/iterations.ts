@@ -1,4 +1,5 @@
 import {
+  type AdoptedRecord,
   type ExcludedParam,
   type GenerationRequest,
   iterationPlanSchema,
@@ -15,6 +16,8 @@ export type IterationView = {
   excluded: ExcludedParam[] | null;
   request: GenerationRequest | null;
   judge: unknown;
+  /** 人間がこの回の画像を選んで見る役を省いた回の記録。選んでいない回は null */
+  adopted: AdoptedRecord | null;
   images: ImageView[];
 };
 
@@ -31,10 +34,11 @@ export async function readIterationView(
   jobId: string,
   iteration: number,
 ): Promise<IterationView> {
-  const [think, plan, judge, generation] = await Promise.all([
+  const [think, plan, judge, adopted, generation] = await Promise.all([
     store.readStage(jobId, iteration, 'think'),
     store.readStage(jobId, iteration, 'plan'),
     store.readStage(jobId, iteration, 'judge'),
+    store.readAdopted(jobId, iteration),
     store.readGeneration(jobId, iteration),
   ]);
   return {
@@ -43,6 +47,7 @@ export async function readIterationView(
     excluded: plan === undefined ? null : iterationPlanSchema.parse(plan).excluded,
     request: generation?.request ?? null,
     judge: judge ?? null,
+    adopted: adopted ?? null,
     images: (generation?.images ?? []).map(({ index, seed }) => ({
       index,
       seed,
@@ -73,10 +78,28 @@ const judgeSummarySchema = z.object({
   images: z.array(z.object({ score: z.number() })),
 });
 
-export type JudgeSummary = { canStop: boolean; scores: number[] };
+export type JudgeSummary = { canStop: boolean; scores: number[]; adopted?: true };
 
 export function summarizeJudge(judge: unknown): JudgeSummary | null {
   const parsed = judgeSummarySchema.safeParse(judge);
   if (!parsed.success) return null;
   return { canStop: parsed.data.canStop, scores: parsed.data.images.map((image) => image.score) };
+}
+
+/**
+ * 人が画像を選んで見る役を済ませた回（adopted.json）の要約。点数は runner と同じく、選んだ画像だけ 1、ほかは 0。
+ * canStop は AI の判断の欄なので、人が選んだ回では立てない
+ */
+export function summarizeAdopted(
+  adopted: AdoptedRecord | null,
+  iteration: number,
+  imageCount: number,
+): JudgeSummary | null {
+  if (adopted === null) return null;
+  const chosen = adopted.image.iteration === iteration ? adopted.image.index : undefined;
+  return {
+    canStop: false,
+    scores: Array.from({ length: imageCount }, (_, index) => (index === chosen ? 1 : 0)),
+    adopted: true,
+  };
 }
