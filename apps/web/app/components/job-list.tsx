@@ -50,7 +50,10 @@ export function JobList() {
   return (
     <>
       {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
-      {data.jobs.length === 0 && <EmptyState title="まだ無い。" />}
+      {/* 点線の枠で囲む: 群の枠の外に1つだけ置くので、囲まないと下の空の群から浮いて見えるため */}
+      {data.jobs.length === 0 && (
+        <EmptyState title="まだ無い。" className="rounded-xl border border-dashed" />
+      )}
       {JOB_STATUS_ORDER.map((status) => (
         <Section key={status} title={`${STATUS_LABELS[status]}（${groups[status].length}）`}>
           <ItemList>
