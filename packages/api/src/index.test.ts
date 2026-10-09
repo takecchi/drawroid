@@ -24,6 +24,10 @@ beforeEach(async () => {
     backend,
     store,
     manualRunner: new ManualGenerationRunner({ backend, store, now }),
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
 });
 
