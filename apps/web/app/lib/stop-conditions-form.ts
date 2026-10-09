@@ -4,6 +4,13 @@ import {
   type StopConditionsChange,
 } from '@drawroid/core';
 
+const MS_PER_MINUTE = 60_000;
+
+// 1 分に満たない上限は秒で書く: 分で書くと「0.08333333333333333 分」になるため（core の describeStopConditions と同じ）
+function durationText(ms: number): string {
+  return ms < MS_PER_MINUTE ? `${Math.round(ms / 1000)} 秒` : `${ms / MS_PER_MINUTE} 分`;
+}
+
 /** 止める条件を、人間が読む短い文の並びにする */
 export function describeStopConditions(conditions: StopConditions): string[] {
   return [
@@ -12,7 +19,7 @@ export function describeStopConditions(conditions: StopConditions): string[] {
     ...(conditions.maxImages === undefined ? [] : [`${conditions.maxImages} 枚まで`]),
     ...(conditions.maxDurationMs === undefined
       ? []
-      : [`${conditions.maxDurationMs / 60_000} 分まで`]),
+      : [`${durationText(conditions.maxDurationMs)}まで`]),
   ];
 }
 
@@ -26,8 +33,6 @@ export interface StopConditionsFormValues {
 }
 
 export type FormResult<T> = { ok: true; value: T } | { ok: false; reason: string };
-
-const MS_PER_MINUTE = 60_000;
 
 /** 投入の画面の初期値。API の既定（AI の判断と 10 回）に揃える */
 export const DEFAULT_STOP_CONDITIONS_FORM: StopConditionsFormValues = {
@@ -147,10 +152,8 @@ export function changedConditions(
     ],
     [
       '時間の上限',
-      submitted.maxDurationMs === undefined
-        ? NONE
-        : `${submitted.maxDurationMs / MS_PER_MINUTE} 分`,
-      current.maxDurationMs === undefined ? NONE : `${current.maxDurationMs / MS_PER_MINUTE} 分`,
+      submitted.maxDurationMs === undefined ? NONE : durationText(submitted.maxDurationMs),
+      current.maxDurationMs === undefined ? NONE : durationText(current.maxDurationMs),
     ],
   ];
   return fields
