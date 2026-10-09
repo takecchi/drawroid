@@ -64,4 +64,22 @@ describe('parseCliArgs', () => {
   it('rejects options it does not know, including a way to change the host', () => {
     expect(() => parseCliArgs(['--host', '0.0.0.0'])).toThrow();
   });
+
+  it('names an unknown option in Japanese with what it takes, instead of the raw parser message', () => {
+    for (const [args, option] of [
+      [['--help'], '--help'],
+      [['-h'], '-h'],
+      [['doctor', '--verbose'], '--verbose'],
+    ] as const) {
+      expect(() => parseCliArgs([...args])).toThrow(
+        `知らない指定: ${option}（使えるのは doctor と --port・--data-dir・--backend・--backend-url（古い名前 --forge-url））`,
+      );
+      expect(() => parseCliArgs([...args])).not.toThrow(/Unknown option|place it at the end/);
+    }
+  });
+
+  it('says an option is missing its value in Japanese', () => {
+    expect(() => parseCliArgs(['--port'])).toThrow('--port に値が無い（例: --port 7878）');
+    expect(() => parseCliArgs(['--port'])).not.toThrow(/argument missing/);
+  });
 });

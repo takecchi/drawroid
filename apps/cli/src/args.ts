@@ -15,20 +15,20 @@ export interface CliOptions {
   backendUrl: string | undefined;
 }
 
+const OPTIONS = {
+  port: { type: 'string' },
+  'data-dir': { type: 'string' },
+  backend: { type: 'string' },
+  'backend-url': { type: 'string' },
+  // 古い名前。--backend-url と同じ意味で受ける
+  'forge-url': { type: 'string' },
+} as const;
+
+const USABLE =
+  '使えるのは doctor と --port・--data-dir・--backend・--backend-url（古い名前 --forge-url）';
+
 export function parseCliArgs(argv: string[]): CliOptions {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    options: {
-      port: { type: 'string' },
-      'data-dir': { type: 'string' },
-      backend: { type: 'string' },
-      'backend-url': { type: 'string' },
-      // 古い名前。--backend-url と同じ意味で受ける
-      'forge-url': { type: 'string' },
-    },
-    strict: true,
-    allowPositionals: true,
-  });
+  const { values, positionals } = parseKnownArgs(argv);
   return {
     command: parseCommand(positionals),
     port: parsePort(values.port),
@@ -36,6 +36,23 @@ export function parseCliArgs(argv: string[]): CliOptions {
     backend: parseBackend(values.backend),
     backendUrl: parseBackendUrl(values['backend-url'], values['forge-url']),
   };
+}
+
+// node の文をそのまま出さない: 英語のうえ、「-- のあとに置け」と、この CLI では落ちる書き方を勧めるため
+function parseKnownArgs(argv: string[]) {
+  try {
+    return parseArgs({ args: argv, options: OPTIONS, strict: true, allowPositionals: true });
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    const option = error instanceof Error ? /'(-[^' ]+)/.exec(error.message)?.[1] : undefined;
+    if (code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
+      throw new Error(`知らない指定: ${option ?? argv.join(' ')}（${USABLE}）`, { cause: error });
+    }
+    if (code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE') {
+      throw new Error(`${option ?? '指定'} に値が無い（例: --port 7878）`, { cause: error });
+    }
+    throw error;
+  }
 }
 
 function parseCommand(positionals: string[]): CliCommand {

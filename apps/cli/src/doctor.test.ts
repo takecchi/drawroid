@@ -361,6 +361,21 @@ describe('runDoctor', () => {
     expect(text).toContain('よい      ControlNet は使えない（使わないなら、このままでよい）');
   });
 
+  it('tells to give doctor the same --backend-url only when it could not reach the default URL', async () => {
+    const hint = 'drawroid doctor にも同じ --backend-url を付ける';
+    // 何も指定しない doctor は既定の URL を見る。起動にだけ付けた --backend-url は見えない
+    const byDefault = await setup(undefined, { backendUrlSource: 'default' });
+    expect(byDefault.text).toMatch(/足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（既定）/);
+    expect(byDefault.text).toContain(hint);
+
+    // URL を指定したうえで繋がらないなら、その URL を直す話で、doctor の引数の話ではない
+    const byFlag = await setup(undefined, { backendUrlSource: 'cli' });
+    expect(byFlag.text).toMatch(
+      /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（--backend-url で指定）/,
+    );
+    expect(byFlag.text).not.toContain(hint);
+  });
+
   it('reports a missing web build as lacking', async () => {
     const { text } = await setup(undefined, { webRoot: () => '/nonexistent/web' });
     expect(text).toMatch(/足りない {2}\/nonexistent\/web に index\.html が無い\n {12}→ /);
