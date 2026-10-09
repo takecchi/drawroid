@@ -6,9 +6,13 @@ import {
 
 const MS_PER_MINUTE = 60_000;
 
-// 1 分に満たない上限は秒で書く: 分で書くと「0.08333333333333333 分」になるため（core の describeStopConditions と同じ）
+// 1 分に満たない上限は秒で（1 秒に満たなければミリ秒で）書く: 分で割ったままだと、5 秒が「0.08333333333333333 分」になるため。
+// 秒に丸めて 60 になるなら分で書く。1 分以上は分で書き、小数は2桁までにする: 人がフォームで 1.5 分と書けるので、整数へ丸めずに残す
 function durationText(ms: number): string {
-  return ms < MS_PER_MINUTE ? `${Math.round(ms / 1000)} 秒` : `${ms / MS_PER_MINUTE} 分`;
+  if (ms < 1000) return `${ms} ミリ秒`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} 秒`;
+  return `${Number((seconds / 60).toFixed(2))} 分`;
 }
 
 /** 止める条件を、人間が読む短い文の並びにする */

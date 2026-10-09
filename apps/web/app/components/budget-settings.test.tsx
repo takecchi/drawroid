@@ -174,4 +174,29 @@ describe('BudgetInvalidNotice', () => {
     ).toBeTruthy();
     expect(screen.getAllByText(/既定の値に戻している/)).toHaveLength(1);
   });
+
+  it('gives each marked field its own reason', () => {
+    mocks.useBudgetSettings.mockReturnValue({
+      data: {
+        ...stored,
+        invalid: [
+          { path: 'text.prompt', reason: '1 以上にする' },
+          { path: 'imageLongEdge', reason: '整数にする' },
+        ],
+      },
+      error: undefined,
+    });
+    render(<BudgetSettings />);
+
+    // 欄の添え書きは、その欄の label のすぐ後ろにある
+    const noteOf = (path: string) =>
+      input(path).closest('label')?.nextElementSibling?.textContent ?? null;
+    expect(noteOf('text.prompt')).toBe(
+      'config.json の値が読めず、既定の値に戻している: 1 以上にする',
+    );
+    expect(noteOf('imageLongEdge')).toBe(
+      'config.json の値が読めず、既定の値に戻している: 整数にする',
+    );
+    expect(noteOf('text.intent')).toBeNull();
+  });
 });

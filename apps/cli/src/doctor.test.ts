@@ -259,6 +259,34 @@ describe('runDoctor', () => {
     expect(trips[1]).toMatch(/よい +見る役（a の m、.*画像を1枚渡して1往復できた/);
   });
 
+  it('passes the image only to the judge, and lists the roles as talk, think, judge', async () => {
+    const llm = await startLlm({ rejectWebp: true });
+    const { text } = await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+        roles: {
+          think: { provider: 'a', model: 'think-model' },
+          judge: { provider: 'a', model: 'judge-model' },
+          talk: { provider: 'a', model: 'talk-model' },
+        },
+      },
+    });
+    const roleLines = text
+      .split('\n')
+      .filter((line) => /^ {2}\S+ +(話す役|考える役|見る役)（/.test(line));
+    expect(roleLines.map((line) => /(話す役|考える役|見る役)（/.exec(line)?.[1])).toEqual([
+      '話す役',
+      '考える役',
+      '見る役',
+    ]);
+    // 考える役には画像を渡さないので、画像を読めないサーバでも通る
+    expect(roleLines[1]).toMatch(/^ {2}よい +考える役（a の think-model、.*と1往復できた/);
+    // 見る役には画像を渡すので断られ、画像なしなら通ることから、画像が原因と名指す
+    expect(roleLines[2]).toMatch(
+      /^ {2}足りない +見る役（a の judge-model、.*画像を読めない可能性がある/,
+    );
+  });
+
   it('says which product is running when it differs from the configured kind', async () => {
     // Forge にだけある口（sd-modules）に答えるので、Forge が動いていると見なす
     const url = await startBackend({
