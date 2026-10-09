@@ -154,6 +154,21 @@ try {
   await page.getByRole('button', { name: 'LLM の設定を保存' }).click();
   await page.getByText('まだ LLM が設定されていない').waitFor({ state: 'hidden' });
   expect(true, '案内から LLM の設定へ行き、保存できる');
+  // 設定したら、まとめて確かめる（drawroid doctor と同じ確かめ）: LLM とは1往復でき、バックエンドが無いことが、することと一緒に出る
+  llm.queueTalkTool('doctor_ping', {});
+  await page.getByRole('button', { name: '確かめる' }).click();
+  await page
+    .getByRole('region', { name: 'LLM' })
+    .getByText(/1往復できた/)
+    .waitFor();
+  await page
+    .getByRole('region', { name: '画像のバックエンド（Forge）' })
+    .getByText(/すること: Forge を --api を付けて起動する/)
+    .waitFor();
+  expect(
+    true,
+    '設定の画面の「確かめる」で、LLM と1往復でき、バックエンドが無いことと、することが出る',
+  );
   // 前のリンク（/generate#llm）は、設定の画面の同じ欄へ送られる
   await page.goto(`${base}/generate#llm`);
   await page.waitForURL(`${base}/settings#llm`);

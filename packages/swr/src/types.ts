@@ -114,6 +114,8 @@ export type SetSelectionResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['selections'][':imageKey']['$put'],
   200
 >;
+/** 設定の画面の「確かめる」の結果。項目ごとに ok（よい）か、足りないなら todo（何をすればよいか） */
+export type DoctorResponse = InferResponseType<typeof client.doctor.$post, 200>;
 export type AdoptImageResponse = InferResponseType<
   (typeof client.jobs)[':jobId']['adopt']['$post'],
   200

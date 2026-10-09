@@ -45,6 +45,7 @@ export {
   savePermissionSettings,
   setSelection,
   adoptImage,
+  runDoctor,
   startManualJob,
   stopJob,
 } from './mutations.js';
@@ -61,6 +62,7 @@ export type {
   ConversationEventsResponse,
   ConversationResponse,
   ConversationsResponse,
+  DoctorResponse,
   PostedMessageResponse,
   CandidatesResponse,
   ChangeStopConditionsResponse,

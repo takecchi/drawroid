@@ -298,6 +298,20 @@ async function main() {
         write: (notes) => writeCandidateNotes(dataPaths(root).candidateNotes, notes),
       },
       env: process.env,
+      // 設定の画面の「確かめる」。バックエンドは、いま使っている種類と URL（画面で繋ぎ直した値を含む）で確かめる
+      doctor: {
+        run: async () => {
+          const inUse = await backendSettings.read();
+          return runDoctor({
+            configPath,
+            backendKind: inUse.kind,
+            backendUrl: inUse.url,
+            backendUrlSource: inUse.urlSource,
+            env: process.env,
+            webRoot: resolveWebRoot,
+          });
+        },
+      },
     },
   });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);

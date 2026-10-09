@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { BackendKind } from '@drawroid/api';
+import type { BackendKind, DoctorItem, DoctorReport, DoctorSection } from '@drawroid/api';
 import {
   isBackendError,
   readBudgetOverrides,
@@ -31,28 +31,14 @@ import {
  * 確かめるのは、設定ファイル・バックエンド・LLM・web の配り先の4つ。何も書き換えない。
  */
 
-export interface DoctorItem {
-  ok: boolean;
-  what: string;
-  // 足りないときに、何をすればよいか
-  todo?: string;
-}
-
-export interface DoctorSection {
-  title: string;
-  items: DoctorItem[];
-}
-
-export interface DoctorReport {
-  sections: DoctorSection[];
-  lacking: number;
-}
-
+// 返す形（DoctorReport）は api に置く: 設定の画面の「確かめる」（POST /api/doctor）と同じ形で返すため
 export interface DoctorOptions {
   configPath: string;
   // CLI 引数。優先順位は起動と同じく CLI 引数 > config.json > 既定
   backendKind: BackendKind | undefined;
   backendUrl: string | undefined;
+  // backendUrl をどこから得たか。省けば CLI 引数とみなす（走っている drawroid は、画面で繋ぎ直した値を渡す）
+  backendUrlSource?: keyof typeof URL_SOURCES;
   env: Readonly<Record<string, string | undefined>>;
   webRoot: () => string;
   backendTimeoutMs?: number;
@@ -275,9 +261,12 @@ async function checkBackend(
 ): Promise<DoctorSection> {
   const kind = options.backendKind ?? backendConfig?.kind ?? DEFAULT_BACKEND_KIND;
   const label = BACKEND_LABELS[kind];
-  const { url, source } = resolveBackendUrlWithSource(options.backendUrl, {
-    backend: backendConfig,
-  });
+  const resolved = resolveBackendUrlWithSource(options.backendUrl, { backend: backendConfig });
+  const { url } = resolved;
+  const source =
+    options.backendUrl === undefined
+      ? resolved.source
+      : (options.backendUrlSource ?? resolved.source);
   const section: DoctorSection = { title: `画像のバックエンド（${label}）`, items: [] };
   const timeoutMs = options.backendTimeoutMs ?? DEFAULT_BACKEND_TIMEOUT_MS;
   const signal = () => AbortSignal.timeout(timeoutMs);

@@ -3,11 +3,13 @@ import { Disclosure, Page } from '@drawroid/ui';
 import { BackendStatus } from '../components/backend-status';
 import { BackendUrlSettings } from '../components/backend-url-settings';
 import { BudgetSettings } from '../components/budget-settings';
+import { DoctorCheck } from '../components/doctor-check';
 import { LlmSettings } from '../components/llm-settings';
 
 /**
  * 設定。初めての人が要るもの（画像のバックエンドと LLM）を上に置き、予算は「詳しい設定」として畳む。
- * 欄の id（#backend・#llm・#budgets）は、案内や会話の失敗の知らせからのリンクの行き先
+ * 一番下に、全部をまとめて確かめる「確かめる」（drawroid doctor と同じ確かめ）を置く: 上で設定してから押すため。
+ * 欄の id（#backend・#llm・#budgets・#doctor）は、案内や会話の失敗の知らせからのリンクの行き先
  */
 export default function Settings() {
   return (
@@ -22,6 +24,9 @@ export default function Settings() {
       <Disclosure id="budgets" className="scroll-mt-4" summary="詳しい設定（LLM に渡す量の予算）">
         <BudgetSettings />
       </Disclosure>
+      <div id="doctor" className="scroll-mt-4">
+        <DoctorCheck />
+      </div>
     </Page>
   );
 }
