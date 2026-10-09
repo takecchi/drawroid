@@ -1,4 +1,4 @@
-import { REPEATED_TOOL_CALL_REASON } from '@drawroid/core';
+import { REPEATED_TOOL_CALL_REASON, TOOL_THREW_PREFIX } from '@drawroid/core';
 
 // 話す役のツールの、人が読む呼び方。知らない名前（あとから足したツールなど）は名前のまま出す
 const TOOL_TITLES: Record<string, string> = {
@@ -37,9 +37,13 @@ export function summarizeToolResult(
 ): string | undefined {
   if (state === 'running' || summary === undefined) return undefined;
   if (state === 'error') {
-    return summary === REPEATED_TOOL_CALL_REASON
+    // ツールが投げた失敗は、実行器が頭に「失敗した: 」を付けて記録する。外してから読む
+    const reason = summary.startsWith(TOOL_THREW_PREFIX)
+      ? summary.slice(TOOL_THREW_PREFIX.length)
+      : summary;
+    return reason === REPEATED_TOOL_CALL_REASON
       ? '同じ呼び出しはこのターンで済んでいたので、もう一度はしなかった。'
-      : `できなかった: ${firstSentence(summary)}`;
+      : `できなかった: ${firstSentence(reason)}`;
   }
   return firstSentence(summary);
 }

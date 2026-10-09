@@ -1,4 +1,4 @@
-import { REPEATED_TOOL_CALL_REASON } from '@drawroid/core';
+import { REPEATED_TOOL_CALL_REASON, TOOL_THREW_PREFIX } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
 import { summarizeToolResult, toolTitle } from './tool-rows';
@@ -32,6 +32,19 @@ describe('summarizeToolResult', () => {
   it('puts a repeated call into words a person reads', () => {
     expect(summarizeToolResult('error', REPEATED_TOOL_CALL_REASON)).toBe(
       '同じ呼び出しはこのターンで済んでいたので、もう一度はしなかった。',
+    );
+  });
+
+  // 会話の記録には、実行器が頭の言葉を付けた形で残る（core の runner.test.ts が、この形を縛る）
+  it('reads a repeated call as it is recorded, with the words the runner puts in front', () => {
+    expect(summarizeToolResult('error', `${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`)).toBe(
+      '同じ呼び出しはこのターンで済んでいたので、もう一度はしなかった。',
+    );
+  });
+
+  it('does not say it failed twice when a tool threw', () => {
+    expect(summarizeToolResult('error', `${TOOL_THREW_PREFIX}記憶の置き場所に書けない。`)).toBe(
+      'できなかった: 記憶の置き場所に書けない。',
     );
   });
 
