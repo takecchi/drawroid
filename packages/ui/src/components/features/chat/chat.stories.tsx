@@ -121,7 +121,7 @@ function ConversationScreen() {
           <MessageRow author="human" meta="15:33">
             あ、1枚目でいいから、次は髪をなびかせて
           </MessageRow>
-          <StatusLine status="job.paused" />
+          <StatusLine status="job.held" />
         </ChatLog>
       }
       composer={
@@ -255,6 +255,7 @@ export const Notices: Story = {
       </StopNotice>
       <StatusLine status="queued" />
       <StatusLine status="waiting-llm" />
+      <StatusLine status="job.held" />
     </div>
   ),
 };

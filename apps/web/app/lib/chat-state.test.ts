@@ -302,8 +302,9 @@ describe('held jobs', () => {
     let state = heldOn(EMPTY_CHAT_STATE);
     expect(kinds(state)).toEqual(['held']);
 
+    // 状態の行は1つだけ。待たせている間は、考えている最中でも「話を聞いています」の行を出す
     state = live(state, { type: 'status', status: 'waiting-llm' });
-    expect(kinds(state)).toEqual(['status', 'held']);
+    expect(kinds(state)).toEqual(['held']);
 
     state = live(state, { type: 'delta.text', partId: 'm1', turn: 1, text: 'は' });
     expect(kinds(state)).toEqual(['assistant', 'held']);
@@ -314,6 +315,14 @@ describe('held jobs', () => {
 
   it('clears when held: false arrives', () => {
     expect(kinds(heldOff(heldOn(EMPTY_CHAT_STATE)))).toEqual([]);
+  });
+
+  it('shows the thinking status again once the job is no longer held', () => {
+    const thinking = live(heldOn(EMPTY_CHAT_STATE), { type: 'status', status: 'waiting-llm' });
+
+    expect(chatItems(heldOff(thinking))).toEqual([
+      { kind: 'status', key: 'status', status: 'waiting-llm' },
+    ]);
   });
 
   it('clears when that job stops', () => {

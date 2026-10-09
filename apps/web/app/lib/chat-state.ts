@@ -438,9 +438,10 @@ export function chatItems(state: ChatState): ChatItem[] {
       previewUrl: progress.previewUrl,
     });
   }
-  if (state.status !== undefined)
-    items.push({ kind: 'status', key: 'status', status: state.status });
+  // 状態の行は1つだけ: ジョブを待たせている間は、考えている最中でも「話を聞いています」を出す
   if (state.held.size > 0) items.push({ kind: 'held', key: 'held' });
+  else if (state.status !== undefined)
+    items.push({ kind: 'status', key: 'status', status: state.status });
   return items;
 }
 
