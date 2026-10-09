@@ -12,7 +12,8 @@ export function meta() {
 export function Layout({ children }: { children: ReactNode }) {
   return (
     // 暗い側を既定にする: テーマ（`@drawroid/ui` の styles.css）は暗い側を主に色を決めてあるため
-    <html lang="ja" className="dark">
+    // colorScheme: CSS が届く前の一瞬も、ブラウザの既定の白で光らせないため
+    <html lang="ja" className="dark" style={{ colorScheme: 'dark' }}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -33,6 +34,26 @@ export function Layout({ children }: { children: ReactNode }) {
         <Scripts />
       </body>
     </html>
+  );
+}
+
+/**
+ * JS を読み込んで画面を組み立てるまでの間に出す。SPA なので、最初に配る HTML の本文はこれだけになる。
+ * 読み込みが止まった・失敗したときに本文が空のまま（真っ白）にならないよう、時間が経ったら次にすることを出す。
+ * 時間の経過は CSS だけで出す（JS が動かないときにも出るように）
+ */
+export function HydrateFallback() {
+  return (
+    <div role="status" className="space-y-2 p-6 text-sm text-muted-foreground">
+      <p>読み込んでいます…</p>
+      <p className="hydrate-slow-hint">
+        読み込みに時間がかかっている。ページを再読み込みするか、drawroid
+        を起動したターミナルにエラーが出ていないかを確かめる。
+      </p>
+      <noscript>
+        <p>この画面は JavaScript で動く。ブラウザで JavaScript を有効にして開き直す。</p>
+      </noscript>
+    </div>
   );
 }
 

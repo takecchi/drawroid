@@ -112,6 +112,9 @@ export class ReselectionDistiller {
       Date.parse(state.stoppedAt),
       lastDistilledAt === undefined ? 0 : Date.parse(lastDistilledAt),
     );
+    // 選択を読む直前の時刻を、この蒸留の時刻として残す: 蒸留を始めた時刻にすると、読んでから始めるまでの間に
+    // 選び直された分が、その時刻より前になり、次の蒸留でも見られないまま取りこぼされるため
+    const readAt = this.now();
     const changedKeys = new Set(
       (await store.listSelections(jobId))
         .filter((record) => Date.parse(record.selectedAt) > since)
@@ -135,6 +138,7 @@ export class ReselectionDistiller {
         budget: budgets.distill,
         now: this.now,
         callId,
+        startedAt: readAt,
       },
       {
         jobId,

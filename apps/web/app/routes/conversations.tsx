@@ -3,6 +3,7 @@ import { Button, ConversationSummary, ErrorNote, Muted, Page, Section } from '@d
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
+import { SetupNotice } from '../components/setup-notice';
 import { formatTime } from '../lib/job-labels';
 
 export default function Conversations() {
@@ -34,6 +35,7 @@ export default function Conversations() {
         </Button>
       }
     >
+      <SetupNotice />
       {createError !== undefined && <ErrorNote>会話を作れない: {createError}</ErrorNote>}
       {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
       <Section>
