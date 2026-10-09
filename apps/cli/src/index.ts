@@ -200,7 +200,9 @@ async function main() {
     log,
   });
 
-  const budgetSettings = createBudgetSettings(configPath);
+  const budgetSettings = createBudgetSettings(configPath, log);
+  // 起動のときに一度読む: 読めない欄があれば、投入を待たずにログで知らせる
+  await budgetSettings.read();
   const readCandidates = () => readCandidateNotes(dataPaths(root).candidateNotes);
   const humanPermissions = async () => mergePermissions(BASE_PERMISSIONS, await readPermissions());
   // 話す役。LLM は自動ジョブと同じ設定（役 talk、省けば考える役）を使う

@@ -1,6 +1,7 @@
 import type {
   BudgetOverrides,
   Budgets,
+  InvalidBudget,
   CandidateNotes,
   ConversationHubs,
   ConversationStore,
@@ -59,8 +60,11 @@ export type PermissionSettingsStore = {
 
 /** config.json の budgets（予算のうち、書いた欄だけ）。解決は既定に深く重ねる */
 export type BudgetSettingsPort = {
-  /** overrides は検証していない（人間が手で直したものを含む）。読めない設定は、理由を付けて投げる */
-  read(): Promise<{ overrides: unknown; effective: Budgets }>;
+  /**
+   * overrides は読めた欄だけ。読めない欄は既定に戻し、invalid に道筋と理由を返す（許可と同じ作り）。
+   * config.json そのものが読めないときは、理由を付けて投げる
+   */
+  read(): Promise<{ overrides: unknown; effective: Budgets; invalid: InvalidBudget[] }>;
   write(overrides: BudgetOverrides): Promise<Budgets>;
 };
 

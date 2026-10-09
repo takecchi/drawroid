@@ -110,3 +110,57 @@ function overlay(base: unknown, overrides: unknown): unknown {
 export function resolveBudgets(overrides: BudgetOverrides): Budgets {
   return overlay(DEFAULT_BUDGETS, overrides) as Budgets;
 }
+
+/** 読めなかった予算の欄。path は欄の道筋（例: text.prompt）で、'*' なら budgets 全体が読めなかった */
+export interface InvalidBudget {
+  path: string;
+  reason: string;
+}
+
+function removeAt(target: Record<string, unknown>, path: readonly PropertyKey[]): void {
+  let node: unknown = target;
+  for (const key of path.slice(0, -1)) {
+    if (!isPlainObject(node)) return;
+    node = node[key as string];
+  }
+  if (isPlainObject(node)) delete node[path.at(-1) as string];
+}
+
+/**
+ * config.json の budgets を、欄ごとに読む。読めない欄（範囲の外・形の違い・知らない欄）は外して、理由とともに返す。
+ * 外した欄は書いていないのと同じなので、既定に戻る。
+ */
+// 1 か所の書き損じで投入を止めない: 許可（readPermissionOverrides）と同じ作り。読めない欄はログと設定の口で知らせる
+export function readBudgetOverrides(raw: unknown): {
+  overrides: BudgetOverrides;
+  invalid: InvalidBudget[];
+} {
+  if (raw === undefined) return { overrides: {}, invalid: [] };
+  if (!isPlainObject(raw)) {
+    return { overrides: {}, invalid: [{ path: '*', reason: '予算が、欄の集まりになっていない' }] };
+  }
+  const draft = structuredClone(raw);
+  const invalid: InvalidBudget[] = [];
+  // 外すたびに読み直す: 外すと、同じ欄の中の別の誤りが見えるようになることがあるため。欄の数で回数は締まる
+  for (;;) {
+    const parsed = budgetOverridesSchema.safeParse(draft);
+    if (parsed.success) return { overrides: parsed.data, invalid };
+    const before = invalid.length;
+    for (const issue of parsed.error.issues) {
+      if (issue.code === 'unrecognized_keys') {
+        for (const key of issue.keys) {
+          invalid.push({ path: [...issue.path, key].join('.'), reason: '知らない欄' });
+          removeAt(draft, [...issue.path, key]);
+        }
+        continue;
+      }
+      if (issue.path.length === 0) break;
+      invalid.push({ path: issue.path.join('.'), reason: issue.message });
+      removeAt(draft, issue.path);
+    }
+    // 外せる欄が無いのに読めない: 全体を外す
+    if (invalid.length === before) {
+      return { overrides: {}, invalid: [...invalid, { path: '*', reason: '予算が読めない' }] };
+    }
+  }
+}
