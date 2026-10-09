@@ -1,4 +1,5 @@
 export { sweepTempFiles, writeFileAtomic, writeJsonAtomic } from './atomic.js';
+export { readCandidateNotes } from './candidate-notes.js';
 export {
   formatJobId,
   FsJobStore,

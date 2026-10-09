@@ -4,6 +4,7 @@ import {
   JobRunner,
   mergePermissions,
   type Budget,
+  type CandidateNotes,
   type ImageBackend,
   type InterventionRecord,
   type JobStore,
@@ -34,6 +35,8 @@ export type AutoJobQueueOptions = {
   budget: Budget;
   /** config.json の permissions。全体の既定の許可の土台に重ねる */
   permissions?: Partial<Permissions>;
+  /** candidate-notes.json を読む。ジョブの始めに1回呼ばれる */
+  candidateNotes?: () => Promise<CandidateNotes>;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
   log: (line: string) => void;
 };
@@ -57,6 +60,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
       backend: options.backend,
       budget: options.budget,
       permissions: mergePermissions(BASE_PERMISSIONS, options.permissions ?? {}),
+      ...(options.candidateNotes !== undefined && { candidateNotes: options.candidateNotes }),
     });
   }
 

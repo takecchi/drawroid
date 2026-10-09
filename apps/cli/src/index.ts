@@ -9,6 +9,7 @@ import {
   dataPaths,
   FsJobStore,
   initDataDir,
+  readCandidateNotes,
   readLlmSettings,
   resolveDataDir,
   writeLlmSettings,
@@ -58,6 +59,7 @@ async function main() {
     env: process.env,
     budget: DEFAULT_BUDGET,
     ...(config.permissions !== undefined && { permissions: config.permissions }),
+    candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
     log,
   });
   const stored = await readLlmSettings(configPath);

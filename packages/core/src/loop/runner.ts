@@ -73,6 +73,7 @@ import {
   parseInputImageRef,
 } from './image-sources.js';
 import {
+  type CandidateNotes,
   candidateKindsToList,
   DEFAULT_CANDIDATE_LIMITS,
   shownCandidatesFor,
@@ -87,8 +88,8 @@ export type JobRunnerDeps = {
   permissions: Permissions;
   /** 候補の種類ごとに、考える役へ見せる候補の件数と文字数。省けば既定値 */
   candidateLimits?: PackLimits;
-  /** 人間が候補に付けた短い説明（候補の名前から引く）。省けば説明なし */
-  candidateNotes?: ReadonlyMap<string, string>;
+  /** 人間が候補に付けた短い説明を読む。ジョブの始めに1回呼ぶ。省けば説明なし */
+  candidateNotes?: () => Promise<CandidateNotes>;
   /** 1回の「考える」に載せる人間の指示の上限。省けば既定値 */
   interventionLimits?: InterventionLimits;
   /** 持ち回す参照画像の要点の上限。省けば既定値 */
@@ -102,6 +103,7 @@ type Running = { jobId: string; controller: AbortController };
 type BackendView = {
   capabilities: BackendCapabilities;
   lists: Partial<Record<CandidateKind, readonly Candidate[]>>;
+  notes: CandidateNotes;
 };
 type ParamsPlan = {
   permissions: Permissions;
@@ -311,7 +313,7 @@ export class JobRunner {
       for (const kind of candidateKindsToList(permissions)) {
         lists[kind] = await backend.listCandidates(kind, signal);
       }
-      return { capabilities, lists };
+      return { capabilities, lists, notes: await this.readCandidateNotes() };
     } catch (error) {
       if (signal.aborted) throw error;
       throw new StopJob({
@@ -319,6 +321,19 @@ export class JobRunner {
         detail: `バックエンドの能力と候補を取る段: ${messageOf(error)}`,
         ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
       });
+    }
+  }
+
+  /**
+   * 人間が候補に付けた説明。ジョブごとに読み直す。
+   */
+  // 読めなくてもジョブを止めない: 説明は考える役への補足で、無くても生成はできるため。理由は呼び出しの記録に残る
+  private async readCandidateNotes(): Promise<CandidateNotes> {
+    if (this.deps.candidateNotes === undefined) return { notes: new Map() };
+    try {
+      return await this.deps.candidateNotes();
+    } catch (error) {
+      return { notes: new Map(), problem: `候補の説明を読めない: ${messageOf(error)}` };
     }
   }
 
@@ -344,7 +359,7 @@ export class JobRunner {
     const candidates = shownCandidatesFor({
       permissions,
       lists: view.lists,
-      notes: this.deps.candidateNotes ?? new Map(),
+      notes: view.notes,
       requestGist: carry.intent,
       limits: this.deps.candidateLimits ?? DEFAULT_CANDIDATE_LIMITS,
     });
