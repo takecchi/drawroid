@@ -82,6 +82,16 @@ describe('buildParamsSchema', () => {
     ).toBe(false);
   });
 
+  it('asks for one weight per LoRA, without a separate UNet weight, to keep the output short', () => {
+    const permissions = { ...allOff(), loras: { mode: 'auto' } } satisfies Permissions;
+    const { schema } = buildParamsSchema(permissions, context);
+
+    const json = z.toJSONSchema(schema) as {
+      properties: { loras: { items: { properties: object } } };
+    };
+    expect(Object.keys(json.properties.loras.items.properties).sort()).toEqual(['name', 'weight']);
+  });
+
   it('reports a candidate parameter it could not offer because no candidate was shown', () => {
     const permissions = { ...allOff(), checkpoint: { mode: 'auto' } } satisfies Permissions;
 

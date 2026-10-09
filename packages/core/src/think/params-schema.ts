@@ -38,7 +38,10 @@ const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSche
   scheduler: (context) => shownEnum(context, 'scheduler'),
   loras: (context) => {
     const name = shownEnum(context, 'lora');
-    return typeof name === 'string' ? name : z.array(loraSchema.extend({ name }));
+    // UNet の重みを分けさせない: 出力が LoRA の数だけ伸びるため。分けたいときは人間が「固定」で指定する
+    return typeof name === 'string'
+      ? name
+      : z.array(loraSchema.omit({ unetWeight: true }).extend({ name }));
   },
   // 数値に上限を付けるのは、考える役への入力に載る長さを予算の内に保つため（loop/inputs の見積もりはこの上限を前提にしている）
   steps: () => request.steps.max(150),
