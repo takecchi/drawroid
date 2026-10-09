@@ -62,7 +62,11 @@ export interface JobStore {
   ): Promise<InterventionRecord>;
   /** 受けた順 */
   listInterventions(jobId: string): Promise<InterventionRecord[]>;
-  /** 人間の指示を「考える」に取り込んだ回を書き戻す。原文には触れない */
+  /**
+   * 口出しを取り込んだ印を書き戻す。原文には触れない。
+   * - 人間の指示: 「考える」に取り込んだ回（appliedInIteration）
+   * - 人間の選択（adopt）: 取り込んだ境目の、直前の回（takenAfterIteration）
+   */
   markInterventionApplied(jobId: string, interventionId: string, iteration: number): Promise<void>;
 
   /** 画像とそのメタデータを置いてから request を置く。request があることが、その回の生成と保存が済んだことを表す */

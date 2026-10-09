@@ -347,10 +347,18 @@ export class FsJobStore implements JobStore {
     }
     const path = this.jobFiles(jobId).intervention(interventionId);
     const record = await readValid(path, interventionRecordSchema);
-    if (record.kind !== 'instruction') {
-      throw new StoredFileError(path, new Error('人間の指示ではないので、取り込んだ回を持たない'));
+    if (record.kind === 'instruction') {
+      await writeJsonAtomic(path, { ...record, appliedInIteration: iteration });
+      return;
     }
-    await writeJsonAtomic(path, { ...record, appliedInIteration: iteration });
+    if (record.kind === 'adopt') {
+      await writeJsonAtomic(path, { ...record, takenAfterIteration: iteration });
+      return;
+    }
+    throw new StoredFileError(
+      path,
+      new Error('人間の指示・選択ではないので、取り込んだ印を持たない'),
+    );
   }
 
   async addMask(jobId: string, mask: NewMask, now: Date): Promise<MaskIntervention> {

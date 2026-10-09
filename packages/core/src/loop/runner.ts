@@ -1088,9 +1088,11 @@ export class JobRunner {
 
   /**
    * 回の境目で、人間の選択を取り込む。見る役が済んだ回の画像への選択は、最良候補を差し替える。
-   * 選択のあと、取り込んでいない人間の指示が無ければ、ジョブを止める。
+   * 取り込んだ選択には印を付け、二度は取り込まない。選択のあと、取り込んでいない人間の指示が無ければ、ジョブを止める。
    */
-  // 最後の選択だけを見る: 古い選択を見ると、新しく選んだ画像を古い選択で上書きし直すため
+  // 最後の選択だけを見る: 古い選択を見ると、新しく選んだ画像を古い選択で上書きし直すため。
+  // 取り込んだかを最良候補との一致や adopted.json の有無で推し量らない: 見る役が一番と見た画像を選んだときや、
+  // 人が選んで済んだ回の別の画像を選び直したときに、取り込み済みと取り違えて、止まらずに描き続けるため
   private async takeInAdoption(
     spec: AutoJobSpec,
     state: RunningState,
@@ -1100,32 +1102,30 @@ export class JobRunner {
     if (done === 0) return { state };
     const interventions = await store.listInterventions(spec.jobId);
     const chosen = latestAdoption(interventions);
-    let taken = (await store.readAdopted(spec.jobId, done)) !== undefined;
-    if (chosen !== undefined && !taken) {
-      const { iteration, index } = chosen.image;
-      const best = state.carry.best;
-      const alreadyBest = best?.iteration === iteration && best.imageIndex === index;
-      if (
-        !alreadyBest &&
-        iteration <= done &&
-        (await store.readAdopted(spec.jobId, iteration)) === undefined
-      ) {
-        const think = (await store.readStage(spec.jobId, iteration, 'think')) as
-          ThinkOutput | undefined;
-        const judge = (await store.readStage(spec.jobId, iteration, 'judge')) as
-          JudgeOutput | undefined;
-        const carry = adoptAsBest(state.carry, {
-          iteration,
-          imageIndex: index,
-          params: think?.params ?? {},
-          issues: judge?.images[index]?.issues ?? [],
-        });
-        state = { ...state, carry };
-        await store.writeState(spec.jobId, state);
-        taken = true;
-      }
+    if (chosen === undefined || chosen.takenAfterIteration !== undefined) return { state };
+    const { iteration, index } = chosen.image;
+    if (iteration > done) return { state };
+    const recorded =
+      (await store.readAdopted(spec.jobId, iteration))?.interventionId === chosen.interventionId;
+    // 前の回で見る役の代わりに記録した選択は、その回のあとの境目で取り込み済み（印を持たない前の版の跡も含む）
+    if (recorded && iteration < done) return { state };
+    // 見る役の代わりに記録した選択は、その回の評価として最良候補にもう入っている
+    if (!recorded) {
+      const think = (await store.readStage(spec.jobId, iteration, 'think')) as
+        ThinkOutput | undefined;
+      const judge = (await store.readStage(spec.jobId, iteration, 'judge')) as
+        JudgeOutput | undefined;
+      const carry = adoptAsBest(state.carry, {
+        iteration,
+        imageIndex: index,
+        params: think?.params ?? {},
+        issues: judge?.images[index]?.issues ?? [],
+      });
+      state = { ...state, carry };
+      await store.writeState(spec.jobId, state);
     }
-    if (!taken) return { state };
+    // 最良候補を書いてから印を付ける: 先に付けて落ちると、選んだ画像が最良にならないまま取り込み済みになるため
+    await store.markInterventionApplied(spec.jobId, chosen.interventionId, done);
     return hasPendingInstruction(interventions, done + 1)
       ? { state }
       : { state, stop: ADOPTED_STOP };
