@@ -322,6 +322,58 @@ describe('TalkRunner', () => {
     expect(llm.steps).toHaveLength(1);
   });
 
+  it('confirms the thinking and the text that were streaming when a message interrupted the turn', async () => {
+    let streaming: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => (streaming = resolve));
+    let calls = 0;
+    const { runner, hubs, conversationId, events } = await setup(() => ({ text: 'はい' }), {
+      // 1回目の呼び出しは、思考と本文を少し流したところで、abort されるまで返らない
+      wrap: (scripted) => ({
+        describe: (role) => scripted.describe(role),
+        generateStructured: (call) => scripted.generateStructured(call),
+        async *streamStep(call: TalkStepCall): AsyncIterable<TalkStepPart> {
+          calls += 1;
+          if (calls > 1) {
+            yield* scripted.streamStep(call);
+            return;
+          }
+          yield { type: 'reasoning-delta', text: '海辺を' };
+          yield { type: 'text-delta', text: '描き' };
+          streaming?.();
+          await new Promise<never>((_, reject) =>
+            call.signal.addEventListener(
+              'abort',
+              () => reject(Object.assign(new Error('呼び手が止めた'), { name: 'AbortError' })),
+              { once: true },
+            ),
+          );
+        },
+      }),
+    });
+    const hub = hubs.get(conversationId);
+    await hub.confirm({ type: 'user.message', text: '描いて', attachments: [] });
+    runner.kick(conversationId);
+    await started;
+    await hub.confirm({ type: 'user.message', text: 'やっぱり猫', attachments: [] });
+    runner.kick(conversationId);
+    await runner.idle(conversationId);
+
+    const all = await events();
+    // 中断の時点で流れていた思考と本文は、どちらもファイルに確定する（本文は途中で止まった印つき）
+    expect(all.find((e) => e.type === 'assistant.reasoning' && e.turn === 1)).toMatchObject({
+      text: '海辺を',
+    });
+    expect(all.find((e) => e.type === 'assistant.message' && e.turn === 1)).toMatchObject({
+      text: '描き',
+      interrupted: true,
+    });
+    // あとから開いた画面には、確定した思考と本文だけが届き、途中の写しは残らない
+    const late: HubMessage[] = [];
+    await hub.subscribe(0, (message) => late.push(message));
+    expect(late.some((m) => m.kind === 'live' && m.event.type === 'delta.reasoning')).toBe(false);
+    expect(late.some((m) => m.kind === 'live' && m.event.type === 'delta.text')).toBe(false);
+  });
+
   it('numbers the turns 1, 2, 3 across messages', async () => {
     const { say, events } = await setup(() => ({ text: 'はい' }));
     await say('1つ目');
