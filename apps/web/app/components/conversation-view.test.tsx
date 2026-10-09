@@ -938,7 +938,7 @@ describe('ConversationView', () => {
       expect(screen.queryByRole('button', { name: '画像を添える' })).toBeNull();
     });
 
-    it('says how many images a message carried', async () => {
+    it('shows the images a message carried, each opening large and named after the message', async () => {
       const { source } = fakeSource([
         {
           events: [
@@ -952,9 +952,23 @@ describe('ConversationView', () => {
           more: false,
         },
       ]);
-      renderView(source);
+      const { user } = renderView(source);
 
-      expect(await screen.findByText('画像を 2 枚添えた')).toBeTruthy();
+      const attached = await screen.findByRole('list', { name: '添えた画像（2 枚）' });
+      expect(
+        within(attached)
+          .getAllByRole('img')
+          .map((image) => image.getAttribute('src')),
+      ).toEqual(['/api/conversations/c1/uploads/u-1', '/api/conversations/c1/uploads/u-2']);
+
+      await user.click(
+        screen.getByRole('button', {
+          name: '大きく見る: 添えた画像 2 枚目（「この2枚で描いて」）',
+        }),
+      );
+      const dialog = within(screen.getByRole('dialog', { name: /添えた画像 2 枚目/ }));
+      // 添えた画像は見る役の評価も選ぶボタンも持たない
+      expect(dialog.queryByRole('button', { name: /この画像で決める/ })).toBeNull();
     });
   });
 
