@@ -107,3 +107,41 @@ export function stopConditionsBlocker(values: StopConditionsFormValues): string 
   }
   return undefined;
 }
+
+export interface ChangedCondition {
+  label: string;
+  submitted: string;
+  current: string;
+}
+
+const NONE = 'なし';
+
+/** 投入時と今で値が違う欄だけを返す。走行中の口出しで変わった所を、人間が見分けられるように */
+export function changedConditions(
+  submitted: StopConditions,
+  current: StopConditions,
+): ChangedCondition[] {
+  const fields: [string, string, string][] = [
+    ['AI の判断', submitted.aiJudgement ? 'あり' : NONE, current.aiJudgement ? 'あり' : NONE],
+    [
+      '回数の上限',
+      submitted.maxIterations === undefined ? NONE : `${submitted.maxIterations} 回`,
+      current.maxIterations === undefined ? NONE : `${current.maxIterations} 回`,
+    ],
+    [
+      '枚数の上限',
+      submitted.maxImages === undefined ? NONE : `${submitted.maxImages} 枚`,
+      current.maxImages === undefined ? NONE : `${current.maxImages} 枚`,
+    ],
+    [
+      '時間の上限',
+      submitted.maxDurationMs === undefined
+        ? NONE
+        : `${submitted.maxDurationMs / MS_PER_MINUTE} 分`,
+      current.maxDurationMs === undefined ? NONE : `${current.maxDurationMs / MS_PER_MINUTE} 分`,
+    ],
+  ];
+  return fields
+    .filter(([, before, now]) => before !== now)
+    .map(([label, before, now]) => ({ label, submitted: before, current: now }));
+}

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildStopConditions,
+  changedConditions,
   buildStopConditionsChange,
   neverStops,
   stopConditionsBlocker,
@@ -113,5 +114,29 @@ describe('stopConditionsBlocker', () => {
 
   it('gives nothing when the conditions stop', () => {
     expect(stopConditionsBlocker({ ...empty, maxIterations: '3' })).toBeUndefined();
+  });
+});
+
+describe('changedConditions', () => {
+  it('returns nothing when the conditions are the same', () => {
+    expect(
+      changedConditions(
+        { aiJudgement: true, maxIterations: 10 },
+        { aiJudgement: true, maxIterations: 10 },
+      ),
+    ).toEqual([]);
+  });
+
+  it('returns only the fields whose value differs, with absent limits as none', () => {
+    expect(
+      changedConditions(
+        { aiJudgement: true, maxIterations: 10 },
+        { aiJudgement: true, maxImages: 6, maxDurationMs: 90_000 },
+      ),
+    ).toEqual([
+      { label: '回数の上限', submitted: '10 回', current: 'なし' },
+      { label: '枚数の上限', submitted: 'なし', current: '6 枚' },
+      { label: '時間の上限', submitted: 'なし', current: '1.5 分' },
+    ]);
   });
 });

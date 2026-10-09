@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import type { StopConditions } from '@drawroid/core';
 import {
   addInstruction,
   addReference,
   changeStopConditions,
   stopJob,
+  useStopConditions,
   type JobDetail,
   type ChangeStopConditionsResponse,
 } from '@drawroid/swr';
@@ -20,14 +22,26 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   addReference: vi.fn(),
   changeStopConditions: vi.fn(),
   parseStopConditionsText: vi.fn(),
+  useStopConditions: vi.fn(),
 }));
 
 const stop = vi.mocked(stopJob);
 const instruct = vi.mocked(addInstruction);
 const reference = vi.mocked(addReference);
+const stopConditionsHook = vi.mocked(useStopConditions);
+
+// 取り直し（mutate）の結果は、フックが次に返す値で表す: 本物の SWR を通さずに「取り直した current が入る」ことを見るため
+let served: { submitted: StopConditions; current: StopConditions };
+function serve(next: typeof served) {
+  served = next;
+}
 const change = vi.mocked(changeStopConditions);
 
 beforeEach(() => {
+  serve({ submitted: autoSpec.stopConditions, current: autoSpec.stopConditions });
+  stopConditionsHook.mockImplementation(
+    () => ({ data: served }) as unknown as ReturnType<typeof useStopConditions>,
+  );
   URL.createObjectURL = vi.fn(() => 'blob:preview');
   URL.revokeObjectURL = vi.fn();
 });
@@ -236,17 +250,45 @@ describe('JobOperations', () => {
   });
 
   describe('changing the stop conditions', () => {
-    it('starts from the conditions the job was submitted with', () => {
+    it('starts from the current conditions, not the ones the job was submitted with', () => {
+      serve({
+        submitted: { aiJudgement: true, maxIterations: 10 },
+        current: { aiJudgement: false, maxImages: 6 },
+      });
       render(<JobOperations job={runningAuto()} />);
 
-      expect(screen.getByLabelText(/回数の上限/)).toHaveProperty('value', '10');
-      expect(screen.getByLabelText(/AI が意図どおり/)).toHaveProperty('checked', true);
+      expect(screen.getByLabelText(/AI が意図どおり/)).toHaveProperty('checked', false);
+      expect(screen.getByLabelText(/回数の上限/)).toHaveProperty('value', '');
+      expect(screen.getByLabelText(/枚数の上限/)).toHaveProperty('value', '6');
     });
 
-    it('sends every field, removing limits that were cleared, and shows the effective conditions', async () => {
-      change.mockResolvedValue({
-        stopConditions: { aiJudgement: false, maxImages: 6, maxDurationMs: 300_000 },
-      } as ChangeStopConditionsResponse);
+    it('shows no change notice while the current conditions equal the submitted ones', () => {
+      render(<JobOperations job={runningAuto()} />);
+
+      expect(screen.queryByText('投入時から変わった')).toBeNull();
+    });
+
+    it('shows both the submitted and the current value of each field that changed', () => {
+      serve({
+        submitted: { aiJudgement: true, maxIterations: 10 },
+        current: { aiJudgement: true, maxIterations: 4, maxDurationMs: 300_000 },
+      });
+      render(<JobOperations job={runningAuto()} />);
+
+      expect(screen.getByText('投入時から変わった')).toBeTruthy();
+      expect(screen.getByText('回数の上限: 投入時 10 回 → いま 4 回')).toBeTruthy();
+      expect(screen.getByText('時間の上限: 投入時 なし → いま 5 分')).toBeTruthy();
+      expect(screen.queryByText(/AI の判断:/)).toBeNull();
+    });
+
+    it('sends every field, removing limits that were cleared, and fills in the refetched current conditions', async () => {
+      change.mockImplementation(async () => {
+        serve({
+          submitted: autoSpec.stopConditions,
+          current: { aiJudgement: false, maxImages: 6, maxDurationMs: 300_000 },
+        });
+        return {} as ChangeStopConditionsResponse;
+      });
       render(<JobOperations job={runningAuto()} />);
       const user = userEvent.setup();
 
@@ -265,6 +307,7 @@ describe('JobOperations', () => {
       expect(await screen.findByText('6 枚まで')).toBeTruthy();
       expect(screen.getByText('5 分まで')).toBeTruthy();
       expect(screen.queryByText('10 回まで')).toBeNull();
+      expect(screen.getByLabelText(/枚数の上限/)).toHaveProperty('value', '6');
     });
 
     it('does not call the API while the conditions would never stop the job', async () => {

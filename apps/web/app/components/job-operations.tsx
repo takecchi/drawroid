@@ -5,6 +5,7 @@ import {
   changeStopConditions,
   isApiError,
   stopJob,
+  useStopConditions,
   type JobDetail,
 } from '@drawroid/swr';
 import { useState } from 'react';
@@ -12,13 +13,12 @@ import { useState } from 'react';
 import { buildReferenceUpload, type AttachedReference } from '../lib/reference-upload';
 import {
   buildStopConditionsChange,
+  changedConditions,
   stopConditionsToForm,
   type StopConditionsFormValues,
 } from '../lib/stop-conditions-form';
 import { ReferenceAttacher } from './reference-attacher';
 import { StopConditionsEditor } from './stop-conditions-editor';
-
-type AutoSpec = Extract<JobDetail['spec'], { kind: 'auto' }>;
 
 function StopButton({ jobId }: { jobId: string }) {
   const [pending, setPending] = useState(false);
@@ -151,14 +151,30 @@ function describeConditions(conditions: StopConditions): string[] {
   ];
 }
 
-function StopConditionsChanger({ spec }: { spec: AutoSpec }) {
-  // job.json の値は口出しを重ねる前の元の値なので、変えたあとは返ってきた実際の値を持つ
-  const [effective, setEffective] = useState<StopConditions | undefined>();
-  const [values, setValues] = useState<StopConditionsFormValues>(() =>
-    stopConditionsToForm(spec.stopConditions),
-  );
+function StopConditionsChanger({ jobId }: { jobId: string }) {
+  // 走行中の画面にだけ出すので live 固定: 別の口出し（別タブ・API）で変わった条件も、取り直して見せるため
+  const { data, error: loadError } = useStopConditions(jobId, { live: true });
+  // 手で直した分だけを持つ: 取り直した current で毎回上書きすると、入力の途中を消してしまうため
+  const [draft, setDraft] = useState<StopConditionsFormValues | undefined>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
+
+  if (data === undefined) {
+    return (
+      <section>
+        <h3>止める条件を変える</h3>
+        {loadError === undefined ? (
+          <p>今の止める条件を読み込んでいる</p>
+        ) : (
+          <p role="alert">今の止める条件を読めない: {loadError.message}</p>
+        )}
+      </section>
+    );
+  }
+
+  const { submitted, current } = data;
+  const values = draft ?? stopConditionsToForm(current);
+  const changed = changedConditions(submitted, current);
 
   async function change() {
     const change = buildStopConditionsChange(values);
@@ -169,9 +185,9 @@ function StopConditionsChanger({ spec }: { spec: AutoSpec }) {
     setPending(true);
     setError(undefined);
     try {
-      const { stopConditions } = await changeStopConditions(spec.jobId, change.value);
-      setEffective(stopConditions);
-      setValues(stopConditionsToForm(stopConditions));
+      // 成功したら下書きを捨てる: changeStopConditions が current を取り直すので、欄は重ねたあとの実際の値になる
+      await changeStopConditions(jobId, change.value);
+      setDraft(undefined);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
@@ -183,22 +199,32 @@ function StopConditionsChanger({ spec }: { spec: AutoSpec }) {
   return (
     <section>
       <h3>止める条件を変える</h3>
-      <StopConditionsEditor
-        values={values}
-        onChange={setValues}
-        confirm={{ label: '条件を変える', pending, onConfirm: () => void change() }}
-      />
-      {error !== undefined && <p role="alert">変えられない: {error}</p>}
-      {effective !== undefined && (
+      <div>
+        <p>いまの条件（次の回の境目から効く）</p>
+        <ul>
+          {describeConditions(current).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </div>
+      {changed.length > 0 && (
         <div>
-          <p>次の回の境目から、この条件になる（重ねたあとの実際の条件）</p>
+          <p>投入時から変わった</p>
           <ul>
-            {describeConditions(effective).map((line) => (
-              <li key={line}>{line}</li>
+            {changed.map((field) => (
+              <li key={field.label}>
+                {field.label}: 投入時 {field.submitted} → いま {field.current}
+              </li>
             ))}
           </ul>
         </div>
       )}
+      <StopConditionsEditor
+        values={values}
+        onChange={setDraft}
+        confirm={{ label: '条件を変える', pending, onConfirm: () => void change() }}
+      />
+      {error !== undefined && <p role="alert">変えられない: {error}</p>}
     </section>
   );
 }
@@ -213,7 +239,7 @@ export function JobOperations({ job }: { job: JobDetail }) {
       <StopButton jobId={spec.jobId} />
       <InstructionForm jobId={spec.jobId} />
       <ReferenceForm jobId={spec.jobId} />
-      <StopConditionsChanger spec={spec} />
+      <StopConditionsChanger jobId={spec.jobId} />
     </section>
   );
 }
