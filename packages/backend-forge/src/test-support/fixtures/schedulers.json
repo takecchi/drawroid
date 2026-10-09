@@ -1,0 +1,16 @@
+[
+  {
+    "name": "automatic",
+    "label": "Automatic",
+    "aliases": null,
+    "default_rho": -1,
+    "need_inner_model": false
+  },
+  {
+    "name": "karras",
+    "label": "Karras",
+    "aliases": ["Karras"],
+    "default_rho": 7.0,
+    "need_inner_model": false
+  }
+]
