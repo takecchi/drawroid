@@ -23,6 +23,8 @@ import { startFakeForge } from './packed-conversation/forge.mjs';
 import { freePort, packAndInstall, repoRoot, startDrawroid } from './packed-install-core.mjs';
 
 const STEP_TIMEOUT_MS = 30_000;
+// 途中で線を越える会話で、画像の応答を遅らせる長さ。開いてから上へ戻すまで（末尾に着いて 1.5 秒）より長くする
+const IMAGE_DELAY_MS = 3_000;
 const FIXTURES = join(repoRoot, 'packages/backend-forge/src/test-support/fixtures');
 
 // 線の値は ui の正本から読む（ここへ写すと、線を動かしたときに確かめだけが古い線のまま残るため）
@@ -82,6 +84,8 @@ async function seedConversation(storage, root, job, rows, oldest) {
         jobId: job.jobId,
         iteration,
         images: [0, 1, 2, 3].map((index) => ({ index, seed: index })),
+        // 本物の記録と同じく、頼んだ大きさを書く（画面は読み込む前から、この縦横の比で画像の背を取る）
+        size: { width: 512, height: 512 },
       });
       written += 1;
     }
@@ -247,6 +251,12 @@ try {
   );
 
   // --- 途中で線を越える会話 ---
+  // 画像の読み込みを遅らせる: 上へ戻したあとに上の画像が読み込まれても、読んでいる行がずれないことも縛るため
+  // （画像が背を取っていないと、読み込まれた画像の背のぶん行が押し下げられる。CI の遅い機械ではこれで揺れていた）
+  await page.route('**/*', async (route) => {
+    if (route.request().resourceType() === 'image') await sleep(IMAGE_DELAY_MS);
+    await route.continue();
+  });
   await page.goto(`${base}/conversations/${ids.crossing}`);
   await log.getByText(OLDEST.crossing).waitFor({ state: 'attached' });
   await page.waitForFunction(AT_END);
