@@ -3,6 +3,7 @@ import {
   isApiError,
   jobImageUrls,
   setSelection,
+  useJob,
   useSelections,
   type ReferenceUpload,
 } from '@drawroid/swr';
@@ -285,6 +286,114 @@ function ImagesItem({
   );
 }
 
+/**
+ * 止まりの行。AI の判断・上限・エラーで止まったときは、最良の画像と「この画像に決める（お気に入りにする）」を添え、人が最後に選べるようにする。
+ * 人が止めた・人が選んだ止まりには添えない（人がもう会話の中で動いているため）。
+ */
+// 止まったジョブには採る口（adopt）が使えない（止まったら受けない約束。API は 409）ので、決めるのはお気に入りの口で行う。
+// 最良はジョブの状態（carry.best）から読む: 話す役の要約と同じ出どころにするため
+function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped' }> }) {
+  const offersChoice = item.reason.kind !== 'human' && item.reason.kind !== 'adopted';
+  const { data: job } = useJob(offersChoice ? item.jobId : undefined);
+  const best = offersChoice ? job?.state.carry?.best : undefined;
+  return (
+    <div className="space-y-2">
+      <StopNotice
+        tone={
+          item.reason.kind === 'error' ? 'error' : item.reason.kind === 'human' ? 'stopped' : 'done'
+        }
+        action={
+          <>
+            {/* バックエンドに繋がらずに止まったジョブには、設定の欄への道を添える */}
+            {item.reason.kind === 'error' &&
+              item.reason.backendErrorKind !== undefined &&
+              BACKEND_SETUP_ERRORS.has(item.reason.backendErrorKind) && (
+                <SettingsLink to="backend" />
+              )}
+            <JobLink jobId={item.jobId} />
+          </>
+        }
+      >
+        描くのを止めた: {summarizeStopReason(item.reason)}
+      </StopNotice>
+      {best !== undefined && (
+        <BestChoice
+          jobId={item.jobId}
+          iteration={best.iteration}
+          index={best.imageIndex}
+          score={best.score}
+        />
+      )}
+    </div>
+  );
+}
+
+function BestChoice({
+  jobId,
+  iteration,
+  index,
+  score,
+}: {
+  jobId: string;
+  iteration: number;
+  index: number;
+  score: number;
+}) {
+  const { data } = useSelections(jobId);
+  const imageKey = formatImageKey({ iteration, index });
+  const verdict =
+    data?.selections.find((selection) => selection.imageKey === imageKey)?.verdict ?? null;
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  // 1 から数える: 画像の行（「N 回目の画像 M 番」）と同じ呼び方にするため
+  const imageLabel = `${iteration} 回目の画像 ${index + 1} 番`;
+  const urls = jobImageUrls(jobId, iteration, index);
+  async function choose() {
+    setPending(true);
+    setError(undefined);
+    try {
+      await setSelection(jobId, imageKey, 'favorite');
+    } catch (caught) {
+      if (!isApiError(caught)) throw caught;
+      setError(caught.message);
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <section
+      aria-label={`最良の画像: ${imageLabel}`}
+      className="flex max-w-[85%] flex-wrap items-start gap-3 rounded-md border border-border px-3 py-2 text-sm"
+    >
+      <img
+        src={urls.previewUrl}
+        alt={`最良: ${imageLabel}`}
+        className="size-24 shrink-0 rounded-md object-cover"
+      />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="break-words">
+          最良: {imageLabel}（見る役の点 {formatScore(score)}）
+        </p>
+        {verdict === 'favorite' ? (
+          <p className="text-xs text-ok">お気に入り</p>
+        ) : (
+          <Button
+            className="h-7 px-2 text-xs"
+            variant="primary"
+            disabled={pending}
+            aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}
+            onClick={() => void choose()}
+          >
+            この画像に決める（お気に入りにする）
+          </Button>
+        )}
+        {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
+        <p className="text-xs text-muted-foreground">続けるなら、話しかけて指示を出す。</p>
+      </div>
+    </section>
+  );
+}
+
 function AdoptedItem({ item }: { item: Extract<ChatItem, { kind: 'adopted' }> }) {
   // 選ぶとき、話す役はその画像をお気に入りにもする（adopt_image）。画像の行は選択を読んだ時点のままなので、読み直させる
   // （読み直さないと、再読み込みするまで「お気に入り」のボタンが選ぶ前のまま残る）
@@ -492,31 +601,7 @@ function renderItem(
     case 'adopted':
       return <AdoptedItem key={item.key} item={item} />;
     case 'job-stopped':
-      return (
-        <StopNotice
-          key={item.key}
-          tone={
-            item.reason.kind === 'error'
-              ? 'error'
-              : item.reason.kind === 'human'
-                ? 'stopped'
-                : 'done'
-          }
-          action={
-            <>
-              {/* バックエンドに繋がらずに止まったジョブには、設定の欄への道を添える */}
-              {item.reason.kind === 'error' &&
-                item.reason.backendErrorKind !== undefined &&
-                BACKEND_SETUP_ERRORS.has(item.reason.backendErrorKind) && (
-                  <SettingsLink to="backend" />
-                )}
-              <JobLink jobId={item.jobId} />
-            </>
-          }
-        >
-          描くのを止めた: {summarizeStopReason(item.reason)}
-        </StopNotice>
-      );
+      return <JobStoppedItem key={item.key} item={item} />;
     case 'progress':
       return (
         <GenerationProgress

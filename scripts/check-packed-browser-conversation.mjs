@@ -480,6 +480,49 @@ try {
     return box !== null && box.y >= 0 && box.y + box.height <= 844;
   };
   expect(await composerInView(), '狭い画面で、長い会話を開いても入力欄が画面の中にある');
+  // 7a. AI の判断で止まったジョブの止まりのカードに、最良の画像と「この画像に決める（お気に入りにする）」が出る。
+  // 止まったジョブは採る口（adopt）を受けないので、決めるのはお気に入りの口で行う
+  /** 会話のジョブのお気に入りの数 */
+  const favorites = async () => {
+    let count = 0;
+    for (const { jobId } of /** @type {{ jobId: string }[]} */ (
+      (await api(base, 'GET', '/api/jobs')).jobs
+    )) {
+      const { selections } = await api(base, 'GET', `/api/jobs/${jobId}/selections`);
+      count += /** @type {{ verdict: string | null }[]} */ (selections).filter(
+        (selection) => selection.verdict === 'favorite',
+      ).length;
+    }
+    return count;
+  };
+  const bestCard = narrow.getByRole('region', { name: /^最良の画像: / }).first();
+  await bestCard.scrollIntoViewIfNeeded();
+  const chooseBest = bestCard.getByRole('button', {
+    name: /^この画像に決める（お気に入りにする）: \d+ 回目の画像 \d+ 番$/,
+  });
+  await chooseBest.waitFor();
+  const cardBox = await bestCard.boundingBox();
+  const buttonBox = await chooseBest.boundingBox();
+  expect(
+    cardBox !== null &&
+      buttonBox !== null &&
+      cardBox.x >= 0 &&
+      cardBox.x + cardBox.width <= 390 &&
+      buttonBox.x + buttonBox.width <= 390 &&
+      (await bestCard.getByRole('img', { name: /^最良: / }).isVisible()) &&
+      (await bestCard
+        .getByText(/^最良: \d+ 回目の画像 \d+ 番（見る役の点 [\d.]+）$/)
+        .isVisible()) &&
+      (await bestCard.getByText('続けるなら、話しかけて指示を出す。').isVisible()),
+    '狭い画面で、止まりのカードに最良の画像・何回目の何番・点・決めるボタン（名前つき）・続けるときの一言が、画面の幅の中に出る',
+  );
+  const favoritesBefore = await favorites();
+  await chooseBest.click();
+  await bestCard.getByText('お気に入り', { exact: true }).waitFor();
+  expect(
+    (await chooseBest.count()) === 0 && (await favorites()) === favoritesBefore + 1,
+    '「この画像に決める（お気に入りにする）」で、止まったジョブの最良の画像がお気に入りになり、ボタンの代わりに「お気に入り」と出る',
+  );
   const narrowReplies = await narrowLog.getByText(REPLY).count();
   const narrowHeld = relay.stats.thinkingHeld;
   relay.holdAfterThinking();
