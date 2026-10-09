@@ -4,11 +4,18 @@ import { cn } from '@/lib/utils';
 
 import { STATUS_TEXT, type ChatStatus } from './cards';
 
+/**
+ * 行の数がこれを超えた会話だけ、画面の外の行の配置と描画を飛ばす（LogRow）。
+ * 短い会話では飛ばさない: 飛ばすと、画面に入るたびに行を描き起こすぶん、速いスクロールが重くなる（CPU 4x の 200 行で、
+ * フレームの p95 が 16.8 → 33.4 ms）。描き直しの得がそれを上回るのは、長い会話だけだったため（#222 の続きで測った）
+ */
+export const SKIP_OFFSCREEN_AFTER_ROWS = 0;
+
 // 末尾からこの距離より近ければ「末尾を見ている」とみなす: ちょうど末尾でなくても、読んでいる人を置き去りにしないため
 const FOLLOW_THRESHOLD_PX = 48;
 
 /**
- * ログの1行の入れ物。画面の外にある間は、配置と描画を飛ばす（content-visibility: auto）:
+ * ログの1行の入れ物。会話が長い間（ChatLog の `rowCount` が SKIP_OFFSCREEN_AFTER_ROWS を超える間）は、画面の外にある間の配置と描画を飛ばす（content-visibility: auto）:
  * 長い会話では、増分のたびに数千行ぶんの配置と描画が走り、描き直し1回の大半を占めるため。
  * 行は DOM に残るので、ページの中の検索（Ctrl+F）と読み上げは、画面の外の古い発言にも届く。
  *
@@ -28,7 +35,8 @@ export function LogRow({
 }) {
   return (
     <div
-      className="[contain-intrinsic-size:auto_var(--row-estimate)] [content-visibility:auto] md:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
+      // 飛ばすかは、ログの側の印（data-skip-offscreen）で切り替える: 行ごとに渡すと、長さの線を越えたときに全部の行を作り直すことになるため
+      className="group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate)] group-data-[skip-offscreen]/log:[content-visibility:auto] md:group-data-[skip-offscreen]/log:[contain-intrinsic-size:auto_var(--row-estimate-wide)]"
       style={
         {
           '--row-estimate': `${Math.round(estimate)}px`,
@@ -47,10 +55,13 @@ export function LogRow({
  */
 export function ChatLog({
   followKey,
+  rowCount = 0,
   className,
   children,
 }: {
   followKey: unknown;
+  /** ログの行（LogRow）の数。SKIP_OFFSCREEN_AFTER_ROWS を超えたら、画面の外の行の描画を飛ばす */
+  rowCount?: number;
   className?: string;
   children: ReactNode;
 }) {
@@ -91,7 +102,11 @@ export function ChatLog({
       // スクロールの錨止めを切る: 上の行の背が伸びるとブラウザが位置をずらし、その出来事を人が上へ戻ったと読んでしまうため
       className={cn('min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]', className)}
     >
-      <div ref={contentRef} className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
+      <div
+        ref={contentRef}
+        data-skip-offscreen={rowCount > SKIP_OFFSCREEN_AFTER_ROWS ? '' : undefined}
+        className="group/log mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6"
+      >
         {children}
       </div>
     </div>
