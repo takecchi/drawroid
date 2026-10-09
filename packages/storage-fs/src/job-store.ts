@@ -40,13 +40,20 @@ export class StoredFileError extends Error {
   }
 }
 
-// 画面が合計に使う欄だけを調べる: 全欄を調べると、記録の形を足すたびに古い記録が読めなくなるため
+// 画面の一覧と合計が読む欄だけを調べる: 全欄を調べると、記録の形を足すたびに古い記録が読めなくなるため
 const llmCallRecordShape = z
   .object({
     callId: z.string(),
     iteration: z.number().nullable(),
+    role: z.string(),
+    purpose: z.string(),
+    provider: z.string(),
+    model: z.string(),
+    startedAt: z.string(),
     durationMs: z.number(),
     usage: z.object({ inputTokens: z.number().nullable(), outputTokens: z.number().nullable() }),
+    attempts: z.array(z.unknown()),
+    outcome: z.object({ ok: z.boolean() }).loose(),
   })
   .loose();
 

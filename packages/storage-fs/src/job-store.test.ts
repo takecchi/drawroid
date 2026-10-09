@@ -411,11 +411,16 @@ describe('FsJobStore LLM call records', () => {
     await writeFile(join(dir, '0002.json'), '{ not json');
     await writeFile(join(dir, '0003.json'), JSON.stringify({ callId: '0003' }));
     await jobs.writeLlmCall(record('0004', a.jobId));
+    // 合計に使う欄はそろっているが、一覧が読む outcome が無い
+    await writeFile(
+      join(dir, '0005.json'),
+      JSON.stringify({ ...record('0005', a.jobId), outcome: undefined }),
+    );
 
     const { records, invalid } = await jobs.listLlmCallRecords(a.jobId);
 
     expect(records.map((r) => r.callId)).toEqual(['0001', '0004']);
-    expect(invalid.map((i) => i.callId)).toEqual(['0002', '0003']);
+    expect(invalid.map((i) => i.callId)).toEqual(['0002', '0003', '0005']);
     expect(invalid.every((i) => i.reason.length > 0)).toBe(true);
   });
 
