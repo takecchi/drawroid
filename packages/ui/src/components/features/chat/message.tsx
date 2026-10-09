@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 
 import { Markdown } from '../../markdown';
 import type { Author } from '../record';
+import { useThrottledText } from './use-throttled-text';
 
 /** 流れている間だけ末尾に出す印 */
 function StreamingCaret() {
@@ -39,6 +40,9 @@ export function MessageRow({
   children: ReactNode;
 }) {
   const human = author === 'human';
+  const reply = !human && typeof children === 'string' ? children : undefined;
+  // 流れている返答の描き直しを間引く: 長い返答では描き直し1回の解析が重く、増分ごとに描くと電話で詰まるため
+  const shownReply = useThrottledText(reply ?? '', streaming && reply !== undefined);
   return (
     <div
       data-author={author}
@@ -55,7 +59,7 @@ export function MessageRow({
         )}
       >
         {/* AI の返答の文字列だけを Markdown にする: 人間が打った文字が勝手に化けないため */}
-        {!human && typeof children === 'string' ? <Markdown>{children}</Markdown> : children}
+        {reply !== undefined ? <Markdown>{shownReply}</Markdown> : children}
         {streaming && <StreamingCaret />}
       </div>
       {(truncated || meta !== undefined || action !== undefined) && (
