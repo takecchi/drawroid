@@ -149,9 +149,21 @@ function classifyFetchError(
       { cause: error },
     );
   }
-  return new BackendError('unreachable', `${where}: 通信に失敗した（${String(error)}）`, {
-    cause: error,
-  });
+  // 原因の連鎖を最後までたどって書く: fetch は「fetch failed」とだけ言い、本当の理由（ポートが使えない・名前が引けない など）は cause の奥にあるため
+  return new BackendError(
+    'unreachable',
+    `${baseUrl} に繋がらない（${causeMessages(error)}）。URL の書き方とポートが合っているかを確かめる（${where}）`,
+    { cause: error },
+  );
+}
+
+function causeMessages(error: unknown): string {
+  const messages: string[] = [];
+  for (let e: unknown = error; e !== undefined && e !== null;) {
+    messages.push(e instanceof Error ? e.message : String(e));
+    e = typeof e === 'object' && 'cause' in e ? e.cause : undefined;
+  }
+  return messages.join(': ');
 }
 
 function causeCode(error: unknown): string | undefined {

@@ -56,6 +56,13 @@ export interface JobStore {
 
   /** jobId が null の記録は、ジョブに属さない置き場へ置く */
   writeLlmCall(record: LlmCallRecord): Promise<void>;
-  /** 呼び出しの順（＝ callId の順） */
+  /** 呼び出しの順（＝ callId の順）。1つでも読めなければ失敗する（ループの内部向け） */
   listLlmCalls(jobId: string | null): Promise<LlmCallRecord[]>;
+  /** 画面向けに、読めないファイルを外して理由を返す。listLlmCalls は1件の破損で全体が失敗するので、閲覧には使えない */
+  listLlmCallRecords(jobId: string): Promise<{
+    records: LlmCallRecord[];
+    invalid: { callId: string; reason: string }[];
+  }>;
+  /** 回のディレクトリがある回の番号を昇順で返す。回のディレクトリは think を書いた時点でできる */
+  listIterations(jobId: string): Promise<number[]>;
 }

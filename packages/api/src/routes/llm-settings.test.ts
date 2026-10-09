@@ -3,6 +3,7 @@ import {
   type ImageBackend,
   type JobStore,
   type ManualGenerationRunner,
+  type MemoryStore,
 } from '@drawroid/core';
 import type { LlmConfig } from '@drawroid/llm';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -27,6 +28,7 @@ function makeApp(env: Record<string, string | undefined>) {
     // 設定の経路はジョブとバックエンドを使わない
     backend: {} as ImageBackend,
     store: {} as JobStore,
+    memoryStore: {} as MemoryStore,
     manualRunner: {} as ManualGenerationRunner,
     autoQueue: { kick: () => undefined, stop: async () => undefined },
     budget: DEFAULT_BUDGET,
@@ -38,6 +40,10 @@ function makeApp(env: Record<string, string | undefined>) {
       },
     },
     env,
+    backendSettings: {
+      read: () => Promise.reject(new Error('この試験では使わない')),
+      write: () => Promise.reject(new Error('この試験では使わない')),
+    },
   });
 }
 

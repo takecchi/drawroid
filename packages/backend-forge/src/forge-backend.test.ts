@@ -48,6 +48,7 @@ describe('ForgeBackend', () => {
           width: 8,
           height: 8,
           batchSize: 1,
+          controlnet: [],
         },
         new AbortController().signal,
       ),

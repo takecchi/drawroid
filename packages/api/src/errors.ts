@@ -13,6 +13,10 @@ export function invalidRequest(c: Context, message: string) {
   return c.json(errorBody('invalid_request', message), 400);
 }
 
+export function conflict(c: Context, kind: string, message: string) {
+  return c.json(errorBody(kind, message), 409);
+}
+
 export function notFound(c: Context, message: string) {
   return c.json(errorBody('not_found', message), 404);
 }
@@ -35,4 +39,9 @@ export function describeIssues(error: ZodError): string {
       (issue) => `${issue.path.length === 0 ? '(body)' : issue.path.join('.')}: ${issue.message}`,
     )
     .join('; ');
+}
+
+// 500 にしない: 人間が手で触って壊したファイルは、サーバの不具合ではなくデータの問題として画面に見せたいため
+export function invalidFile(c: Context, message: string) {
+  return c.json(errorBody('invalid_file', message), 422);
 }

@@ -20,9 +20,18 @@ import {
   buildThinkOutputSchema,
   type JudgeOutput,
   type ThinkOutput,
-  type ThinkParamKey,
 } from './schemas.js';
 import { checkStopAtBoundary } from './stop.js';
+import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
+import type { Permissions } from '../permissions/permission.js';
+import { buildParamsSchema } from '../think/params-schema.js';
+
+// M2 の allowed を #15 の許可の形に直す。M4 の許可の設定を runner につなぐまでのつなぎ（4-7a で置き換える）
+function permissionsAllowing(allowed: readonly ParamKey[]): Permissions {
+  return Object.fromEntries(
+    PARAM_KEYS.map((key) => [key, allowed.includes(key) ? { mode: 'auto' } : { mode: 'off' }]),
+  ) as Permissions;
+}
 
 /** AI に任せていないパラメータの値（M2 では解像度など） */
 export type GenerationDefaults = {
@@ -39,7 +48,7 @@ export type JobRunnerDeps = {
   backend: ImageBackend;
   budget: Budget;
   /** 考える役が決めてよいパラメータ */
-  allowed: readonly ThinkParamKey[];
+  allowed: readonly ParamKey[];
   defaults: GenerationDefaults;
   now?: () => Date;
   /** LLM 呼び出しの ID。名前の順が呼び出しの順になる形にする */
@@ -224,7 +233,10 @@ export class JobRunner {
       window: llm.describe('think').window,
     });
     const outcome = await this.callLlm(spec.jobId, iteration, 'think', 'think', messages, {
-      schema: buildThinkOutputSchema(allowed, budget),
+      schema: buildThinkOutputSchema(
+        buildParamsSchema(permissionsAllowing(allowed), { shown: {}, budget }),
+        budget,
+      ),
       signal,
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `考える段: ${outcome.reason}` });
@@ -272,7 +284,7 @@ export class JobRunner {
       prompt: p.prompt ?? '',
       negativePrompt: p.negativePrompt ?? defaults.negativePrompt,
       steps: p.steps ?? defaults.steps,
-      cfgScale: p.cfg ?? defaults.cfgScale,
+      cfgScale: p.cfgScale ?? defaults.cfgScale,
       ...(p.seed === undefined || p.seed < 0 ? {} : { seed: p.seed }),
       width: defaults.width,
       height: defaults.height,
