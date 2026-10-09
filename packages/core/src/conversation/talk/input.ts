@@ -41,6 +41,8 @@ export type TalkStepRecord = {
  */
 export function buildTalkInput(args: {
   events: readonly ConversationEvent[];
+  /** events は会話の末尾だけで、それより前にも発言がありうる（話す役の実行器は、会話を頭から全部は読まない） */
+  earlierMessages?: boolean;
   /** このターンで読む人間の発言の seq */
   messageSeqs: readonly number[];
   /** 会話のジョブの状態の短い文（無ければ省く） */
@@ -61,11 +63,12 @@ export function buildTalkInput(args: {
   );
   const recent = said.slice(-limits.recentMessages);
   const notes: BudgetNote[] = [];
-  if (said.length > recent.length) {
+  // 件数は書かない: 会話を頭から全部読まないので、前の発言が何件あるかは分からない
+  if (said.length > recent.length || args.earlierMessages === true) {
     notes.push({
       kind: 'dropped',
       section: 'messages',
-      reason: `直近の ${limits.recentMessages} 件より前の発言 ${said.length - recent.length} 件は渡さない`,
+      reason: `直近の ${limits.recentMessages} 件より前の発言は渡さない`,
     });
   }
   const toSection = (e: (typeof said)[number]): Section & { seq: number } => {
