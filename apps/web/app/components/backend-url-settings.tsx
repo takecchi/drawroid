@@ -12,10 +12,12 @@ const SOURCE_LABELS = {
 
 export function BackendUrlSettings() {
   const { data, error } = useBackendSettings();
-  const [input, setInput] = useState('');
+  // 触るまでは、いま繋いでいる URL を欄に出す: 空の欄に既定の見本だけがあると、いまの URL が既定に見えるため
+  const [edited, setEdited] = useState<string | undefined>();
+  const input = edited ?? data?.url ?? '';
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
-  // 保存した URL。保存すると欄は空に戻るので、効いたことを知らせる
+  // 保存した URL。保存しても欄の見た目は変わらないので、効いたことを知らせる
   const [saved, setSaved] = useState<string | undefined>();
 
   async function save(event: FormEvent) {
@@ -26,7 +28,7 @@ export function BackendUrlSettings() {
     try {
       const url = input.trim();
       await saveBackendSettings({ url });
-      setInput('');
+      setEdited(undefined);
       setSaved(url);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
@@ -61,7 +63,7 @@ export function BackendUrlSettings() {
           type="text"
           value={input}
           onChange={(event) => {
-            setInput(event.target.value);
+            setEdited(event.target.value);
             setSaved(undefined);
           }}
           placeholder="http://127.0.0.1:7860"
