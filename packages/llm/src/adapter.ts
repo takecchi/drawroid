@@ -537,13 +537,28 @@ export class AiSdkLlm implements LlmPort {
       const durationMs = this.now() - started;
       // 開きタグをチャットのテンプレートが入れて、閉じタグだけが本文に来るモデル: 流し終えてから、
       // 閉じタグより前を思考に移して出し直す（流れている間は、閉じタグが来るまで思考と分からないため）
+      let rewrite: string | undefined;
       const close = body.toLowerCase().lastIndexOf(THINK_CLOSE);
       if (close !== -1) {
-        const thought = reasoning + body.slice(0, close);
-        const rest = body.slice(close + THINK_CLOSE.length);
-        yield { type: 'retry', reason: '本文に書かれた思考を、思考に移した' };
-        if (thought !== '') yield { type: 'reasoning-delta', text: thought };
-        if (rest !== '') yield { type: 'text-delta', text: rest };
+        reasoning += body.slice(0, close);
+        body = body.slice(close + THINK_CLOSE.length);
+        rewrite = '本文に書かれた思考を、思考に移した';
+      }
+      // ツール呼び出しを本文に文字として書いてくるモデル（native のつもりが本文に出る）: 決まった形だけを拾う
+      let toolCalls = streamed.toolCalls;
+      if (toolCalls.length === 0 && call.tools.length > 0) {
+        const written = readWrittenToolCalls(body, call.tools);
+        if (written !== undefined) {
+          toolCalls = written.calls;
+          body = written.prose;
+          rewrite = '本文に書かれたツールの呼び出しを読んだ';
+        }
+      }
+      if (rewrite !== undefined) {
+        // 流した本文を置き換える: retry で画面の写しを空にし、思考と本文を出し直す
+        yield { type: 'retry', reason: rewrite };
+        if (reasoning !== '') yield { type: 'reasoning-delta', text: reasoning };
+        if (body !== '') yield { type: 'text-delta', text: body };
       }
       const rawOutput = rawOutputOf(streamed);
       if (streamed.finishReason === 'length') {
@@ -551,7 +566,7 @@ export class AiSdkLlm implements LlmPort {
         yield { type: 'finish', attempts, failure: this.cutAtLimitReason(call.role, undefined) };
         return;
       }
-      const checked = checkToolCalls(streamed.toolCalls, call.tools);
+      const checked = checkToolCalls(toolCalls, call.tools);
       if (checked.ok) {
         attempts.push({ rawOutput, usage: streamed.usage, durationMs });
         yield* checked.parts;
@@ -657,7 +672,8 @@ export class AiSdkLlm implements LlmPort {
       }
       let validationError: string;
       try {
-        const parsed = schema.safeParse(extractJson(streamed.text));
+        const extracted = asStepOutput(extractJson(streamed.text), call.tools);
+        const parsed = schema.safeParse(extracted);
         if (parsed.success) {
           attempts.push({ rawOutput: streamed.text, usage: streamed.usage, durationMs });
           const value = parsed.data;
@@ -682,7 +698,9 @@ export class AiSdkLlm implements LlmPort {
           yield { type: 'finish', attempts };
           return;
         }
-        validationError = `スキーマに合わない: ${summarizeIssues(parsed.error)}`;
+        validationError =
+          stepOutputError(extracted, call.tools) ??
+          `スキーマに合わない: ${summarizeIssues(parsed.error)}`;
       } catch (error) {
         validationError = `JSON として読めない: ${error instanceof Error ? error.message : String(error)}`;
       }
@@ -763,6 +781,116 @@ function checkToolCalls(
     parts.push({ type: 'tool-call', callId: call.callId, name: call.name, input: parsed.data });
   }
   return { ok: true, parts };
+}
+
+/** 本文に書かれたツール呼び出しの1件。{"name": …, "arguments": …}（Llama などの "parameters" も） */
+function writtenCallOf(
+  value: unknown,
+  tools: readonly ToolSpec[],
+): { name: string; input: unknown } | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.name !== 'string' || !tools.some((t) => t.name === record.name))
+    return undefined;
+  if (!('arguments' in record) && !('parameters' in record)) return undefined;
+  const args = record.arguments ?? record.parameters;
+  // 引数を JSON の文字列で書くモデルもある
+  if (typeof args === 'string') {
+    try {
+      return { name: record.name, input: JSON.parse(args) as unknown };
+    } catch {
+      return { name: record.name, input: INVALID_ARGUMENTS };
+    }
+  }
+  return { name: record.name, input: args };
+}
+
+const INVALID_ARGUMENTS = Symbol('invalid-arguments');
+const TOOL_CALL_TAG = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+
+/**
+ * native のつもりが、ツール呼び出しを本文に文字として書いてきたものを読む。拾う形は次の3つだけ:
+ * - <tool_call>{"name": …, "arguments": …}</tool_call>（前置きの文があってよい。Qwen・Hermes 系の書き方）
+ * - 本文全体が、その JSON だけを入れた ```json のコードブロック
+ * - 本文全体が、その JSON のオブジェクト
+ * どれも、名前が渡したツールのときだけ拾う。返答の中の JSON の例を、ツールの呼び出しと取り違えないため
+ */
+function readWrittenToolCalls(
+  body: string,
+  tools: readonly ToolSpec[],
+): { calls: StreamedToolCall[]; prose: string } | undefined {
+  const toCall = (written: { name: string; input: unknown }, i: number): StreamedToolCall => ({
+    callId: `text-${globalThis.crypto.randomUUID()}-${i}`,
+    name: written.name,
+    input: written.input === INVALID_ARGUMENTS ? undefined : written.input,
+    invalid: written.input === INVALID_ARGUMENTS,
+  });
+  const tagged = [...body.matchAll(TOOL_CALL_TAG)];
+  if (tagged.length > 0) {
+    // タグは呼び出しの印なので、名前が知らないツールでも、壊れた JSON でも、呼び出しとして読む（検証で出し直させる）
+    const calls = tagged.map((match, i) => {
+      let value: unknown;
+      try {
+        value = JSON.parse(match[1] ?? '');
+      } catch {
+        return {
+          callId: `text-${globalThis.crypto.randomUUID()}-${i}`,
+          name: '(読めない)',
+          input: undefined,
+          invalid: true,
+        };
+      }
+      const record = (value ?? {}) as Record<string, unknown>;
+      const known = writtenCallOf(value, tools);
+      return known !== undefined
+        ? toCall(known, i)
+        : toCall(
+            {
+              name: String(record.name ?? '(名前なし)'),
+              input: record.arguments ?? record.parameters,
+            },
+            i,
+          );
+    });
+    return { calls, prose: body.replace(TOOL_CALL_TAG, '').trim() };
+  }
+  const whole = body.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(whole);
+  const candidate = fenced?.[1] ?? whole;
+  if (!candidate.startsWith('{') || !candidate.endsWith('}')) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(candidate);
+  } catch {
+    return undefined;
+  }
+  const written = writtenCallOf(value, tools);
+  return written === undefined ? undefined : { calls: [toCall(written, 0)], prose: '' };
+}
+
+/**
+ * json の出し方で、{"kind": "tool", …} の代わりに {"name": …, "arguments": …} の形で書いてきたものを、ステップの形に読み替える。
+ * 名前が渡したツールのときだけ読み替える
+ */
+function asStepOutput(value: unknown, tools: readonly ToolSpec[]): unknown {
+  if (value !== null && typeof value === 'object' && 'kind' in value) return value;
+  const written = writtenCallOf(value, tools);
+  return written === undefined || written.input === INVALID_ARGUMENTS
+    ? value
+    : { kind: 'tool', name: written.name, input: written.input };
+}
+
+/** json の出し方でスキーマに合わなかったとき、ツールを名指した理由にする（変種の和の誤りは「全体」としか言わないため） */
+function stepOutputError(value: unknown, tools: readonly ToolSpec[]): string | undefined {
+  if (value === null || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.kind !== 'tool') return undefined;
+  const spec = tools.find((t) => t.name === record.name);
+  if (spec === undefined) return `知らないツール ${String(record.name)} を呼んだ`;
+  const parsed = spec.inputSchema.safeParse(record.input);
+  return parsed.success
+    ? undefined
+    : `${spec.name} の引数がスキーマに合わない: ${summarizeIssues(parsed.error)}`;
 }
 
 /** 1ステップの出力のスキーマ。reply か、ツールごとの tool。ツールの説明は、それぞれの tool の変種に載せる */
