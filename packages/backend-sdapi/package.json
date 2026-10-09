@@ -1,7 +1,7 @@
 {
-  "name": "@drawroid/backend-forge",
-  "version": "0.0.0",
+  "name": "@drawroid/backend-sdapi",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
   "exports": {
     ".": {
@@ -17,7 +17,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@drawroid/backend-sdapi": "workspace:*",
     "@drawroid/core": "workspace:*",
     "zod": "catalog:"
   },
