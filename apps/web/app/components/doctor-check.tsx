@@ -1,6 +1,7 @@
 import { isApiError, runDoctor, type DoctorResponse } from '@drawroid/swr';
 import { Badge, Button, ErrorNote, Muted, OkNote, Section, Spinner, WarnNote } from '@drawroid/ui';
 import { useState } from 'react';
+import { Link } from 'react-router';
 
 type State =
   | { step: 'idle' }
@@ -52,7 +53,13 @@ function DoctorResult({ report }: { report: DoctorResponse['report'] }) {
   return (
     <div className="space-y-3">
       {report.lacking === 0 ? (
-        <OkNote>すべてよい。会話から描き始められる。</OkNote>
+        <OkNote>
+          すべてよい。会話から描き始められる。{' '}
+          {/* 確かめたあと、そのまま描き始められるように、会話への道を置く */}
+          <Link to="/" className="underline underline-offset-2">
+            会話へ
+          </Link>
+        </OkNote>
       ) : (
         <WarnNote>
           足りないものが {report.lacking} つある。「すること」を上から順に直して、もう一度確かめる。

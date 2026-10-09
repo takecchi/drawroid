@@ -63,4 +63,19 @@ describe('MemoryList', () => {
     expect(screen.getByText('broken')).toBeTruthy();
     expect(screen.getByText(/front matter が無い/)).toBeTruthy();
   });
+
+  // 空のままでは、覚える仕組みがあることも、いつ増えるのかも分からない
+  it('says what comes in here and when, even while it is empty', () => {
+    mocks.useMemoryList.mockReturnValue({ data: { items: [], invalid: [] }, error: undefined });
+    render(
+      <MemoryRouter>
+        <MemoryList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('まだ無い。')).toBeTruthy();
+    expect(
+      screen.getByText(/描いたジョブが止まったときと、止まったあとに選び直したときに/),
+    ).toBeTruthy();
+  });
 });

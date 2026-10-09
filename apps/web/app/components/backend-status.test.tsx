@@ -48,6 +48,20 @@ describe('BackendStatus', () => {
     expect(screen.getByText('http://127.0.0.1:7860 に繋がらない')).toBeTruthy();
   });
 
+  // 説明があるときは、生の文を「詳しく」に畳む: 生の文にはサーバの言い方で同じ「すること」が入っていて、同じ文が2回並ぶため
+  it('folds the raw message under 詳しく when it explains the error, and shows it as is when it cannot', async () => {
+    await failedStatus('unreachable', 'http://127.0.0.1:7860 に繋がらない');
+    const { unmount } = render(<BackendStatus />);
+    const folded = screen.getByText('http://127.0.0.1:7860 に繋がらない').closest('details');
+    expect(folded?.open).toBe(false);
+    expect(folded?.querySelector('summary')?.textContent).toBe('詳しく');
+    unmount();
+
+    await failedStatus('network', 'drawroid の API に繋がらない');
+    render(<BackendStatus />);
+    expect(screen.getByText('drawroid の API に繋がらない').closest('details')).toBeNull();
+  });
+
   it('explains a missing Forge API and shows the raw message with the URL', async () => {
     await failedStatus('not_found', 'http://127.0.0.1:7860/sdapi/v1/options は 404');
     render(<BackendStatus />);
