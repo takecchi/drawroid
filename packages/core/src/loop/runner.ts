@@ -36,7 +36,12 @@ import {
   type ThinkOutput,
   type ThinkParamKey,
 } from './schemas.js';
-import { checkStopAtBoundary, effectiveStopConditions, hasAnyStopCondition } from './stop.js';
+import {
+  checkStopAtBoundary,
+  effectiveStopConditions,
+  hasAnyStopCondition,
+  readStopConditions,
+} from './stop.js';
 
 /** AI に任せていないパラメータの値（M2 では解像度など） */
 export type GenerationDefaults = {
@@ -170,14 +175,8 @@ export class JobRunner {
     return spec;
   }
 
-  private async stopConditions(spec: AutoJobSpec): Promise<StopConditions> {
-    const interventions = await this.deps.store.listInterventions(spec.jobId);
-    return effectiveStopConditions(
-      spec.stopConditions,
-      interventions.flatMap((intervention) =>
-        intervention.kind === 'stopConditions' ? [intervention.stopConditions] : [],
-      ),
-    );
+  private stopConditions(spec: AutoJobSpec): Promise<StopConditions> {
+    return readStopConditions(this.deps.store, spec);
   }
 
   private async drain(): Promise<void> {
