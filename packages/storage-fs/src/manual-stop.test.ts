@@ -235,8 +235,10 @@ describe('stopping a manual generation left running by a process that died', () 
 
       await runner.stop(jobId);
 
+      // 始まった時刻は落ちる前のまま残す: 止めた時刻で埋めると、画面の経過時間が 0 に化けるため
       expect(await store.readState(jobId)).toMatchObject({
         status: 'stopped',
+        startedAt: '2026-10-09T00:00:20Z',
         reason: { kind: 'human' },
         imagesGenerated: images,
       });
