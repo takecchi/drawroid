@@ -58,6 +58,24 @@ export type TalkRunnerDeps = {
   log?: (line: string) => void;
 };
 
+/**
+ * 同じ呼び出しかを見分ける鍵。引数はツールのスキーマで読み直してあり、鍵の順はスキーマの順にそろっている。
+ */
+// 空の配列の欄は鍵から落とす: 話す役は省いた欄を [] で書くことがあり、{instruction} と {instruction, attachments: []} が
+// 別の呼び出しとして2度走り、同じ口出しが2つ書かれたため。ツールの入力で配列の欄を持つもの（添えた画像・tags）は、
+// 空と省略が同じ意味（どれも「無し」）なので、落としてよい
+function repeatKeyOf(name: string, input: unknown): string {
+  const significant =
+    typeof input === 'object' && input !== null && !Array.isArray(input)
+      ? Object.fromEntries(
+          Object.entries(input).filter(
+            ([, value]) => !(Array.isArray(value) && value.length === 0),
+          ),
+        )
+      : input;
+  return `${name}:${JSON.stringify(significant)}`;
+}
+
 /** 話す役の1ステップの結果（記録に残す値） */
 type StepValue = { text: string; toolCalls: { name: string; input: unknown }[] };
 
@@ -543,8 +561,7 @@ export class TalkRunner {
           });
           const tool = this.deps.tools.find((t) => t.name === call.name);
           let result: { ok: boolean; result: string; summary: string };
-          // 引数はツールのスキーマで読み直してあり、鍵の順はスキーマの順にそろっている
-          const key = `${call.name}:${JSON.stringify(call.input)}`;
+          const key = repeatKeyOf(call.name, call.input);
           state.phase = 'tool';
           try {
             if (tool === undefined) throw new Error(`知らないツール ${call.name}`);
