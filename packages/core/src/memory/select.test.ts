@@ -87,6 +87,26 @@ describe('selectMemory', () => {
     expect(ids(selected)).toEqual(['always', 'two-tags', 'one-tag-new', 'one-tag-old']);
   });
 
+  // かなの違いを越えて当てるために、同じ語を両方の表記でタグに書いた項目がある。同じ語は2つと数えない
+  it.each([
+    { spellings: ['ねこ', 'ネコ'] },
+    { spellings: ['ネコ', 'ﾈｺ'] },
+    { spellings: ['Cat', 'cat'] },
+  ])(
+    'counts the tags $spellings, which are one word in different forms, as one matched tag',
+    ({ spellings }) => {
+      const items = [
+        item({ id: 'one-word', tags: spellings, updatedAt: '2026-10-02T00:00:00Z' }),
+        item({ id: 'two-words', tags: [spellings[0]!, '海'] }),
+        item({ id: 'one-word-newer', tags: [spellings[0]!], updatedAt: '2026-10-09T00:00:00Z' }),
+      ];
+
+      const { selected } = selectMemory(items, `${spellings[1]}と海`, roomy);
+
+      expect(ids(selected)).toEqual(['two-words', 'one-word-newer', 'one-word']);
+    },
+  );
+
   it('keeps the passed amount within the budget even with hundreds of items', () => {
     const items = Array.from({ length: 500 }, (_, n) =>
       item({

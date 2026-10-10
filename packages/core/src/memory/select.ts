@@ -42,11 +42,10 @@ const toHiragana = (text: string) =>
 // NFKC を先にする: 半角カナを全角へ揃えてからでないと、ひらがなへ寄せられないため
 const normalize = (text: string) => toHiragana(text.normalize('NFKC')).toLowerCase();
 
+// 寄せたあとの形で数える: ねこ と ネコ のように同じ語を両方の表記で書いたタグを2つと数えると、2語が当たった項目と並ぶため
 function countMatchedTags(item: MemoryItem, gist: string): number {
-  return item.tags.filter((tag) => {
-    const needle = normalize(tag).trim();
-    return needle !== '' && gist.includes(needle);
-  }).length;
+  const needles = new Set(item.tags.map((tag) => normalize(tag).trim()));
+  return [...needles].filter((needle) => needle !== '' && gist.includes(needle)).length;
 }
 
 function compareRanked(a: Ranked, b: Ranked): number {
