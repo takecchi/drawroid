@@ -359,7 +359,7 @@ export function WarnNote({ className, children }: { className?: string; children
 /** 操作が通ったことの知らせ。読み上げにも知らせる（押したボタンが消えるとフォーカスが外れ、知らせの文まで辿り着けないため） */
 export function OkNote({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <p role="status" className={cn('rounded-md bg-ok/10 px-3 py-2 text-sm text-ok', className)}>
+    <p role="alert" className={cn('rounded-md bg-ok/10 px-3 py-2 text-sm text-ok', className)}>
       {children}
     </p>
   );
