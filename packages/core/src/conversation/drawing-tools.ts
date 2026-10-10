@@ -108,7 +108,7 @@ const attachmentsSchema = z
         .string()
         .trim()
         .min(1)
-        .max(MAX_REFERENCE_NOTE_CHARS)
+        .max(201)
         .optional()
         .describe('用途の言葉（「この構図で」など）'),
     }),
