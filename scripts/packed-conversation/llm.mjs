@@ -6,6 +6,7 @@
 // queueTalkTool(name, input, times) で、次の times 回（既定 1）の話す役の呼び出しに、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
 // native では tools に、json では response_format のスキーマにそのツールがあるときに効く。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
+// 見る役の「何回目で止めてよいと言うか」はジョブごとではなくプロセス全体で数える。2つ以上のジョブを試すときは、次のジョブの前に restartJudge を呼ぶ。
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
 
