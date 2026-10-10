@@ -209,7 +209,6 @@ export function LlmSettings() {
   function change(next: Partial<LlmSettingsFormValues>) {
     if (values === undefined) return;
     setSaved(false);
-    setWindowNotCompared(undefined);
     setEdited({ ...values, ...next });
   }
 
@@ -222,7 +221,6 @@ export function LlmSettings() {
     event.preventDefault();
     if (values === undefined) return;
     setSaved(false);
-    setWindowNotCompared(undefined);
     const duplicated = duplicatedProviderName(values.providers);
     if (duplicated !== undefined) {
       setSaveError(`provider の名前「${duplicated}」が2つある。どちらかの名前を変える`);
