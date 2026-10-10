@@ -17,7 +17,19 @@ export const memoryItemSchema = z.object({
 });
 export type MemoryItem = z.infer<typeof memoryItemSchema>;
 
+/**
+ * 記憶の ID の長さの上限（UTF-8 のバイト数）。ID は `<ID>.md` のファイル名になり、書くときは `.tmp-<12桁>-<ID>.md` を経るので、
+ * その名前がファイル名の上限（255 バイト）に収まる長さ
+ */
+const MAX_MEMORY_ID_BYTES = 255 - '.tmp-'.length - 12 - '-'.length - '.md'.length;
+
 /** 記憶の ID として使える形か。ID はそのままファイル名になるので、データディレクトリの外や一時ファイル・隠しファイルを指す形を通さない */
+// 文字ではなくバイトで数える: ファイル名の上限はバイトで、日本語の ID は1文字が3バイトになるため
 export function isMemoryId(id: string): boolean {
-  return id !== '' && !id.startsWith('.') && !/[/\\\0]/.test(id);
+  return (
+    id !== '' &&
+    !id.startsWith('.') &&
+    !/[/\\\0]/.test(id) &&
+    new TextEncoder().encode(id).length <= MAX_MEMORY_ID_BYTES
+  );
 }

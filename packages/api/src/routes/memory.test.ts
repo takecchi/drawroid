@@ -334,6 +334,56 @@ describe('DELETE /memory/:id', () => {
   });
 });
 
+// 記憶の ID はそのままファイル名になり、書くときは .tmp-<12桁>-<ID>.md を経る。その名前が 255 バイトに収まる ID の長さ
+const LONGEST_ID_BYTES = 255 - '.tmp-'.length - 12 - '-'.length - '.md'.length;
+
+describe('an id too long to be the name of a memory file', () => {
+  const tooLong = 'a'.repeat(300);
+
+  it('is not found by GET, PUT and DELETE, instead of failing', async () => {
+    // 置き場所を先に作る: 無いと、名前の長さより先に「置き場所が無い」で失敗し、長い名前を見ないため
+    await putFile(item.id, itemFile());
+
+    for (const res of [
+      await api.request(`/memory/${tooLong}`),
+      await put(tooLong, edit),
+      await api.request(`/memory/${tooLong}`, { method: 'DELETE' }),
+    ]) {
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ error: { kind: 'not_found' } });
+    }
+  });
+
+  // 文字ではなくバイトで数える: ファイル名の上限はバイトのため
+  it.each([
+    ['ASCII', 'a'.repeat(LONGEST_ID_BYTES + 1)],
+    ['multibyte', 'あ'.repeat(Math.floor(LONGEST_ID_BYTES / 3) + 1)],
+  ])(
+    'is not found even when a file of that name was put by hand (%s), and leaves it as it is',
+    async (_, id) => {
+      await putFile(id, itemFile());
+      const path = join(memoryDir, `${id}.md`);
+      const before = await readFile(path, 'utf8');
+
+      expect((await api.request(`/memory/${id}`)).status).toBe(404);
+      expect((await put(id, edit)).status).toBe(404);
+      expect((await api.request(`/memory/${id}`, { method: 'DELETE' })).status).toBe(404);
+      expect(await readFile(path, 'utf8')).toBe(before);
+    },
+  );
+
+  it.each([
+    ['ASCII', 'a'.repeat(LONGEST_ID_BYTES)],
+    ['multibyte', 'あ'.repeat(LONGEST_ID_BYTES / 3)],
+  ])('still reads, changes and removes an item with the longest id (%s)', async (_, id) => {
+    await putFile(id, itemFile());
+
+    expect((await api.request(`/memory/${id}`)).status).toBe(200);
+    expect((await put(id, edit)).status).toBe(200);
+    expect((await api.request(`/memory/${id}`, { method: 'DELETE' })).status).toBe(204);
+  });
+});
+
 async function notUsed(): Promise<never> {
   throw new Error('この試験では使わない口');
 }
