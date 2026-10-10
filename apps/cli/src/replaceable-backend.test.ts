@@ -433,6 +433,61 @@ describe('ReplaceableBackend', () => {
         await manual.idle();
       });
 
+      // 止めたジョブが生成していない（考える段の途中）なら、バックエンドの今の生成（ほかのジョブのもの）を止めない
+      it('does not cut a manual generation when a job that is only thinking is stopped', async () => {
+        const thinking = blocking(think, (n) => n === 0);
+        const inner = new HeldBackend();
+        const { store, runner, manual, submitAuto } = setup(inner, thinking.script);
+        const auto = await submitAuto();
+        runner.kick();
+        await thinking.reached(1);
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await inner.reached(1);
+
+        await runner.stop(auto.jobId);
+        await runner.idle();
+        expect(await reasonOf(store, auto.jobId)).toBe('human');
+        expect(inner.interruptCount).toBe(0);
+
+        inner.release();
+        await manual.idle();
+        expect(await reasonOf(store, jobId)).toBe('limit:iterations');
+      });
+
+      // 手動の生成も同じ: 生成をまだ頼んでいない（走り出しの状態を書いている）うちに止めたなら、ほかの生成を止めない
+      it('does not cut the job generation when a manual generation is stopped before it asks the backend', async () => {
+        const inner = new HeldBackend();
+        const { store, runner, submitAuto, backend } = setup(inner);
+        const auto = await submitAuto();
+        runner.kick();
+        await inner.reached(1);
+        // 走り出しの状態（running）を書くところで止めておく置き場所
+        let releaseWrite!: () => void;
+        let writing!: () => void;
+        const writeReached = new Promise<void>((resolve) => (writing = resolve));
+        const held = Object.create(store) as FsJobStore;
+        held.writeState = async (jobId, state) => {
+          if (state.status === 'running') {
+            writing();
+            await new Promise<void>((resolve) => (releaseWrite = resolve));
+          }
+          return store.writeState(jobId, state);
+        };
+        const manual = new ManualGenerationRunner({ backend, store: held });
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await writeReached;
+
+        await manual.stop(jobId);
+        expect(inner.interruptCount).toBe(0);
+
+        releaseWrite();
+        await manual.idle();
+        expect(await reasonOf(store, jobId)).toBe('human');
+        inner.release();
+        await runner.idle();
+        expect(await reasonOf(store, auto.jobId)).toBe('limit:iterations');
+      });
+
       // 1回の生成の間だけ待たせる: 手動の生成を、自動のジョブが止まるまで待たせない
       it('lets a manual generation run while the job is thinking', async () => {
         const thinking = blocking(think, (n) => n === 0);

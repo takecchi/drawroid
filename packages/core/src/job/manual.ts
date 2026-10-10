@@ -35,8 +35,8 @@ export class ManualGenerationRunner {
   private readonly store: JobStore;
   private readonly now: () => Date;
   private tail: Promise<void> = Promise.resolve();
-  /** 走っている生成。止める口が、その生成だけを切るために持つ */
-  private running: { jobId: string; controller: AbortController } | undefined;
+  /** 走っている生成。止める口が、その生成だけを切るために持つ。generating はバックエンドへ頼んでいる間（順番待ちを含む）だけ true */
+  private running: { jobId: string; controller: AbortController; generating: boolean } | undefined;
   /** 鎖の上で待っているうちに止められたジョブ。順番が来ても生成しない */
   private readonly cancelled = new Set<string>();
 
@@ -73,9 +73,11 @@ export class ManualGenerationRunner {
    */
   async stop(jobId: string): Promise<void> {
     if (this.running?.jobId === jobId) {
-      this.running.controller.abort();
-      // signal の abort は HTTP の待ちを切るだけで、GPU は回り続けるため、バックエンドにも止めさせる
-      await this.backend.interrupt();
+      const { controller, generating } = this.running;
+      controller.abort();
+      // signal の abort は HTTP の待ちを切るだけで、GPU は回り続けるため、生成中ならバックエンドにも止めさせる。
+      // まだ頼んでいない（走り出しの状態を書いている）なら止めさせない: バックエンドの今の生成はほかのジョブのものだから
+      if (generating) await this.backend.interrupt();
       return;
     }
     // 読む前に印を付ける: 読んでいる間に順番が来ても、生成を始めないため
@@ -96,12 +98,14 @@ export class ManualGenerationRunner {
   private async run(jobId: string, request: GenerationRequest): Promise<void> {
     if (this.cancelled.delete(jobId)) return;
     const controller = new AbortController();
-    this.running = { jobId, controller };
+    const running = { jobId, controller, generating: false };
+    this.running = running;
     const startedAt = this.now().toISOString();
     let imagesGenerated = 0;
     let reason: StopReason;
     try {
       await this.store.writeState(jobId, { status: 'running', startedAt, imagesGenerated });
+      running.generating = true;
       const result = await this.backend.generate(request, controller.signal);
       await this.store.writeGeneration(jobId, 1, request, result);
       imagesGenerated = result.images.length;

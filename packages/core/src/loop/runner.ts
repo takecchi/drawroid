@@ -161,7 +161,13 @@ export type JobRunnerDeps = {
   }) => void;
 };
 
-type Running = { jobId: string; controller: AbortController; gate: LlmGate };
+type Running = {
+  jobId: string;
+  controller: AbortController;
+  gate: LlmGate;
+  /** このジョブの生成をバックエンドへ頼んでいる間（順番待ちを含む）だけ true */
+  generating: boolean;
+};
 type BackendView = {
   capabilities: BackendCapabilities;
   lists: Partial<Record<CandidateKind, readonly Candidate[]>>;
@@ -244,9 +250,7 @@ export class JobRunner {
   /** 人間の停止。走っているジョブは段の途中でも止め、待っているジョブはそのまま止める */
   async stop(jobId: string): Promise<void> {
     if (this.running?.jobId === jobId) {
-      this.running.controller.abort();
-      // signal の abort は HTTP の待ちを切るだけで、GPU は回り続けるため、バックエンドにも止めさせる
-      await this.deps.backend.interrupt();
+      await this.abortRunning(this.running);
       return;
     }
     const state = await this.deps.store.readState(jobId);
@@ -257,11 +261,22 @@ export class JobRunner {
     // 読んで走り出しており、ここで書いた「止まった」を次の書き込みで上書きして回り続けるため。拾った側は最初の await
     // より前に running を立てるので、ここで見えなければ、拾った側の最初の読み出しは「止まった」を読んで返る
     if (this.running?.jobId === jobId) {
-      this.running.controller.abort();
-      await this.deps.backend.interrupt();
+      await this.abortRunning(this.running);
       return;
     }
     await this.distillAfterStop(jobId, stopped, HUMAN_STOP);
+  }
+
+  /**
+   * 走っているジョブを切る。このジョブの生成をバックエンドへ頼んでいる間だけ、バックエンドにも止めさせる。
+   */
+  // signal の abort は HTTP の待ちを切るだけで、GPU は回り続けるため、生成中ならバックエンドにも止めさせる。
+  // 生成していない（考える・見る段の途中）なら止めさせない: バックエンドの今の生成はほかの生成（手動の生成など）のもので、
+  // それまで止まってしまうため
+  private async abortRunning(running: Running): Promise<void> {
+    const generating = running.generating;
+    running.controller.abort();
+    if (generating) await this.deps.backend.interrupt();
   }
 
   /**
@@ -404,7 +419,7 @@ export class JobRunner {
   private async runJob(jobId: string): Promise<void> {
     const controller = new AbortController();
     const gate = new LlmGate((held) => this.notifyHeld(jobId, held));
-    this.running = { jobId, controller, gate };
+    this.running = { jobId, controller, gate, generating: false };
     const { store } = this.deps;
     let state = await store.readState(jobId);
     let justStopped: { state: JobState; reason: StopReason } | undefined;
@@ -975,6 +990,8 @@ export class JobRunner {
       iteration,
       signal,
     });
+    const running = this.running;
+    if (running !== undefined) running.generating = true;
     try {
       result = await backend.generate(request, signal, images);
     } catch (error) {
@@ -985,6 +1002,7 @@ export class JobRunner {
         ...(error instanceof BackendError ? { backendErrorKind: error.kind } : {}),
       });
     } finally {
+      if (running !== undefined) running.generating = false;
       await polling?.stop();
     }
     signal.throwIfAborted();
