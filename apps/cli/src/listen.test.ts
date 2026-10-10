@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import v8 from 'node:v8';
 
@@ -16,6 +17,32 @@ describe('listen', () => {
       expect(address.address).toBe('127.0.0.1');
       const res = await fetch(`http://127.0.0.1:${address.port}/api/health`);
       expect(res.status).toBe(200);
+    } finally {
+      server.close();
+    }
+  });
+
+  // fetch は Host を差し替えられないので、node:http で、向け直された名前の Host を送る（DNS rebinding のブラウザと同じ）
+  it('refuses a request whose Host names another site, over the real server', async () => {
+    const { server, address } = await listen({ port: 0, webRoot, deps: stubDeps() });
+    try {
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: '127.0.0.1',
+            port: address.port,
+            path: '/api/settings/llm',
+            headers: { host: `attacker.example:${address.port}` },
+          },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode);
+          },
+        );
+        req.on('error', reject);
+        req.end();
+      });
+      expect(status).toBe(403);
     } finally {
       server.close();
     }

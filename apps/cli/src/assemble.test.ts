@@ -38,7 +38,11 @@ afterEach(async () => {
   await rm(join(root, '..'), { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
-function start(signals = new EventEmitter(), exit = vi.fn()) {
+function start(
+  signals = new EventEmitter(),
+  exit = vi.fn(),
+  write: (text: string) => void = () => undefined,
+) {
   return assembleDrawroid({
     root,
     // 繋がらないバックエンド: この試験では生成しない
@@ -46,7 +50,7 @@ function start(signals = new EventEmitter(), exit = vi.fn()) {
     env: {},
     signals,
     exit,
-    write: () => undefined,
+    write,
     webRoot,
   }).then((listening) => (running = listening));
 }
@@ -139,55 +143,85 @@ describe('assembleDrawroid after a restart', () => {
 
   // 再開したジョブの止まりは、話す役へ届いて話しかける（話す役を立ててからジョブを再開するため）
   it('speaks about a job resumed after a restart once it stops', async () => {
-    const role = {
-      provider: 'local',
-      model: 'm',
-      structuredOutput: 'native',
-      reasoning: 'native',
-      toolCalling: 'native',
-      imageInput: true,
-    };
-    // 繋がらない LLM: 再開したジョブは考える段で失敗して、すぐ error で止まる
-    await writeLlmSettings(join(root, 'config.json'), {
-      providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' } },
-      roles: { think: role },
-      validationRetries: 0,
-      networkRetries: 0,
-    });
-    const conversations = new FsConversationStore(root);
-    const { conversationId } = await conversations.createConversation(new Date());
-    const spec = await new FsJobStore(root).createJob(
-      {
-        kind: 'auto',
-        request: '夕暮れの海辺に立つ少女',
-        stopConditions: { aiJudgement: true, maxIterations: 5 },
-        batchSize: 1,
-        conversationId,
-        turn: 1,
-      },
-      { status: 'queued', carry: { intent: '夕暮れの海辺に立つ少女', completedIterations: 0 } },
-      new Date(),
-    );
+    const { conversations, conversationId, jobId } = await queuedJobWithUnreachableLlm();
 
     await start();
 
     await vi.waitFor(
       async () =>
         expect(await turnsStarted(conversations, conversationId)).toEqual([
-          expect.objectContaining({ jobId: spec.jobId }),
+          expect.objectContaining({ jobId }),
         ]),
       { timeout: 5_000 },
     );
-    // ターンが閉じるまで待つ: 閉じる前に片付けると、ターンの書き込みと片付けが重なるため
-    await vi.waitFor(
-      async () =>
-        expect((await conversations.readEvents(conversationId)).events).toContainEqual(
-          expect.objectContaining({ type: 'turn.ended' }),
-        ),
-      { timeout: 5_000 },
-    );
+    await turnEnded(conversations, conversationId);
+  });
+
+  // 画面を見ていなくても気づけるように、失敗で止まったジョブと、失敗で閉じたターンを、端末に1行ずつ出す
+  it('tells the terminal in one line each when the job and the turn fail', async () => {
+    const { conversations, conversationId, jobId } = await queuedJobWithUnreachableLlm();
+    const written: string[] = [];
+
+    await start(undefined, undefined, (text) => written.push(text));
+    await turnEnded(conversations, conversationId);
+
+    expect(written.filter((line) => line.startsWith('drawroid: 描くのを止めた'))).toEqual([
+      expect.stringMatching(
+        new RegExp(`^drawroid: 描くのを止めた（ジョブ ${jobId}）: [^\\n]+\\n$`),
+      ),
+    ]);
+    expect(written.filter((line) => line.startsWith('drawroid: 応答が失敗した'))).toEqual([
+      expect.stringMatching(
+        new RegExp(`^drawroid: 応答が失敗した（会話 ${conversationId}）: [^\\n]+\\n$`),
+      ),
+    ]);
   });
 });
+
+/** 会話に属する、待ち行列のジョブ（落ちる前に積んだ）と、繋がらない LLM の設定を置く */
+// 繋がらない LLM（とバックエンド）: 再開したジョブはすぐ error で止まる。話す役のターンも失敗で閉じる
+async function queuedJobWithUnreachableLlm() {
+  const role = {
+    provider: 'local',
+    model: 'm',
+    structuredOutput: 'native',
+    reasoning: 'native',
+    toolCalling: 'native',
+    imageInput: true,
+  };
+  await writeLlmSettings(join(root, 'config.json'), {
+    providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' } },
+    roles: { think: role },
+    validationRetries: 0,
+    networkRetries: 0,
+  });
+  const conversations = new FsConversationStore(root);
+  const { conversationId } = await conversations.createConversation(new Date());
+  const spec = await new FsJobStore(root).createJob(
+    {
+      kind: 'auto',
+      request: '夕暮れの海辺に立つ少女',
+      stopConditions: { aiJudgement: true, maxIterations: 5 },
+      batchSize: 1,
+      conversationId,
+      turn: 1,
+    },
+    { status: 'queued', carry: { intent: '夕暮れの海辺に立つ少女', completedIterations: 0 } },
+    new Date(),
+  );
+  return { conversations, conversationId, jobId: spec.jobId };
+}
+
+/** ターンが閉じるまで待つ: 閉じる前に片付けると、ターンの書き込みと片付けが重なるため */
+async function turnEnded(conversations: FsConversationStore, conversationId: string) {
+  await vi.waitFor(
+    async () =>
+      expect((await conversations.readEvents(conversationId)).events).toContainEqual(
+        expect.objectContaining({ type: 'turn.ended' }),
+      ),
+    { timeout: 5_000 },
+  );
+}
 
 describe('assembleDrawroid and the signals to stop', () => {
   it.each([

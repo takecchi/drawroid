@@ -44,6 +44,7 @@ import { createGenerationProgressSettings } from './generation-progress-settings
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen, type Listening } from './listen.js';
 import { screenDoctor } from './doctor.js';
+import { logFailedJobs } from './failure-log.js';
 import { createLlmSettings } from './llm-settings.js';
 import { createPermissionReader } from './permission-reader.js';
 import { wireGenerationProgress } from './progress-wiring.js';
@@ -108,7 +109,8 @@ export async function assembleDrawroid({
   const conversationStore = new FsConversationStore(root);
   const conversationHubs = new ConversationHubs({ store: conversationStore });
   // ジョブの置き場所を橋渡しで包む: 会話から作ったジョブの段が、会話のログに出るように
-  const store = bridgeJobEvents(new FsJobStore(root), {
+  // 失敗で止まったジョブは、会話に属するかに関わらず端末に1行出す
+  const store = bridgeJobEvents(logFailedJobs(new FsJobStore(root), log), {
     hubs: conversationHubs,
     onError: (error) =>
       log(

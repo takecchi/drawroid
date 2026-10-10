@@ -40,3 +40,36 @@ describe('createApp', () => {
     expect(await res.text()).toContain('fixture index');
   });
 });
+
+describe('createApp, asked under a name other than this machine', () => {
+  // DNS rebinding: 別のサイトの名前を 127.0.0.1 へ向け直すと、ブラウザはそのサイトの名前（Host）のまま、ここへ要求を送る
+  it.each([
+    'http://attacker.example:7878/api/settings/llm',
+    'http://attacker.example/api/health',
+    'http://127.0.0.1.attacker.example:7878/api/health',
+    'http://attacker.example:7878/',
+  ])('refuses %s', async (url) => {
+    const res = await app.request(url);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: { kind: 'forbidden_host' } });
+  });
+
+  it('refuses a request that would change something, too', async () => {
+    const res = await app.request('http://attacker.example:7878/api/conversations', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  // 開発中は Vite（localhost:5173）が Host を変えずに中継する。ポートは問わない
+  it.each([
+    'http://127.0.0.1:7878/api/health',
+    'http://localhost:7878/api/health',
+    'http://localhost:5173/api/health',
+    'http://[::1]:7878/api/health',
+    'http://LOCALHOST:7878/api/health',
+  ])('serves %s', async (url) => {
+    const res = await app.request(url);
+    expect(res.status).toBe(200);
+  });
+});

@@ -322,13 +322,21 @@ export class TalkRunner {
       messageSeqs: unread,
       ...(jobId !== undefined && { jobId }),
     });
-    const end: TurnEnd = (outcome, reason) =>
-      hub.confirm({
+    const end: TurnEnd = async (outcome, reason) => {
+      const ended = await hub.confirm({
         type: 'turn.ended',
         turn,
         outcome,
         ...(reason === undefined ? {} : { reason }),
       });
+      // 失敗で閉じたターンは端末にも1行出す。言葉は画面の失敗の行（「応答が失敗した: 」と理由）にそろえる
+      if (outcome === 'error') {
+        this.deps.log?.(
+          `drawroid: 応答が失敗した（会話 ${conversationId}）: ${reason ?? '理由が無い'}`,
+        );
+      }
+      return ended;
+    };
     // 始めたターンは、どの抜け方でも閉じる: 閉じないと、ターンが開いたまま残り、次のターンが重なって始まる。
     // 会話の一覧と起動時の復帰は、ターンが1つずつ閉じる前提で末尾だけを読むので、走っているかを取り違える
     try {
