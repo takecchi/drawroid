@@ -662,8 +662,10 @@ describe('revise_drawing and stop_drawing', () => {
     const { jobs, context } = await setup(store, drawingRunner);
     await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
     const older = '20261009-063012-aaaaaa';
+    const spec = await jobs.readJob(older);
+    if (spec.kind !== 'auto') throw new Error(`${older} は自動ジョブのはず`);
     await jobs.createJob(
-      { ...(await jobs.readJob(older)), request: '夕焼け' },
+      { ...spec, request: '夕焼け' },
       await jobs.readState(older),
       new Date('2026-10-09T06:30:12.000Z'),
     );
