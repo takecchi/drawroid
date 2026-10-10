@@ -211,6 +211,7 @@ describe('FsConversationStore', () => {
       budget: { estimatedInputTokens: 10, inputTokenLimit: 100, notes: [] },
       attempts: [],
       usage: { inputTokens: 10, outputTokens: 2 },
+      chars: { input: 8, output: 4 },
       outcome: { ok: true, value: { text: '描けます', toolCalls: [] } },
     };
 

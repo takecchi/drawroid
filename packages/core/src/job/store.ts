@@ -1,5 +1,5 @@
 import type { GenerationRequest, GenerationResult, InputImage } from '../backend.js';
-import type { LlmCallRecord } from '../llm/record.js';
+import type { LlmCallRecord, StoredLlmCallRecord } from '../llm/record.js';
 import type { PreviewImage } from '../loop/inputs.js';
 import type { SelectionRecord } from '../selection/selection.js';
 import type {
@@ -130,7 +130,7 @@ export interface JobStore {
    * jobId が null なら、ジョブに属さない記録（止める条件の変換など）を読む
    */
   listLlmCallRecords(jobId: string | null): Promise<{
-    records: LlmCallRecord[];
+    records: StoredLlmCallRecord[];
     invalid: { callId: string; reason: string }[];
   }>;
   /** 回のディレクトリがある回の番号を昇順で返す。回のディレクトリは think を書いた時点でできる */

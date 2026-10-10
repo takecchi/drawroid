@@ -33,6 +33,7 @@ import {
   type ReferenceRecord,
   type SelectionRecord,
   type StageName,
+  type StoredLlmCallRecord,
   type StoredGeneration,
 } from '@drawroid/core';
 import sharp from 'sharp';
@@ -58,9 +59,11 @@ export class StoredFileError extends Error {
   }
 }
 
-// 画面の一覧と合計が読む欄だけを調べる: 全欄を調べると、記録の形を足すたびに古い記録が読めなくなるため
+// 画面の一覧と合計が読む欄だけを調べる: 全欄を調べると、記録の形を足すたびに古い記録が読めなくなるため。
+// chars は任意: 文字数を残す前の記録も読めるようにする（無ければ「不明」として扱う）
 const llmCallRecordShape = z
   .object({
+    chars: z.object({ input: z.number(), output: z.number() }).optional(),
     callId: z.string(),
     iteration: z.number().nullable(),
     role: z.string(),
@@ -592,13 +595,13 @@ export class FsJobStore implements JobStore {
 
   async listLlmCallRecords(jobId: string | null) {
     const dir = jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls;
-    const records: LlmCallRecord[] = [];
+    const records: StoredLlmCallRecord[] = [];
     const invalid: { callId: string; reason: string }[] = [];
     for (const name of (await listNames(dir)).filter((n) => n.endsWith('.json'))) {
       try {
         const parsed = llmCallRecordShape.safeParse(await readJson(join(dir, name)));
         if (!parsed.success) throw new StoredFileError(join(dir, name), parsed.error);
-        records.push(parsed.data as unknown as LlmCallRecord);
+        records.push(parsed.data as unknown as StoredLlmCallRecord);
       } catch (error) {
         if (!(error instanceof StoredFileError)) throw error;
         invalid.push({ callId: name.slice(0, -'.json'.length), reason: error.message });

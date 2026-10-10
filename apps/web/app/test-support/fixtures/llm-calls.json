@@ -10,6 +10,7 @@
       "startedAt": "2026-01-01T00:00:03.000Z",
       "durationMs": 1,
       "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "chars": { "input": 136, "output": 28 },
       "ok": true,
       "attempts": 1
     },
@@ -23,6 +24,7 @@
       "startedAt": "2026-01-01T00:00:06.000Z",
       "durationMs": 1,
       "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "chars": { "input": 263, "output": 167 },
       "ok": true,
       "attempts": 1
     },
@@ -36,6 +38,7 @@
       "startedAt": "2026-01-01T00:00:07.000Z",
       "durationMs": 1,
       "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "chars": { "input": 193, "output": 118 },
       "ok": true,
       "attempts": 1
     },
@@ -49,6 +52,7 @@
       "startedAt": "2026-01-01T00:00:13.000Z",
       "durationMs": 1,
       "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "chars": { "input": 411, "output": 167 },
       "ok": true,
       "attempts": 1
     },
@@ -62,6 +66,7 @@
       "startedAt": "2026-01-01T00:00:14.000Z",
       "durationMs": 1,
       "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "chars": { "input": 245, "output": 112 },
       "ok": true,
       "attempts": 1
     },
@@ -75,16 +80,48 @@
       "startedAt": "2026-01-01T00:00:19.000Z",
       "durationMs": 1,
       "usage": { "inputTokens": 100, "outputTokens": 20 },
+      "chars": { "input": 203, "output": 17 },
       "ok": true,
       "attempts": 1
     }
   ],
   "byIteration": [
-    { "iteration": 1, "calls": 3, "inputTokens": 300, "outputTokens": 60, "durationMs": 3 },
-    { "iteration": 2, "calls": 2, "inputTokens": 200, "outputTokens": 40, "durationMs": 2 },
-    { "iteration": null, "calls": 1, "inputTokens": 100, "outputTokens": 20, "durationMs": 1 }
+    {
+      "iteration": 1,
+      "calls": 3,
+      "inputTokens": 300,
+      "outputTokens": 60,
+      "durationMs": 3,
+      "inputChars": 592,
+      "outputChars": 313
+    },
+    {
+      "iteration": 2,
+      "calls": 2,
+      "inputTokens": 200,
+      "outputTokens": 40,
+      "durationMs": 2,
+      "inputChars": 656,
+      "outputChars": 279
+    },
+    {
+      "iteration": null,
+      "calls": 1,
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "durationMs": 1,
+      "inputChars": 203,
+      "outputChars": 17
+    }
   ],
-  "total": { "calls": 6, "inputTokens": 600, "outputTokens": 120, "durationMs": 6 },
+  "total": {
+    "calls": 6,
+    "inputTokens": 600,
+    "outputTokens": 120,
+    "durationMs": 6,
+    "inputChars": 1451,
+    "outputChars": 609
+  },
   "invalid": [
     {
       "callId": "20260101T000099000Z-broken",

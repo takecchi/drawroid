@@ -414,6 +414,7 @@ function record(callId: string, jobId: string | null): LlmCallRecord {
     budget: { estimatedInputTokens: 1, inputTokenLimit: 2, notes: [] },
     attempts: [],
     usage: { inputTokens: null, outputTokens: null },
+    chars: { input: 1, output: 0 },
     outcome: { ok: false, reason: 'x' },
   };
 }

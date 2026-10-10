@@ -1,5 +1,7 @@
 import { rm, writeFile } from 'node:fs/promises';
 
+import type { LlmCallRecord } from '@drawroid/core';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createAutoJob, llmRecord, setup } from '../test-support.js';
@@ -17,6 +19,7 @@ beforeEach(async () => {
       role: 'judge',
       durationMs: 200,
       usage: { inputTokens: 20, outputTokens: 7 },
+      chars: { input: 50, output: 7 },
     }),
   );
   await store.writeLlmCall(
@@ -28,8 +31,20 @@ afterEach(async () => {
   await rm(env.root, { recursive: true, force: true });
 });
 
+const counts = (
+  calls: number,
+  inputTokens: number | null,
+  outputTokens: number,
+  durationMs: number,
+) => ({ calls, inputTokens, outputTokens, durationMs });
+
 type ListBody = {
-  calls: { callId: string; attempts: number; ok: boolean }[];
+  calls: {
+    callId: string;
+    attempts: number;
+    ok: boolean;
+    chars: { input: number; output: number } | null;
+  }[];
   byIteration: unknown[];
   total: unknown;
   invalid: { callId: string; reason: string }[];
@@ -42,16 +57,11 @@ describe('GET /jobs/:jobId/llm-calls', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as ListBody;
     expect(body.byIteration).toEqual([
-      { iteration: 1, calls: 2, inputTokens: 30, outputTokens: 12, durationMs: 300 },
-      { iteration: 2, calls: 1, inputTokens: null, outputTokens: 3, durationMs: 100 },
-      { iteration: null, calls: 1, inputTokens: 10, outputTokens: 5, durationMs: 100 },
+      { ...counts(2, 30, 12, 300), iteration: 1, inputChars: 150, outputChars: 27 },
+      { ...counts(1, null, 3, 100), iteration: 2, inputChars: 100, outputChars: 20 },
+      { ...counts(1, 10, 5, 100), iteration: null, inputChars: 100, outputChars: 20 },
     ]);
-    expect(body.total).toEqual({
-      calls: 4,
-      inputTokens: null,
-      outputTokens: 20,
-      durationMs: 500,
-    });
+    expect(body.total).toEqual({ ...counts(4, null, 20, 500), inputChars: 350, outputChars: 67 });
     expect(body.calls.map((c) => c.callId)).toEqual(['0001', '0002', '0003', '0004']);
   });
 
@@ -61,12 +71,31 @@ describe('GET /jobs/:jobId/llm-calls', () => {
     const body = (await res.json()) as ListBody;
     expect(body.calls.map((c) => c.callId)).toEqual(['0001', '0002']);
     expect(body.byIteration).toHaveLength(1);
-    expect(body.total).toEqual({ calls: 2, inputTokens: 30, outputTokens: 12, durationMs: 300 });
+    expect(body.total).toEqual({ ...counts(2, 30, 12, 300), inputChars: 150, outputChars: 27 });
   });
 
   it.each(['0', 'abc', '1.5', '-1'])('rejects iteration=%s with 400', async (value) => {
     const res = await env.api.request(`/jobs/${jobId}/llm-calls?iteration=${value}`);
     expect(res.status).toBe(400);
+  });
+
+  it('lists the chars of each call, and says unknown for a record written before chars existed', async () => {
+    const old: Partial<LlmCallRecord> = llmRecord(jobId, '0005', 1);
+    delete old.chars;
+    await writeFile(env.paths.jobFiles(jobId).llmCall('0005'), JSON.stringify(old));
+
+    const body = (await (await env.api.request(`/jobs/${jobId}/llm-calls`)).json()) as ListBody;
+
+    expect(body.invalid).toEqual([]);
+    expect(Object.fromEntries(body.calls.map((c) => [c.callId, c.chars]))).toEqual({
+      '0001': { input: 100, output: 20 },
+      '0002': { input: 50, output: 7 },
+      '0003': { input: 100, output: 20 },
+      '0004': { input: 100, output: 20 },
+      '0005': null,
+    });
+    // 数えられなかった呼び出しを 0 として足さない（トークン数と同じ）
+    expect(body.total).toMatchObject({ inputChars: null, outputChars: null });
   });
 
   it('leaves the prompt and the outcome value out of the list', async () => {
@@ -135,7 +164,10 @@ describe('GET /llm-calls', () => {
   it('lists the calls that belong to no job, newest first, without those of the jobs', async () => {
     await env.store.writeLlmCall(unattached('20261009T000001Z-a'));
     await env.store.writeLlmCall(
-      unattached('20261009T000002Z-b', { usage: { inputTokens: 30, outputTokens: 4 } }),
+      unattached('20261009T000002Z-b', {
+        usage: { inputTokens: 30, outputTokens: 4 },
+        chars: { input: 30, output: 4 },
+      }),
     );
 
     const res = await env.api.request('/llm-calls');
@@ -143,7 +175,7 @@ describe('GET /llm-calls', () => {
     const body = (await res.json()) as ListBody;
     expect(body.calls.map((c) => c.callId)).toEqual(['20261009T000002Z-b', '20261009T000001Z-a']);
     expect(body.calls[0]).toMatchObject({ purpose: 'stop-parse', iteration: null, ok: true });
-    expect(body.total).toEqual({ calls: 2, inputTokens: 40, outputTokens: 9, durationMs: 200 });
+    expect(body.total).toEqual({ ...counts(2, 40, 9, 200), inputChars: 130, outputChars: 24 });
     // 一覧には中身を載せない
     expect(JSON.stringify(body)).not.toContain('USER-TEXT');
   });
@@ -152,7 +184,7 @@ describe('GET /llm-calls', () => {
     const res = await env.api.request('/llm-calls');
     expect(await res.json()).toEqual({
       calls: [],
-      total: { calls: 0, inputTokens: 0, outputTokens: 0, durationMs: 0 },
+      total: { ...counts(0, 0, 0, 0), inputChars: 0, outputChars: 0 },
       invalid: [],
     });
   });

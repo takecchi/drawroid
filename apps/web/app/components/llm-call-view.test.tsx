@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { UnattachedLlmCalls } from './llm-call-view';
+import { LlmTotals, UnattachedLlmCalls } from './llm-call-view';
 
 const mocks = vi.hoisted(() => ({ useUnattachedLlmCalls: vi.fn(), useLlmCall: vi.fn() }));
 
@@ -26,16 +26,69 @@ const call = {
   startedAt: '2026-10-09T00:00:02.000Z',
   durationMs: 1200,
   usage: { inputTokens: 30, outputTokens: 4 },
+  chars: { input: 120, output: 18 } as { input: number; output: number } | null,
   ok: true,
   attempts: 1,
 };
+
+const total = { calls: 1, inputTokens: 30, outputTokens: 4, durationMs: 1200 };
+
+describe('chars of a call', () => {
+  it('shows the input and output chars of each call next to its tokens', () => {
+    mocks.useUnattachedLlmCalls.mockReturnValue({
+      data: {
+        calls: [call],
+        total: { ...total, inputChars: 120, outputChars: 18 },
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(<UnattachedLlmCalls />);
+
+    expect(
+      screen.getByText(
+        /^止める条件を読む .* 出力 4 トークン \/ 入力 120 文字 \/ 出力 18 文字 \/ 1\.2 秒/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says unknown for a call recorded before chars were kept, and for a total that includes one', () => {
+    mocks.useUnattachedLlmCalls.mockReturnValue({
+      data: {
+        calls: [{ ...call, chars: null }],
+        total: { ...total, inputChars: null, outputChars: null },
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(<UnattachedLlmCalls />);
+
+    expect(screen.getAllByText(/入力 不明 文字 \/ 出力 不明 文字/)).toHaveLength(2);
+  });
+});
+
+describe('LlmTotals', () => {
+  it('adds the chars to the summary line and to each iteration row', () => {
+    render(
+      <LlmTotals
+        total={{ ...total, calls: 3, inputChars: 900, outputChars: 77 }}
+        byIteration={[{ iteration: 1, ...total, inputChars: 900, outputChars: 77 }]}
+      />,
+    );
+
+    expect(screen.getByText('入力 900 文字')).toBeTruthy();
+    expect(screen.getByText('出力 77 文字')).toBeTruthy();
+    expect(screen.getByText('900').getAttribute('data-label')).toBe('入力文字数');
+    expect(screen.getByText('77').getAttribute('data-label')).toBe('出力文字数');
+  });
+});
 
 describe('UnattachedLlmCalls', () => {
   it('lists the calls that belong to no job with their tokens, and reads one only when opened', async () => {
     mocks.useUnattachedLlmCalls.mockReturnValue({
       data: {
         calls: [call],
-        total: { calls: 1, inputTokens: 30, outputTokens: 4, durationMs: 1200 },
+        total: { ...total, inputChars: 120, outputChars: 18 },
         invalid: [{ callId: '20261009T000001Z-x', reason: '形が違う' }],
       },
       error: undefined,
@@ -73,7 +126,7 @@ describe('UnattachedLlmCalls', () => {
     mocks.useUnattachedLlmCalls.mockReturnValue({
       data: {
         calls: [{ ...call, purpose }],
-        total: { calls: 1, inputTokens: 30, outputTokens: 4, durationMs: 1200 },
+        total: { ...total, inputChars: 120, outputChars: 18 },
         invalid: [],
       },
       error: undefined,
@@ -88,7 +141,14 @@ describe('UnattachedLlmCalls', () => {
     mocks.useUnattachedLlmCalls.mockReturnValue({
       data: {
         calls: [],
-        total: { calls: 0, inputTokens: 0, outputTokens: 0, durationMs: 0 },
+        total: {
+          calls: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          durationMs: 0,
+          inputChars: 0,
+          outputChars: 0,
+        },
         invalid: [],
       },
       error: undefined,
