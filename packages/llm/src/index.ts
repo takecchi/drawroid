@@ -11,7 +11,7 @@ export {
   type RoleModels,
 } from './adapter.js';
 export * from './config.js';
-export { detectContextTokens, type DetectedContext } from './context.js';
+export { describeDetectedContext, detectContextTokens, type DetectedContext } from './context.js';
 export { createLanguageModel, LlmConfigError, type ModelEnvironment } from './models.js';
 
 /** 設定から LlmPort を組み立てる。設定は llmConfigSchema で検証してから渡す */

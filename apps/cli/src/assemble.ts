@@ -24,7 +24,12 @@ import {
   ReselectionDistiller,
   TalkRunner,
 } from '@drawroid/core';
-import { detectContextTokens, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
+import {
+  describeDetectedContext,
+  detectContextTokens,
+  llmConfigSchema,
+  type LlmConfig,
+} from '@drawroid/llm';
 import {
   createFsDistillLog,
   createFsMemoryStore,
@@ -195,9 +200,7 @@ export async function assembleDrawroid({
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
   const configureLlm = async (llm: LlmConfig) => {
     const { config, detected } = await detectContextTokens(llm, { env });
-    for (const { role, contextTokens } of detected) {
-      log(`drawroid: ${role} の役の文脈の上限を LLM から読んだ: ${contextTokens}`);
-    }
+    for (const read of detected) log(describeDetectedContext(read));
     configuredLlm = config;
     autoQueue.configure(config);
   };

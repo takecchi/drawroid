@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { llmConfigSchema } from './config.js';
-import { detectContextTokens } from './context.js';
+import { describeDetectedContext, detectContextTokens } from './context.js';
 
 const config = (contextTokens?: number) =>
   llmConfigSchema.parse({
@@ -120,6 +120,46 @@ describe('detectContextTokens', () => {
     },
   );
 
+  // llama.cpp の llama-server は、--alias を付けないと id にモデルのファイルのパスを出し、チャットは名前を問わずそのモデルで答える
+  it('reads the window of the only model the server lists, even under another name, and names it', async () => {
+    const { fetch } = modelsFetch({
+      data: [{ id: '/models/qwen2.5-3b-instruct-q4_k_m.gguf', meta: { n_ctx: 8192 } }],
+    });
+
+    const { config: filled, detected } = await detectContextTokens(config(), { env: {}, fetch });
+
+    expect(filled.roles.think.contextTokens).toBe(8192);
+    expect(detected).toEqual([
+      { role: 'think', contextTokens: 8192, onlyModel: '/models/qwen2.5-3b-instruct-q4_k_m.gguf' },
+    ]);
+  });
+
+  it('does not borrow a window when the server lists several models and none has the name', async () => {
+    const { fetch } = modelsFetch({
+      data: [
+        { id: 'first', meta: { n_ctx: 8192 } },
+        { id: 'second', meta: { n_ctx: 4096 } },
+      ],
+    });
+
+    const { config: filled, detected } = await detectContextTokens(config(), { env: {}, fetch });
+
+    expect(filled.roles.think.contextTokens).toBeUndefined();
+    expect(detected).toEqual([]);
+  });
+
+  it.each([
+    ['meta is null', { id: '/models/a.gguf', meta: null }],
+    ['the window is 0', { id: '/models/a.gguf', meta: { n_ctx: 0 } }],
+    ['the window is not a number', { id: '/models/a.gguf', meta: { n_ctx: 'bad' } }],
+  ])('leaves it unset when the only model listed is broken (%s)', async (_, broken) => {
+    const { fetch } = modelsFetch({ data: [broken] });
+
+    const { config: filled } = await detectContextTokens(config(), { env: {}, fetch });
+
+    expect(filled.roles.think.contextTokens).toBeUndefined();
+  });
+
   // そのモデルの欄が崩れていたら、ほかのモデルの窓で埋めない
   it.each([
     ['meta is null', { id: 'qwen', meta: null }],
@@ -131,5 +171,26 @@ describe('detectContextTokens', () => {
     const { config: filled } = await detectContextTokens(config(), { env: {}, fetch });
 
     expect(filled.roles.think.contextTokens).toBeUndefined();
+  });
+});
+
+describe('describeDetectedContext', () => {
+  it('says the window it read for the role', () => {
+    expect(describeDetectedContext({ role: 'talk', contextTokens: 32768 })).toBe(
+      'drawroid: talk の役の文脈の上限を LLM から読んだ: 32768',
+    );
+  });
+
+  // 名前が合わないまま読んだときは、どのモデルの窓かを見えるようにする: 思っていたモデルと違えば、人が気づけるように
+  it('names the model it read from when it took the only model the server lists', () => {
+    expect(
+      describeDetectedContext({
+        role: 'think',
+        contextTokens: 8192,
+        onlyModel: '/models/qwen2.5-3b-instruct-q4_k_m.gguf',
+      }),
+    ).toBe(
+      'drawroid: think の役の文脈の上限を LLM から読んだ: 8192（/v1/models に1つだけあるモデル /models/qwen2.5-3b-instruct-q4_k_m.gguf の窓。設定のモデル名とは一致しない）',
+    );
   });
 });

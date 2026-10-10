@@ -12,7 +12,20 @@ const modelsResponseSchema = z.object({ data: z.array(z.unknown()) });
 const modelEntrySchema = z.object({ id: z.string() });
 const modelWindowSchema = z.object({ meta: z.object({ n_ctx: z.number().int().positive() }) });
 
-export type DetectedContext = { role: LlmRole; contextTokens: number };
+/** onlyModel は、名前の合うモデルが無く、一覧に1つだけあるモデルの窓を読んだときの、そのモデルの id */
+export type DetectedContext = { role: LlmRole; contextTokens: number; onlyModel?: string };
+
+/** 起動の端末に出す1行 */
+export function describeDetectedContext({
+  role,
+  contextTokens,
+  onlyModel,
+}: DetectedContext): string {
+  const line = `drawroid: ${role} の役の文脈の上限を LLM から読んだ: ${contextTokens}`;
+  return onlyModel === undefined
+    ? line
+    : `${line}（/v1/models に1つだけあるモデル ${onlyModel} の窓。設定のモデル名とは一致しない）`;
+}
 
 /**
  * contextTokens を書いていない役について、provider が報告する窓の長さを読んで埋める。
@@ -30,10 +43,10 @@ export async function detectContextTokens(
     if (roleConfig === undefined || roleConfig.contextTokens !== undefined) continue;
     const provider = config.providers[roleConfig.provider];
     if (provider === undefined) continue;
-    const contextTokens = await readContextTokens(provider, roleConfig.model, environment);
-    if (contextTokens === undefined) continue;
-    roles[role] = { ...roleConfig, contextTokens };
-    detected.push({ role, contextTokens });
+    const read = await readContextTokens(provider, roleConfig.model, environment);
+    if (read === undefined) continue;
+    roles[role] = { ...roleConfig, contextTokens: read.contextTokens };
+    detected.push({ role, ...read });
   }
   return { config: { ...config, roles: { ...config.roles, ...roles } }, detected };
 }
@@ -42,7 +55,7 @@ async function readContextTokens(
   provider: ProviderConfig,
   model: string,
   environment: ModelEnvironment,
-): Promise<number | undefined> {
+): Promise<Omit<DetectedContext, 'role'> | undefined> {
   if (provider.type !== 'openai-compatible') return undefined;
   const apiKey = provider.apiKeyEnv === undefined ? undefined : environment.env[provider.apiKeyEnv];
   const fetch = environment.fetch ?? globalThis.fetch;
@@ -56,10 +69,21 @@ async function readContextTokens(
     if (!response.ok) return undefined;
     const parsed = modelsResponseSchema.safeParse(await response.json());
     if (!parsed.success) return undefined;
-    const entry = parsed.data.data.find(
+    const entries = parsed.data.data;
+    const named = entries.find(
       (candidate) => modelEntrySchema.safeParse(candidate).data?.id === model,
     );
-    return modelWindowSchema.safeParse(entry).data?.meta.n_ctx;
+    if (named !== undefined) {
+      const contextTokens = modelWindowSchema.safeParse(named).data?.meta.n_ctx;
+      return contextTokens === undefined ? undefined : { contextTokens };
+    }
+    // 名前が合わなくても、一覧に1つだけなら読む: llama.cpp の llama-server は --alias が無いと id にファイルのパスを出し、
+    // チャットは名前を問わずその1つで答えるため。複数あるときは、どれが答えるか分からないので読まない
+    const only = entries.length === 1 ? modelEntrySchema.safeParse(entries[0]).data : undefined;
+    const contextTokens = modelWindowSchema.safeParse(entries[0]).data?.meta.n_ctx;
+    return only === undefined || contextTokens === undefined
+      ? undefined
+      : { contextTokens, onlyModel: only.id };
   } catch {
     // 読めないことは失敗にしない: 窓の長さを報告しない provider でも、既定の窓で動かすため
     return undefined;
