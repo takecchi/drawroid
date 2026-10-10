@@ -44,11 +44,11 @@ export function AdoptButton({
   // 押したボタンは次の形（確かめ・印）に替わって消える。人が押して形が替わったときだけ、次の形の先頭へフォーカスを移す
   // （移さないとページの外に落ちる。押していないのに替わったとき、たとえば会話で別に決まったときは移さない）
   const pressed = useRef(false);
-  const root = useRef<HTMLDivElement>(null);
+  const firstButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     // 送っている間はボタンが押せないので待つ。決めたあとは印（DecidedMark）が自分で受ける
     if (!pressed.current || state.step === 'sending' || state.step === 'done') return;
-    root.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    firstButton.current?.focus();
   }, [state.step]);
   function press(next: State) {
     pressed.current = true;
@@ -72,17 +72,13 @@ export function AdoptButton({
   }
   if (state.step === 'confirming' || state.step === 'sending') {
     return (
-      <div
-        ref={root}
-        className="space-y-1"
-        role="group"
-        aria-label={`${imageLabel}に決めるかの確かめ`}
-      >
+      <div className="space-y-1" role="group" aria-label={`${imageLabel}に決めるかの確かめ`}>
         <p className="text-xs">
           {imageLabel}に決める？ 続きの指示が無ければ、描くのはここで止まる。
         </p>
         <div className="flex flex-wrap gap-1">
           <Button
+            ref={firstButton}
             size="sm"
             variant="primary"
             disabled={state.step === 'sending'}
@@ -103,8 +99,9 @@ export function AdoptButton({
     );
   }
   return (
-    <div ref={root} className="space-y-1">
+    <div className="space-y-1">
       <Button
+        ref={firstButton}
         size="sm"
         aria-label={`この画像に決める: ${imageLabel}`}
         onClick={() => press({ step: 'confirming' })}
