@@ -1,6 +1,6 @@
 import { isApiError, runDoctor, type DoctorResponse } from '@drawroid/swr';
 import { Badge, Button, ErrorNote, Muted, OkNote, Section, Spinner, WarnNote } from '@drawroid/ui';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 type State =
@@ -17,10 +17,18 @@ export function DoctorCheck() {
   const [state, setState] = useState<State>({ step: 'idle' });
   const outcomeRef = useRef<HTMLDivElement>(null);
 
-  // 終わったら結果へフォーカスを移す: このボタンは画面のいちばん下にあり、結果は画面の外に出るので、移さないと押しても何も起きないように見える
+  const buttonId = useId();
+
+  // 終わったら結果へフォーカスを移す: このボタンは画面のいちばん下にあり、結果は画面の外に出るので、移さないと押しても何も起きないように見える。
+  // 移すのは、フォーカスがまだボタンにあるか、どこにも無い（待つ間にボタンが押せなくなって body へ落ちた）ときだけ。
+  // 待つ間に人がほかの欄へ移っていたら奪わない: 打っている途中の文字が、結果の箱に吸われるため
   useEffect(() => {
-    if (state.step === 'done' || state.step === 'failed') outcomeRef.current?.focus();
-  }, [state.step]);
+    if (state.step !== 'done' && state.step !== 'failed') return;
+    const active = document.activeElement;
+    if (active === null || active === document.body || active.id === buttonId) {
+      outcomeRef.current?.focus();
+    }
+  }, [state.step, buttonId]);
 
   async function check() {
     setState({ step: 'running' });
@@ -37,7 +45,7 @@ export function DoctorCheck() {
     <Section
       title="まとめて確かめる"
       action={
-        <Button loading={state.step === 'running'} onClick={() => void check()}>
+        <Button id={buttonId} loading={state.step === 'running'} onClick={() => void check()}>
           確かめる
         </Button>
       }

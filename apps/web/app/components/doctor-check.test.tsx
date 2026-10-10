@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, runDoctor } from '@drawroid/swr';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,10 @@ const renderCheck = () =>
       <DoctorCheck />
     </MemoryRouter>,
   );
+
+/** フォーカスが、element を含む箱にあるか。body は何でも含むので、body にあるときは除く */
+const focusHolds = (element: Element) =>
+  document.activeElement !== document.body && document.activeElement?.contains(element) === true;
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
@@ -75,7 +79,7 @@ describe('DoctorCheck', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
     const verdict = await screen.findByText(/足りないものが 2 つある/);
-    expect(document.activeElement?.contains(verdict)).toBe(true);
+    expect(focusHolds(verdict)).toBe(true);
   });
 
   it('moves focus to the reason when the check could not run', async () => {
@@ -87,8 +91,62 @@ describe('DoctorCheck', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
     const reason = await screen.findByRole('alert');
-    expect(document.activeElement?.contains(reason)).toBe(true);
+    expect(focusHolds(reason)).toBe(true);
   });
+
+  // 待つ間にボタンが押せなくなると、ブラウザによってはフォーカスを body へ落とす。どこにもフォーカスが無いときも結果へ移す。
+  // （jsdom は押せなくなったボタンからフォーカスを外せないので、フォーカスを動かさずに押して、body のまま待つ形で見る）
+  it('moves focus to the result when the focus is nowhere when the check finishes', async () => {
+    let settle: () => void = () => undefined;
+    vi.mocked(runDoctor).mockImplementation(
+      () => new Promise((resolve) => (settle = () => resolve(recordedDoctor))),
+    );
+    renderCheck();
+
+    fireEvent.click(screen.getByRole('button', { name: '確かめる' }));
+    expect(document.activeElement).toBe(document.body);
+    settle();
+
+    const verdict = await screen.findByText(/足りないものが 2 つある/);
+    expect(focusHolds(verdict)).toBe(true);
+  });
+
+  // 待つ間に人がほかの欄へ移っていたら、結果へ引き戻さない（打っている途中の文字が、結果の箱に吸われるため）
+  it.each([
+    ['finishes', true, /足りないものが 2 つある/],
+    ['could not run', false, /確かめられなかった/],
+  ])(
+    'leaves focus on the field the person moved to when the check %s, with the outcome still shown',
+    async (_, succeeds, outcome) => {
+      let settle: () => void = () => undefined;
+      vi.mocked(runDoctor).mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            settle = () =>
+              succeeds
+                ? resolve(recordedDoctor)
+                : reject(new ApiError('unavailable', 'この起動では、画面から確かめられない', 409));
+          }),
+      );
+      render(
+        <MemoryRouter>
+          <input aria-label="ほかの欄" />
+          <DoctorCheck />
+        </MemoryRouter>,
+      );
+      const user = userEvent.setup();
+
+      await user.click(screen.getByRole('button', { name: '確かめる' }));
+      const field = screen.getByRole('textbox', { name: 'ほかの欄' });
+      await user.click(field);
+      await user.keyboard('abc');
+      settle();
+
+      expect(await screen.findByText(outcome)).toBeTruthy();
+      expect(document.activeElement).toBe(field);
+      expect((field as HTMLInputElement).value).toBe('abc');
+    },
+  );
 
   it('shows why the check could not run', async () => {
     vi.mocked(runDoctor).mockRejectedValue(
