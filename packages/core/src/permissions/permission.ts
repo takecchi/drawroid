@@ -100,9 +100,9 @@ export function describePermissionIssue(issue: z.core.$ZodIssue): string {
     }
     // 境目を含まない範囲を「以上」「以下」と書かない: 境目の値なら通るように読めるため
     case 'too_small':
-      return `小さすぎる（${String(issue.minimum)} ${issue.inclusive === false ? 'より大きく' : '以上'}）`;
+      return `小さすぎる（${String(issue.minimum)} ${!issue.inclusive ? 'より大きく' : '以上'}）`;
     case 'too_big':
-      return `大きすぎる（${String(issue.maximum)} ${issue.inclusive === false ? 'より小さく' : '以下'}）`;
+      return `大きすぎる（${String(issue.maximum)} ${!issue.inclusive ? 'より小さく' : '以下'}）`;
     default:
       return '形が違う';
   }
