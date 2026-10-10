@@ -177,6 +177,17 @@ describe('TalkRunner after a job of the conversation stops', () => {
     expect(await jobTurns()).toHaveLength(1);
   });
 
+  it('does not speak while the job has not stopped in the conversation yet', async () => {
+    const { startJob, runner, conversationId, events, llm, quiet } = await setup(() => reportStep);
+    await startJob();
+    // 回の途中（job.stopped がまだ無い）に知らされても、話しかけない
+    runner.reportJobStopped({ conversationId, jobId: JOB, reason: AI_STOP });
+
+    await quiet();
+    expect((await events()).map((e) => e.type)).toEqual(['job.started']);
+    expect(llm.steps).toHaveLength(0);
+  });
+
   it('does not speak again for a job it already spoke about', async () => {
     const { startJob, stopJob, runner, conversationId, jobTurns, turnEnded, quiet, llm } =
       await setup(() => reportStep);
