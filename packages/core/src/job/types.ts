@@ -196,6 +196,8 @@ export const REFERENCE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp'] a
 export const MAX_REFERENCES_PER_REQUEST = 4;
 /** 参照画像1枚の大きさの上限（base64 を戻したあとのバイト数）。クローンが決めた値 */
 export const MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
+/** 参照画像の用途の言葉の上限（trim したあとの文字数）。クローンが決めた値 */
+export const MAX_REFERENCE_NOTE_CHARS = 200;
 
 /**
  * refs/<refId>.json の中身。人間が添えた参照画像1枚の、用途の言葉・要点・渡した印。画像そのものは refs/<refId>.<ext>。
