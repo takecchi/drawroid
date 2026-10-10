@@ -67,6 +67,68 @@ describe('findInputOverflows', () => {
     ).not.toContain('ref-gist');
   });
 
+  // 断る理由に、どの欄を減らせばよいかを添える: 欄を1つだけいちばん小さくしたとき、その段の削れない部分がいちばん減る欄
+  describe('naming the field to reduce', () => {
+    const tiny: ModelWindow = { contextTokens: 100, maxOutputTokens: 0 };
+    const fieldOf = (overflows: ReturnType<typeof findInputOverflows>, stage: string) =>
+      overflows.find((o) => o.stage === stage)?.largestField?.path;
+
+    it('names the field that takes the most of the stage', () => {
+      const overflows = findInputOverflows(
+        resolveBudgets({ candidates: { maxSize: 12000 }, references: { noteChars: 2000 } }),
+        { think: tiny },
+      );
+
+      expect(fieldOf(overflows, 'think')).toBe('candidates.maxSize');
+      expect(fieldOf(overflows, 'ref-gist')).toBe('references.noteChars');
+    });
+
+    // 段ごとに選ぶ: 窓を超えた段ごとに、その段の削れない部分を減らす欄は違うため
+    it('names a field for each stage on its own', () => {
+      const overflows = findInputOverflows(
+        resolveBudgets({ candidates: { maxSize: 12000 }, imageLongEdge: 1536, imagesPerJudge: 8 }),
+        { think: tiny, judge: tiny },
+      );
+
+      expect(fieldOf(overflows, 'think')).toBe('candidates.maxSize');
+      expect(fieldOf(overflows, 'judge')).toBe('imageLongEdge');
+    });
+
+    // 値の大きさでは選ばない: その段が読まない欄は、どれだけ大きくても減らしても窓に入らないため
+    it('does not name a field the stage does not read, however large it is', () => {
+      const overflows = findInputOverflows(
+        resolveBudgets({
+          memory: { think: { maxSize: 100000 } },
+          distill: { memory: { maxSize: 100000 } },
+          talk: { messageChars: 100000 },
+        }),
+        { think: tiny, judge: tiny },
+      );
+
+      expect(overflows).not.toEqual([]);
+      for (const overflow of overflows) {
+        expect(overflow.largestField?.path).toMatch(/^(text|candidates|interventions|references|image)/);
+      }
+    });
+
+    it('says how many tokens the field frees when it is made the smallest', () => {
+      const budgets = resolveBudgets({ candidates: { maxSize: 12000 } });
+      const [think] = findInputOverflows(budgets, { think: tiny });
+      const smallest = findInputOverflows(resolveBudgets({ candidates: { maxSize: 1 } }), {
+        think: tiny,
+      })[0]!;
+
+      expect(think!.largestField).toEqual({
+        path: 'candidates.maxSize',
+        smallest: 1,
+        savedTokens: think!.requiredTokens - smallest.requiredTokens,
+      });
+      const line = describeInputOverflow(think!);
+      expect(line).toContain('candidates.maxSize');
+      expect(line).toContain(`${think!.largestField!.savedTokens} トークン減る`);
+    });
+  });
+
   // 窓の分からない役は比べない: 分かっている値でだけ比べ、分からない役は呼び手が知らせる
   it('leaves out the roles whose window is not known, however large their budget is', () => {
     const heavyJudge = resolveBudgets({ imagesPerJudge: 8, imageLongEdge: 1536 });
