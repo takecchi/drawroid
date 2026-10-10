@@ -44,6 +44,36 @@ describe('selectMemory', () => {
     expect(ids(selected)).toEqual(['anime']);
   });
 
+  it.each([
+    { tag: 'ねこ', gist: 'ネコ耳の少女' },
+    { tag: 'ネコ', gist: 'ねこ耳の少女' },
+    { tag: 'ねこ', gist: 'ﾈｺ耳の少女' },
+    { tag: 'ヴァイオリン', gist: 'ゔぁいおりんを弾く少女' },
+  ])('matches the tag $tag in "$gist" regardless of hiragana and katakana', ({ tag, gist }) => {
+    const items = [item({ id: 'cat', tags: [tag] })];
+
+    const { selected } = selectMemory(items, gist, roomy);
+
+    expect(ids(selected)).toEqual(['cat']);
+  });
+
+  it.each([
+    { tag: 'ビール', gist: '高いビルの夜景' },
+    { tag: 'ビル', gist: 'ビールを飲む少女' },
+    { tag: 'はけ', gist: 'バケツを持つ少女' },
+    { tag: 'ハン', gist: 'パンを食べる少女' },
+    { tag: 'ビヨウイン', gist: 'びょういんの待合室' },
+  ])(
+    'does not match the tag $tag in "$gist", which differs by a long vowel, voicing or small kana',
+    ({ tag, gist }) => {
+      const items = [item({ id: 'other', tags: [tag] })];
+
+      const { selected } = selectMemory(items, gist, roomy);
+
+      expect(selected).toEqual([]);
+    },
+  );
+
   it('orders always items first, then by number of matched tags, then by most recently updated', () => {
     const items = [
       item({ id: 'one-tag-new', tags: ['海'], updatedAt: '2026-10-09T00:00:00Z' }),
