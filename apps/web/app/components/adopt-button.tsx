@@ -22,6 +22,7 @@ export function AdoptButton({
   image,
   imageLabel,
   chosen = false,
+  onDecided,
 }: {
   jobId: string;
   image: { iteration: number; index: number };
@@ -29,6 +30,8 @@ export function AdoptButton({
   imageLabel: string;
   /** この画像で決まった（会話の job.adopted・回の adopted）。押した直後だけでなく、開き直しても同じに出すため */
   chosen?: boolean;
+  /** このボタンで決めたとき。呼び手は、記録（chosen）が追いつく前にジョブが止まっても、このボタンを出し続ける */
+  onDecided?: () => void;
 }) {
   const [state, setState] = useState<State>({ step: 'idle' });
   const small = 'h-7 px-2 text-xs';
@@ -51,6 +54,7 @@ export function AdoptButton({
     try {
       await adoptImage(jobId, image);
       setState({ step: 'done' });
+      onDecided?.();
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setState({ step: 'failed', message: caught.message });

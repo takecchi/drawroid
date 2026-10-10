@@ -234,12 +234,15 @@ function ImageChoices({
 }) {
   const imageKey = formatImageKey({ iteration, index });
   const imageLabel = imageNameOf(useContext(JobNames).get(jobId), iteration, index);
+  // この行で決めたか。決めるとジョブは止まり、止まった知らせが決めた知らせ（chosen）より先に届くことがある。
+  // その間に「止まった・決めていない」の形（お気に入りのボタン）へ差し替えると、決めた印が作り直され、印へ移したフォーカスが落ちるため
+  const [decidedHere, setDecidedHere] = useState(false);
   return (
     <div className="space-y-1">
       <VerdictButtons jobId={jobId} imageKey={imageKey} imageLabel={imageLabel} verdict={verdict} />
       {/* 止まったジョブは採る口を受けない（止まったら受けない約束。API は 409）ので、止まりのカードと同じく、決めるのはお気に入りにする。
           人が選んで止まった画像は、選んだと出す */}
-      {stopped && !chosen ? (
+      {stopped && !chosen && !decidedHere ? (
         <ChooseAsFavorite
           jobId={jobId}
           imageKey={imageKey}
@@ -252,6 +255,7 @@ function ImageChoices({
           image={{ iteration, index }}
           imageLabel={imageLabel}
           chosen={chosen}
+          onDecided={() => setDecidedHere(true)}
         />
       )}
     </div>
