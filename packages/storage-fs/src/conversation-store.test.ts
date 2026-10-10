@@ -97,7 +97,23 @@ describe('FsConversationStore', () => {
   it('keeps seq order in a large page read many files at a time', async () => {
     const store = new FsConversationStore(root);
     const { conversationId: id } = await store.createConversation(at);
-    for (let i = 1; i <= 75; i++) await store.appendEvent(id, said(`${i}`), at);
+    // 書かれたイベントのファイルを、まとめて並べて置く: 1件ずつ書き足すと、書くたびに番号を確かめて置くので、
+    // 75 件を順に書くだけで、混んだときに試験の時間の上限（5 秒）に近づくため。見るのは読む側の並び
+    const files = dataPaths(root).conversationFiles(id);
+    await mkdir(files.events, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 75 }, (_, i) =>
+        writeFile(
+          files.event(i + 1),
+          JSON.stringify({
+            ...said(`${i + 1}`),
+            attachments: [],
+            seq: i + 1,
+            at: at.toISOString(),
+          }),
+        ),
+      ),
+    );
 
     const page = await store.readEvents(id, { limit: 1000 });
 
