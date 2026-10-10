@@ -460,10 +460,11 @@ try {
   expect(true, '人が画像を選ぶと、会話に「選んだ」が出る（job.adopted）');
   await log.getByText('人が画像を選んだ').last().waitFor();
   await stopButton.waitFor({ state: 'hidden' });
+  // 画像の名前は、回の数の前に数字が無いことを求める（(?<!\d)）: 無いと「1 回目」が「11 回目」にも当たるため（viewer-mask の歯と同じ）
   expect(
     relay.stats.judgeCut === 1 &&
       (await page
-        .getByRole('button', { name: /^お気に入りを外す: .*1 回目の画像 1 番/ })
+        .getByRole('button', { name: /^お気に入りを外す: .*(?<!\d)1 回目の画像 1 番/ })
         .count()) >= 1,
     '待たせていた見る役は呼ばれ直さず、ジョブはその画像をお気に入りにして止まる',
   );
@@ -481,10 +482,10 @@ try {
   await say('夕焼けの犬を描いて');
   await until(() => relay?.stats.judgeHeld === 2, '見る役の返事を止める');
   const adoptButton = page
-    .getByRole('button', { name: /^この画像に決める: .*1 回目の画像 1 番$/ })
+    .getByRole('button', { name: /^この画像に決める: .*(?<!\d)1 回目の画像 1 番$/ })
     .last();
   await adoptButton.click();
-  await page.getByRole('button', { name: /^決める: .*1 回目の画像 1 番$/ }).click();
+  await page.getByRole('button', { name: /^決める: .*(?<!\d)1 回目の画像 1 番$/ }).click();
   await page.getByText('この画像に決めた', { exact: true }).nth(chosenBefore).waitFor();
   await log
     .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
@@ -545,12 +546,12 @@ try {
   expect(
     (await humanCard
       .getByRole('button', {
-        name: /^この画像に決める（お気に入りにする）: .*1 回目の画像 \d+ 番$/,
+        name: /^この画像に決める（お気に入りにする）: .*(?<!\d)1 回目の画像 \d+ 番$/,
       })
       .isVisible()) &&
       (await humanCard.getByRole('img', { name: /^最良: / }).isVisible()) &&
       (await humanCard
-        .getByText(/^最良: .*1 回目の画像 \d+ 番（見る役の点 [\d.]+）$/)
+        .getByText(/^最良: .*(?<!\d)1 回目の画像 \d+ 番（見る役の点 [\d.]+）$/)
         .isVisible()) &&
       (await page.getByRole('region', { name: 'このジョブから覚えたこと' }).count()) ===
         learnedBefore,
