@@ -15,7 +15,9 @@ import type { MemoryStore } from '../../memory/store.js';
 import type { ParamKey } from '../../params/param-key.js';
 import type { Permissions } from '../../permissions/permission.js';
 import { normalizeForMatch } from '../../text/normalize.js';
-import { candidateNamesOf, talkImageLabel } from '../drawing.js';
+import { describeRemaining, progressOf } from '../../loop/inputs.js';
+import { readStopConditions } from '../../loop/stop.js';
+import { candidateNamesOf, describeJobStatus, talkImageLabel } from '../drawing.js';
 import { currentJobOfConversation } from '../drawing-tools.js';
 import type { ConversationEvent } from '../events.js';
 import type { TalkLimits } from './limits.js';
@@ -54,6 +56,8 @@ export type ReadOnlyToolDeps = {
   candidateNotes?: () => Promise<ReadonlyMap<string, string>>;
   memory?: MemoryStore;
   jobs: JobStore;
+  /** 止める条件の時間の残りを数える時計。省略すれば実際の時刻 */
+  now?: () => Date;
 };
 
 const FEATURE_LABELS: Record<(typeof BACKEND_FEATURES)[number], string> = {
@@ -194,7 +198,7 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
   const drawingStatus: TalkTool = {
     name: 'drawing_status',
     description:
-      'この会話で描いているジョブの今の状態（回・最良候補の点数）を調べる。人間に「今どう？」と聞かれたときに使う。',
+      'この会話で描いているジョブの今の状態（回・最良候補の点数・止める条件の残り）を調べる。人間に「今どう？」と聞かれたときに使う。',
     inputSchema: noInput,
     async run(_input, { conversationId }) {
       const jobId = await currentJobOfConversation(deps.jobs, conversationId);
@@ -203,7 +207,8 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
       }
       const state = await deps.jobs.readState(jobId);
       const carry = state.carry;
-      const parts = [`ジョブ ${jobId}: ${state.status}`];
+      const status = describeJobStatus(state);
+      const parts = [`ジョブ ${jobId} は${status}`];
       if (carry !== undefined) {
         parts.push(`${carry.completedIterations} 回済み`);
         if (carry.best !== undefined)
@@ -211,8 +216,29 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
             `最良は ${talkImageLabel({ iteration: carry.best.iteration, index: carry.best.imageIndex })}（${carry.best.score.toFixed(2)}）`,
           );
       }
-      if (state.status === 'stopped') parts.push(`止まった理由: ${state.reason.detail}`);
-      return { ok: true, result: parts.join('。'), summary: state.status };
+      if (state.status === 'stopped') {
+        parts.push(`止まった理由: ${state.reason.detail}`);
+      } else {
+        const spec = await deps.jobs.readJob(jobId);
+        if (spec.kind === 'auto') {
+          const iteration = (carry?.completedIterations ?? 0) + 1;
+          const remaining = describeRemaining(
+            progressOf({
+              iteration,
+              conditions: await readStopConditions(deps.jobs, spec),
+              imagesGenerated: state.status === 'running' ? state.imagesGenerated : 0,
+              elapsedMs:
+                state.status === 'running'
+                  ? (deps.now?.() ?? new Date()).getTime() - Date.parse(state.startedAt)
+                  : 0,
+            }),
+          );
+          if (remaining !== '') {
+            parts.push(`これから ${iteration} 回目${remaining}`);
+          }
+        }
+      }
+      return { ok: true, result: parts.join('。'), summary: status };
     },
   };
 

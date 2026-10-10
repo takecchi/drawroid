@@ -298,6 +298,14 @@ function clip(text: string, chars: number): string {
   return text.length <= chars ? text : `${text.slice(0, Math.max(0, chars - 1))}…`;
 }
 
+/** 話す役へ渡す、ジョブの状態の言い方。要約（summarizeJobForTalk）と drawing_status が同じ言葉を使う */
+export function describeJobStatus(state: JobState): string {
+  if (state.status === 'stopped') {
+    return `止まった（${state.reason.kind}${state.reason.detail === undefined ? '' : `: ${state.reason.detail}`}）`;
+  }
+  return state.status === 'running' ? '走っている' : '順番を待っている';
+}
+
 /**
  * 話す役へ渡す、会話のジョブの要約。持ち回す状態（carry）の短い欄と状態だけから作り、文字数の上限に収める。
  * 回の中身（決めたパラメータの全文・画像）は渡さない。
@@ -308,12 +316,7 @@ export function summarizeJobForTalk(
   state: JobState,
   limits: { chars: number },
 ): string {
-  const status =
-    state.status === 'stopped'
-      ? `止まった（${state.reason.kind}${state.reason.detail === undefined ? '' : `: ${state.reason.detail}`}）`
-      : state.status === 'running'
-        ? '走っている'
-        : '順番を待っている';
+  const status = describeJobStatus(state);
   const carry = state.carry;
   const parts = [`ジョブ ${jobId} は${status}。`];
   if (carry !== undefined) {
