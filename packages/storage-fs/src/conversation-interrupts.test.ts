@@ -378,7 +378,7 @@ describe('a human message while the job of the conversation is running', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(backend.generateSignals).toHaveLength(1));
+    await backend.generated(1);
 
     await say('ちょっと聞きたいんだけど');
     await within(talk.idle(conversationId));
@@ -664,7 +664,7 @@ describe('interrupting from the human', () => {
     const { talk, conversationId, jobs, jobRunner, submit } = await setup({ backend });
     const jobId = await submit({ aiJudgement: false, maxIterations: 3 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(backend.generateSignals).toHaveLength(1));
+    await backend.generated(1);
 
     const done = await talk.interrupt(conversationId, 'all');
     await within(jobRunner.idle());
@@ -708,7 +708,7 @@ describe('interrupting from the human', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(backend.generateSignals).toHaveLength(1));
+    await backend.generated(1);
     await say('待って');
     await tick();
 
