@@ -2,7 +2,14 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { BackendKind, DoctorItem, DoctorReport, DoctorSection } from '@drawroid/api';
+import type {
+  BackendKind,
+  BackendSettingsPort,
+  DoctorItem,
+  DoctorPort,
+  DoctorReport,
+  DoctorSection,
+} from '@drawroid/api';
 import {
   DEFAULT_BUDGET,
   isBackendError,
@@ -59,6 +66,29 @@ const DEFAULT_BACKEND_TIMEOUT_MS = 10_000;
 const DEFAULT_LLM_TIMEOUT_MS = 120_000;
 const SAMPLE_NAMES = 3;
 const REPLY_EXCERPT = 80;
+
+/**
+ * 設定の画面の「確かめる」（POST /api/doctor）。バックエンドは、いま使っている種類と URL（画面で繋ぎ直した値を含む）で確かめる
+ */
+export function screenDoctor({
+  backendSettings,
+  ...options
+}: Omit<DoctorOptions, 'backendKind' | 'backendUrl' | 'backendUrlSource' | 'caller'> & {
+  backendSettings: BackendSettingsPort;
+}): DoctorPort {
+  return {
+    run: async () => {
+      const inUse = await backendSettings.read();
+      return runDoctor({
+        ...options,
+        backendKind: inUse.kind,
+        backendUrl: inUse.url,
+        backendUrlSource: inUse.urlSource,
+        caller: 'screen',
+      });
+    },
+  };
+}
 
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const config = await checkConfig(options.configPath);

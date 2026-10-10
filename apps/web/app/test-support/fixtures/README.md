@@ -49,3 +49,16 @@ node scripts/record-job-detail-fixtures.mjs
 - 回に属さない（iteration が null の）呼び出しは、止まったときの蒸留（`distill`）の 1 本。script は `JobRunner` に `memory`（記憶の置き場と蒸留の記録）を配線し、ScriptedLlm に何も覚えない `distill` の台本を足して、実物を取っている。ジョブの詳細の画面は、この呼び出しを回の「LLM 呼び出し」には出さず、「LLM の合計」の「ジョブ単位」の行にだけ数える（一覧で「覚える」と出る画面はジョブの詳細には無い）。
 - `Loose<T>` の限界: union の取りうる値（`kind` の `'auto'` など）のずれは typecheck で見えない。
 - ScriptedLlm の時間は 1 ms 固定なので、「1.2 秒」のような秒の表示は実物からは取れない。
+
+## doctor.json（設定の画面の「確かめる」）
+
+上とは別に、`doctor.json` は設定の画面の「確かめる」の試験（`doctor-check.test.tsx`）に流す `POST /api/doctor` の応答。
+`apps/cli/src/doctor.test.ts` の `records what the screen receives, for the screen tests` が、起動と同じ組み立て（`screenDoctor` + `createBackendSettings` + `createApp`）で取り、`toMatchFileSnapshot` で比べている。本番の文が変わるとその試験が落ちるので、次で取り直す。
+
+```sh
+pnpm exec vitest run apps/cli/src/doctor.test.ts -u
+```
+
+- 確かめる状態: config.json は `{}`（読める）・バックエンドは既定の URL で何も待ち受けていない・LLM は未設定・web の配り先はある
+- 置き換え: 一時ディレクトリを `<データディレクトリ>` に、web の配り先を `<web の配り先>` に、空いていたポートを本番の既定 `7860` に
+- すべてよい応答は取っていない（実機の Forge と LLM が要る）。試験では、記録した応答のうち、よい節だけを使う

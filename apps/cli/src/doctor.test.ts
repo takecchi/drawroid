@@ -3,11 +3,18 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+import type { DoctorReport } from '@drawroid/api';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { formatDoctorReport, runDoctor, type DoctorOptions } from './doctor.js';
+import { backendFactory } from './backend-factory.js';
+import { backendOptions, createBackendSettings } from './backend-settings.js';
+import { formatDoctorReport, runDoctor, screenDoctor, type DoctorOptions } from './doctor.js';
+import { ReplaceableBackend } from './replaceable-backend.js';
+import { createApp } from './server.js';
+import { stubDeps } from './test-support.js';
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -378,15 +385,6 @@ describe('runDoctor', () => {
     expect(byFlag.text).not.toContain(hint);
   });
 
-  it('does not tell the screen to give doctor --backend-url, even when it could not reach the default URL', async () => {
-    const hint = 'drawroid doctor にも同じ --backend-url を付ける';
-    // 画面の「確かめる」の入り方: 待ち受け中の drawroid が使っている URL と、その出所を渡す
-    const fromScreen = await setup(undefined, { backendUrlSource: 'default', caller: 'screen' });
-    expect(fromScreen.text).toMatch(/足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（既定）/);
-    expect(fromScreen.text).toContain('--api を付けて起動する');
-    expect(fromScreen.text).not.toContain(hint);
-  });
-
   it('does not tell to give doctor --backend-url when the URL came from config.json or from doctor own --backend-url', async () => {
     const hint = 'drawroid doctor にも同じ --backend-url を付ける';
     // drawroid doctor の入り方: 引数に URL が無ければ undefined を渡し、config.json の backend.url から決める
@@ -410,5 +408,68 @@ describe('runDoctor', () => {
   it('reports a missing web build as lacking', async () => {
     const { text } = await setup(undefined, { webRoot: () => '/nonexistent/web' });
     expect(text).toMatch(/足りない {2}\/nonexistent\/web に index\.html が無い\n {12}→ /);
+  });
+});
+
+// 起動（index.ts）と同じ組み立てで、画面が叩く POST /api/doctor を通す
+describe('the check from the settings screen', () => {
+  const webRoot = fileURLToPath(new URL('./test-fixtures/web', import.meta.url));
+
+  async function checkFromScreen(initial: { url: string; source: 'cli' | 'config' | 'default' }) {
+    const dir = await mkdtemp(join(tmpdir(), 'drawroid-doctor-screen-'));
+    const configPath = join(dir, 'config.json');
+    await writeFile(configPath, '{}');
+    const createBackend = backendFactory('forge');
+    const backendSettings = createBackendSettings({
+      configPath,
+      backend: new ReplaceableBackend(createBackend(backendOptions(initial.url, undefined))),
+      createBackend,
+      initial: { kind: 'forge', ...initial, config: {} },
+    });
+    const doctor = screenDoctor({ configPath, backendSettings, env: {}, webRoot: () => webRoot });
+    const app = createApp({ webRoot, deps: { ...stubDeps(), doctor } });
+    const res = await app.request('/api/doctor', { method: 'POST' });
+    expect(res.status).toBe(200);
+    return { body: (await res.json()) as { report: DoctorReport }, dir };
+  }
+
+  /**
+   * 既定の 7860 の代わりに、いま何も待ち受けていないポートを既定として渡す: 手元で Forge が 7860 にいると繋がってしまうため。
+   * :9 は使わない: fetch が繋ぐ前に断るポート（bad port）で、本番の「繋がらない」と文が違う
+   */
+  async function closedUrl() {
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    await new Promise((resolve) => server.close(resolve));
+    return { url: `http://127.0.0.1:${port}`, port };
+  }
+
+  it('does not tell the screen to give doctor --backend-url, even when it could not reach the default URL', async () => {
+    const { url } = await closedUrl();
+    const { body } = await checkFromScreen({ url, source: 'default' });
+    const backend = body.report.sections.find(({ title }) =>
+      title.startsWith('画像のバックエンド'),
+    );
+    expect(backend?.items[0]?.what).toContain(`繋がらない: ${url}（既定）`);
+    expect(backend?.items[0]?.todo).toContain('--api を付けて起動する');
+    expect(backend?.items[0]?.todo).not.toContain(
+      'drawroid doctor にも同じ --backend-url を付ける',
+    );
+  });
+
+  // 画面の試験（apps/web の doctor-check）に流す記録。手で組み立てず、ここで取った応答を置く。
+  // 本番の文が変わるとこの試験が落ちるので、`vitest -u` で取り直す。パスとポートは回すたびに違うので、
+  // パスは名前に、ポートは本番の既定（7860）に置き換える
+  it('records what the screen receives, for the screen tests', async () => {
+    const { url, port } = await closedUrl();
+    const { body, dir } = await checkFromScreen({ url, source: 'default' });
+    const recorded = JSON.stringify(body, null, 2)
+      .replaceAll(dir, '<データディレクトリ>')
+      .replaceAll(webRoot, '<web の配り先>')
+      .replaceAll(`127.0.0.1:${port}`, '127.0.0.1:7860');
+    await expect(`${recorded}\n`).toMatchFileSnapshot(
+      '../../web/app/test-support/fixtures/doctor.json',
+    );
   });
 });

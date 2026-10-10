@@ -1,0 +1,45 @@
+{
+  "report": {
+    "sections": [
+      {
+        "title": "設定ファイル",
+        "items": [
+          {
+            "ok": true,
+            "what": "読める（<データディレクトリ>/config.json）"
+          }
+        ]
+      },
+      {
+        "title": "画像のバックエンド（Forge）",
+        "items": [
+          {
+            "ok": false,
+            "what": "繋がらない: http://127.0.0.1:7860（既定）: http://127.0.0.1:7860/ に繋がらない（ECONNREFUSED）。Forge が起動しているか、URL とポートが合っているかを確かめる",
+            "todo": "Forge を --api を付けて起動する。別の場所で動いているなら、--backend-url か画面の「設定」の「バックエンド」で URL を直す"
+          }
+        ]
+      },
+      {
+        "title": "LLM",
+        "items": [
+          {
+            "ok": false,
+            "what": "まだ設定していない",
+            "todo": "drawroid を起動し、画面の「設定」の「LLM の設定」（/settings#llm）で provider と考える役のモデルを入れる"
+          }
+        ]
+      },
+      {
+        "title": "web の配り先",
+        "items": [
+          {
+            "ok": true,
+            "what": "ある（<web の配り先>）"
+          }
+        ]
+      }
+    ],
+    "lacking": 2
+  }
+}
