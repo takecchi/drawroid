@@ -17,6 +17,10 @@ const LAST_MESSAGE_CHARS = 80;
 
 const MAX_MESSAGE_CHARS = 8000;
 
+/** 添えた画像の ID の形。置き場所が作る ID（時刻と英数字をハイフンでつないだもの）が収まる長さと文字 */
+const MAX_UPLOAD_ID_CHARS = 64;
+const UPLOAD_ID_PATTERN = /^[0-9a-z-]+$/;
+
 const messageSchema = z.object({
   text: z
     .string()
@@ -24,7 +28,12 @@ const messageSchema = z.object({
     .refine((text) => text.trim() !== '', { message: '発言が空' }),
   // 参照画像と同じ枚数にそろえる: 画面は同じ上限で添えさせ、添えた画像は描き始めるときにジョブの参照画像になるため
   attachments: z
-    .array(z.object({ uploadId: z.string().min(1) }))
+    // 形と長さを先に見る: 外から来た文字列をそのまま置き場所へ渡さないため。ID は話す役の入力にもそのまま載る
+    .array(
+      z.object({
+        uploadId: z.string().min(1).max(MAX_UPLOAD_ID_CHARS).regex(UPLOAD_ID_PATTERN),
+      }),
+    )
     .max(MAX_REFERENCES_PER_REQUEST)
     .optional(),
   clientMessageId: z.string().min(1).max(200).optional(),
@@ -217,7 +226,15 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
       .post('/:conversationId/messages', jsonBody(messageSchema), async (c) => {
         const id = c.req.param('conversationId');
         if (!(await store.hasConversation(id))) return notFound(c, missing(id));
-        const { seq } = await intake.post(id, c.req.valid('json'));
+        const message = c.req.valid('json');
+        // 発言を書く前に、添えた画像がこの会話にあるかを見る: 読めない画像を添えた発言を受けると、
+        // 話す役は添えてもらったと思い込み、描き始めるときに初めて断られるため
+        for (const { uploadId } of message.attachments ?? []) {
+          if ((await store.readUpload(id, uploadId)) === undefined) {
+            return invalidRequest(c, `attachments: 添えた画像 ${uploadId} はこの会話に無い`);
+          }
+        }
+        const { seq } = await intake.post(id, message);
         return c.json({ seq }, 202);
       })
       // 会話で添える画像。描き始めるときに、ジョブの参照画像へ写す（用途の言葉は、描き始めるときに話す役が付ける）
