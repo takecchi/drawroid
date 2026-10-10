@@ -7,7 +7,7 @@ import { createMessageIntake } from '../conversation-messages.js';
 import type { ApiDeps } from '../deps.js';
 import { invalidRequest, notFound } from '../errors.js';
 import { imageProblem } from '../images.js';
-import { referenceUploadSchema } from '../references.js';
+import { MAX_REFERENCES_PER_REQUEST, referenceUploadSchema } from '../references.js';
 import { jsonBody, queryParams } from '../validate.js';
 
 /** SSE のハートビートの既定の間隔 */
@@ -22,7 +22,11 @@ const messageSchema = z.object({
     .string()
     .max(MAX_MESSAGE_CHARS)
     .refine((text) => text.trim() !== '', { message: '発言が空' }),
-  attachments: z.array(z.object({ uploadId: z.string().min(1) })).optional(),
+  // 参照画像と同じ枚数にそろえる: 画面は同じ上限で添えさせ、添えた画像は描き始めるときにジョブの参照画像になるため
+  attachments: z
+    .array(z.object({ uploadId: z.string().min(1) }))
+    .max(MAX_REFERENCES_PER_REQUEST)
+    .optional(),
   clientMessageId: z.string().min(1).max(200).optional(),
 });
 

@@ -305,6 +305,43 @@ describe('posting a message', () => {
 
     expect((await say(id, '   ')).status).toBe(400);
   });
+
+  const attachments = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({ uploadId: `u-${i + 1}` }));
+
+  it('takes a message with 4 images attached', async () => {
+    const id = await newConversation();
+
+    const res = await json('POST', `/conversations/${id}/messages`, {
+      text: '描いて',
+      attachments: attachments(4),
+    });
+
+    expect(res.status).toBe(202);
+    const events = (await (await app.request(`/conversations/${id}/events`)).json()) as {
+      events: ConversationEvent[];
+    };
+    expect(events.events.map((e) => e.type === 'user.message' && e.attachments)).toEqual([
+      attachments(4),
+    ]);
+  });
+
+  it('refuses a message with 5 images attached, taking nothing', async () => {
+    const id = await newConversation();
+
+    const res = await json('POST', `/conversations/${id}/messages`, {
+      text: '描いて',
+      attachments: attachments(5),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { kind: 'invalid_request' } });
+    const events = (await (await app.request(`/conversations/${id}/events`)).json()) as {
+      events: ConversationEvent[];
+    };
+    expect(events.events).toEqual([]);
+    expect(kicks).toEqual([]);
+  });
 });
 
 describe('conversations', () => {
