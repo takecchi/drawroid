@@ -893,11 +893,15 @@ function readWrittenToolCalls(
 
 /**
  * json の出し方で、{"kind": "tool", …} の代わりに {"name": …, "arguments": …} の形で書いてきたものを、ステップの形に読み替える。
- * 名前が渡したツールのときだけ読み替える。kind を落として {"text": …} だけを書いてきたものは、返答として読む
+ * 名前が渡したツールのときだけ読み替える。kind を落として {"text": …} だけを書いてきたものは、返答として読む。
+ * {"kind": "tool"} で input を落としたものは、引数を空にして読む（引数の無いツールで、小さいモデルが input を省くため）
  */
 // {"text": …} を返答と読むのは、欄が text だけのときに限る: ほかの欄（name など）があれば、何を求めたのかが分からないため
+// 落とした input を、引数が要らないツールに限らず空にする: 引数の要るツールでも、スキーマの検証で欄の名前を挙げて出し直させられるため
 function asStepOutput(value: unknown, tools: readonly ToolSpec[]): unknown {
-  if (value !== null && typeof value === 'object' && 'kind' in value) return value;
+  if (value !== null && typeof value === 'object' && 'kind' in value) {
+    return value.kind === 'tool' && !('input' in value) ? { ...value, input: {} } : value;
+  }
   const written = writtenCallOf(value, tools);
   if (written !== undefined && written.input !== INVALID_ARGUMENTS) {
     return { kind: 'tool', name: written.name, input: written.input };
