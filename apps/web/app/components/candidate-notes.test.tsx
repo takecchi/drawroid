@@ -101,6 +101,15 @@ describe('CandidateNotes', () => {
     });
   });
 
+  // 指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the button that clears a note 44px tall on a narrow screen', () => {
+    render(<CandidateNotes />);
+
+    expect(
+      screen.getByRole('button', { name: 'gone.safetensors の説明を消す' }).className.split(' '),
+    ).toEqual(expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']));
+  });
+
   it('narrows the candidates by a part of their names', async () => {
     render(<CandidateNotes />);
 

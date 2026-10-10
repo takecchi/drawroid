@@ -120,6 +120,21 @@ describe('AutoJobForm', () => {
     expect(create.mock.calls[0]?.[0]).not.toHaveProperty('references');
   });
 
+  // 添えた画像の「外す」も指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the button that removes an attached image 44px tall on a narrow screen', async () => {
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+
+    await user.upload(
+      screen.getByLabelText(/参照画像を選ぶ/),
+      new File([PNG_HEAD], 'ref.png', { type: 'image/png' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'ref.png を外す' }).className.split(' ')).toEqual(
+      expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']),
+    );
+  });
+
   it('does not create the job when a note is too long and shows the reason', async () => {
     render(<AutoJobForm onCreated={() => {}} />);
     const user = userEvent.setup();

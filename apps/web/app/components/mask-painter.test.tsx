@@ -62,6 +62,30 @@ describe('MaskPainter', () => {
     );
   });
 
+  // 塗る前の入り口と、塗る道具のボタン・欄も指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the buttons and the brush size field 44px tall on a narrow screen', async () => {
+    render(
+      <MaskPainter
+        jobId="job-1"
+        image={{ iteration: 2, index: 1, url: '/api/jobs/job-1/images/2-1.png' }}
+      />,
+    );
+    const tall = ['h-11', 'md:pointer-fine:h-7'];
+    const classesOf = (element: HTMLElement) => element.className.split(' ');
+    expect(classesOf(screen.getByRole('button', { name: 'マスクを塗る' }))).toEqual(
+      expect.arrayContaining(tall),
+    );
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'マスクを塗る' }));
+
+    for (const name of ['ひとつ戻す', '全部消す', 'マスクを送る', '閉じる']) {
+      expect(classesOf(screen.getByRole('button', { name }))).toEqual(expect.arrayContaining(tall));
+    }
+    expect(classesOf(screen.getByLabelText('筆の太さ（px）'))).toEqual(
+      expect.arrayContaining(tall),
+    );
+  });
+
   // 押した「マスクを塗る」は消えるので、フォーカスは最初の道具へ移る。塗る面はキーボードでは塗れないことも、文で知らせる
   it('moves the focus to the brush size once painting starts, and says the keyboard cannot paint', async () => {
     const user = userEvent.setup();

@@ -56,4 +56,14 @@ describe('Drawer', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(opener);
   });
+
+  // 「閉じる」は見た目の大きさのまま、押せる範囲だけを ::after で 44px に広げる。実際の大きさは、ブラウザで測る
+  it('widens the area that can be pressed on the close button', async () => {
+    render(<Opener />);
+    await userEvent.click(screen.getByRole('button', { name: 'メニューを開く' }));
+
+    expect(screen.getByRole('button', { name: '閉じる' }).className.split(' ')).toEqual(
+      expect.arrayContaining(['after:absolute', 'after:-inset-2']),
+    );
+  });
 });

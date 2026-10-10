@@ -1919,6 +1919,22 @@ describe('ConversationView', () => {
       fireEvent.pointerUp(canvas, { clientX: 256, clientY: 192, pointerId: 1 });
     }
 
+    // 窓の中のボタンも指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+    it('makes the buttons in the window 44px tall on a narrow screen', async () => {
+      const { dialog } = await startPainting();
+
+      for (const name of [
+        'お気に入り: 2 回目の画像 1 番',
+        '却下: 2 回目の画像 1 番',
+        'この画像に決める: 2 回目の画像 1 番',
+        'マスクを塗る',
+      ]) {
+        expect(dialog().getByRole('button', { name }).className.split(' ')).toEqual(
+          expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']),
+        );
+      }
+    });
+
     // 窓を開いただけでは道具へ移さない。「マスクを塗る」を押したら、窓そのものではなく筆の太さへ移す
     it('moves the focus to the brush size only once painting starts in the window', async () => {
       const { user, dialog } = await startPainting();
