@@ -14,14 +14,15 @@ import {
 } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { assembleDrawroid, type AssembledDrawroid } from './assemble.js';
+import { assembleDrawroid } from './assemble.js';
+import type { Listening } from './listen.js';
 
 /** 話しかけないことを見るときに、何も起きないのを待つ長さ */
 const QUIET_MS = 500;
 
 let root: string;
 let webRoot: string;
-let running: AssembledDrawroid | undefined;
+let running: Listening | undefined;
 
 beforeEach(async () => {
   const work = await mkdtemp(join(tmpdir(), 'drawroid-assemble-'));
@@ -31,8 +32,6 @@ beforeEach(async () => {
   await initDataDir(root);
 });
 afterEach(async () => {
-  // 後ろの仕事が走り終えるのを待ってから消す: 待ち受けを閉じても、ジョブと話す役のターンは書き続けるため
-  await running?.idle();
   await new Promise((resolve) => (running ? running.server.close(resolve) : resolve(undefined)));
   running = undefined;
   // 繰り返す: 組み立ては止める口を持たず、止まったジョブの蒸留などが片付けの最中にも書き込んで、rmdir が ENOTEMPTY で落ちることがあるため
