@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, saveBackendSettings, useBackendSettings } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +23,11 @@ afterEach(() => {
   cleanup();
   vi.resetAllMocks();
 });
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 describe('BackendUrlSettings', () => {
   const field = () => screen.getByLabelText<HTMLInputElement>('バックエンドの URL');
@@ -144,14 +149,13 @@ describe('BackendUrlSettings', () => {
     await user.keyboard('{Enter}');
     const first = await screen.findByText(savedNotice);
     expect(first.getAttribute('role')).toBe('status');
-    expect(document.activeElement).toBe(first);
+    await expectFocusMovesTo(first);
 
     saveButton().focus();
     expect(document.activeElement).toBe(saveButton());
     await user.keyboard('{Enter}');
 
-    const second = await screen.findByText(savedNotice);
-    expect(document.activeElement).toBe(second);
+    await expectFocusMovesTo(await screen.findByText(savedNotice));
   });
 
   describe('when the save fails', () => {

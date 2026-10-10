@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, type PermissionSettingsResponse } from '@drawroid/swr';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -62,6 +62,11 @@ beforeEach(() => {
     error: undefined,
   }));
 });
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 const rowOf = (label: string) => within(screen.getByRole('row', { name: new RegExp(`^${label}`) }));
 const save = () => userEvent.click(screen.getByRole('button', { name: '許可を保存' }));
@@ -146,14 +151,13 @@ describe('PermissionSettings', () => {
     await save();
     const first = await screen.findByText(SAVED);
     expect(first.getAttribute('role')).toBe('status');
-    expect(document.activeElement).toBe(first);
+    await expectFocusMovesTo(first);
 
     screen.getByRole('button', { name: '許可を保存' }).focus();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '許可を保存' }));
     await save();
 
-    const second = await screen.findByText(SAVED);
-    expect(document.activeElement).toBe(second);
+    await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
   it('shows why the API refused the permissions', async () => {

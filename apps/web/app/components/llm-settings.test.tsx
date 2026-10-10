@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describeInputOverflow, findInputOverflows, resolveBudgets } from '@drawroid/core';
 import { ApiError, type LlmSettingsInput, type LlmSettingsResponse } from '@drawroid/swr';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -62,6 +62,11 @@ beforeEach(() => {
 });
 
 const input = (label: string) => screen.getByLabelText<HTMLInputElement>(label);
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 describe('LlmSettings', () => {
   it('shows the provider, model and endpoint of each role as they are set', () => {
@@ -702,8 +707,9 @@ describe('LlmSettings', () => {
     screen.getByRole('button', { name: 'LLM の設定を保存' }).focus();
     await user.keyboard('{Enter}');
 
-    const note = await screen.findByText('保存した。次に話しかけたときから、この設定を使う。');
-    expect(document.activeElement).toBe(note);
+    await expectFocusMovesTo(
+      await screen.findByText('保存した。次に話しかけたときから、この設定を使う。'),
+    );
   });
 
   it('moves the focus to the note again on a second save without editing', async () => {
@@ -714,13 +720,13 @@ describe('LlmSettings', () => {
 
     button().focus();
     await user.keyboard('{Enter}');
-    expect(document.activeElement).toBe(await screen.findByText(SAVED));
+    await expectFocusMovesTo(await screen.findByText(SAVED));
 
     button().focus();
     expect(document.activeElement).toBe(button());
     await user.keyboard('{Enter}');
 
-    expect(document.activeElement).toBe(await screen.findByText(SAVED));
+    await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
   it('does not say it saved when saving fails', async () => {

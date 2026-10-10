@@ -199,6 +199,22 @@ describe('start_drawing', () => {
     expect(types).not.toContain('job.started');
   });
 
+  it('says once that the permissions cannot be changed when the fields are not parameters', async () => {
+    const { jobs, context } = await setup();
+
+    const outcome = await run(
+      'start_drawing',
+      { request: '海辺', permissions: { kind: 'color', value: 'red' } },
+      context,
+    );
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.summary).toBe(
+      '許可を変えられない: 知らない欄（kind・value）。欄はパラメータの名前で書く',
+    );
+    expect(await jobIds(jobs)).toEqual([]);
+  });
+
   it('refuses a second drawing while the conversation already has one going, saying which', async () => {
     const { jobs, context, runner } = await setup();
     const first = await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { SelectionVerdict } from '@drawroid/core';
 import { recheckJobDistill, setSelection } from '@drawroid/swr';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -66,7 +66,8 @@ describe('ChooseAsFavorite focus', () => {
 
     const marks = screen.getAllByText('この画像に決めた（お気に入り）');
     expect(marks).toHaveLength(2);
-    expect(document.activeElement).toBe(card.querySelector('p'));
+    // 押し終えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、まだ走っていないことがある
+    await waitFor(() => expect(document.activeElement).toBe(card.querySelector('p')));
   });
 
   // 開き直したとき（はじめから決めてある）は、印へフォーカスを移さない

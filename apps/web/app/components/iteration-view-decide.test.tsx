@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, adoptImage, setSelection } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,7 +47,9 @@ describe('IterationList when deciding stops the job', () => {
     screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }).focus();
     await user.keyboard('{Enter}');
     await user.keyboard('{Enter}');
-    expect(document.activeElement).toBe(await screen.findByText('この画像に決めた'));
+    // 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、まだ走っていないことがある
+    const mark = await screen.findByText('この画像に決めた');
+    await waitFor(() => expect(document.activeElement).toBe(mark));
 
     rerender(list(true, iteration));
     expect(document.activeElement).toBe(screen.getByText('この画像に決めた'));

@@ -320,10 +320,21 @@ describe('narrowPermissions reasons for a malformed request', () => {
     return result.reason;
   };
 
+  // 前に「許可」と付けない: 断りの文は「許可を変えられない: …」で始まるので、付けると「許可」が二重になる
   it('names the unknown fields and says fields are named after parameters', () => {
     expect(reasonOf({ kind: 'color', value: 'red' })).toBe(
-      '許可: 知らない欄（kind・value）。欄はパラメータの名前で書く',
+      '知らない欄（kind・value）。欄はパラメータの名前で書く',
     );
+  });
+
+  it('says whether the bound itself is allowed when a number is out of range', () => {
+    expect(reasonOf({ width: { mode: 'fixed', value: 0 } })).toBe(
+      '幅 の value: 小さすぎる（0 より大きく）',
+    );
+  });
+
+  it('says what shape was expected when the whole is not a set of fields', () => {
+    expect(reasonOf('str')).toBe('形が違う（オブジェクトで書く）');
   });
 
   it('says which modes a parameter accepts when mode is missing or wrong', () => {

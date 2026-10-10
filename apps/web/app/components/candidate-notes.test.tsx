@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError } from '@drawroid/swr';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,6 +39,11 @@ beforeEach(() => {
 
 const noteOf = (name: string) => screen.getByLabelText<HTMLInputElement>(`${name} の説明`);
 const save = () => userEvent.click(screen.getByRole('button', { name: '説明を保存' }));
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 describe('CandidateNotes', () => {
   // 候補の説明の画面の頭の見出しにする: この部品はその画面にだけ置かれ、ほかに h1 が無いため。種類ごとの小見出しは h2 で、段が飛ばない
@@ -87,14 +92,13 @@ describe('CandidateNotes', () => {
     await save();
     const first = await screen.findByText(SAVED);
     expect(first.getAttribute('role')).toBe('status');
-    expect(document.activeElement).toBe(first);
+    await expectFocusMovesTo(first);
 
     screen.getByRole('button', { name: '説明を保存' }).focus();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '説明を保存' }));
     await save();
 
-    const second = await screen.findByText(SAVED);
-    expect(document.activeElement).toBe(second);
+    await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
   it('keeps notes for candidates the backend no longer has, until they are removed', async () => {

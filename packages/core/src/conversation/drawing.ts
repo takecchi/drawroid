@@ -6,6 +6,7 @@ import type { JobState } from '../job/types.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import {
+  describePermissionIssue,
   permissionOverridesSchema,
   type Permission,
   type Permissions,
@@ -53,43 +54,6 @@ export function candidateNamesOf(key: ParamKey, value: unknown): string[] | unde
   return [];
 }
 
-const EXPECTED_TYPE_LABELS: Record<string, string> = {
-  object: 'オブジェクト',
-  array: '配列',
-  string: '文字列',
-  number: '数',
-  int: '整数',
-  boolean: '真偽値',
-};
-
-/**
- * 許可の検証が落ちた理由を、話す役へ返す短い日本語の文にする。
- */
-// zod の message をそのまま返さない: 英語の文が話す役に渡り、何を直せばよいかが伝わらないため（「許可: Unrecognized keys」の実例）
-function describePermissionIssue(issue: z.core.$ZodIssue): string {
-  switch (issue.code) {
-    case 'unrecognized_keys':
-      return `知らない欄（${issue.keys.join('・')}）${issue.path.length === 0 ? '。欄はパラメータの名前で書く' : ''}`;
-    case 'invalid_union': {
-      if (issue.discriminator !== 'mode') return '形が違う';
-      // options は実行時には入るが、zod の型には無い
-      const modes = ((issue as { options?: readonly unknown[] }).options ?? []).map(String);
-      if (modes.length === 0) return '形が違う';
-      return `mode は ${modes.join('・')} のどれかで書く${modes.includes('off') ? '' : '（この欄は off にできない）'}`;
-    }
-    case 'invalid_type': {
-      const expected = EXPECTED_TYPE_LABELS[issue.expected];
-      return expected === undefined ? '形が違う' : `形が違う（${expected}で書く）`;
-    }
-    case 'too_small':
-      return `小さすぎる（${String(issue.minimum)} 以上）`;
-    case 'too_big':
-      return `大きすぎる（${String(issue.maximum)} 以下）`;
-    default:
-      return '形が違う';
-  }
-}
-
 export type NarrowResult =
   { ok: true; value: Partial<Permissions> } | { ok: false; reason: string };
 
@@ -107,11 +71,17 @@ export function narrowPermissions(
   const parsed = permissionOverridesSchema.safeParse(requested);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    const key = issue?.path[0];
-    const rest = issue?.path.slice(1).join('.') ?? '';
+    if (issue === undefined) return { ok: false, reason: '形が違う' };
+    const key = issue.path[0];
+    // 一番上の段の誤りに「許可」と前置きしない: 断りの文が「許可を変えられない: …」で始まり、「許可」が二重になるため
+    if (key === undefined) {
+      const hint = issue.code === 'unrecognized_keys' ? '。欄はパラメータの名前で書く' : '';
+      return { ok: false, reason: `${describePermissionIssue(issue)}${hint}` };
+    }
+    const rest = issue.path.slice(1).join('.');
     return {
       ok: false,
-      reason: `${key === undefined ? '許可' : labelOf(key)}${rest === '' ? '' : ` の ${rest}`}: ${issue === undefined ? '形が違う' : describePermissionIssue(issue)}`,
+      reason: `${labelOf(key)}${rest === '' ? '' : ` の ${rest}`}: ${describePermissionIssue(issue)}`,
     };
   }
   for (const [key, wanted] of Object.entries(parsed.data) as [ParamKey, Permission][]) {

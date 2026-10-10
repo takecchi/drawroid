@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, runDoctor } from '@drawroid/swr';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +19,11 @@ const renderCheck = () =>
 /** フォーカスが、element を含む箱にあるか。body は何でも含むので、body にあるときは除く */
 const focusHolds = (element: Element) =>
   document.activeElement !== document.body && document.activeElement?.contains(element) === true;
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある（#494 の main の run で1回落ちた）
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(focusHolds(element)).toBe(true));
 
 /** 形の合った節。返事の形の試験で、1つの欄だけを違えるための土台 */
 const okSection = { title: 'LLM', items: [{ ok: true, what: '考える役と1往復できた' }] };
@@ -81,8 +86,7 @@ describe('DoctorCheck', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
-    const verdict = await screen.findByText(/足りないものが 2 つある/);
-    expect(focusHolds(verdict)).toBe(true);
+    await expectFocusMovesTo(await screen.findByText(/足りないものが 2 つある/));
   });
 
   it('moves focus to the reason when the check could not run', async () => {
@@ -93,8 +97,7 @@ describe('DoctorCheck', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
-    const reason = await screen.findByRole('alert');
-    expect(focusHolds(reason)).toBe(true);
+    await expectFocusMovesTo(await screen.findByRole('alert'));
   });
 
   // 待つ間にボタンが押せなくなると、ブラウザによってはフォーカスを body へ落とす。どこにもフォーカスが無いときも結果へ移す。
@@ -110,8 +113,7 @@ describe('DoctorCheck', () => {
     expect(document.activeElement).toBe(document.body);
     settle();
 
-    const verdict = await screen.findByText(/足りないものが 2 つある/);
-    expect(focusHolds(verdict)).toBe(true);
+    await expectFocusMovesTo(await screen.findByText(/足りないものが 2 つある/));
   });
 
   // 待つ間に人がほかの欄へ移っていたら、結果へ引き戻さない（打っている途中の文字が、結果の箱に吸われるため）
@@ -143,7 +145,8 @@ describe('DoctorCheck', () => {
       const field = screen.getByRole('textbox', { name: 'ほかの欄' });
       await user.click(field);
       await user.keyboard('abc');
-      settle();
+      // act の中で届ける: 「移さない」は待っても証せないので、確かめる前に、描いたあとの effect まで走り終えさせる
+      await act(async () => settle());
 
       expect(await screen.findByText(outcome)).toBeTruthy();
       expect(document.activeElement).toBe(field);
@@ -252,7 +255,7 @@ async function expectUnreadable() {
   expect(reason.textContent).toBe(
     '確かめの結果が読めなかった（drawroid の返事が想定の形ではない）',
   );
-  expect(focusHolds(reason)).toBe(true);
+  await expectFocusMovesTo(reason);
   expect(screen.queryByText(/確かめています/)).toBeNull();
   expect(screen.getByRole('button', { name: '確かめる' }).hasAttribute('disabled')).toBe(false);
 }
