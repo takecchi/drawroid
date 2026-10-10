@@ -20,6 +20,7 @@ import {
   noPermissionSettings,
 } from '../test-support.js';
 
+let store: MemoryConversationStore;
 let hubs: ConversationHubs;
 /** 確定した行に付く時刻。既定は今 */
 let clock: () => Date;
@@ -30,7 +31,7 @@ let interrupts: [string, string][];
 let app: ReturnType<typeof createApi>;
 
 beforeEach(() => {
-  const store = new MemoryConversationStore();
+  store = new MemoryConversationStore();
   clock = () => new Date();
   hubs = new ConversationHubs({ store, now: () => clock() });
   beats = [];
@@ -383,6 +384,79 @@ describe('conversations', () => {
     expect(listed.conversations.map((c) => c.conversationId)).toEqual([later, earlier]);
     // 行が無い会話は、作った時刻を最後に何かが起きた時刻とする
     expect(listed.conversations[0]?.lastActiveAt).toBe(listed.conversations[0]?.createdAt);
+  });
+
+  /** ジョブの行を n 個続けて確定する（ターンの印から遠ざけるため） */
+  async function jobLines(id: string, n: number) {
+    for (let iteration = 1; iteration <= n; iteration += 1) {
+      await hubs.get(id).confirm({
+        type: 'job.images',
+        jobId: 'job-1',
+        iteration,
+        images: [{ index: 0, seed: iteration }],
+      });
+    }
+  }
+
+  async function listed() {
+    return (
+      (await (await app.request('/conversations')).json()) as {
+        conversations: { conversationId: string; lastMessage: string; running: boolean }[];
+      }
+    ).conversations;
+  }
+
+  it('says a turn is running even when many job lines came after it started', async () => {
+    const id = await newConversation();
+    await say(id, '海辺の少女を描いて');
+    await hubs.get(id).confirm({ type: 'turn.started', turn: 1, messageSeqs: [1] });
+    await jobLines(id, 300);
+
+    expect(await listed()).toEqual([
+      expect.objectContaining({
+        conversationId: id,
+        running: true,
+        lastMessage: '海辺の少女を描いて',
+      }),
+    ]);
+  });
+
+  it('says a turn has stopped when it ended before many job lines', async () => {
+    const id = await newConversation();
+    await say(id, '描いて');
+    await hubs.get(id).confirm({ type: 'turn.started', turn: 1, messageSeqs: [1] });
+    await hubs.get(id).confirm({ type: 'turn.ended', turn: 1, outcome: 'done' });
+    await jobLines(id, 300);
+
+    expect(await listed()).toEqual([
+      expect.objectContaining({ conversationId: id, running: false }),
+    ]);
+  });
+
+  it('reads only the end of a long conversation to list it', async () => {
+    const id = await newConversation();
+    await jobLines(id, 300);
+    await say(id, '続きを描いて');
+    await hubs.get(id).confirm({ type: 'turn.started', turn: 1, messageSeqs: [301] });
+    await hubs.get(id).confirm({ type: 'turn.ended', turn: 1, outcome: 'done' });
+    const read = { calls: 0, lines: 0 };
+    for (const method of ['readEvents', 'readEventsBefore'] as const) {
+      const original = store[method].bind(store) as (...args: never[]) => Promise<unknown>;
+      vi.spyOn(store, method).mockImplementation((async (...args: never[]) => {
+        const result = (await original(...args)) as
+          ConversationEvent[] | { events: ConversationEvent[] };
+        read.calls += 1;
+        read.lines += Array.isArray(result) ? result.length : result.events.length;
+        return result;
+      }) as never);
+    }
+
+    expect(await listed()).toEqual([
+      expect.objectContaining({ conversationId: id, running: false, lastMessage: '続きを描いて' }),
+    ]);
+    // 末尾のターンの印と発言が近いので、頭の 300 行は読まない
+    expect(read.lines).toBeLessThan(100);
+    expect(read.calls).toBeLessThanOrEqual(2);
   });
 
   it('lets a human fix the title', async () => {
