@@ -257,6 +257,68 @@ describe('TalkRunner', () => {
     return { tool, counter };
   };
 
+  /** 配列の欄（attachments）を省ける、走った回数を数えるツール */
+  const noteWithAttachments = () => {
+    const counter = { runs: 0 };
+    const tool: TalkTool = {
+      name: 'note_with_files',
+      description: '試験用。ファイルを添えて書き留める',
+      inputSchema: z.object({ text: z.string(), attachments: z.array(z.string()).optional() }),
+      run: async () => {
+        counter.runs += 1;
+        return { ok: true, result: '書き留めた', summary: '書き留めた' };
+      },
+    };
+    return { tool, counter };
+  };
+
+  it('treats an empty array field as the same call as leaving the field out', async () => {
+    const { tool, counter } = noteWithAttachments();
+    const { say, events } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'note_with_files', input: { text: '夕焼け' } }] }
+          : n === 1
+            ? {
+                toolCalls: [
+                  { name: 'note_with_files', input: { text: '夕焼け', attachments: [] } },
+                ],
+              }
+            : { text: '書き留めました' },
+      { extraTools: [tool] },
+    );
+    await say('メモして');
+
+    expect(counter.runs).toBe(1);
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e] : []));
+    expect(results.map((r) => r.ok)).toEqual([true, false]);
+    expect(results[1]).toMatchObject({
+      summary: `${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`,
+    });
+  });
+
+  it('runs a call again when the array field is not empty', async () => {
+    const { tool, counter } = noteWithAttachments();
+    const { say, events } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'note_with_files', input: { text: '夕焼け' } }] }
+          : n === 1
+            ? {
+                toolCalls: [
+                  { name: 'note_with_files', input: { text: '夕焼け', attachments: ['u1'] } },
+                ],
+              }
+            : { text: '書き留めました' },
+      { extraTools: [tool] },
+    );
+    await say('メモして');
+
+    expect(counter.runs).toBe(2);
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e.ok] : []));
+    expect(results).toEqual([true, true]);
+  });
+
   it('runs a call only once when one step asks for it twice', async () => {
     const { tool, counter } = countingTool(false);
     const { say, events } = await setup(
