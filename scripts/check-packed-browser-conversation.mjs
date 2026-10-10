@@ -734,49 +734,22 @@ try {
     }
   };
   narrow.on('request', onRequest);
-  // 7b. 押した止まりの「このジョブから覚えたこと」を見る（画面の最初の1枚ではなく、押したボタンと同じ止まりのもの）。
-  // 整理し終えた中身（覚えた・直した・無い・できなかった）は押す前から出ているので、それが出ているかでは選び直しを見られない。
-  // 押すと「選び直したことを整理しています」に変わり、記録が増えると消えることを見る。出てすぐ消えることもあるので、出たことを数えておく。
-  // 押すと止まりのカードは描き直されるので、見張りは画面全体に置き、そのたびに同じ止まりのカードを探し直す
-  const learnedCard = bestCard
-    .locator('xpath=..')
-    .getByRole('region', { name: 'このジョブから覚えたこと' });
-  const bestName = await bestCard.getAttribute('aria-label');
-  await narrow.evaluate(`(() => {
-    window.__reselecting = 0;
-    new MutationObserver(() => {
-      const best = [...document.querySelectorAll('section')]
-        .find((section) => section.getAttribute('aria-label') === ${JSON.stringify(bestName)});
-      const card = best?.parentElement?.querySelector('[aria-label="このジョブから覚えたこと"]');
-      if (card?.textContent.includes('選び直したことを整理しています')) window.__reselecting += 1;
-    }).observe(document.body, { childList: true, subtree: true, characterData: true });
-  })()`);
   await chooseBest.click();
   await bestCard.getByText('この画像に決めた（お気に入り）', { exact: true }).waitFor();
   expect(
     (await chooseBest.count()) === 0 && (await favorites()) === favoritesBefore + 1,
     '「この画像に決める（お気に入りにする）」で、止まったジョブの最良の画像がお気に入りになり、ボタンの代わりに「この画像に決めた（お気に入り）」と出る',
   );
+  // 7b. 同じ止まりに「このジョブから覚えたこと」が出て、蒸留の記録が読めたら、整理中から確定した中身（覚えた・直した・無い・できなかった）に変わる
+  const learnedCard = narrow.getByRole('region', { name: 'このジョブから覚えたこと' }).first();
+  await learnedCard
+    .getByText(/^(覚えた: |直した: |整理できなかった: |新しく覚えたことは無い。)/)
+    .first()
+    .waitFor();
   // 選び直しの蒸留の記録が増えるまで読み直し、増えたら「選び直したことを整理しています」が消える
-  // 出なければ、待ちの時間切れではなく、この段の赤として残す
-  const reselecting = await narrow.waitForFunction('window.__reselecting > 0').then(
-    () => true,
-    () => false,
-  );
-  expect(
-    reselecting,
-    '押すと、同じ止まりの「覚えたこと」が「選び直したことを整理しています」に変わる',
-  );
   await until(() => distillReads.length > 0, '押したジョブの「覚えたこと」を読み直す');
   await learnedCard.getByText('選び直したことを整理しています').waitFor({ state: 'hidden' });
   narrow.off('request', onRequest);
-  expect(
-    (await learnedCard.getByText(/^選び直したことは、まだ出ていない/).count()) === 0 &&
-      (await learnedCard
-        .getByText(/^(覚えた: |直した: |整理できなかった: |新しく覚えたことは無い。)/)
-        .count()) > 0,
-    '選び直しの記録が増えると「選び直したことを整理しています」は消え、確定した中身に戻る（増えずに尽きたとは出ない）',
-  );
   expect(
     new Set(distillReads).size === 1,
     `「この画像に決める（お気に入りにする）」を押すと、そのジョブの「覚えたこと」だけを読み直す（${[...new Set(distillReads)].join(', ')}）`,

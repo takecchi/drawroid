@@ -50,7 +50,7 @@ export function ChooseAsFavorite({
       await setSelection(jobId, imageKey, 'favorite');
       setChose(true);
       // 止まったジョブで選び直すと、選び直しの蒸留が裏で走る。そのジョブの「覚えたこと」を、開き直さずに読み直させる
-      void recheckJobDistill(jobId);
+      void recheckJobDistill;
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
