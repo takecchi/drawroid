@@ -1252,6 +1252,11 @@ export class JobRunner {
       jobId,
       state.carry.completedIterations + 1,
     );
+    if (
+      (await this.deps.store.readStage(jobId, state.carry.completedIterations + 1, 'judge')) !==
+      undefined
+    )
+      return 0;
     return generation?.images.length ?? 0;
   }
 }
