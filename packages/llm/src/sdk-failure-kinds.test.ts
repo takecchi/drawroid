@@ -26,10 +26,13 @@ import { roleConfigSchema } from './config.js';
 // 失敗は、本物の OpenAI 互換の provider が、壊れた応答を返すサーバへ流しで呼んだときのものを使う（呼び出しの道は adapter と同じ）
 let server: Server;
 let reply: { status: number; type: string; body: string };
+/** 呼び直しごとに変える応答。空なら reply を返す */
+let replies: { status: number; type: string; body: string }[] = [];
 beforeAll(async () => {
   server = createServer((_req, res) => {
-    res.writeHead(reply.status, { 'content-type': reply.type });
-    res.end(reply.body);
+    const next = replies.shift() ?? reply;
+    res.writeHead(next.status, { 'content-type': next.type });
+    res.end(next.body);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 });
@@ -147,6 +150,31 @@ describe('describeCallFailure and the kinds of AI SDK failures', () => {
       `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（500）。少し待ってから、もう一度頼む（LLM の返した理由: boom）`,
     );
   });
+
+  // 呼び直しの途中で失敗の種類が変わったら、最後の失敗の種類で言う: 最初の失敗（500）で言うと、鍵を直す手が出ないため
+  it(
+    'tells the kind of the last failure when it differs from the first',
+    { timeout: 15_000 },
+    async () => {
+      replies = [
+        {
+          status: 500,
+          type: 'application/json',
+          body: JSON.stringify({ error: { message: 'boom' } }),
+        },
+        {
+          status: 401,
+          type: 'application/json',
+          body: JSON.stringify({ error: { message: 'invalid api key' } }),
+        },
+      ];
+      const reason = await reasonFor(replies[1]!, 1);
+
+      expect(reason).toBe(
+        `${LLM_CALL_FAILED_PREFIX}鍵が通らない（401）。LLM の設定の API キーの環境変数と、その値を確かめる（LLM の返した理由: invalid api key）`,
+      );
+    },
+  );
 
   it('tells the role settings to change when the provider does not support the way it was used', () => {
     expect(
