@@ -11,7 +11,7 @@ import {
 } from '@drawroid/core';
 import { ScriptedLlm, STUB_PNG, StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { hc } from 'hono/client';
 
@@ -24,6 +24,7 @@ import {
   memoryBudgetSettings,
   memoryProgressDeps,
   memoryConversations,
+  solidImage,
 } from '../test-support.js';
 
 let root: string;
@@ -256,8 +257,11 @@ describe('GET /jobs/auto/:jobId/stop-conditions', () => {
 });
 
 describe('reference images, at submission and as an intervention', () => {
-  const PNG = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13);
-  const JPEG = Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0, 16);
+  const PNG = STUB_PNG;
+  let JPEG: Uint8Array;
+  beforeAll(async () => {
+    JPEG = await solidImage('jpeg', 4, 4);
+  });
   const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 
   it('keeps the images attached to a submitted job, in the order given', async () => {
@@ -372,10 +376,10 @@ describe('inpaint masks, as an intervention', () => {
     expect(await store.listInterventions(jobId)).toEqual([]);
   });
 
-  // PNG の署名で始まる、指定した大きさのバイト列
+  // 読める PNG の後ろを埋めて、指定した大きさにしたバイト列（PNG は IEND のあとの余りを読み飛ばす）
   const pngOfSize = (bytes: number) => {
     const data = new Uint8Array(bytes);
-    data.set(STUB_PNG.subarray(0, 8));
+    data.set(STUB_PNG);
     return Buffer.from(data).toString('base64');
   };
 

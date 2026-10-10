@@ -101,6 +101,14 @@ export class ImageNotAllowedError extends Error {
   }
 }
 
+/** 置かれている画像が、画像として読めない（縮小版を作れない） */
+export class UnreadableImageError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'UnreadableImageError';
+  }
+}
+
 const THINK_SYSTEM = [
   'あなたは Stable Diffusion の生成パラメータを決める役である。',
   '依頼の要点・最良の結果・直近の評価を読み、次の回のパラメータを決める。',

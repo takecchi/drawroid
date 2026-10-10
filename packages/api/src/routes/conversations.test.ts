@@ -8,8 +8,8 @@ import {
   type ManualGenerationRunner,
   type MemoryStore,
 } from '@drawroid/core';
-import { MemoryConversationStore } from '@drawroid/core/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryConversationStore, STUB_PNG } from '@drawroid/core/testing';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApi } from '../index.js';
 import { defaultHeartbeat } from './conversations.js';
@@ -18,6 +18,7 @@ import {
   memoryProgressDeps,
   noCandidateNotes,
   noPermissionSettings,
+  solidImage,
 } from '../test-support.js';
 
 let store: MemoryConversationStore;
@@ -598,9 +599,11 @@ describe('listing conversations again', () => {
 });
 
 describe('images attached in a conversation', () => {
-  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString(
-    'base64',
-  );
+  const png = Buffer.from(STUB_PNG).toString('base64');
+  let jpeg: string;
+  beforeAll(async () => {
+    jpeg = Buffer.from(await solidImage('jpeg', 4, 4)).toString('base64');
+  });
 
   it('keeps an attached image and answers its upload ID', async () => {
     const id = await newConversation();
@@ -645,7 +648,6 @@ describe('images attached in a conversation', () => {
 
   it('gives back an image of another type with that type', async () => {
     const id = await newConversation();
-    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64');
     const sent = await json('POST', `/conversations/${id}/uploads`, {
       mediaType: 'image/jpeg',
       data: jpeg,

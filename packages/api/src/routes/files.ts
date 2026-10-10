@@ -1,8 +1,8 @@
-import { DEFAULT_BUDGETS, type JobStore } from '@drawroid/core';
+import { DEFAULT_BUDGETS, UnreadableImageError, type JobStore } from '@drawroid/core';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
-import { notFound } from '../errors.js';
+import { invalidFile, notFound } from '../errors.js';
 
 // 設定の今の値を使わない: 縮小版の名前は長辺を含み、ジョブの途中で変わると同じ画像の縮小版が2つできて、画面と記録で指す縮小版が食い違うため
 async function previewLongEdge(store: JobStore, jobId: string): Promise<number> {
@@ -26,11 +26,16 @@ export function filesRoutes({ store }: ApiDeps) {
       if (!(await store.listReferences(jobId)).some((r) => r.refId === refId)) {
         return notFound(c, 'そのファイルは無い');
       }
-      const { data } = await store.loadPreview(
-        { jobId, refId: refId ?? '' },
-        await previewLongEdge(store, jobId),
-      );
-      return c.body(data as Uint8Array<ArrayBuffer>, 200, { 'content-type': 'image/webp' });
+      try {
+        const { data } = await store.loadPreview(
+          { jobId, refId: refId ?? '' },
+          await previewLongEdge(store, jobId),
+        );
+        return c.body(data as Uint8Array<ArrayBuffer>, 200, { 'content-type': 'image/webp' });
+      } catch (error) {
+        if (error instanceof UnreadableImageError) return invalidFile(c, error.message);
+        throw error;
+      }
     })
     .get('/jobs/:jobId/iterations/:iteration/images/:file', async (c) => {
       const { jobId, iteration, file } = c.req.param();
@@ -57,6 +62,7 @@ export function filesRoutes({ store }: ApiDeps) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           return notFound(c, 'そのファイルは無い');
         }
+        if (error instanceof UnreadableImageError) return invalidFile(c, error.message);
         throw error;
       }
     });

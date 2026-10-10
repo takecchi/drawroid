@@ -35,6 +35,7 @@ import {
   type StageName,
   type StoredLlmCallRecord,
   type StoredGeneration,
+  UnreadableImageError,
 } from '@drawroid/core';
 import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
@@ -478,7 +479,13 @@ export class FsJobStore implements JobStore {
       data = await readFile(preview);
     } catch (error) {
       if (!isNotFound(error)) throw error;
-      data = await makePreview(await readFile(source), longEdge);
+      const original = await readFile(source);
+      try {
+        data = await makePreview(original, longEdge);
+      } catch (cause) {
+        // sharp の例外をそのまま投げない: 呼び手が「画像が壊れている」と「置き場所の失敗」を、メッセージの文字列で見分けることになるため
+        throw new UnreadableImageError('画像として読めない（縮小版を作れなかった）', { cause });
+      }
       await writeFileAtomic(preview, data);
     }
     const { width = 0, height = 0 } = await sharp(data).metadata();

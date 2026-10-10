@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
 import { invalidRequest, notFound } from '../errors.js';
+import { imageProblem } from '../images.js';
 import { referenceUploadsSchema } from '../references.js';
 import { jsonBody } from '../validate.js';
 
@@ -48,6 +49,11 @@ export function autoJobsRoutes(deps: ApiDeps) {
       // validator を通す: 送る本文の型（参照画像は base64 のまま）を、画面の側が hono/client から引けるようにするため
       .post('/', jsonBody(createBodySchema), async (c) => {
         const { request, stopConditions, batchSize, references, permissions } = c.req.valid('json');
+        // ジョブを作る前に全部読む: 1枚でも読めなければ、何も保存せずジョブも始めないため
+        for (const [i, reference] of (references ?? []).entries()) {
+          const problem = await imageProblem(reference.data, reference.mediaType);
+          if (problem !== undefined) return invalidRequest(c, `references.${i}.data: ${problem}`);
+        }
         const now = (deps.now ?? (() => new Date()))();
         // 投入のときに1度だけ読み、ジョブへ写す: 以後に設定を変えても、走っている・待っているジョブの上限は変えないため
         const { effective } = await deps.budgetSettings.read();
