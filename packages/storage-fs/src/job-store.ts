@@ -41,6 +41,7 @@ import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
 
 import { createJsonExclusive, writeFileAtomic, writeJsonAtomic } from './atomic.js';
+import { FileTextCache } from './file-cache.js';
 import { dataPaths, TEMP_FILE_PREFIX, type DataPaths } from './paths.js';
 import { makePreview, PREVIEW_MEDIA_TYPE } from './preview.js';
 
@@ -92,8 +93,13 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
-async function readJson(path: string): Promise<unknown> {
-  const text = await readFile(path, 'utf8');
+/** ファイルの中身の読み方。書いたら書き換えないファイルだけを FileTextCache で読む */
+type ReadText = (path: string) => Promise<string>;
+
+const readFresh: ReadText = (path) => readFile(path, 'utf8');
+
+async function readJson(path: string, read: ReadText = readFresh): Promise<unknown> {
+  const text = await read(path);
   try {
     return JSON.parse(text) as unknown;
   } catch (error) {
@@ -101,17 +107,21 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-async function readJsonIfExists(path: string): Promise<unknown> {
+async function readJsonIfExists(path: string, read: ReadText = readFresh): Promise<unknown> {
   try {
-    return await readJson(path);
+    return await readJson(path, read);
   } catch (error) {
     if (isNotFound(error)) return undefined;
     throw error;
   }
 }
 
-async function readValid<T>(path: string, schema: ZodType<T>): Promise<T> {
-  const parsed = schema.safeParse(await readJson(path));
+async function readValid<T>(
+  path: string,
+  schema: ZodType<T>,
+  read: ReadText = readFresh,
+): Promise<T> {
+  const parsed = schema.safeParse(await readJson(path, read));
   if (!parsed.success) throw new StoredFileError(path, parsed.error);
   return parsed.data;
 }
@@ -130,7 +140,10 @@ async function listNames(dir: string): Promise<string[]> {
 /**
  * llm-calls/ の記録を、読めないファイルを外して返す。ジョブの分と会話の分で同じ読み方にするため、置き場所をまたいで共有する
  */
-export async function readLlmCallRecords(dir: string): Promise<{
+export async function readLlmCallRecords(
+  dir: string,
+  read: ReadText = readFresh,
+): Promise<{
   records: StoredLlmCallRecord[];
   invalid: { callId: string; reason: string }[];
 }> {
@@ -138,7 +151,7 @@ export async function readLlmCallRecords(dir: string): Promise<{
   const invalid: { callId: string; reason: string }[] = [];
   for (const name of (await listNames(dir)).filter((n) => n.endsWith('.json'))) {
     try {
-      const parsed = llmCallRecordShape.safeParse(await readJson(join(dir, name)));
+      const parsed = llmCallRecordShape.safeParse(await readJson(join(dir, name), read));
       if (!parsed.success) throw new StoredFileError(join(dir, name), parsed.error);
       records.push(parsed.data as unknown as StoredLlmCallRecord);
     } catch (error) {
@@ -197,18 +210,29 @@ export function assertCallId(callId: string): void {
   if (!CALL_ID_PATTERN.test(callId)) throw new Error(`callId の形ではない: ${callId}`);
 }
 
+/** 書いたら書き換えないファイルの中身を、合計でこの大きさまで持つ */
+export const DEFAULT_READ_CACHE_BYTES = 16 * 1024 * 1024;
+
 export type FsJobStoreOptions = {
   /** jobId の末尾に付ける短い乱数（試験で差し替える） */
   randomSuffix?: () => string;
+  /** 書いたら書き換えないファイルの中身を持つ上限のバイト数 */
+  readCacheBytes?: number;
 };
 
 export class FsJobStore implements JobStore {
   private readonly paths: DataPaths;
   private readonly randomSuffix: () => string;
+  // 使い回すのは、書いたら書き換えないファイル（think・judge・adopted・request・画像のメタ・LLM の記録）だけ。
+  // plan.json は使い回さない: 考える役を呼ぶ途中で落ちると、再開で書き直されるため。
+  // state.json・job.json・口出し・ディレクトリの一覧も、書き換わるので使い回さない
+  private readonly readWrittenOnce: ReadText;
 
   constructor(root: string, options: FsJobStoreOptions = {}) {
     this.paths = dataPaths(root);
     this.randomSuffix = options.randomSuffix ?? (() => randomBytes(3).toString('hex'));
+    const cache = new FileTextCache(options.readCacheBytes ?? DEFAULT_READ_CACHE_BYTES);
+    this.readWrittenOnce = (path) => cache.read(path);
   }
 
   // 外から来た jobId でパスを組む口はすべてここを通す: 呼び手の検査に頼ると、1か所の漏れでデータディレクトリの外を読み書きできるため
@@ -312,11 +336,17 @@ export class FsJobStore implements JobStore {
       .flatMap((name) => /^(\d+)\.png$/.exec(name)?.[1] ?? [])
       .map(Number)
       .sort((a, b) => a - b);
+    // 画像のメタは request.json より先に書かれ、生成の途中で落ちると再開で書き直される。
+    // request.json があるのを見てから読むので、ここで読むのは書き直しの済んだもの
     for (const index of indexes) {
-      const meta = await readValid(dir.imageMeta(index), imageMetaSchema);
+      const meta = await readValid(dir.imageMeta(index), imageMetaSchema, this.readWrittenOnce);
       images.push({ index, seed: meta.seed });
     }
-    return { iteration, request: await readValid(dir.request, generationRequestSchema), images };
+    return {
+      iteration,
+      request: await readValid(dir.request, generationRequestSchema, this.readWrittenOnce),
+      images,
+    };
   }
 
   async readImage(image: ImageRef): Promise<Uint8Array | undefined> {
@@ -441,7 +471,10 @@ export class FsJobStore implements JobStore {
   }
 
   readStage(jobId: string, iteration: number, stage: StageName): Promise<unknown> {
-    return readJsonIfExists(this.jobFiles(jobId).iteration(iteration)[stage]);
+    return readJsonIfExists(
+      this.jobFiles(jobId).iteration(iteration)[stage],
+      stage === 'plan' ? readFresh : this.readWrittenOnce,
+    );
   }
 
   async writeStage(
@@ -457,7 +490,7 @@ export class FsJobStore implements JobStore {
 
   async readAdopted(jobId: string, iteration: number): Promise<AdoptedRecord | undefined> {
     const path = this.jobFiles(jobId).iteration(iteration).adopted;
-    const raw = await readJsonIfExists(path);
+    const raw = await readJsonIfExists(path, this.readWrittenOnce);
     if (raw === undefined) return undefined;
     const parsed = adoptedRecordSchema.safeParse(raw);
     if (!parsed.success) throw new StoredFileError(path, parsed.error);
@@ -635,7 +668,10 @@ export class FsJobStore implements JobStore {
   }
 
   async listLlmCallRecords(jobId: string | null) {
-    return readLlmCallRecords(jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls);
+    return readLlmCallRecords(
+      jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls,
+      this.readWrittenOnce,
+    );
   }
 
   /** データディレクトリからの相対で、拡張子の無い形（記録と UI で画像を指す） */

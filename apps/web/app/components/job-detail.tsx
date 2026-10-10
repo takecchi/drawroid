@@ -2,11 +2,11 @@ import {
   isApiError,
   useInterventions,
   useIterations,
-  useJob,
+  useJobOverview,
   useLlmCalls,
   useReferences,
   useSelections,
-  type JobDetail as JobDetailData,
+  type JobOverview,
 } from '@drawroid/swr';
 import {
   BulletList,
@@ -32,7 +32,7 @@ import { ReferenceList } from './reference-list';
 import { SetupNotice } from './setup-notice';
 import { StopReasonMessage } from './stop-reason-message';
 
-function JobHeader({ job }: { job: JobDetailData }) {
+function JobHeader({ job }: { job: JobOverview }) {
   const { spec, state } = job;
   const backendKind = useBackendKind();
   // 失敗の理由は重ねない: 失敗の知らせ（ErrorNote）は role="alert" で、出たときにもう読まれるため
@@ -89,7 +89,7 @@ function JobHeader({ job }: { job: JobDetailData }) {
   );
 }
 
-function JobRequest({ spec }: { spec: JobDetailData['spec'] }) {
+function JobRequest({ spec }: { spec: JobOverview['spec'] }) {
   if (spec.kind === 'manual') {
     return (
       <Section title="依頼">
@@ -152,8 +152,9 @@ function InvalidList({
 }
 
 export function JobDetail({ jobId }: { jobId: string }) {
-  const { data, error } = useJob(jobId);
-  // useJob の応答を待たずに取り始めない: 止まったかどうかが分かるまで、ポーリングするかを決められないため
+  // 全回を載せた詳細（useJob）を読まない: 走っている間は毎秒読むので、回数に比例して重くなるため。回の一覧は useIterations の1か所から取る
+  const { data, error } = useJobOverview(jobId);
+  // useJobOverview の応答を待たずに取り始めない: 止まったかどうかが分かるまで、ポーリングするかを決められないため
   const live = data !== undefined && data.state.status !== 'stopped';
   const iterations = useIterations(data === undefined ? undefined : jobId, { live });
   // 手動ジョブには口出しが無く、取りに行くと 404 になる: 自動ジョブのときだけ取る
@@ -213,7 +214,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
         <>
           <IterationList
             jobId={jobId}
-            heading={`回（${data.iterations.length}）`}
+            heading={`回（${iterations.data.iterations.length}）`}
             iterations={iterations.data.iterations}
             calls={llmCalls.data?.calls ?? []}
             verdicts={verdicts}

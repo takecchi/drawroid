@@ -11,6 +11,11 @@ export type CandidatesResponse = InferResponseType<
 >;
 export type JobsResponse = InferResponseType<typeof client.jobs.$get, 200>;
 export type JobDetail = InferResponseType<(typeof client.jobs)[':jobId']['$get'], 200>;
+/** ジョブの依頼と状態だけ（回を載せない） */
+export type JobOverview = InferResponseType<
+  (typeof client.jobs)[':jobId']['overview']['$get'],
+  200
+>;
 /** notes は候補の名前 → 説明。problem は、説明のファイルが読めなかったときの理由（そのとき notes は空） */
 export type CandidateNotesResponse = InferResponseType<
   (typeof client.backend)['candidate-notes']['$get'],
