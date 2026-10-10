@@ -30,6 +30,7 @@ import {
   StopNotice,
   ThinkNote,
   ToolCallCard,
+  WarnNote,
   type ViewerImage,
 } from '@drawroid/ui';
 import {
@@ -777,6 +778,8 @@ function renderItem(
   chosenImages: ReadonlySet<string>,
   /** 画像を大きく見る窓で開く */
   open: (viewerKey: string) => void,
+  /** drawroid につながっていない（進み具合のカードが止まって見える） */
+  disconnected: boolean,
 ): ReactNode {
   switch (item.kind) {
     case 'user':
@@ -923,6 +926,7 @@ function renderItem(
           }
           // 生成中の回はまだ採れない: 採れるのはできあがった画像だけ（JobRunner.adopt）
           hint="できあがったら、画像の行の「この画像に決める」で選べる"
+          stalled={disconnected}
         />
       );
     case 'status':
@@ -949,11 +953,20 @@ export function ConversationView({
   actions: ConversationActions;
   title?: ReactNode;
 }) {
-  const { chat, loaded, error } = useConversationStream(conversationId, source);
+  const { chat, loaded, error, disconnected } = useConversationStream(conversationId, source);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | undefined>();
   const [stopError, setStopError] = useState<string | undefined>();
+  // つながり直したら、切れている間の「送れない」「止められない」は消す: 残ると、直ったあとも効かないように見えるため
+  const wasDisconnected = useRef(false);
+  useEffect(() => {
+    if (wasDisconnected.current && !disconnected) {
+      setSendError(undefined);
+      setStopError(undefined);
+    }
+    wasDisconnected.current = disconnected;
+  }, [disconnected]);
   const [attached, setAttached] = useState<PendingAttachment[]>([]);
   const [refusals, setRefusals] = useState<string[]>([]);
   const nextAttachmentId = useRef(0);
@@ -1051,12 +1064,20 @@ export function ConversationView({
   // ジョブが止まった・画像が選ばれたは確定したイベントで届き、そのとき確定した行は作り直される（使い回されない）ので、ここでは見なくてよい
   // 大きく見ている画像（窓の画像の key）。setViewing は変わらない関数なので、行の使い回しを崩さない
   const [viewing, setViewing] = useState<string | null>(null);
-  const rowCache = useRef(new WeakMap<ChatItem, { sending: boolean; row: ReactNode }>());
+  const rowCache = useRef(
+    new WeakMap<ChatItem, { sending: boolean; disconnected: boolean; row: ReactNode }>(),
+  );
   const rows = useMemo(
     () =>
       items.map((item) => {
         const cached = rowCache.current.get(item);
-        if (cached !== undefined && cached.sending === sending) return cached.row;
+        // つながりで変わるのは進み具合のカードだけ: 切れた・戻ったで、確定した数千行まで描き直さないため
+        if (
+          cached !== undefined &&
+          cached.sending === sending &&
+          (item.kind !== 'progress' || cached.disconnected === disconnected)
+        )
+          return cached.row;
         const row = (
           <LogRow key={item.key} {...rowEstimate(item)}>
             {renderItem(
@@ -1066,13 +1087,14 @@ export function ConversationView({
               stoppedJobs,
               chosenImages,
               setViewing,
+              disconnected,
             )}
           </LogRow>
         );
-        rowCache.current.set(item, { sending, row });
+        rowCache.current.set(item, { sending, disconnected, row });
         return row;
       }),
-    [items, conversationId, resend, sending, stoppedJobs, chosenImages],
+    [items, conversationId, resend, sending, stoppedJobs, chosenImages, disconnected],
   );
 
   const viewerImages = useMemo(
@@ -1122,10 +1144,14 @@ export function ConversationView({
             running={running}
             sending={sending}
             notice={
+              !disconnected &&
               sendError === undefined &&
               stopError === undefined &&
               refusals.length === 0 ? undefined : (
                 <>
+                  {disconnected && (
+                    <WarnNote>drawroid につながっていない。つながり直すのを待っている</WarnNote>
+                  )}
                   {refusals.map((reason) => (
                     <ErrorNote key={reason}>添えられない: {reason}</ErrorNote>
                   ))}

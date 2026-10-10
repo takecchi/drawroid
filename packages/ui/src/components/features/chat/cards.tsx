@@ -138,6 +138,7 @@ export function GenerationProgress({
   etaMs,
   previewSrc,
   hint,
+  stalled = false,
 }: {
   iteration?: number;
   /** 0〜1 */
@@ -149,6 +150,8 @@ export function GenerationProgress({
   previewSrc?: string;
   /** カードの下に添える一言（「できあがったら、画像の行で選べる」など） */
   hint?: ReactNode;
+  /** 進み具合が届かなくなっている（drawroid につながっていない）。回る印を止め、止まって見える理由を添える */
+  stalled?: boolean;
 }) {
   const percent = progress === undefined ? undefined : Math.round(progress * 100);
   const details = [
@@ -157,7 +160,7 @@ export function GenerationProgress({
   ].filter((part) => part !== undefined);
   return (
     <LogCard
-      icon={<Loader2 className="animate-spin" />}
+      icon={<Loader2 className={cn(!stalled && 'animate-spin')} />}
       title={iteration === undefined ? '生成中' : `${iteration} 回目を生成中`}
       aside={
         percent !== undefined && (
@@ -191,7 +194,13 @@ export function GenerationProgress({
           className="size-32 rounded-md border border-border object-cover"
         />
       )}
-      {hint !== undefined && <div className="text-xs text-muted-foreground">{hint}</div>}
+      {stalled ? (
+        <div className="text-xs text-warn">
+          止まっている: drawroid につながっていないので、進み具合が届いていない
+        </div>
+      ) : (
+        hint !== undefined && <div className="text-xs text-muted-foreground">{hint}</div>
+      )}
     </LogCard>
   );
 }
