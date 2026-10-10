@@ -195,6 +195,44 @@ describe('the stop card', () => {
     await waitFor(() => expect(recheckJobDistill).toHaveBeenCalledWith(JOB));
   });
 
+  // 狭い画面では、画像の行のボタンも指で押せる 44px の高さにする（広い画面では詰める）。実際の大きさは、ブラウザで測る
+  it('makes the buttons of an image row 44px tall on a narrow screen', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 2,
+        images: [
+          { index: 0, seed: 8 },
+          { index: 1, seed: 9 },
+        ],
+      }),
+    );
+    // 走っている間の行（お気に入り・却下・採る）
+    const running = [
+      'お気に入り: 2 回目の画像 1 番',
+      '却下: 2 回目の画像 1 番',
+      'この画像に決める: 2 回目の画像 1 番',
+    ];
+    for (const name of running) {
+      expect(screen.getByRole('button', { name }).className.split(' ')).toEqual(
+        expect.arrayContaining(['h-11', 'md:h-7']),
+      );
+    }
+    // 止まったあとの行（お気に入りで決める）
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: AI_STOP }));
+    const rows = await screen.findAllByRole('button', { name: CHOOSE });
+    for (const button of rows) {
+      expect(button.className.split(' ')).toEqual(
+        expect.arrayContaining(['min-h-11', 'md:min-h-7']),
+      );
+    }
+  });
+
   it('makes only the card button stand out, while the rows offer the same choice quietly', async () => {
     vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
     const { source, stream } = fakeSource([]);

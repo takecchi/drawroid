@@ -45,8 +45,13 @@ export function Drawer({
         {/* `aria-label` ではなく `Title` で名前を与える: Radix は `Title` が在るときだけ `aria-labelledby` を向けるため */}
         <SheetTitle className="sr-only">{label}</SheetTitle>
         {children}
+        {/* 押せる範囲だけを ::after で 44px に広げる（見た目の大きさは変えない） */}
         <SheetClose asChild>
-          <Button variant="ghost" className="absolute top-3 right-3" size="icon-sm">
+          <Button
+            variant="ghost"
+            className="absolute top-3 right-3 after:absolute after:-inset-2 after:content-['']"
+            size="icon-sm"
+          >
             <XIcon aria-hidden />
             <span className="sr-only">閉じる</span>
           </Button>

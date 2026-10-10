@@ -184,7 +184,6 @@ function VerdictButtons({
       setPending(false);
     }
   }
-  const small = 'h-7 px-2 text-xs';
   const favorite = verdict === 'favorite' ? 'お気に入りを外す' : 'お気に入り';
   const reject = verdict === 'rejected' ? '却下を外す' : '却下';
   return (
@@ -192,7 +191,7 @@ function VerdictButtons({
       <div className="flex flex-wrap gap-1">
         {/* 読み上げの名前は見える文言で始める: 声で操作する人が、見えている文言で呼べるように */}
         <Button
-          className={small}
+          size="sm"
           disabled={pending}
           aria-pressed={verdict === 'favorite'}
           aria-label={`${favorite}: ${imageLabel}`}
@@ -201,7 +200,7 @@ function VerdictButtons({
           {favorite}
         </Button>
         <Button
-          className={small}
+          size="sm"
           disabled={pending}
           aria-pressed={verdict === 'rejected'}
           aria-label={`${reject}: ${imageLabel}`}
@@ -306,7 +305,7 @@ function ViewerImageDetails({
         chosen={chosen}
       />
       {onPaint !== undefined && (
-        <Button className="h-7 px-2 text-xs" onClick={onPaint}>
+        <Button size="sm" onClick={onPaint}>
           マスクを塗る
         </Button>
       )}
