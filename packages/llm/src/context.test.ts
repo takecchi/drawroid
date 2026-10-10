@@ -101,4 +101,35 @@ describe('detectContextTokens', () => {
     expect(filled.roles.think.contextTokens).toBeUndefined();
     expect(detected).toEqual([]);
   });
+
+  // ほかのモデルの欄が崩れていても、そのモデルの窓は読む: 一覧には、読み込んでいないモデルも窓の無い形で並ぶことがあるため
+  it.each([
+    ['meta is null', { id: 'other', meta: null }],
+    ['the window is 0', { id: 'other', meta: { n_ctx: 0 } }],
+    ['the window is not a number', { id: 'other', meta: { n_ctx: 'bad' } }],
+    ['it has no id', { meta: { n_ctx: 4096 } }],
+    ['it is not an object', 'other'],
+  ])(
+    'reads the window of the model when another entry in the list is broken (%s)',
+    async (_, broken) => {
+      const { fetch } = modelsFetch({ data: [broken, { id: 'qwen', meta: { n_ctx: 32768 } }] });
+
+      const { config: filled } = await detectContextTokens(config(), { env: {}, fetch });
+
+      expect(filled.roles.think.contextTokens).toBe(32768);
+    },
+  );
+
+  // そのモデルの欄が崩れていたら、ほかのモデルの窓で埋めない
+  it.each([
+    ['meta is null', { id: 'qwen', meta: null }],
+    ['the window is 0', { id: 'qwen', meta: { n_ctx: 0 } }],
+    ['the window is not a number', { id: 'qwen', meta: { n_ctx: 'bad' } }],
+  ])('leaves it unset when the entry of the model itself is broken (%s)', async (_, broken) => {
+    const { fetch } = modelsFetch({ data: [{ id: 'other', meta: { n_ctx: 4096 } }, broken] });
+
+    const { config: filled } = await detectContextTokens(config(), { env: {}, fetch });
+
+    expect(filled.roles.think.contextTokens).toBeUndefined();
+  });
 });

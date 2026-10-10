@@ -6,15 +6,11 @@ import type { ModelEnvironment } from './models.js';
 
 const DETECT_TIMEOUT_MS = 5000;
 
-// llama.cpp の /v1/models は、読み込んだモデルの窓を meta.n_ctx に載せる。OpenAI の形には無い拡張なので、無ければ読まない
-const modelsResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      meta: z.object({ n_ctx: z.number().int().positive() }).partial().optional(),
-    }),
-  ),
-});
+// llama.cpp の /v1/models は、読み込んだモデルの窓を meta.n_ctx に載せる。OpenAI の形には無い拡張なので、無ければ読まない。
+// 一覧の欄はモデルごとに確かめる: ほかのモデルの欄が崩れていても（読み込んでいないモデルの窓が null・0 など）、そのモデルの窓は読むため
+const modelsResponseSchema = z.object({ data: z.array(z.unknown()) });
+const modelEntrySchema = z.object({ id: z.string() });
+const modelWindowSchema = z.object({ meta: z.object({ n_ctx: z.number().int().positive() }) });
 
 export type DetectedContext = { role: LlmRole; contextTokens: number };
 
@@ -60,7 +56,10 @@ async function readContextTokens(
     if (!response.ok) return undefined;
     const parsed = modelsResponseSchema.safeParse(await response.json());
     if (!parsed.success) return undefined;
-    return parsed.data.data.find((entry) => entry.id === model)?.meta?.n_ctx;
+    const entry = parsed.data.data.find(
+      (candidate) => modelEntrySchema.safeParse(candidate).data?.id === model,
+    );
+    return modelWindowSchema.safeParse(entry).data?.meta.n_ctx;
   } catch {
     // 読めないことは失敗にしない: 窓の長さを報告しない provider でも、既定の窓で動かすため
     return undefined;
