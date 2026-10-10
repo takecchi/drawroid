@@ -14,6 +14,7 @@ import type {
   CandidateNotesResponse,
   CandidatesResponse,
   ConversationEventsResponse,
+  ConversationDetailResponse,
   ConversationsResponse,
   InterventionsResponse,
   IterationsResponse,
@@ -186,6 +187,23 @@ export function useConversations() {
   return useSWR<ConversationsResponse, ApiError>(
     keys.conversations,
     () => unwrap<ConversationsResponse>(() => client.conversations.$get()),
+    { refreshInterval: JOBS_POLL_MS },
+  );
+}
+
+/**
+ * 会話1つ（タイトルなど）。会話の画面は、タイトルのためにこちらを使い、一覧（全会話の要約）は読まない。
+ * 数秒おきに読み直す: 別のタブで名前を変えたときにも追うため
+ */
+export function useConversation(conversationId: string | undefined) {
+  return useSWR<ConversationDetailResponse, ApiError>(
+    conversationId === undefined ? null : keys.conversation(conversationId),
+    () =>
+      unwrap<ConversationDetailResponse>(() =>
+        client.conversations[':conversationId'].$get({
+          param: { conversationId: conversationId ?? '' },
+        }),
+      ),
     { refreshInterval: JOBS_POLL_MS },
   );
 }
