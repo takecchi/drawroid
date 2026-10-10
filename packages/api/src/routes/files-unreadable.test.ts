@@ -1,5 +1,5 @@
 // 原寸はあるが読めない画像の縮小版を求められたとき、サーバの不具合（500）にせず、データの問題（422）として返すこと
-import { rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 
 import { STUB_PNG } from '@drawroid/core/testing';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -104,5 +104,20 @@ describe('the preview, when the data directory cannot be read', () => {
     await expectStorageFailure(
       await ctx.api.request(`/files/jobs/${job.jobId}/iterations/1/images/0.preview.webp`),
     );
+  });
+});
+
+// 無いと言うのは、原寸が無いときだけ: 読めない失敗まで「無い」と言うと、置き場所の問題が消えた画像に見えるため
+describe('the original image, when its file cannot be read', () => {
+  it('is answered as a server failure, not as a missing file', async () => {
+    const job = await createAutoJob(ctx.store);
+    // ファイルの代わりにディレクトリを置く: 無い（ENOENT）とは別の失敗で読めなくする。権限を外す形は root で走ると効かないため
+    await mkdir(ctx.paths.jobFiles(job.jobId).iteration(1).image(0), { recursive: true });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => logged.mockRestore());
+
+    const res = await ctx.api.request(`/files/jobs/${job.jobId}/iterations/1/images/0.png`);
+
+    expect(res.status).toBe(500);
   });
 });
