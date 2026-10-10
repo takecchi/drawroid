@@ -1,3 +1,4 @@
+import type { LlmRole } from '@drawroid/core';
 import { z } from 'zod';
 
 import type { LlmConfig, ProviderConfig } from './config.js';
@@ -15,11 +16,12 @@ const modelsResponseSchema = z.object({
   ),
 });
 
-export type DetectedContext = { role: 'think' | 'judge'; contextTokens: number };
+export type DetectedContext = { role: LlmRole; contextTokens: number };
 
 /**
  * contextTokens を書いていない役について、provider が報告する窓の長さを読んで埋める。
  * 読めなければ埋めずに残す（adapter が既定の窓を使う）。
+ * 書いていない役（judge・talk を省いたとき）は作り足さない: 省いた役は考える役に従い、その窓も考える役から受けるため
  */
 export async function detectContextTokens(
   config: LlmConfig,
@@ -27,7 +29,7 @@ export async function detectContextTokens(
 ): Promise<{ config: LlmConfig; detected: DetectedContext[] }> {
   const detected: DetectedContext[] = [];
   const roles = { ...config.roles };
-  for (const role of ['think', 'judge'] as const) {
+  for (const role of ['think', 'judge', 'talk'] as const) {
     const roleConfig = roles[role];
     if (roleConfig === undefined || roleConfig.contextTokens !== undefined) continue;
     const provider = config.providers[roleConfig.provider];
