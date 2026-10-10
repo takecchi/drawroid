@@ -1,4 +1,5 @@
 import {
+  batchSizeProblem,
   createCarry,
   hasAnyStopCondition,
   permissionOverridesSchema,
@@ -10,7 +11,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { notFound } from '../errors.js';
+import { invalidRequest, notFound } from '../errors.js';
 import { referenceUploadsSchema } from '../references.js';
 import { jsonBody } from '../validate.js';
 
@@ -50,6 +51,8 @@ export function autoJobsRoutes(deps: ApiDeps) {
         const now = (deps.now ?? (() => new Date()))();
         // 投入のときに1度だけ読み、ジョブへ写す: 以後に設定を変えても、走っている・待っているジョブの上限は変えないため
         const { effective } = await deps.budgetSettings.read();
+        const tooMany = batchSizeProblem(batchSize ?? DEFAULT_BATCH_SIZE, effective);
+        if (tooMany !== undefined) return invalidRequest(c, tooMany);
         const spec = await store.createJob(
           {
             kind: 'auto',

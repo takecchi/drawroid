@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { generationRequestSchema, ManualGenerationRunner } from '@drawroid/core';
+import { DEFAULT_BUDGETS, generationRequestSchema, ManualGenerationRunner } from '@drawroid/core';
 import { StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, FsJobStore } from '@drawroid/storage-fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -171,6 +171,26 @@ describe('POST /jobs/auto', () => {
     });
     expect(await store.listJobIds()).toEqual([]);
     expect(kicks).toBe(0);
+  });
+
+  it('rejects more images at once than the judging role takes in one call, saying why, and creates nothing', async () => {
+    const res = await post('/jobs/auto', {
+      request: 'x',
+      batchSize: DEFAULT_BUDGETS.imagesPerJudge + 1,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: {
+        kind: 'invalid_request',
+        message: expect.stringContaining(`${DEFAULT_BUDGETS.imagesPerJudge} 枚`),
+      },
+    });
+    expect(await store.listJobIds()).toEqual([]);
+    expect(kicks).toBe(0);
+  });
+
+  it('accepts as many images at once as the judging role takes in one call', async () => {
+    await create({ request: 'x', batchSize: DEFAULT_BUDGETS.imagesPerJudge });
   });
 
   it.each([
