@@ -2,6 +2,7 @@ import type { GenerationProgress } from '@drawroid/core';
 import { z } from 'zod';
 
 import type { SdapiClient } from './client.js';
+import { assertImageWithinLimit } from './response.js';
 
 // 使う欄だけを見る。知らない欄が増えても落とさない（state には、ほかの欄もある）
 const progressResponseSchema = z.looseObject({
@@ -44,6 +45,7 @@ export async function readProgress(
     etaSeconds: res.eta_relative != null && res.eta_relative > 0 ? res.eta_relative : null,
   };
   if (includePreview && res.current_image) {
+    assertImageWithinLimit(res.current_image, '途中の画像', client.product);
     const preview = decodePreview(res.current_image);
     if (preview !== undefined) progress.preview = preview;
   }

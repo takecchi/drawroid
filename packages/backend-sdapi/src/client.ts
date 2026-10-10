@@ -25,9 +25,28 @@ const UNREACHABLE_CODES = new Set([
   'UND_ERR_CONNECT_TIMEOUT',
 ]);
 
+/** バックエンドが返す画像1枚の大きさの上限（PNG・途中の画像を戻したあとのバイト数） */
+export const MAX_IMAGE_BYTES = 64 * 1024 * 1024;
+const MEGABYTE = 1024 * 1024;
+/** 画像1枚を base64 にしたときの長さの上限 */
+const MAX_IMAGE_BASE64_BYTES = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
+/** 画像のほかに応答に載る分（info・欄の名前など）の余裕 */
+const RESPONSE_SLACK_BYTES = MEGABYTE;
+/** 応答の本文の大きさの既定の上限。画像を返さない口と、途中の画像1枚を返す進み具合の口に足りる */
+export const DEFAULT_MAX_RESPONSE_BYTES = MAX_IMAGE_BASE64_BYTES + RESPONSE_SLACK_BYTES;
+/** 同じオリジンの中で追うリダイレクトの回数の上限 */
+const MAX_REDIRECTS = 5;
+
+/** 画像を images 枚まで返す応答の、本文の大きさの上限 */
+export function responseLimitForImages(images: number): number {
+  return images * MAX_IMAGE_BASE64_BYTES + RESPONSE_SLACK_BYTES;
+}
+
 export interface CallOptions {
   signal?: AbortSignal | undefined;
   timeoutMs?: number;
+  // 応答の本文の大きさの上限（バイト）。省けば DEFAULT_MAX_RESPONSE_BYTES
+  maxBytes?: number;
 }
 
 /**
@@ -81,7 +100,7 @@ export class SdapiClient {
     path: string,
     init: RequestInit,
     schema: S,
-    { signal, timeoutMs = this.timeoutMs }: CallOptions,
+    { signal, timeoutMs = this.timeoutMs, maxBytes = DEFAULT_MAX_RESPONSE_BYTES }: CallOptions,
   ): Promise<z.infer<S>> {
     const url = new URL(path.replace(/^\//, ''), this.baseUrl);
     const where = `${init.method} ${url.pathname}`;
@@ -94,9 +113,10 @@ export class SdapiClient {
     try {
       const headers = new Headers(init.headers);
       if (this.authHeader !== undefined) headers.set('authorization', this.authHeader);
-      res = await this.fetchImpl(url, { ...init, headers, signal: combined });
-      text = await res.text();
+      res = await this.fetchFollowingSameOrigin(url, { ...init, headers, signal: combined }, where);
+      text = await readTextWithin(res, maxBytes, where, this.product);
     } catch (error) {
+      if (error instanceof BackendError) throw error;
       throw classifyFetchError(error, {
         where,
         baseUrl: this.baseUrl.href,
@@ -125,6 +145,78 @@ export class SdapiClient {
     }
     return parsed.data;
   }
+
+  /**
+   * リダイレクトを自分で辿る。同じオリジンの中なら追い、別のオリジンへ移るよう返されたら追わずに失敗にする。
+   */
+  // 自動では追わない: 壊れた・悪意のあるバックエンドが別のオリジン（手元の別のサービスなど）へ飛ばすと、
+  // プロンプトや画像の本文がそこへ送り直され、その応答の文面が失敗の理由として画面と LLM に載るため
+  private async fetchFollowingSameOrigin(
+    url: URL,
+    init: RequestInit,
+    where: string,
+  ): Promise<Response> {
+    let target = url;
+    for (let hops = 0; ; hops += 1) {
+      const res = await this.fetchImpl(target, { ...init, redirect: 'manual' });
+      const location = res.headers.get('location');
+      if (res.status < 300 || res.status >= 400 || location === null) return res;
+      await res.body?.cancel();
+      const next = new URL(location, target);
+      if (next.origin !== this.baseUrl.origin) {
+        throw new BackendError(
+          'bad_response',
+          `${where}: ${this.product} が別の場所（${next.origin}）へ移るよう返したので、追わずに止めた。${this.product} の URL（${this.baseUrl.href}）が合っているかを確かめる`,
+        );
+      }
+      if (hops >= MAX_REDIRECTS) {
+        throw new BackendError(
+          'bad_response',
+          `${where}: ${this.product} が ${MAX_REDIRECTS} 回を超えて移るよう返したので、追うのをやめた`,
+        );
+      }
+      target = next;
+    }
+  }
+}
+
+/** 応答の本文を、maxBytes まで読む。超えたら読むのをやめて失敗にする */
+// 全部読んでから確かめない: 大きすぎる応答を読み切るだけで、メモリを使い切ることがあるため
+async function readTextWithin(
+  res: Response,
+  maxBytes: number,
+  where: string,
+  product: string,
+): Promise<string> {
+  const tooLarge = () =>
+    new BackendError(
+      'bad_response',
+      `${where}: ${product} の応答が大きすぎる（${formatMegabytes(maxBytes)} を超えた）。${product} の設定で、画像の大きさや枚数を確かめる`,
+    );
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await res.body?.cancel();
+    throw tooLarge();
+  }
+  if (res.body === null) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+function formatMegabytes(bytes: number): string {
+  return bytes >= MEGABYTE ? `${Math.round(bytes / MEGABYTE)} MB` : `${bytes} バイト`;
 }
 
 function parseBaseUrl(raw: string, product: string): URL {

@@ -7,7 +7,13 @@ export {
   withoutHash,
   type ControlNetArgsOptions,
 } from './controlnet.js';
-export { SdapiClient, type CallOptions, type SdapiConnection } from './client.js';
+export {
+  MAX_IMAGE_BYTES,
+  responseLimitForImages,
+  SdapiClient,
+  type CallOptions,
+  type SdapiConnection,
+} from './client.js';
 export { img2imgFields } from './img2img.js';
 export { resolveImages, type ResolvedImages } from './images.js';
 export { interruptGeneration } from './interrupt.js';

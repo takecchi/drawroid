@@ -3,6 +3,7 @@ import {
   img2imgFields,
   readGenerationResponse,
   resolveImages,
+  responseLimitForImages,
 } from '@drawroid/backend-sdapi';
 import {
   BackendError,
@@ -45,6 +46,8 @@ export async function generateWithForge(
   const res = await client.postJson(`/sdapi/v1/${endpoint}`, payload, generationResponseSchema, {
     signal,
     timeoutMs: options.timeoutMs,
+    // 返りうる画像の枚数: 頼んだ枚数・2枚以上のときの格子画像・ControlNet のユニットごとの検出マップ
+    maxBytes: responseLimitForImages(req.batchSize + 1 + req.controlnet.length),
   });
   return readGenerationResponse(res, req.batchSize, { endpoint, product: client.product });
 }
