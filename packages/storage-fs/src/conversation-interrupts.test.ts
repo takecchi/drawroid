@@ -134,9 +134,7 @@ async function setup(options: SetupOptions = {}) {
         : {
             kick: () => jobRunner.kick(),
             stop: (jobId) => jobRunner.stop(jobId),
-            addInstruction: (jobId, text) => jobRunner.addInstruction(jobId, text),
-            changeStopConditions: (jobId, change) => jobRunner.changeStopConditions(jobId, change),
-            addReferences: (jobId, references) => jobRunner.addReferences(jobId, references),
+            revise: (jobId, revision) => jobRunner.revise(jobId, revision),
             adopt: async (jobId, image) => {
               await beforeAdopt(jobRunner, jobId);
               return jobRunner.adopt(jobId, image);
