@@ -319,6 +319,69 @@ describe('TalkRunner', () => {
     expect(results).toEqual([true, true]);
   });
 
+  /** 入れ子の欄を持つ、走った回数を数えるツール。choices が空なら断る（許可の choices と同じ） */
+  const narrowing = () => {
+    const counter = { runs: 0 };
+    const tool: TalkTool = {
+      name: 'narrow',
+      description: '試験用。候補を絞る',
+      inputSchema: z.object({
+        text: z.string(),
+        note: z.string().nullable().optional(),
+        limits: z.object({ choices: z.array(z.string()).optional() }).optional(),
+      }),
+      run: async (input) => {
+        counter.runs += 1;
+        const choices = (input as { limits?: { choices?: string[] } }).limits?.choices;
+        return choices !== undefined && choices.length === 0
+          ? { ok: false, result: '候補が空', summary: '候補が空' }
+          : { ok: true, result: '絞った', summary: '絞った' };
+      },
+    };
+    return { tool, counter };
+  };
+
+  // 入れ子の空の配列は省略と同じとは限らない: 許可の choices は空だと断られ、省けば通る。
+  // 断られて choices を外した呼び直しを、同じ呼び出しとして塞がないため
+  it('runs a call again when only an empty array inside a field was left out', async () => {
+    const { tool, counter } = narrowing();
+    const { say, events } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'narrow', input: { text: 'a', limits: { choices: [] } } }] }
+          : n === 1
+            ? { toolCalls: [{ name: 'narrow', input: { text: 'a', limits: {} } }] }
+            : { text: '絞りました' },
+      { extraTools: [tool] },
+    );
+    await say('絞って');
+
+    expect(counter.runs).toBe(2);
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e.ok] : []));
+    expect(results).toEqual([false, true]);
+  });
+
+  // 省いたのと同じに扱うのは空の配列だけ: 空と省略が同じ意味だと確かめたのは、配列の欄（添えた画像・tags）だけのため
+  it.each([
+    ['an empty string', { note: '' }],
+    ['null', { note: null }],
+    ['an empty object', { limits: {} }],
+  ])('runs a call again when a field that was %s is left out', async (_label, field) => {
+    const { tool, counter } = narrowing();
+    const { say } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'narrow', input: { text: 'a', ...field } }] }
+          : n === 1
+            ? { toolCalls: [{ name: 'narrow', input: { text: 'a' } }] }
+            : { text: '絞りました' },
+      { extraTools: [tool] },
+    );
+    await say('絞って');
+
+    expect(counter.runs).toBe(2);
+  });
+
   it('runs a call only once when one step asks for it twice', async () => {
     const { tool, counter } = countingTool(false);
     const { say, events } = await setup(
