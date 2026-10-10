@@ -215,7 +215,10 @@ describe('POST /jobs/:jobId/adopt', () => {
     const res = await adopt(jobId, { iteration: 1, index: 0 });
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: { kind: 'unavailable' } });
+    // 文も縛る: 断る理由ごとに文を分けている口なので、ほかの理由の文と取り違えたら赤にするため
+    expect(await res.json()).toMatchObject({
+      error: { kind: 'unavailable', message: 'この起動では、画面から画像を採れない' },
+    });
     expect(await store.listInterventions(jobId)).toEqual([]);
     expect((await adopt('20261009-000000-zzzz', { iteration: 1, index: 0 })).status).toBe(404);
   });
