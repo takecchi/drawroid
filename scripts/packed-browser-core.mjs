@@ -1,6 +1,7 @@
 // ブラウザで固めた cli を確かめる script（check-packed-browser*.mjs）が共有する道具。
 import console from 'node:console';
 import process from 'node:process';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { chromium } from 'playwright-core';
 
@@ -59,4 +60,23 @@ export function collectProblems(page, base, options = {}) {
 export function expect(ok, message) {
   if (!ok) throw new Error(message);
   console.log(`ok: ${message}`);
+}
+
+/** 「変わらない」を見続ける長さ（ms） */
+export const STEADY_MS = 1_000;
+
+/**
+ * holds が、ms のあいだ真のままかを見続ける。一度でも偽になれば偽を返す。
+ * 「〜しない」「〜が残らない」を 1 回だけ読むと、少し遅れて崩れる退行（次の描画で閉じる・遅れて二重に出る）を見逃すため
+ * @param {() => Promise<boolean>} holds
+ * @param {number} [ms]
+ * @returns {Promise<boolean>}
+ */
+export async function keepsHolding(holds, ms = STEADY_MS) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (!(await holds())) return false;
+    await sleep(50);
+  }
+  return holds();
 }
