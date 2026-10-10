@@ -7,7 +7,7 @@ import { mutate, SWRConfig } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isApiError } from './api-error.js';
-import { useConversationEvents, useConversations } from './hooks.js';
+import { useConversation, useConversationEvents, useConversations } from './hooks.js';
 import { keys } from './keys.js';
 import {
   conversationStreamUrl,
@@ -72,6 +72,17 @@ describe('reading conversations', () => {
 
     await waitFor(() => expect(result.current.data).toEqual(listed));
     expect(requestOf(fetchMock.mock.calls[0]!).url).toMatch(/\/api\/conversations$/);
+  });
+
+  it('reads one conversation from its own URL', async () => {
+    fetchMock.mockImplementation(async () => json(200, { conversation }));
+
+    const { result } = renderHook(() => useConversation(ID), { wrapper });
+
+    await waitFor(() => expect(result.current.data).toEqual({ conversation }));
+    expect(requestOf(fetchMock.mock.calls[0]!).url).toMatch(
+      new RegExp(`/api/conversations/${ID}$`),
+    );
   });
 
   it('reads a page of confirmed events after a seq, through the hook and the plain function', async () => {
