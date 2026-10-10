@@ -598,36 +598,31 @@ async function checkLlm(
 const ROLE_NAMES = { think: '考える役', judge: '見る役', talk: '話す役' } as const;
 
 /**
- * 役ごとに1往復を確かめる。割り当て（provider とモデル）が同じ役は、確かめを1回で済ませる。
- * 話す役はツールを1つ呼ばせ、考える役・見る役は構造化出力で1往復する。見る役には小さな画像を1枚渡す
+ * 役ごとに1往復を確かめる。話す役はツールを1つ呼ばせ、考える役・見る役は構造化出力で1往復する。見る役には小さな画像を1枚渡す。
+ * 考える役と見る役は、割り当て（provider とモデル）と構造化出力の出し方が同じなら、見る役の確かめ（画像あり）1回で済ませる
  */
-// 見る役は、話す役と同じ割り当てでも別に確かめる: 話す役の確かめは画像を渡さないので、画像を読めないモデルを見逃すため
+// 見る役は、話す役と同じ割り当てでも別に確かめる: 話す役の確かめは画像を渡さないので、画像を読めないモデルを見逃すため。
+// 考える役を話す役の確かめにまとめない: 考える役はツールを呼ばず構造化出力で答えるので、ツールの1往復では、ジョブで使う出し方を確かめられないため
 async function roundTrips(
   options: DoctorOptions,
   config: LlmConfig,
   imageLongEdge: number,
 ): Promise<DoctorItem[]> {
   const roles = resolveRoles(config);
-  const same = (a: LlmRole, b: LlmRole) =>
-    roles[a].provider === roles[b].provider && roles[a].model === roles[b].model;
-  const items = [
-    await toolRoundTrip(
-      options,
-      config,
-      (['talk', 'think'] as const).filter((role) => same(role, 'talk')),
-    ),
-  ];
-  // 考える役 → 見る役の順に出す。見る役と同じ割り当ての考える役は、見る役の確かめ（画像あり）に含める
-  if (!same('think', 'talk') && !same('think', 'judge')) {
+  const thinkWithJudge =
+    roles.think.provider === roles.judge.provider &&
+    roles.think.model === roles.judge.model &&
+    roles.think.structuredOutput === roles.judge.structuredOutput;
+  const items = [await toolRoundTrip(options, config)];
+  // 考える役 → 見る役の順に出す
+  if (!thinkWithJudge) {
     items.push(await structuredRoundTrip(options, config, ['think'], 'think', imageLongEdge));
   }
   items.push(
     await structuredRoundTrip(
       options,
       config,
-      (['think', 'judge'] as const).filter(
-        (role) => role === 'judge' || (same(role, 'judge') && !same(role, 'talk')),
-      ),
+      thinkWithJudge ? ['think', 'judge'] : ['judge'],
       'judge',
       imageLongEdge,
     ),
@@ -639,13 +634,9 @@ function rolesLabel(group: readonly LlmRole[]): string {
   return group.map((role) => ROLE_NAMES[role]).join('・');
 }
 
-async function toolRoundTrip(
-  options: DoctorOptions,
-  config: LlmConfig,
-  group: readonly LlmRole[],
-): Promise<DoctorItem> {
+async function toolRoundTrip(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem> {
   const role = resolveRoles(config).talk;
-  const who = `${rolesLabel(group)}（${role.provider} の ${role.model}、toolCalling: ${role.toolCalling}、reasoning: ${role.reasoning}）`;
+  const who = `${ROLE_NAMES.talk}（${role.provider} の ${role.model}、toolCalling: ${role.toolCalling}、reasoning: ${role.reasoning}）`;
   const timeoutMs = options.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
   const started = Date.now();
   let called = false;

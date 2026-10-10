@@ -47,7 +47,7 @@ describe('Button', () => {
   });
 
   // jsdom は CSS を評価しないので、高さの段は class で見る
-  it('is tall enough to press with a finger on a narrow screen, in both sizes', () => {
+  it('is tall enough to press with a finger, and shrinks only on a wide screen with a fine pointer, in both sizes', () => {
     render(
       <>
         <Button>送る</Button>
@@ -56,10 +56,10 @@ describe('Button', () => {
     );
 
     expect(screen.getByRole('button', { name: '送る' }).className.split(' ')).toEqual(
-      expect.arrayContaining(['h-11', 'md:h-9']),
+      expect.arrayContaining(['h-11', 'md:pointer-fine:h-9']),
     );
     expect(screen.getByRole('button', { name: '消す' }).className.split(' ')).toEqual(
-      expect.arrayContaining(['h-11', 'md:h-7']),
+      expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']),
     );
   });
 });

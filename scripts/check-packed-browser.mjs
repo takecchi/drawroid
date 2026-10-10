@@ -249,6 +249,33 @@ try {
   await page.getByText(/描いたジョブが止まったときと、止まったあとに選び直したときに/).waitFor();
   expect(true, '記憶の画面は、空でも何がいつ入るのかを出す');
 
+  // 押す所は、狭い画面でも、広い画面を指で操作するとき（pointer: coarse）でも 44px。広い画面をマウスで操作するとき（pointer: fine）だけ詰める
+  for (const [width, height, touch, large, label] of /** @type {const} */ ([
+    [390, 844, false, true, '狭い画面（マウス）'],
+    [1024, 768, true, true, '広い画面（指）'],
+    [1280, 900, false, false, '広い画面（マウス）'],
+  ])) {
+    const context = await browser.newContext({ viewport: { width, height }, hasTouch: touch });
+    const sized = await context.newPage();
+    sized.setDefaultTimeout(STEP_TIMEOUT_MS);
+    await sized.goto(`${base}/settings`);
+    const save = sized.getByRole('button', { name: 'LLM の設定を保存' });
+    await save.waitFor();
+    // 前提: 指で操作する文脈だけが pointer: coarse に当たる（当たらなければ、この段は確かめにならない）
+    const coarse = await sized.evaluate(`matchMedia('(pointer: coarse)').matches`);
+    const saveHeight = (await save.boundingBox())?.height ?? 0;
+    const link = sized.getByRole('navigation').getByRole('link', { name: '設定' });
+    const linkHeight = width >= 768 ? ((await link.boundingBox())?.height ?? 0) : undefined;
+    expect(
+      coarse === touch &&
+        (large
+          ? saveHeight >= 44 && (linkHeight === undefined || linkHeight >= 44)
+          : saveHeight === 36 && linkHeight === 32),
+      `${label}: 押す所は${large ? '指で押せる 44px 以上' : '詰めた大きさのまま'}（pointer: coarse ${coarse}・保存 ${saveHeight}px・脇の設定 ${linkHeight ?? '-'}px）`,
+    );
+    await context.close();
+  }
+
   expect(
     problems.length === 0,
     `コンソールのエラー・失敗した読み込みが無い${problems.length === 0 ? '' : `:\n${problems.join('\n')}`}`,
