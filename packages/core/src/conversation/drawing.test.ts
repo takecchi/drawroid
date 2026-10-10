@@ -313,6 +313,56 @@ describe('narrowPermissions', () => {
   });
 });
 
+describe('narrowPermissions reasons for a malformed request', () => {
+  const reasonOf = (requested: unknown) => {
+    const result = narrowPermissions(human, requested, lists);
+    if (result.ok) throw new Error('expected a refusal');
+    return result.reason;
+  };
+
+  it('names the unknown fields and says fields are named after parameters', () => {
+    expect(reasonOf({ kind: 'color', value: 'red' })).toBe(
+      '許可: 知らない欄（kind・value）。欄はパラメータの名前で書く',
+    );
+  });
+
+  it('says which modes a parameter accepts when mode is missing or wrong', () => {
+    expect(reasonOf({ loras: {} })).toBe('LoRA の mode: mode は auto・fixed・off のどれかで書く');
+    expect(reasonOf({ steps: { mode: 'off' } })).toBe(
+      'steps の mode: mode は auto・fixed のどれかで書く（この欄は off にできない）',
+    );
+  });
+
+  it('says what shape was expected when the shape is wrong', () => {
+    expect(reasonOf({ steps: 'auto' })).toBe('steps: 形が違う（オブジェクトで書く）');
+    expect(reasonOf({ steps: { mode: 'fixed', value: 'many' } })).toBe(
+      'steps の value: 形が違う（数で書く）',
+    );
+  });
+
+  it('never returns an English sentence from the validator', () => {
+    const malformed: unknown[] = [
+      { kind: 'color', value: 'red' },
+      { steps: {} },
+      { steps: { mode: 'x' } },
+      { steps: 'auto' },
+      { steps: { mode: 'fixed' } },
+      { steps: { mode: 'fixed', value: 'many' } },
+      { loras: { mode: 'auto', choices: 'a' } },
+      { loras: { mode: 'auto', choices: [''] } },
+      { width: { mode: 'fixed', value: -1 } },
+      { hiresFix: { mode: 'fixed', value: { scale: 1 } } },
+      'str',
+      null,
+    ];
+    for (const requested of malformed) {
+      expect(reasonOf(requested), JSON.stringify(requested)).not.toMatch(
+        /Invalid|Unrecognized|Expected|expected|received|Too (small|big)|Required|must/,
+      );
+    }
+  });
+});
+
 describe('describeJudgement', () => {
   it('turns the short fields of the judging role into sentences of a fixed form', () => {
     expect(
@@ -406,6 +456,22 @@ describe('summarizeJobForTalk', () => {
     // 人が選んでいないのに「人が選んだ」と書かない
     expect(summary).toContain('最良は 2 回目の 2枚目で 0.90');
     expect(summary).not.toContain('人が選んだ');
+  });
+
+  it('does not double the full stop when the next change already ends with one', () => {
+    const state = (nextChange: string): JobState => ({
+      ...running(1),
+      carry: {
+        intent: '海辺の少女',
+        completedIterations: 1,
+        latest: { ...carriedResult(1, 0.5), nextChange },
+      },
+    });
+
+    for (const nextChange of ['背景を明るくする', '背景を明るくする。', '背景を明るくする。。']) {
+      const summary = summarizeJobForTalk('job-1', state(nextChange), { chars: 600 });
+      expect(summary).toContain('次に変えること: 背景を明るくする。依頼の要点');
+    }
   });
 
   it('stays within its budget however many iterations the job has run', () => {

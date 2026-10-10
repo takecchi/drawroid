@@ -53,6 +53,43 @@ export function candidateNamesOf(key: ParamKey, value: unknown): string[] | unde
   return [];
 }
 
+const EXPECTED_TYPE_LABELS: Record<string, string> = {
+  object: 'オブジェクト',
+  array: '配列',
+  string: '文字列',
+  number: '数',
+  int: '整数',
+  boolean: '真偽値',
+};
+
+/**
+ * 許可の検証が落ちた理由を、話す役へ返す短い日本語の文にする。
+ */
+// zod の message をそのまま返さない: 英語の文が話す役に渡り、何を直せばよいかが伝わらないため（「許可: Unrecognized keys」の実例）
+function describePermissionIssue(issue: z.core.$ZodIssue): string {
+  switch (issue.code) {
+    case 'unrecognized_keys':
+      return `知らない欄（${issue.keys.join('・')}）${issue.path.length === 0 ? '。欄はパラメータの名前で書く' : ''}`;
+    case 'invalid_union': {
+      if (issue.discriminator !== 'mode') return '形が違う';
+      // options は実行時には入るが、zod の型には無い
+      const modes = ((issue as { options?: readonly unknown[] }).options ?? []).map(String);
+      if (modes.length === 0) return '形が違う';
+      return `mode は ${modes.join('・')} のどれかで書く${modes.includes('off') ? '' : '（この欄は off にできない）'}`;
+    }
+    case 'invalid_type': {
+      const expected = EXPECTED_TYPE_LABELS[issue.expected];
+      return expected === undefined ? '形が違う' : `形が違う（${expected}で書く）`;
+    }
+    case 'too_small':
+      return `小さすぎる（${String(issue.minimum)} 以上）`;
+    case 'too_big':
+      return `大きすぎる（${String(issue.maximum)} 以下）`;
+    default:
+      return '形が違う';
+  }
+}
+
 export type NarrowResult =
   { ok: true; value: Partial<Permissions> } | { ok: false; reason: string };
 
@@ -74,7 +111,7 @@ export function narrowPermissions(
     const rest = issue?.path.slice(1).join('.') ?? '';
     return {
       ok: false,
-      reason: `${key === undefined ? '許可' : labelOf(key)}${rest === '' ? '' : ` の ${rest}`}: ${issue?.message ?? '形が違う'}`,
+      reason: `${key === undefined ? '許可' : labelOf(key)}${rest === '' ? '' : ` の ${rest}`}: ${issue === undefined ? '形が違う' : describePermissionIssue(issue)}`,
     };
   }
   for (const [key, wanted] of Object.entries(parsed.data) as [ParamKey, Permission][]) {
@@ -322,8 +359,10 @@ export function summarizeJobForTalk(
           : `最良は ${image}で ${best.score.toFixed(2)}（${issues}）。`,
       );
     }
-    if (carry.latest !== undefined && carry.latest.nextChange.trim() !== '') {
-      parts.push(`次に変えること: ${clip(carry.latest.nextChange.trim(), 120)}。`);
+    // 句点を落としてから付ける: 見る役の nextChange は「…。」で終わることがあり、そのまま付けると「。。」になるため
+    const nextChange = (carry.latest?.nextChange ?? '').trim().replace(/[\s。]+$/u, '');
+    if (nextChange !== '') {
+      parts.push(`次に変えること: ${clip(nextChange, 120)}。`);
     }
     parts.push(`依頼の要点: ${carry.intent}`);
   }
