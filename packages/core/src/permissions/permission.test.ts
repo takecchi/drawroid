@@ -252,11 +252,9 @@ describe('readPermissionOverrides', () => {
 
     expect(invalid).toEqual([
       { param: 'cfgScale', reason: 'value: 形が違う（数で書く）' },
-      {
-        param: 'prompt',
-        reason: 'mode: mode は auto・fixed のどれかで書く（この欄は off にできない）',
-      },
-      { param: 'loras', reason: 'mode: mode は auto・fixed・off のどれかで書く' },
+      // 欄の名前は道の側にだけ出す。「mode: mode は」と二度書かない
+      { param: 'prompt', reason: 'mode: auto・fixed のどれかで書く（この欄は off にできない）' },
+      { param: 'loras', reason: 'mode: auto・fixed・off のどれかで書く' },
       { param: 'steps', reason: '形が違う（オブジェクトで書く）' },
       // 幅の下限は 0 を含まない。「0 以上」と書くと、0 なら通るように読める
       { param: 'width', reason: 'value: 小さすぎる（0 より大きく）' },

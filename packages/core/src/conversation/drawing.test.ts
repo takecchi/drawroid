@@ -338,9 +338,9 @@ describe('narrowPermissions reasons for a malformed request', () => {
   });
 
   it('says which modes a parameter accepts when mode is missing or wrong', () => {
-    expect(reasonOf({ loras: {} })).toBe('LoRA の mode: mode は auto・fixed・off のどれかで書く');
+    expect(reasonOf({ loras: {} })).toBe('LoRA の mode: auto・fixed・off のどれかで書く');
     expect(reasonOf({ steps: { mode: 'off' } })).toBe(
-      'steps の mode: mode は auto・fixed のどれかで書く（この欄は off にできない）',
+      'steps の mode: auto・fixed のどれかで書く（この欄は off にできない）',
     );
   });
 
