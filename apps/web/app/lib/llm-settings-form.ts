@@ -129,6 +129,20 @@ export function duplicatedProviderName(providers: readonly ProviderRow[]): strin
   return undefined;
 }
 
+/** 名前・接続先・鍵の変数のどれも入れていない行（「provider を足す」を押しただけの行）。保存では数えない */
+function isBlankProviderRow(row: ProviderRow): boolean {
+  return row.key.trim() === '' && row.baseURL.trim() === '' && row.apiKeyEnv.trim() === '';
+}
+
+/**
+ * 名前が無いのに接続先か鍵の変数が入っている行の、1から数えた番号。無ければ undefined。
+ * 黙って捨てない: 入れた接続先が保存されずに消えるため。サーバに任せない: 名前を鍵にして送るので、どの行かが文から読めないため
+ */
+export function unnamedProviderRowNumber(providers: readonly ProviderRow[]): number | undefined {
+  const index = providers.findIndex((row) => row.key.trim() === '' && !isBlankProviderRow(row));
+  return index === -1 ? undefined : index + 1;
+}
+
 /** 役が使う provider。まだ選んでいなくて、定義した provider が1つだけなら、それを選んだことにする */
 export function roleProviderOf(role: RoleValues, names: readonly string[]): string {
   const chosen = role.provider.trim();
@@ -209,7 +223,9 @@ function buildProvider(row: ProviderRow): LlmSettingsInput['providers'][string] 
 // 形の誤り（接続先の URL・数・provider の有無）は、ここで直さずにそのまま送る: サーバの検証が理由付きの 400 を返し、画面はそれを出す
 export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInput {
   const providers = Object.fromEntries(
-    values.providers.map((row) => [row.key.trim(), buildProvider(row)]),
+    values.providers
+      .filter((row) => !isBlankProviderRow(row))
+      .map((row) => [row.key.trim(), buildProvider(row)]),
   );
   const names = definedProviderNames(values.providers);
   const think = buildRole(values.think, names);
