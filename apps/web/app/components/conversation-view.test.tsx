@@ -845,6 +845,28 @@ describe('ConversationView', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByText('この画像に決めた')));
   });
 
+  // 決められなかった行は、決めた行として扱わない: 止まったら、ほかの行と同じくお気に入りで決められるようにする
+  it('lets a row that failed to decide be settled through the favorite once the job stops', async () => {
+    vi.mocked(adoptImage).mockRejectedValue(
+      new ApiError('conflict', '絵がもう止まっていて、画像 1-0 を採れなかった', 409),
+    );
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }).focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    await screen.findByText('決められない: 絵がもう止まっていて、画像 1-0 を採れなかった');
+
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: ADOPTED_STOP }));
+    await screen.findByRole('button', {
+      name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番',
+    });
+  });
+
   it('reads the backend again once when a job stops because the backend failed', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);
