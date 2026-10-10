@@ -52,35 +52,51 @@ export const defaultHeartbeat = (beat: () => void) => {
   return () => clearInterval(timer);
 };
 
+/** 一覧の要約で、末尾から最初に読む行の数。足りなければ倍々に広げて遡る */
+const SUMMARY_TAIL_PAGE = 32;
+
 /**
- * 一覧の1行: 最後の発言（人間か話す役か）の先頭と、ターンが走っているか（turn.started があって turn.ended が無い）と、
- * 最後に何かが起きた時刻（行が無ければ作った時刻）
+ * 一覧の1行: 最後の発言（人間か話す役か）の先頭と、ターンが走っているかと、最後に何かが起きた時刻（行が無ければ作った時刻）。
+ * 走っているかは、末尾から遡って最初に当たるターンの印で決める（turn.started なら走っている、turn.ended なら止まっている）
  */
+// 頭から全部は読まない: 一覧を開くたびに全会話の全行を読むと、会話が溜まるほど一覧が遅くなる。
+// ターンは会話ごとに1つずつ回り、どの終わり方でも turn.ended を書くので、最後のターンの印だけで決まる（起動時の復帰と同じ前提）
 async function summarize(
   store: ConversationStore,
   conversation: { conversationId: string; createdAt: string },
 ) {
-  let lastMessage = '';
-  let lastActiveAt = conversation.createdAt;
-  const open = new Set<number>();
-  let after = 0;
+  let lastMessage: string | undefined;
+  let running: boolean | undefined;
+  let lastActiveAt: string | undefined;
+  let before: number | undefined;
+  // 遡るほどページを広げる: ジョブの行が長く続いてターンの印が遠いときも、問い合わせの回数を会話の長さの対数に抑えるため
+  let limit = SUMMARY_TAIL_PAGE;
   for (;;) {
-    const page = await store.readEvents(conversation.conversationId, { after });
-    for (const event of page.events) {
-      lastActiveAt = event.at;
-      // 本文の無い返答（ツールだけ呼んで打ち切られたものなど）で、前の発言を消さない
+    const page = await store.readEventsBefore(conversation.conversationId, {
+      ...(before === undefined ? {} : { before }),
+      limit,
+    });
+    for (const event of page.toReversed()) {
+      lastActiveAt ??= event.at;
+      // 本文の無い返答（ツールだけ呼んで打ち切られたものなど）は、最後の発言にしない
       if (
+        lastMessage === undefined &&
         (event.type === 'user.message' || event.type === 'assistant.message') &&
         event.text.trim() !== ''
       )
         lastMessage = event.text.slice(0, LAST_MESSAGE_CHARS);
-      if (event.type === 'turn.started') open.add(event.turn);
-      if (event.type === 'turn.ended') open.delete(event.turn);
+      if (running === undefined && event.type === 'turn.started') running = true;
+      if (running === undefined && event.type === 'turn.ended') running = false;
     }
-    after = page.last;
-    if (!page.more) break;
+    if (page.length < limit || (lastMessage !== undefined && running !== undefined)) break;
+    before = page[0]!.seq;
+    limit *= 2;
   }
-  return { lastMessage, running: open.size > 0, lastActiveAt };
+  return {
+    lastMessage: lastMessage ?? '',
+    running: running ?? false,
+    lastActiveAt: lastActiveAt ?? conversation.createdAt,
+  };
 }
 
 /**
