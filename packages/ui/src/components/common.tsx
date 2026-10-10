@@ -4,8 +4,8 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type ButtonHTMLAttributes,
   type ChangeEvent,
+  type ComponentProps,
   type HTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -100,7 +100,7 @@ export function Button({
   className,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: ComponentProps<'button'> & {
   variant?: keyof typeof BUTTON_VARIANTS;
   size?: keyof typeof BUTTON_SIZES;
   /** 送っている間など。輪を出して押せなくする */
