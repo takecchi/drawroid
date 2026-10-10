@@ -1,7 +1,8 @@
 // 原寸はあるが読めない画像の縮小版を求められたとき、サーバの不具合（500）にせず、データの問題（422）として返すこと
 import { rm } from 'node:fs/promises';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { STUB_PNG } from '@drawroid/core/testing';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { createAutoJob, request, setup, signatureOnly } from '../test-support.js';
 
@@ -54,5 +55,54 @@ describe('the preview of an image that cannot be read', () => {
     );
 
     expect(res.status).toBe(404);
+  });
+});
+
+// 読めない画像だけを 422 にする: 置き場所の失敗まで「画像が読めない」と言うと、権限や空きの問題が画像の問題に見えるため
+describe('the preview, when the data directory cannot be read', () => {
+  async function expectStorageFailure(res: Response) {
+    expect(res.status).toBe(500);
+    const { error } = (await res.json()) as { error: { kind: string } };
+    expect(error.kind).toBe('storage_failed');
+  }
+
+  function failStorage() {
+    const failure = Object.assign(new Error("EACCES: open '/data/x.webp'"), {
+      code: 'EACCES',
+      path: '/data/x.webp',
+    });
+    vi.spyOn(ctx.store, 'loadPreview').mockRejectedValue(failure);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => {
+      logged.mockRestore();
+      vi.restoreAllMocks();
+    });
+  }
+
+  it('is answered as a storage failure for a reference image', async () => {
+    const job = await createAutoJob(ctx.store);
+    const ref = await ctx.store.addReference(
+      job.jobId,
+      { data: STUB_PNG, mediaType: 'image/png' },
+      new Date(),
+    );
+    failStorage();
+
+    await expectStorageFailure(
+      await ctx.api.request(`/files/jobs/${job.jobId}/refs/${ref.refId}.preview.webp`),
+    );
+  });
+
+  it('is answered as a storage failure for a generated image', async () => {
+    const job = await createAutoJob(ctx.store);
+    await ctx.store.writeGeneration(job.jobId, 1, request, {
+      images: [{ png: STUB_PNG, seed: 1, metadata: {} }],
+      metadata: {},
+    });
+    failStorage();
+
+    await expectStorageFailure(
+      await ctx.api.request(`/files/jobs/${job.jobId}/iterations/1/images/0.preview.webp`),
+    );
   });
 });
