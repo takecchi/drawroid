@@ -128,7 +128,7 @@ function formatEta(ms: number): string {
 }
 
 /**
- * 生成の進み具合。割合が無い（バックエンドが進み具合を返さない）ときは「生成中」とだけ出す。
+ * 生成の進み具合。割合が無い（バックエンドが進み具合を返さない）ときは、割合の数字を出さず、帯を明滅させて「生成中」を示す。
  */
 export function GenerationProgress({
   iteration,

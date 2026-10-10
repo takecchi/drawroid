@@ -37,7 +37,7 @@ export type TalkStepRecord = {
 /**
  * 話す役への1回の入力。会話の長さにもジョブの回数にも比例して増えない。
  * - 直近のやりとり: 人間の発言と話す役の本文だけを、新しい方から件数で絞り、1件ずつ文字数で切る。思考とツールの記録は入れない
- * - このターンで読む人間の発言は落とさない。ほかの発言は、入力の上限に入らなければ古い方から落とす
+ * - このターンで読む人間の発言は落とさない。ほかの発言は、新しい方から入力の上限まで詰め、入らないものを落とす
  * - 会話のジョブの状態と、このターンのステップ（ツールの結果は文字数で切る）
  */
 /**
@@ -126,7 +126,7 @@ export function buildTalkInput(args: {
     estimateTextTokens(TALK_SYSTEM) +
     [...fixed, ...required, ...steps, ...trailing].reduce((sum, s) => sum + size(s), 0);
   if (fixedTokens > inputTokenLimit) throw new InputOverBudgetError(fixedTokens, inputTokenLimit);
-  // 入力の上限に入らないときは、古い発言から落とす
+  // 入力の上限に入らないときは、新しい発言から詰め、入らないものを落とす（大きくて入らない発言は飛ばして、より古い発言を詰める）
   const packed = packWithinBudget(optional, {
     size,
     compare: (a, b) => b.seq - a.seq,

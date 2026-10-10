@@ -150,7 +150,6 @@ export function IterationView({
   stopped?: boolean;
   /** 画像にマスクを塗って送れるか。自動ジョブで、まだ止まっていないときだけ */
   canPaintMask?: boolean;
-  /** 画像を「この画像に決める」で採れるか。自動ジョブだけ。止まったジョブは押せない理由を添える */
   /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
   adopt?: { stopped: boolean };
   /** 画像を大きく見る窓で開く（窓の画像の key）。渡さなければ、画像は原寸への link */

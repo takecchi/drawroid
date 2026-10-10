@@ -9,7 +9,7 @@ const bodySchema = z.object({
   text: z.string().refine((text) => text.trim().length > 0, { message: '止める条件の文が空' }),
 });
 
-/** 止める条件の自然言語を案に変換する。案を返すだけで、何も保存しない */
+/** 止める条件の自然言語を案に変換する。案を返すだけで、止める条件もジョブも保存しない（LLM 呼び出しの記録だけは残る） */
 export function stopConditionParseRoutes({ stopConditionParser }: ApiDeps) {
   return new Hono().post('/parse', async (c) => {
     const body = bodySchema.safeParse(await c.req.json().catch(() => undefined));

@@ -81,7 +81,7 @@ async function main() {
     );
   }
 
-  // どのアダプタを使うかを決めるのは、組み立ての根であるここだけ
+  // 待ち受ける drawroid がどのアダプタを使うかを決めるのは、組み立ての根であるここだけ（drawroid doctor は自分の引数と config.json で別に決める）
   const configPath = dataPaths(root).config;
   const config = await readConfig(configPath);
   const kind = resolveBackendKind(args.backend, config);

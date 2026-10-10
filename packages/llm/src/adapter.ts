@@ -836,7 +836,8 @@ const TOOL_CALL_TAG = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
  * - <tool_call>{"name": …, "arguments": …}</tool_call>（前置きの文があってよい。Qwen・Hermes 系の書き方）
  * - 本文全体が、その JSON だけを入れた ```json のコードブロック
  * - 本文全体が、その JSON のオブジェクト
- * どれも、名前が渡したツールのときだけ拾う。返答の中の JSON の例を、ツールの呼び出しと取り違えないため
+ * JSON だけの2つの形は、名前が渡したツールのときだけ拾う。返答の中の JSON の例を、ツールの呼び出しと取り違えないため。
+ * タグの形は、タグが呼び出しの印なので、知らない名前や壊れた JSON でも呼び出しとして読み、検証で出し直させる
  */
 function readWrittenToolCalls(
   body: string,

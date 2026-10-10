@@ -234,7 +234,7 @@ export async function interruptConversation(
   );
 }
 
-/** 案を返すだけで何も保存しない。LLM 未設定は ApiError（kind: 'llm_not_configured'）、変換失敗は 'unparsable' */
+/** 案を返すだけで、止める条件もジョブも保存しない（LLM 呼び出しの記録だけは残る）。LLM 未設定は ApiError（kind: 'llm_not_configured'）、変換失敗は 'unparsable' */
 export async function parseStopConditionsText(text: string): Promise<StopConditionsDraftResponse> {
   return unwrap<StopConditionsDraftResponse>(() =>
     client['stop-conditions'].parse.$post({ json: { text } }),
