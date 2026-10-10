@@ -151,6 +151,26 @@ describe('describeCallFailure and the kinds of AI SDK failures', () => {
     );
   });
 
+  // 画像を読めないモデルの llama.cpp は、画像を渡すと 500 で「対応していない」と返す。待っても直らないので、待つよう促さない
+  it.each([
+    'image input is not supported - hint: if this is unexpected, you may need to provide the mmproj',
+    'tools are unsupported by this model',
+    'This model does not support JSON schema',
+  ])(
+    'tells the settings to change, not to wait, when the server says it does not support it: %s',
+    async (said) => {
+      const reason = await reasonFor({
+        status: 500,
+        type: 'application/json',
+        body: JSON.stringify({ error: { message: said } }),
+      });
+
+      expect(reason).toBe(
+        `${LLM_CALL_FAILED_PREFIX}LLM のサーバが、この使い方に対応していないと返した（500）。待っても直らない。LLM の設定で、その役のモデルと、構造化出力・ツールの呼び出し方・画像を読めるかを、モデルに合わせて見直す（LLM の返した理由: ${said}）`,
+      );
+    },
+  );
+
   // 呼び直しの途中で失敗の種類が変わったら、最後の失敗の種類で言う: 最初の失敗（500）で言うと、鍵を直す手が出ないため
   it(
     'tells the kind of the last failure when it differs from the first',
