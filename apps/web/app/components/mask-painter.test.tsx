@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { encodeMaskPng } from '../lib/mask-png';
+import { encodeMaskPng, MAX_MASK_BYTES } from '../lib/mask-png';
 import { MaskPainter } from './mask-painter';
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
@@ -12,7 +12,10 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   addMask: vi.fn(),
 }));
 // jsdom には canvas の描画が無い: PNG にする所は差し替え、何を渡したかを見る
-vi.mock('../lib/mask-png', () => ({ encodeMaskPng: vi.fn() }));
+vi.mock('../lib/mask-png', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/mask-png')>()),
+  encodeMaskPng: vi.fn(),
+}));
 
 const send = vi.mocked(addMask);
 const encode = vi.mocked(encodeMaskPng);
@@ -185,6 +188,21 @@ describe('MaskPainter', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('ジョブはもう止まっている');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'マスクを送る' }).disabled).toBe(
+      false,
+    );
+  });
+
+  // 上限を超えたマスクは送らずに断る: 大きなマスクを送ってからサーバに断られると、待たされたうえに、何を直せばよいかが分からないため
+  it('refuses a mask over the size limit before sending it, saying how to paint it smaller', async () => {
+    encode.mockResolvedValue(Buffer.from(new Uint8Array(MAX_MASK_BYTES + 1)).toString('base64'));
+    const { user, canvas } = await openPainter();
+
+    drag(canvas, [0, 0], [10, 10]);
+    await user.click(screen.getByRole('button', { name: 'マスクを送る' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('太い筆でまとめて塗り直す');
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'ひとつ戻す' }).disabled).toBe(
       false,
     );
   });
