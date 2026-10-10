@@ -673,6 +673,18 @@ describe('LlmSettings', () => {
     expect(screen.queryByText('保存した。次に話しかけたときから、この設定を使う。')).toBeNull();
   });
 
+  // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る（読み上げは移った先を読む）
+  it('moves the focus to the note that it saved', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    screen.getByRole('button', { name: 'LLM の設定を保存' }).focus();
+    await user.keyboard('{Enter}');
+
+    const note = await screen.findByText('保存した。次に話しかけたときから、この設定を使う。');
+    expect(document.activeElement).toBe(note);
+  });
+
   it('does not say it saved when saving fails', async () => {
     mocks.saveLlmSettings.mockRejectedValue(new ApiError('invalid_request', '形が合わない', 400));
     const user = userEvent.setup();

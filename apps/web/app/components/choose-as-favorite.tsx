@@ -29,11 +29,16 @@ export function ChooseAsFavorite({
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  // このボタンで決めたか。決めた印へフォーカスを移すのは、押したこのボタンの所だけ（同じ画像の印は、カード・行・窓に並ぶ）
+  const [chose, setChose] = useState(false);
+  // 印が外れたら（お気に入りを外した）忘れる: 覚えたままだと、あとで別の所で決めたときに、ここの印がフォーカスを奪うため
+  if (chose && verdict !== 'favorite' && !pending) setChose(false);
   async function choose() {
     setPending(true);
     setError(undefined);
     try {
       await setSelection(jobId, imageKey, 'favorite');
+      setChose(true);
       // 止まったジョブで選び直すと、選び直しの蒸留が裏で走る。そのジョブの「覚えたこと」を、開き直さずに読み直させる
       void recheckJobDistill(jobId);
     } catch (caught) {
@@ -45,7 +50,7 @@ export function ChooseAsFavorite({
   }
   // 止まったジョブでは、お気に入りにした画像を決めた画像として印を出す（カード・行・窓・ジョブの詳細のどこでも）。
   // 押した直後の手元の状態でなく保存された選び方から出す: 開き直しても、別の場所で押しても同じに出すため
-  if (verdict === 'favorite') return <DecidedMark favorite />;
+  if (verdict === 'favorite') return <DecidedMark favorite focus={chose} />;
   return (
     <div className="space-y-1">
       {/* 折り返すのは言葉のかたまりの境目だけ: ボタンの中でそのまま折り返すと、日本語はどの字の間でも折れ、
