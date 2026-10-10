@@ -6,7 +6,9 @@ import type { ConversationStore } from '../store.js';
 import { buildTalkInput, type TalkStepRecord } from './input.js';
 import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
 import type { TalkTool } from './tools.js';
-import { TalkWindowReader } from './window.js';
+import { TalkWindowReader, type TalkWindow } from './window.js';
+
+type TurnEnd = (outcome: 'done' | 'interrupted' | 'error', reason?: string) => Promise<unknown>;
 
 /**
  * LLM が未設定でターンを閉じるときの理由。画面はこの文を見て、設定の画面の LLM の欄へのリンクを添える
@@ -245,19 +247,38 @@ export class TalkRunner {
     const { unread, nextTurn: turn } = window;
     if (unread.length === 0) return false;
     await hub.confirm({ type: 'turn.started', turn, messageSeqs: unread });
-    state.readSeqs = new Set(unread);
-    // 発言を受けたら、ターンが全部終わるまでジョブの LLM の段を待たせる
-    await this.ensureHold(conversationId);
-    // turn.started を確定する前に届いた発言も、打ち切りにする
-    void this.noticeNewMessage(conversationId);
-
-    const end = (outcome: 'done' | 'interrupted' | 'error', reason?: string) =>
+    const end: TurnEnd = (outcome, reason) =>
       hub.confirm({
         type: 'turn.ended',
         turn,
         outcome,
         ...(reason === undefined ? {} : { reason }),
       });
+    // 始めたターンは、どの抜け方でも閉じる: 閉じないと、ターンが開いたまま残り、次のターンが重なって始まる。
+    // 会話の一覧と起動時の復帰は、ターンが1つずつ閉じる前提で末尾だけを読むので、走っているかを取り違える
+    try {
+      return await this.runStartedTurn(conversationId, state, window, end);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await end('error', `ターンが失敗した: ${message}`);
+      return true;
+    }
+  }
+
+  /** turn.started を確定したあとのターンの本体。閉じる turn.ended は、終わり方ごとに end で書く */
+  private async runStartedTurn(
+    conversationId: string,
+    state: ActiveTurn,
+    window: TalkWindow,
+    end: TurnEnd,
+  ): Promise<boolean> {
+    const hub = this.deps.hubs.get(conversationId);
+    const { unread, nextTurn: turn } = window;
+    state.readSeqs = new Set(unread);
+    // 発言を受けたら、ターンが全部終わるまでジョブの LLM の段を待たせる
+    await this.ensureHold(conversationId);
+    // turn.started を確定する前に届いた発言も、打ち切りにする
+    void this.noticeNewMessage(conversationId);
 
     const llm = this.deps.llm();
     if (llm === undefined) {

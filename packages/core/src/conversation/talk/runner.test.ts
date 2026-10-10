@@ -29,6 +29,10 @@ async function setup(
     wrap?: (scripted: ScriptedLlm) => LlmPort;
     /** 副作用の無いツールの後ろに足すツール */
     extraTools?: TalkTool[];
+    /** 話す役の上限の読み込みを、この誤りで失敗させる（設定のファイルが読めないときなど） */
+    limitsError?: Error;
+    /** 会話のジョブの要約を、この誤りで失敗させる */
+    jobSummaryError?: Error;
   } = {},
 ) {
   const store = new MemoryConversationStore();
@@ -57,7 +61,13 @@ async function setup(
       ...createReadOnlyTools({ backend, permissions: async () => permissions, jobs: noJobs }),
       ...(options.extraTools ?? []),
     ],
-    limits: async () => ({ ...DEFAULT_TALK_LIMITS, ...options.limits }),
+    limits: async () => {
+      if (options.limitsError !== undefined) throw options.limitsError;
+      return { ...DEFAULT_TALK_LIMITS, ...options.limits };
+    },
+    ...(options.jobSummaryError !== undefined && {
+      jobSummary: () => Promise.reject(options.jobSummaryError),
+    }),
     now,
   });
   const say = async (text: string) => {
@@ -306,6 +316,25 @@ describe('TalkRunner', () => {
     );
     await say('調べて');
     expect((await events()).at(-1)).toMatchObject({ type: 'turn.ended', outcome: 'error' });
+  });
+
+  it.each([
+    ['the talk limits cannot be read', { limitsError: new Error('設定が読めない') }],
+    [
+      'the job of the conversation cannot be summed up',
+      { jobSummaryError: new Error('設定が読めない') },
+    ],
+  ])('closes the started turn as an error when %s, leaving no turn open', async (_, failure) => {
+    const { say, events, types } = await setup(() => ({ text: '描けます。' }), failure);
+    await say('描いて');
+
+    expect(await types()).toEqual(['user.message', 'turn.started', 'turn.ended']);
+    expect((await events()).at(-1)).toMatchObject({
+      type: 'turn.ended',
+      turn: 1,
+      outcome: 'error',
+      reason: expect.stringContaining('設定が読めない'),
+    });
   });
 
   it('closes the turn as an error, with the reason, when a tool call fails the schema', async () => {
