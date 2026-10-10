@@ -3,7 +3,7 @@
 // toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
 // holdTalk() で、次の話す役の呼び出し（ツールを渡すもの）を releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
 // ツールを渡さない呼び出し（ジョブが止まったことを伝えるターン）には TOOLLESS_REPLY を返す。
-// queueTalkTool(name, input) で、次の話す役の呼び出しに、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
+// queueTalkTool(name, input, times) で、次の times 回（既定 1）の話す役の呼び出しに、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
 // native では tools に、json では response_format のスキーマにそのツールがあるときに効く。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
 import { createServer } from 'node:http';
@@ -61,7 +61,7 @@ function generate(schema, hint = '') {
  * @param {{ stopAfterIterations: number, rejectImages?: boolean, echoKey?: boolean }} options stopAfterIterations は見る役が何回目で止めてよいと言うか。
  *   rejectImages なら、画像を含む呼び出しを 400 で断る（画像を読めないモデルの代わり）。
  *   echoKey なら、どの呼び出しも 401 で断り、受け取った鍵（Authorization の値）を断りの本文に入れて返す（鍵を文に返すサーバの代わり）
- * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number, toollessTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown) => void }>}
+ * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number, toollessTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown, times?: number) => void }>}
  */
 export async function startFakeLlm({ stopAfterIterations, rejectImages = false, echoKey = false }) {
   let judgeCalls = 0;
@@ -77,7 +77,7 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
   let holdNext = false;
   /** @type {(() => void) | null} */
   let releaseHeld = null;
-  /** @type {{ name: string, input: unknown } | null} */
+  /** @type {{ name: string, input: unknown, remaining: number } | null} */
   let queuedTool = null;
   const server = createServer((req, res) => {
     let body = '';
@@ -135,7 +135,10 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
         (hasTools || JSON.stringify(talkSchema ?? {}).includes(`"${queuedTool.name}"`))
           ? queuedTool
           : null;
-      if (queued !== null) queuedTool = null;
+      if (queued !== null) {
+        queued.remaining -= 1;
+        if (queued.remaining <= 0) queuedTool = null;
+      }
       const toolName = queued?.name ?? 'start_drawing';
       const toolArgs = JSON.stringify(
         queued?.input ?? {
@@ -275,8 +278,12 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
       holdNext = true;
     },
     releaseTalk: () => releaseHeld?.(),
-    queueTalkTool: (/** @type {string} */ name, /** @type {unknown} */ input) => {
-      queuedTool = { name, input };
+    queueTalkTool: (
+      /** @type {string} */ name,
+      /** @type {unknown} */ input,
+      /** @type {number} */ times = 1,
+    ) => {
+      queuedTool = { name, input, remaining: times };
     },
     restartJudge: (/** @type {number} */ next) => {
       judgeCalls = 0;

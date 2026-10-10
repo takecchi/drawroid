@@ -14,6 +14,8 @@ import { startFakeLlm } from './packed-conversation/llm.mjs';
 import { freePort, packAndInstall, startDrawroid } from './packed-install-core.mjs';
 
 const STEP_TIMEOUT_MS = 15_000;
+/** doctor が話す役にツールを続けて呼ばせる回数（apps/cli/src/doctor.ts の TALK_PING_ROUNDS） */
+const DOCTOR_TALK_ROUNDS = 3;
 
 const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drawroid-packed-browser-'));
 /** @type {import('node:child_process').ChildProcess | undefined} */
@@ -209,7 +211,7 @@ try {
     '設定の画面で、生成の途中の画像を出すようにでき、保存される',
   );
   // 設定したら、まとめて確かめる（drawroid doctor と同じ確かめ）: LLM とは1往復でき、バックエンドが無いことが、することと一緒に出る
-  llm.queueTalkTool('doctor_ping', {});
+  llm.queueTalkTool('doctor_ping', {}, DOCTOR_TALK_ROUNDS);
   await page.getByRole('button', { name: '確かめる' }).click();
   await page
     .getByRole('region', { name: 'LLM' })
