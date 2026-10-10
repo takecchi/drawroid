@@ -136,9 +136,6 @@ export function ChatComposer({
                   ref={(button) => {
                     if (button === null) return;
                     removeButtons.current.set(attachment.id, button);
-                    return () => {
-                      removeButtons.current.delete(attachment.id);
-                    };
                   }}
                   type="button"
                   aria-label={`${attachment.name} を外す`}
