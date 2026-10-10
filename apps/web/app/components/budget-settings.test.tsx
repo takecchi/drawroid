@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { describeInputOverflow, findInputOverflows, resolveBudgets } from '@drawroid/core';
 import { ApiError, type BudgetSettingsResponse } from '@drawroid/swr';
 import { Button } from '@drawroid/ui';
 import { cleanup, render, screen, within } from '@testing-library/react';
@@ -23,6 +24,7 @@ afterEach(cleanup);
 const defaults = {
   text: { intent: 600, prompt: 600 },
   imageLongEdge: 512,
+  candidates: { maxCount: 20, maxSize: 600 },
   memory: { think: { maxCount: 8, maxSize: 400 } },
 };
 const stored = {
@@ -122,8 +124,8 @@ describe('BudgetSettings', () => {
     await user.click(saveButton());
 
     const alert = (await screen.findByRole('alert')).textContent ?? '';
-    expect(alert).toContain('imageLongEdge: 整数で入れる');
-    expect(alert).toContain('text.prompt: 1 以上で入れる');
+    expect(alert).toContain('（imageLongEdge）: 整数で入れる');
+    expect(alert).toContain('（text.prompt）: 1 以上で入れる');
     expect(mocks.saveBudgetSettings).not.toHaveBeenCalled();
   });
 
@@ -138,9 +140,40 @@ describe('BudgetSettings', () => {
     await user.click(saveButton());
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'imageLongEdge: 128 以上で入れる',
+      '（imageLongEdge）: 128 以上で入れる',
     );
     expect(input('imageLongEdge').value).toBe('64');
+  });
+
+  it('names the field by its label too when the form refuses a value', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+
+    await user.type(input('candidates.maxSize'), 'abc');
+    await user.click(saveButton());
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '考える役に見せる候補の量（candidates.maxSize）: 整数で入れる',
+    );
+    expect(mocks.saveBudgetSettings).not.toHaveBeenCalled();
+  });
+
+  it('names the field by its label too when the API says the sum goes over a window', async () => {
+    const user = userEvent.setup();
+    const [overflow] = findInputOverflows(resolveBudgets({ candidates: { maxSize: 12000 } }), {
+      think: { contextTokens: 100, maxOutputTokens: 0 },
+    });
+    expect(overflow?.largestField?.path).toBe('candidates.maxSize');
+    mocks.saveBudgetSettings.mockRejectedValue(
+      new ApiError('invalid_request', describeInputOverflow(overflow!), 400),
+    );
+    render(<BudgetSettings />);
+
+    await user.click(saveButton());
+
+    const alert = (await screen.findByRole('alert')).textContent ?? '';
+    expect(alert).toContain('考える役に見せる候補の量（candidates.maxSize）');
+    expect(alert).not.toContain('）（');
   });
 
   // ほかの設定の欄（LLM・許可・候補の説明）と同じ形にする: 素のボタンと素の文では、押す先が小さく、断られても欄の説明と見分けにくい
