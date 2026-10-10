@@ -281,9 +281,21 @@ try {
     await page.waitForFunction(
       `document.querySelector('[role="log"] > div').children.length > ${rowsAtEnd}`,
     );
+    // 行が増えた瞬間ではなく、末尾へ寄せ直したあとで見る: 追従は行を描いたあとの effect で寄せるので、増えた瞬間はまだ末尾に
+    // 届いておらず、遅い機械ではそこを読んで落ちていたため。寄せ直さない退行は、この待ちが時間切れになって赤になる
+    const caughtUp = await page
+      .waitForFunction(
+        `(() => { const b = document.querySelector('[role="log"]');
+          return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`,
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    const markerSeen = Number(await page.evaluate('window.__markerSeen'));
     expect(
-      Number(await page.evaluate('window.__markerSeen')) === 0 && Boolean(await atEnd()),
-      `${label}: 末尾にいる間は、行が増えても「新しい行」の印を出さず、末尾を追う`,
+      markerSeen === 0 && caughtUp && Boolean(await atEnd()),
+      `${label}: 末尾にいる間は、行が増えても「新しい行」の印を出さず、末尾を追う（印 ${markerSeen} 回・末尾へ寄せ直した: ${caughtUp ? 'はい' : 'いいえ'}）`,
     );
     await page.mouse.wheel(0, -3_000);
     // 見えるまで待つだけにしない: playwright の visible は大きさがあれば通り、画面の外に置かれた印でも通るため
