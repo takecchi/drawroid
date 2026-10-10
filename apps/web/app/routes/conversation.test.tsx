@@ -3,7 +3,7 @@ import { createConversation, useConversation, useConversations } from '@drawroid
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { Link, MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ConversationRoute from './conversation';
@@ -31,6 +31,19 @@ function HistoryState() {
   return <output aria-label="history の state">{JSON.stringify(useLocation().state)}</output>;
 }
 
+/** 画面の外の道案内（一覧から別の会話を開く・ブラウザの戻る） */
+function Navigation() {
+  const navigate = useNavigate();
+  return (
+    <nav>
+      <Link to="/conversations/c-2">別の会話</Link>
+      <button type="button" onClick={() => void navigate(-1)}>
+        戻る
+      </button>
+    </nav>
+  );
+}
+
 function renderApp(initial: Parameters<typeof MemoryRouter>[0]['initialEntries']) {
   render(
     <MemoryRouter initialEntries={initial}>
@@ -39,6 +52,7 @@ function renderApp(initial: Parameters<typeof MemoryRouter>[0]['initialEntries']
         <Route path="/conversations/:conversationId" element={<ConversationRoute />} />
       </Routes>
       <HistoryState />
+      <Navigation />
     </MemoryRouter>,
   );
 }
@@ -78,6 +92,33 @@ describe('starting a new conversation', () => {
       expect(screen.getByRole('status', { name: 'history の state' }).textContent).toBe('null'),
     );
     expect(screen.getByText('発言欄へ移す: true')).toBeTruthy();
+  });
+
+  it('does not move the focus in another conversation opened right after starting a new one', async () => {
+    vi.mocked(createConversation).mockResolvedValue({ conversationId: 'c-new' } as never);
+    const user = userEvent.setup();
+    renderApp(['/']);
+    await user.click(screen.getByRole('button', { name: '新しい会話' }));
+    expect(await screen.findByText('発言欄へ移す: true')).toBeTruthy();
+
+    await user.click(screen.getByRole('link', { name: '別の会話' }));
+
+    expect(await screen.findByText('発言欄へ移す: false')).toBeTruthy();
+  });
+
+  // 印を付けた場所を history に残さない: 残すと、戻る・進むでそこへ戻ったときに、開き直しただけでも欄へ移るため
+  it('goes back from a new conversation to where it was started, not to the new conversation with the mark', async () => {
+    vi.mocked(createConversation).mockResolvedValue({ conversationId: 'c-new' } as never);
+    const user = userEvent.setup();
+    renderApp(['/']);
+    await user.click(screen.getByRole('button', { name: '新しい会話' }));
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'history の state' }).textContent).toBe('null'),
+    );
+
+    await user.click(screen.getByRole('button', { name: '戻る' }));
+
+    expect(await screen.findByRole('button', { name: '新しい会話' })).toBeTruthy();
   });
 
   it('does not move the focus when an existing conversation is opened', () => {
