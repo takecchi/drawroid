@@ -331,6 +331,13 @@ describe('runDoctor', () => {
       expect(item.todo).toContain('toolCalling を json にする');
     });
 
+    it('says the reply was empty when it held only blanks', async () => {
+      const item = await talkItem({ toolCalling: 'native', structuredOutput: 'native' }, '  \n');
+
+      expect(item.what).toContain('文も返さなかった');
+      expect(item.what).not.toContain('「');
+    });
+
     it('quotes the reply, and points native tool calling to json', async () => {
       const item = await talkItem(
         { toolCalling: 'native', structuredOutput: 'native' },
