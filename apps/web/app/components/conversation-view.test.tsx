@@ -3,6 +3,7 @@ import {
   ADOPTED_STOP,
   AI_STOP,
   HUMAN_STOP,
+  LLM_CALL_FAILED_PREFIX,
   LLM_NOT_CONFIGURED_REASON,
   REPEATED_TOOL_CALL_REASON,
   TOOL_THREW_PREFIX,
@@ -1865,6 +1866,41 @@ describe('ConversationView', () => {
     expect(screen.getByRole('link', { name: 'バックエンドの設定へ' }).getAttribute('href')).toBe(
       '/settings#backend',
     );
+  });
+
+  // LLM の呼び出しが失敗したとき（話す役のターン・考える役で止まったジョブ）も、LLM の設定への道を添え、どの役が失敗したかを言う
+  it('leads to the LLM settings when an LLM call failed, in a turn and in a stopped job, naming the role', async () => {
+    const failed = `${LLM_CALL_FAILED_PREFIX}鍵が通らない（401）。LLM の設定の API キーの環境変数と、その値を確かめる（LLM の返した理由: Incorrect API key provided）`;
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(confirmed({ type: 'turn.started', turn: 1, messageSeqs: [] }));
+    stream.emit(confirmed({ type: 'turn.ended', turn: 1, outcome: 'error', reason: failed }));
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'error', detail: `考える段: ${failed}` },
+      }),
+    );
+    // LLM の段でない失敗には添えない
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'error', detail: '生成の要求を組む段: 形が違う' },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('link', { name: 'LLM の設定へ' })).toHaveLength(2),
+    );
+    expect(screen.getByText(`応答が失敗した: ${failed}`)).toBeTruthy();
+    expect(screen.getByText('描くのを止めた: 考える役（LLM）が失敗した')).toBeTruthy();
+    expect(
+      screen.getByText(/描くのを止めた: バックエンド（Forge \/ A1111）の外で失敗した/),
+    ).toBeTruthy();
   });
 
   describe('painting a mask in the large view', () => {

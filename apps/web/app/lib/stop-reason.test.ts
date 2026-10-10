@@ -1,8 +1,8 @@
-import { STOP_REASON_KINDS, type StopReason } from '@drawroid/core';
+import { LLM_CALL_FAILED_PREFIX, STOP_REASON_KINDS, type StopReason } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
 import { describeBackendError } from './backend-error';
-import { summarizeStopReason } from './stop-reason';
+import { llmStageFailure, summarizeStopReason } from './stop-reason';
 
 describe('summarizeStopReason', () => {
   it.each(STOP_REASON_KINDS)('gives a non-empty summary for %s', (kind) => {
@@ -43,5 +43,29 @@ describe('summarizeStopReason', () => {
     expect(summarizeStopReason({ kind: 'error', detail: 'disk full' }, 'forge')).toBe(
       'Forge の外で失敗した',
     );
+  });
+});
+
+// 実行器は、LLM の段で止まったとき、理由の頭に段の名前を書く（runner.ts の StopJob）。続く文は LLM の呼び出しの失敗の言葉
+describe('llmStageFailure', () => {
+  const failed = `${LLM_CALL_FAILED_PREFIX}鍵が通らない（401）。LLM の設定の API キーの環境変数と、その値を確かめる（LLM の返した理由: Incorrect API key provided）`;
+
+  it.each([
+    [`考える段: ${failed}`, '考える役（LLM）が失敗した'],
+    ['考える段: 出力が形に合わない', '考える役（LLM）が失敗した'],
+    [`見る段: ${failed}`, '見る役（LLM）が失敗した'],
+    [`参照画像の要点: ${failed}`, '見る役（LLM）が参照画像を読めなかった'],
+  ])('names the role that failed when the job stopped at %s', (detail, said) => {
+    const reason: StopReason = { kind: 'error', detail };
+    expect(llmStageFailure(reason)).toBe(said);
+    expect(summarizeStopReason(reason)).toBe(said);
+  });
+
+  it.each([
+    { kind: 'error', detail: '生成の要求を組む段: 形が違う' },
+    { kind: 'error', detail: '生成の段: 繋がらない', backendErrorKind: 'unreachable' },
+    { kind: 'ai', detail: '考える段: のように見える文' },
+  ] satisfies StopReason[])('does not blame the LLM for %o', (reason) => {
+    expect(llmStageFailure(reason)).toBeUndefined();
   });
 });
