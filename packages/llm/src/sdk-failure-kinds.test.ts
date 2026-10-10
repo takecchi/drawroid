@@ -199,6 +199,9 @@ describe('describeCallFailure and the kinds of AI SDK failures', () => {
       'LLM のサーバが、この使い方に対応していないと返した（500）。待っても直らない。',
     );
     expect(reason).not.toContain('少し待ってから');
+    // 見分けに使うのは切り詰める前の文でも、画面に出す理由の文は 300 字で切ったまま
+    expect(reason).toContain(`（LLM の返した理由: ${said.slice(0, 300)}…）`);
+    expect(reason).not.toContain(said);
   });
 
   // 呼び直しの途中で失敗の種類が変わったら、最後の失敗の種類で言う: 最初の失敗（500）で言うと、鍵を直す手が出ないため
