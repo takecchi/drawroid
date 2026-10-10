@@ -12,6 +12,7 @@ import {
   Section,
   Select,
   SubSection,
+  WarnNote,
 } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
@@ -197,6 +198,8 @@ export function LlmSettings() {
   const [saving, setSaving] = useState(false);
   // 保存できたことを知らせる: 保存しても欄の見た目は変わらないので、押した人が通ったかを分からないため
   const [saved, setSaved] = useState(false);
+  // 保存は通ったが、予算を窓と比べられなかったとき、その理由。成功の表示に添える
+  const [windowNotCompared, setWindowNotCompared] = useState<string | undefined>();
 
   const stored = data?.config ?? null;
   const keyStatus = data !== undefined && 'apiKeyEnv' in data ? data.apiKeyEnv : {};
@@ -231,8 +234,9 @@ export function LlmSettings() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      await saveLlmSettings(buildLlmSettings(values));
+      const result = await saveLlmSettings(buildLlmSettings(values));
       setEdited(undefined);
+      setWindowNotCompared(result.windowNotCompared);
       setSaved(true);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
@@ -417,6 +421,7 @@ export function LlmSettings() {
       )}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
       {saved && <OkNote focus>保存した。次に話しかけたときから、この設定を使う。</OkNote>}
+      {saved && windowNotCompared !== undefined && <WarnNote>{windowNotCompared}</WarnNote>}
     </Section>
   );
 }

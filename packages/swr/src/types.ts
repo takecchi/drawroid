@@ -57,6 +57,11 @@ export type SaveMemoryInput = InferRequestType<(typeof client.memory)[':id']['$p
 export type SavedMemoryItem = InferResponseType<(typeof client.memory)[':id']['$put'], 200>;
 /** config が null なら、まだ設定されていない。apiKeyEnv は環境変数の名前と、入っているかだけ（値は返らない） */
 export type LlmSettingsResponse = InferResponseType<typeof client.settings.llm.$get, 200>;
+/**
+ * 保存した LLM の設定の応答。読む口と同じ config と apiKeyEnv に加え、予算を窓と比べられなかったときだけ
+ * windowNotCompared（「窓と比べなかった。理由: …」の文）が付く。保存は通っている
+ */
+export type SavedLlmSettings = InferResponseType<typeof client.settings.llm.$put, 200>;
 /** 保存するときに送る LLM の設定（既定値のある欄は省ける） */
 export type LlmSettingsInput = InferRequestType<typeof client.settings.llm.$put>['json'];
 /** overrides は書いた欄、permissions は土台に重ねた実際の許可 */

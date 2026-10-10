@@ -23,6 +23,9 @@ const STAGE_LABELS: Record<InputStage, string> = {
 };
 const ROLE_LABELS: Record<LlmRole, string> = { think: '考える役', judge: '見る役', talk: '話す役' };
 
+/** 予算と比べる役: ジョブのループで入力を組む役だけ（話す役は別の予算を持つ） */
+export const COMPARED_ROLES = ['think', 'judge'] as const satisfies readonly LlmRole[];
+
 /** 欄ごとの上限を使い切ったときの必須の区画が、その役の窓のうち入力に使える分を超える呼び出し */
 export type InputOverflow = {
   role: LlmRole;

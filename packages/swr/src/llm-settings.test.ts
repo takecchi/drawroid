@@ -101,6 +101,20 @@ describe('saveLlmSettings', () => {
     await waitFor(() => expect(result.current.data).toEqual(stored));
   });
 
+  it('returns the note that the window was not compared, without putting it in what the screen reads', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { config: null }));
+    const { result } = renderHook(() => useLlmSettings(), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ config: null }));
+
+    fetchMock.mockResolvedValue(
+      json(200, { ...stored, windowNotCompared: '窓と比べなかった。理由: x' }),
+    );
+    const saved = await saveLlmSettings(config);
+
+    expect(saved.windowNotCompared).toBe('窓と比べなかった。理由: x');
+    await waitFor(() => expect(result.current.data).toEqual(stored));
+  });
+
   it('throws the reason the API gave when the settings cannot be built', async () => {
     fetchMock.mockResolvedValue(
       json(400, {

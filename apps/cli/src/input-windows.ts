@@ -1,8 +1,10 @@
-import { DEFAULT_MODEL_WINDOW, type LlmRole, type ModelWindow } from '@drawroid/core';
+import {
+  COMPARED_ROLES,
+  DEFAULT_MODEL_WINDOW,
+  type LlmRole,
+  type ModelWindow,
+} from '@drawroid/core';
 import { resolveRoles, ROLE_LABELS, type LlmConfig } from '@drawroid/llm';
-
-// 予算と比べる役: ジョブのループで入力を組む役だけ（話す役は別の予算を持つ）
-const COMPARED_ROLES = ['think', 'judge'] as const;
 
 /**
  * 予算と比べる、役ごとの窓を返す口。llm を渡せばその設定の（書かれていない窓は detect で LLM から読む）、

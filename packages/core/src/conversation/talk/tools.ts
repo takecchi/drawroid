@@ -16,7 +16,7 @@ import type { ParamKey } from '../../params/param-key.js';
 import type { Permissions } from '../../permissions/permission.js';
 import { normalizeForMatch } from '../../text/normalize.js';
 import { candidateNamesOf, talkImageLabel } from '../drawing.js';
-import { latestJobOfConversation } from '../drawing-tools.js';
+import { currentJobOfConversation } from '../drawing-tools.js';
 import type { ConversationEvent } from '../events.js';
 import type { TalkLimits } from './limits.js';
 
@@ -197,7 +197,7 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
       'この会話で描いているジョブの今の状態（回・最良候補の点数）を調べる。人間に「今どう？」と聞かれたときに使う。',
     inputSchema: noInput,
     async run(_input, { conversationId }) {
-      const jobId = await latestJobOfConversation(deps.jobs, conversationId);
+      const jobId = await currentJobOfConversation(deps.jobs, conversationId);
       if (jobId === undefined) {
         return { ok: true, result: 'この会話で描いているジョブは無い', summary: 'ジョブは無い' };
       }

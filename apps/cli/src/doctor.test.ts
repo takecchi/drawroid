@@ -223,6 +223,13 @@ describe('runDoctor', () => {
     }
   });
 
+  it('names the mode of a broken permission only once', async () => {
+    const { text } = await setup({ permissions: { steps: { mode: 'sometimes' } } });
+    expect(text).toContain(
+      '足りない  permissions.steps: mode: auto・fixed のどれかで書く（この欄は off にできない）',
+    );
+  });
+
   it('shows only the name of the API key variable and whether it is set', async () => {
     const llm = {
       providers: {

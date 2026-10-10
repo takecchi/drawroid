@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,6 +7,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Drawer } from './drawer';
 
 afterEach(cleanup);
+
+// 閉じたすぐあとに確かめない: Radix は閉じた面の片づけの中から、タイマーで焦点を戻すため
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 function Opener() {
   const [open, setOpen] = useState(false);
@@ -42,7 +46,7 @@ describe('Drawer', () => {
     await userEvent.keyboard('{Escape}');
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(opener);
+    await expectFocusMovesTo(opener);
   });
 
   it('offers a close button read aloud in Japanese', async () => {
@@ -54,7 +58,7 @@ describe('Drawer', () => {
     await userEvent.click(screen.getByRole('button', { name: '閉じる' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(opener);
+    await expectFocusMovesTo(opener);
   });
 
   // 「閉じる」は見た目の大きさのまま、押せる範囲だけを ::after で 44px に広げる。実際の大きさは、ブラウザで測る

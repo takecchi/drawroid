@@ -279,7 +279,6 @@ describe('drawing_status', () => {
   type Stored = { conversationId: string; kind?: string; state: Record<string, unknown> };
   /** 置き場所にあるジョブ。ID の並び順は問わない（ツールが時刻順に引く） */
   const storeOf = (stored: Record<string, Stored>) => {
-    const read: string[] = [];
     const jobs = {
       listJobIds: async () => Object.keys(stored),
       readJob: async (jobId: string) => ({
@@ -287,34 +286,60 @@ describe('drawing_status', () => {
         kind: stored[jobId]?.kind ?? 'auto',
         conversationId: stored[jobId]?.conversationId,
       }),
-      readState: async (jobId: string) => {
-        read.push(jobId);
-        return stored[jobId]?.state;
-      },
+      readState: async (jobId: string) => stored[jobId]?.state,
     } as unknown as JobStore;
-    return { jobs, read };
+    return { jobs };
   };
   const queued = (conversationId = 'c1'): Stored => ({
     conversationId,
     state: { status: 'queued' },
   });
+  const stopped = (conversationId = 'c1'): Stored => ({
+    conversationId,
+    state: { status: 'stopped', reason: { kind: 'human', detail: '人間が止めた' } },
+  });
 
   it('reads the state of the latest job of the conversation', async () => {
-    const { jobs, read } = storeOf({
-      '20261010-100000-aaaaaa': queued(),
-      '20261010-120000-cccccc': queued(),
-      '20261010-110000-bbbbbb': queued(),
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': stopped(),
+      '20261010-120000-cccccc': stopped(),
+      '20261010-110000-bbbbbb': stopped(),
     });
     const { run } = setup({ jobs });
 
     const outcome = await run('drawing_status', {});
 
-    expect(read).toEqual(['20261010-120000-cccccc']);
-    expect(outcome.result).toContain('20261010-120000-cccccc');
+    expect(outcome.result).toContain('ジョブ 20261010-120000-cccccc');
+    expect(outcome.result).not.toMatch(/aaaaaa|bbbbbb/);
+  });
+
+  // ジョブ ID は秒までの時刻と乱数なので、同じ秒に止めて描き直すと、新しいジョブが ID の順で前に来ることがある
+  it('reads the job going on even when a stopped job of the conversation comes later in the ID order', async () => {
+    const { jobs } = storeOf({
+      '20261010-120000-ffffff': stopped(),
+      '20261010-120000-000000': queued(),
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('ジョブ 20261010-120000-000000');
+  });
+
+  it('does not take a job going on in another conversation over a stopped one of this conversation', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': stopped(),
+      '20261010-110000-bbbbbb': queued('c2'),
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('ジョブ 20261010-100000-aaaaaa');
   });
 
   it('says there is no job when the conversation has none', async () => {
-    const { jobs, read } = storeOf({
+    const { jobs } = storeOf({
       '20261010-100000-aaaaaa': queued('c2'),
       '20261010-110000-bbbbbb': { ...queued(), kind: 'manual' },
     });
@@ -323,19 +348,18 @@ describe('drawing_status', () => {
     const outcome = await run('drawing_status', {});
 
     expect(outcome.summary).toBe('ジョブは無い');
-    expect(read).toEqual([]);
   });
 
   it('skips the jobs of other conversations', async () => {
-    const { jobs, read } = storeOf({
+    const { jobs } = storeOf({
       '20261010-100000-aaaaaa': queued(),
       '20261010-110000-bbbbbb': queued('c2'),
     });
     const { run } = setup({ jobs });
 
-    await run('drawing_status', {});
+    const outcome = await run('drawing_status', {});
 
-    expect(read).toEqual(['20261010-100000-aaaaaa']);
+    expect(outcome.result).toContain('ジョブ 20261010-100000-aaaaaa');
   });
 
   it('names which image of which iteration is the best', async () => {

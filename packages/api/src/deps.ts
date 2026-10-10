@@ -135,7 +135,8 @@ export type ApiDeps = {
   doctor?: DoctorPort;
   /**
    * 予算と比べる、役ごとの窓。llm を渡せばその設定の、省けばいま効いている設定の、分かっている窓だけを返す
-   * （分からない役は返さない。知らせるのは返す側）。省けば、保存のときに予算と窓を比べない
+   * （分からない役は返さない。返さなかった役は、LLM の設定の保存の応答で「比べなかった」として知らせる）。
+   * 省けば、保存のときに予算と窓を比べない
    */
   inputWindows?: (llm?: LlmConfig) => Promise<Partial<Record<LlmRole, ModelWindow>>>;
   now?: () => Date;
