@@ -15,6 +15,7 @@ import {
 } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
+import { nameBudgetFields } from '../lib/budget-labels';
 import {
   buildLlmSettings,
   definedProviderNames,
@@ -235,7 +236,7 @@ export function LlmSettings() {
       setSaved(true);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
-      setSaveError(caught.message);
+      setSaveError(nameBudgetFields(caught.message));
     } finally {
       setSaving(false);
     }
