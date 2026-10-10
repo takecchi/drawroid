@@ -30,9 +30,27 @@ const request = generationRequestSchema.parse({
   height: 64,
 });
 
+/**
+ * 試験の側から release するまで終わらない生成。走っている間を、時間に頼らずに作るため
+ * （時間で作ると、config.json を読んでいる間に生成が終わり、断られずに繋ぎ直してしまうことがあった）
+ */
+class HeldStubBackend extends StubBackend {
+  private open: () => void = () => undefined;
+  private readonly gate = new Promise<void>((resolve) => (this.open = resolve));
+
+  release(): void {
+    this.open();
+  }
+
+  override async generate(...args: Parameters<StubBackend['generate']>) {
+    await this.gate;
+    return super.generate(...args);
+  }
+}
+
 async function setup(config: object, source: 'cli' | 'config' | 'default' = 'config') {
   await writeFile(configPath, JSON.stringify(config));
-  const first = new StubBackend({ generateDelayMs: 20 });
+  const first = new HeldStubBackend();
   const created: { options: BackendOptions; backend: StubBackend }[] = [];
   const backend = new ReplaceableBackend(first);
   const settings = createBackendSettings({
@@ -91,6 +109,7 @@ describe('backend settings', () => {
     await expect(settings.write({ url: 'http://new:7860' })).rejects.toBeInstanceOf(
       BackendBusyError,
     );
+    first.release();
     await running;
     expect(first.requests).toHaveLength(1);
     expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
