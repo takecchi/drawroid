@@ -41,6 +41,58 @@ describe('detectContextTokens', () => {
     expect(urls).toEqual([]);
   });
 
+  it('fills the context length of a talking role set apart from the thinking role, too', async () => {
+    const { fetch } = modelsFetch({
+      data: [
+        { id: 'qwen', meta: { n_ctx: 32768 } },
+        { id: 'talker', meta: { n_ctx: 16384 } },
+      ],
+    });
+    const withTalk = llmConfigSchema.parse({
+      ...config(),
+      roles: { ...config().roles, talk: { provider: 'local', model: 'talker' } },
+    });
+
+    const { config: filled, detected } = await detectContextTokens(withTalk, { env: {}, fetch });
+
+    expect(filled.roles.talk?.contextTokens).toBe(16384);
+    expect(filled.roles.think.contextTokens).toBe(32768);
+    expect(detected).toEqual([
+      { role: 'think', contextTokens: 32768 },
+      { role: 'talk', contextTokens: 16384 },
+    ]);
+  });
+
+  it('keeps the context length a talking role sets for itself, without asking the server for it', async () => {
+    const { fetch, urls } = modelsFetch({
+      data: [
+        { id: 'qwen', meta: { n_ctx: 32768 } },
+        { id: 'talker', meta: { n_ctx: 16384 } },
+      ],
+    });
+    const withTalk = llmConfigSchema.parse({
+      ...config(),
+      roles: {
+        ...config().roles,
+        talk: { provider: 'local', model: 'talker', contextTokens: 2048 },
+      },
+    });
+
+    const { config: filled, detected } = await detectContextTokens(withTalk, { env: {}, fetch });
+
+    expect(filled.roles.talk?.contextTokens).toBe(2048);
+    expect(detected).toEqual([{ role: 'think', contextTokens: 32768 }]);
+    expect(urls).toHaveLength(1);
+  });
+
+  it('does not make up a talking role when the talking role follows the thinking role', async () => {
+    const { fetch } = modelsFetch({ data: [{ id: 'qwen', meta: { n_ctx: 32768 } }] });
+
+    const { config: filled } = await detectContextTokens(config(), { env: {}, fetch });
+
+    expect(filled.roles.talk).toBeUndefined();
+  });
+
   it.each([
     ['the server does not report it', modelsFetch({ data: [{ id: 'qwen' }] })],
     ['the server fails', modelsFetch({ error: 'down' }, 500)],
