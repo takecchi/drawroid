@@ -50,6 +50,7 @@ import { AutoJobQueue, BASE_PERMISSIONS } from './auto-job-queue.js';
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions, createBackendSettings } from './backend-settings.js';
 import { createBudgetSettings } from './budget-settings.js';
+import { createDetectedOnSave } from './detected-on-save.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { createInputWindows } from './input-windows.js';
@@ -196,15 +197,23 @@ export async function assembleDrawroid({
   });
   // いま効いている LLM の設定（LLM から読んだ窓を埋めたもの）。予算の保存で、窓と比べるために持つ
   let configuredLlm: LlmConfig | undefined;
+  const detectedOnSave = createDetectedOnSave();
   const inputWindows = createInputWindows({
     current: () => configuredLlm,
-    // 保存のときの読みでは「LLM から読んだ」の行を出さない: 保存が通れば、そのあとの configureLlm が出すため
-    detect: async (llm) => (await detectContextTokens(llm, { env })).config,
+    // 保存のときの読みでは「LLM から読んだ」の行を出さない: 保存が通れば、そのあとの configureLlm が出すため。
+    // 読んだ結果は覚えて configureLlm へ渡す: 応答しない LLM で、保存が /v1/models の時間切れを2回待たないため
+    detect: async (llm) => {
+      const detection = await detectContextTokens(llm, { env });
+      detectedOnSave.remember(llm, detection);
+      return detection.config;
+    },
     log,
   });
-  // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
+  // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため。
+  // 保存のときに読んだばかりの設定だけは、その読みを使う
   const configureLlm = async (llm: LlmConfig) => {
-    const { config, detected } = await detectContextTokens(llm, { env });
+    const { config, detected } =
+      detectedOnSave.recall(llm) ?? (await detectContextTokens(llm, { env }));
     for (const read of detected) log(describeDetectedContext(read));
     configuredLlm = config;
     autoQueue.configure(config);

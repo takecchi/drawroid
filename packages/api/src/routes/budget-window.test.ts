@@ -42,10 +42,12 @@ async function inputWindows(llm?: LlmConfig): Promise<Partial<Record<LlmRole, Mo
       maxOutputTokens: config.maxOutputTokens ?? 1024,
     };
   }
+  // 本物の resolveRoles と同じく、見る役を書かなければ考える役の設定を使う
+  if (llm.roles.judge === undefined && windows.think !== undefined) windows.judge = windows.think;
   return windows;
 }
 
-function makeApp(budgets: BudgetOverrides = {}) {
+function makeApp(budgets: BudgetOverrides = {}, options: { withoutWindows?: boolean } = {}) {
   const budgetSettings = memoryBudgetSettings(budgets);
   const app = createApi({
     // 設定の経路はジョブとバックエンドを使わない
@@ -82,7 +84,7 @@ function makeApp(budgets: BudgetOverrides = {}) {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
     },
-    inputWindows,
+    ...(options.withoutWindows ? {} : { inputWindows }),
   });
   return { app, budgetSettings };
 }
@@ -171,6 +173,51 @@ describe('saving LLM settings whose window is too small for the budgets', () => 
     const res = await put(app, '/settings/llm', llmWith(8192));
 
     expect(res.status).toBe(400);
+  });
+
+  // 窓が読めなかった保存は断らない。比べなかったことは、応答で知らせる
+  it('says in the 200 response which roles it could not compare, keeping config and apiKeyEnv', async () => {
+    const { app } = makeApp();
+    const res = await put(app, '/settings/llm', llmWith());
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toHaveProperty('config');
+    expect(body).toHaveProperty('apiKeyEnv');
+    expect(body.windowNotCompared).toBe(
+      '窓と比べなかった。理由: 考える役・見る役の文脈の上限が分からない（contextTokens を書いておらず、LLM からも読めなかった）',
+    );
+  });
+
+  it('names only the roles whose window is unknown', async () => {
+    const { app } = makeApp();
+    const res = await put(app, '/settings/llm', {
+      ...llmWith(),
+      roles: {
+        think: { provider: 'local', model: 'm', contextTokens: 8192 },
+        judge: { provider: 'local', model: 'm' },
+      },
+    });
+
+    const body = (await res.json()) as { windowNotCompared?: string };
+    expect(body.windowNotCompared).toContain('見る役の文脈の上限が分からない');
+    expect(body.windowNotCompared).not.toContain('考える役');
+  });
+
+  it('adds nothing to the response when the windows were compared', async () => {
+    const { app } = makeApp();
+    const res = await put(app, '/settings/llm', llmWith(8192));
+
+    expect(res.status).toBe(200);
+    expect(Object.keys((await res.json()) as object).toSorted()).toEqual(['apiKeyEnv', 'config']);
+  });
+
+  it('adds nothing to the response when there is no way to read the windows', async () => {
+    const { app } = makeApp({}, { withoutWindows: true });
+    const res = await put(app, '/settings/llm', llmWith());
+
+    expect(res.status).toBe(200);
+    expect(Object.keys((await res.json()) as object).toSorted()).toEqual(['apiKeyEnv', 'config']);
   });
 });
 
