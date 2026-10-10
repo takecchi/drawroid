@@ -3,10 +3,12 @@ import { isApiError, recheckJobDistill, setSelection } from '@drawroid/swr';
 import { Button } from '@drawroid/ui';
 import { useState } from 'react';
 
+import { DecidedMark } from './decided-mark';
+
 /**
  * 止まったジョブの画像で「この画像に決める（お気に入りにする）」。会話（止まりのカード・画像の行・大きく見る窓）とジョブの詳細が同じものを使う。
  * 止まったジョブは採る口（adopt）を受けない（止まったら受けない約束。API は 409）ので、決めるのはお気に入りの口で行う。
- * すでにお気に入りなら、ボタンの代わりに「お気に入り」と出す
+ * すでにお気に入りなら、ボタンの代わりに「この画像に決めた（お気に入り）」と出す
  */
 export function ChooseAsFavorite({
   jobId,
@@ -41,11 +43,9 @@ export function ChooseAsFavorite({
       setPending(false);
     }
   }
-  // すでにお気に入りなら、カードは「お気に入り」と出す。行・窓・ジョブの詳細は何も出さない: そこではお気に入りの
-  // ボタン（押された形）や「今の状態」が同じことを出しており、重ねると「お気に入り」が何度も並ぶため
-  if (verdict === 'favorite') {
-    return prominent ? <p className="text-xs text-ok">お気に入り</p> : null;
-  }
+  // 止まったジョブでは、お気に入りにした画像を決めた画像として印を出す（カード・行・窓・ジョブの詳細のどこでも）。
+  // 押した直後の手元の状態でなく保存された選び方から出す: 開き直しても、別の場所で押しても同じに出すため
+  if (verdict === 'favorite') return <DecidedMark favorite />;
   return (
     <div className="space-y-1">
       {/* 折り返すのは言葉のかたまりの境目だけ: ボタンの中でそのまま折り返すと、日本語はどの字の間でも折れ、

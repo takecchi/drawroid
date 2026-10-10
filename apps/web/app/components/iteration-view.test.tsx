@@ -186,7 +186,7 @@ describe('IterationList and the large view of an image', () => {
     expect(dialog.getByText('指が崩れている')).toBeTruthy();
     expect(dialog.getAllByRole('button', { name: /お気に入り/ }).length).toBeGreaterThan(0);
     expect(
-      dialog.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+      dialog.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }),
     ).toBeTruthy();
   });
 
@@ -210,7 +210,7 @@ describe('IterationList and the large view of an image', () => {
 
     // 止まったジョブは採る口を受けないので、「この画像に決める（お気に入りにする）」になる。押せない理由は出さない
     expect(
-      dialog.queryByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+      dialog.queryByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }),
     ).toBeNull();
     expect(dialog.queryByText(/決められない/)).toBeNull();
     await user.click(
@@ -255,7 +255,7 @@ describe('IterationList and the image cells of a stopped job', () => {
         name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
       }),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^この画像で決める:/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^この画像に決める:/ })).toBeNull();
   });
 
   it('keeps saying a human chose the image they chose, and offers the favorite for the others', () => {
@@ -272,7 +272,7 @@ describe('IterationList and the image cells of a stopped job', () => {
       />,
     );
 
-    expect(screen.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(screen.getByText('この画像に決めた')).toBeTruthy();
     expect(
       screen.queryByRole('button', {
         name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
@@ -305,14 +305,14 @@ describe('IterationList and the image cells of a stopped job', () => {
     );
     const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ }));
 
-    expect(dialog.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(dialog.getByText('この画像に決めた')).toBeTruthy();
     expect(
       dialog.queryByRole('button', { name: /^この画像に決める（お気に入りにする）:/ }),
     ).toBeNull();
   });
 });
 
-// 走っている自動ジョブの画像の枡は、止まったジョブと取り違えず、採る口（この画像で決める）を出す
+// 走っている自動ジョブの画像の枡は、止まったジョブと取り違えず、採る口（この画像に決める）を出す
 describe('IterationList and the image cells of a running job', () => {
   it('offers the adopt button, not the favorite, in each cell', () => {
     render(
@@ -335,10 +335,10 @@ describe('IterationList and the image cells of a running job', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' }),
+      screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'この画像で決める: 1 回目の画像 2 番' }),
+      screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 2 番' }),
     ).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: /^この画像に決める（お気に入りにする）:/ }),
@@ -346,26 +346,87 @@ describe('IterationList and the image cells of a running job', () => {
   });
 });
 
+// 止まったジョブでは、お気に入りにした画像が決めた画像。保存された選び方から出すので、開き直しても同じに出る
 describe('IterationList for a stopped job whose image is already a favorite', () => {
-  it('does not say favorite once more under the selection buttons, which already show it', () => {
+  const twoImages = [
+    { index: 0, seed: 7, url: '/a.png', previewUrl: '/a.webp' },
+    { index: 1, seed: 8, url: '/b.png', previewUrl: '/b.webp' },
+  ];
+  const cellOf = (index: number) =>
+    within(
+      screen
+        .getByRole('button', { name: `大きく見る: 1 回目の画像 ${index} 番（seed ${index + 6}）` })
+        .closest('figure')!,
+    );
+
+  it('marks the favorite as the image the person decided on, in its cell and in the large view', async () => {
+    const user = userEvent.setup();
     render(
       <IterationList
         jobId="job-1"
         heading="回"
-        iterations={[iteration]}
+        iterations={[{ ...iteration, images: twoImages } as Iteration]}
         calls={[]}
         verdicts={new Map([['1-0', 'favorite']])}
         adopt={{ stopped: true }}
       />,
     );
 
+    expect(cellOf(1).getByText('この画像に決めた（お気に入り）')).toBeTruthy();
     expect(
-      screen.queryByRole('button', {
-        name: /^この画像に決める（お気に入りにする）: 1 回目の画像 1 番/,
-      }),
+      cellOf(1).queryByRole('button', { name: /^この画像に決める（お気に入りにする）:/ }),
     ).toBeNull();
-    // お気に入りであることは、選ぶボタンの側（今の状態）が出す。決めるボタンの代わりの一文は重ねない
-    expect(screen.queryAllByText('お気に入り', { selector: 'p' })).toHaveLength(0);
+    // まだ何も選んでいない画像には出さない
+    expect(cellOf(2).queryByText(/^この画像に決めた/)).toBeNull();
+    await user.click(
+      screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 7）' }),
+    );
+    const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 1 番/ }));
+    expect(dialog.getByText('この画像に決めた（お気に入り）')).toBeTruthy();
+  });
+
+  it('does not mark an image that is not a favorite, and still offers to decide on it', () => {
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[{ ...iteration, images: twoImages } as Iteration]}
+        calls={[]}
+        verdicts={
+          new Map([
+            ['1-0', 'favorite'],
+            ['1-1', 'rejected'],
+          ])
+        }
+        adopt={{ stopped: true }}
+      />,
+    );
+
+    expect(screen.getAllByText(/^この画像に決めた/)).toHaveLength(1);
+    expect(cellOf(2).queryByText(/^この画像に決めた/)).toBeNull();
+    expect(
+      cellOf(2).getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('does not take a favorite of a running job as decided, since that job takes the image through adopting', () => {
+    render(
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[{ ...iteration, images: twoImages } as Iteration]}
+        calls={[]}
+        verdicts={new Map([['1-0', 'favorite']])}
+        adopt={{ stopped: false }}
+      />,
+    );
+
+    expect(screen.queryByText(/^この画像に決めた/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }),
+    ).toBeTruthy();
   });
 });
 

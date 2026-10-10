@@ -204,7 +204,7 @@ function VerdictButtons({
   );
 }
 
-/** 1枚の画像への選び方（お気に入り・却下と「この画像で決める」）。画像の行と、大きく見る窓の両方に置く（同じ口を呼ぶ） */
+/** 1枚の画像への選び方（お気に入り・却下と「この画像に決める」）。画像の行と、大きく見る窓の両方に置く（同じ口を呼ぶ） */
 function ImageChoices({
   jobId,
   iteration,
@@ -922,7 +922,7 @@ function renderItem(
                 `${item.previewUrl}?progress=${item.step ?? Math.round(item.progress * 100)}`
           }
           // 生成中の回はまだ採れない: 採れるのはできあがった画像だけ（JobRunner.adopt）
-          hint="できあがったら、画像の行の「この画像で決める」で選べる"
+          hint="できあがったら、画像の行の「この画像に決める」で選べる"
         />
       );
     case 'status':

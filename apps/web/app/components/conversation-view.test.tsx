@@ -259,7 +259,7 @@ describe('the stop card', () => {
     await stopWith(AI_STOP);
 
     const card = await screen.findByRole('region', { name: '最良の画像: 2 回目の画像 2 番' });
-    expect(within(card).getByText('お気に入り')).toBeTruthy();
+    expect(within(card).getByText('この画像に決めた（お気に入り）')).toBeTruthy();
     expect(within(card).queryByRole('button')).toBeNull();
   });
 
@@ -293,7 +293,7 @@ describe('the stop card', () => {
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([CHOOSE]);
-    expect(screen.queryByRole('button', { name: /^この画像で決める/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^この画像に決める: / })).toBeNull();
     await user.click(within(card).getByRole('button', { name: CHOOSE }));
 
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
@@ -595,7 +595,7 @@ describe('ConversationView', () => {
       }),
     );
     await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: /^この画像で決める/ })).toHaveLength(2),
+      expect(screen.getAllByRole('button', { name: /^この画像に決める: / })).toHaveLength(2),
     );
 
     stream.emit(
@@ -606,7 +606,7 @@ describe('ConversationView', () => {
         image: { iteration: 1, index: 0 },
       }),
     );
-    await waitFor(() => expect(screen.getByText('この画像で決めた（選んだ）')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('この画像に決めた')).toBeTruthy());
 
     stream.emit(
       confirmed({
@@ -623,7 +623,7 @@ describe('ConversationView', () => {
         }),
       ).toBeTruthy(),
     );
-    expect(screen.queryAllByRole('button', { name: /^この画像で決める/ })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /^この画像に決める: / })).toHaveLength(0);
   });
 
   it('reads the backend again once when a job stops because the backend failed', async () => {
@@ -1066,7 +1066,7 @@ describe('ConversationView', () => {
     await user.click(dialog.getByRole('button', { name: 'お気に入り: 2 回目の画像 2 番' }));
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'favorite');
     expect(
-      dialog.getByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
+      dialog.getByRole('button', { name: 'この画像に決める: 2 回目の画像 2 番' }),
     ).toBeTruthy();
   });
 
@@ -1105,7 +1105,7 @@ describe('ConversationView', () => {
     const second = within(screen.getByRole('dialog', { name: /2 回目の画像 2 番/ }));
     // 止まったジョブは採る口を受けないので、止まりのカードと同じく「この画像に決める（お気に入りにする）」になる。押せない理由は出さない
     expect(
-      second.queryByRole('button', { name: 'この画像で決める: 2 回目の画像 2 番' }),
+      second.queryByRole('button', { name: 'この画像に決める: 2 回目の画像 2 番' }),
     ).toBeNull();
     expect(second.queryByText(/決められない/)).toBeNull();
     await user.click(
@@ -1118,7 +1118,7 @@ describe('ConversationView', () => {
 
     await user.click(second.getByRole('button', { name: '前の画像' }));
     const first = within(screen.getByRole('dialog', { name: /2 回目の画像 1 番/ }));
-    expect(first.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(first.getByText('この画像に決めた')).toBeTruthy();
   });
 
   it('names each image button after its image, so that they can be told apart when read aloud', async () => {
@@ -1265,9 +1265,7 @@ describe('ConversationView', () => {
       );
       const dialog = within(screen.getByRole('dialog', { name: /添えた画像 2 枚目/ }));
       // 添えた画像は見る役の評価も選ぶボタンも持たず、塗ることもできない
-      expect(
-        dialog.queryByRole('button', { name: /この画像で決める|この画像に決める/ }),
-      ).toBeNull();
+      expect(dialog.queryByRole('button', { name: /この画像に決める/ })).toBeNull();
       expect(dialog.queryByRole('button', { name: /お気に入り|却下|マスクを塗る/ })).toBeNull();
       expect(dialog.queryByText(/見る役の点/)).toBeNull();
     });
@@ -1619,7 +1617,7 @@ describe('the wording of the conversation', () => {
     });
 
     expect(
-      await screen.findByText('できあがったら、画像の行の「この画像で決める」で選べる'),
+      await screen.findByText('できあがったら、画像の行の「この画像に決める」で選べる'),
     ).toBeTruthy();
   });
 });

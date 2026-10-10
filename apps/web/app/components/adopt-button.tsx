@@ -2,6 +2,8 @@ import { adoptImage, isApiError } from '@drawroid/swr';
 import { Button } from '@drawroid/ui';
 import { useState } from 'react';
 
+import { DecidedMark } from './decided-mark';
+
 type State =
   | { step: 'idle' }
   | { step: 'confirming' }
@@ -10,8 +12,8 @@ type State =
   | { step: 'failed'; message: string };
 
 /**
- * 「採る」ボタン。描いている絵を、この画像で決める（会話の adopt_image と同じ口: POST /jobs/:jobId/adopt）。
- * 押すとまず確かめ、決めたら「選んだ」と出す。走っているジョブにだけ出す（止まったジョブは採る口を受けないので、呼び手が ChooseAsFavorite を出す）。
+ * 「採る」ボタン。描いている絵を、この画像に決める（会話の adopt_image と同じ口: POST /jobs/:jobId/adopt）。
+ * 押すとまず確かめ、決めたら「この画像に決めた」と出す。走っているジョブにだけ出す（止まったジョブは採る口を受けないので、呼び手が ChooseAsFavorite を出す）。
  */
 // 確かめを挟む: 採るとジョブが止まる（続きの指示が無ければ）ので、押し間違いで描くのを終わらせないため。
 // 会話の「選んだ」（job.adopted）とジョブの止まった理由は、会話のイベントとして別に出る
@@ -43,13 +45,13 @@ export function AdoptButton({
   }
 
   if (state.step === 'done' || chosen) {
-    return <p className="text-xs text-muted-foreground">この画像で決めた（選んだ）</p>;
+    return <DecidedMark />;
   }
   if (state.step === 'confirming' || state.step === 'sending') {
     return (
-      <div className="space-y-1" role="group" aria-label={`${imageLabel}で決めるかの確かめ`}>
+      <div className="space-y-1" role="group" aria-label={`${imageLabel}に決めるかの確かめ`}>
         <p className="text-xs">
-          {imageLabel}で決める？ 続きの指示が無ければ、描くのはここで止まる。
+          {imageLabel}に決める？ 続きの指示が無ければ、描くのはここで止まる。
         </p>
         <div className="flex flex-wrap gap-1">
           <Button
@@ -76,10 +78,10 @@ export function AdoptButton({
     <div className="space-y-1">
       <Button
         className={small}
-        aria-label={`この画像で決める: ${imageLabel}`}
+        aria-label={`この画像に決める: ${imageLabel}`}
         onClick={() => setState({ step: 'confirming' })}
       >
-        この画像で決める
+        この画像に決める
       </Button>
       {state.step === 'failed' && (
         <p className="text-xs text-destructive">決められない: {state.message}</p>
