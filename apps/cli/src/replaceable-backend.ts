@@ -55,6 +55,11 @@ export class ReplaceableBackend implements ImageBackend {
     }
   }
 
+  /** drawroid の生成が走っているか（この入れ物を通した generate が返っていないか） */
+  get generating(): boolean {
+    return this.running > 0;
+  }
+
   interrupt(): Promise<void> {
     return this.current.interrupt();
   }
