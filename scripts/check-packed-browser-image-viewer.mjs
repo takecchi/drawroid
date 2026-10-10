@@ -281,7 +281,8 @@ try {
     const first = page.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 0）' });
     await first.scrollIntoViewIfNeeded();
     await first.click();
-    const dialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
+    // 窓の名前は、回の数の前に数字が無いことを求める（(?<!\d)）: 無いと「1 回目」が「11 回目」にも当たるため（ほかの歯と同じ）
+    const dialog = page.getByRole('dialog', { name: /(?<!\d)1 回目の画像 1 番/ });
     await dialog.waitFor();
     expect(true, `${label}: 縮小版を押すと、その画像の名前の窓が開く`);
 
@@ -334,7 +335,7 @@ try {
     );
 
     for (let step = 0; step < PER_ITERATION; step += 1) await page.keyboard.press('ArrowRight');
-    await page.getByRole('dialog', { name: /2 回目の画像 1 番/ }).waitFor();
+    await page.getByRole('dialog', { name: /(?<!\d)2 回目の画像 1 番/ }).waitFor();
     expect(true, `${label}: 右のキーで、回の端を越えて次の回の画像へ送る`);
 
     if (width < 768) {
@@ -360,7 +361,7 @@ try {
       await page.mouse.down();
       await page.mouse.move(box.x + box.width * 0.2, y, { steps: 5 });
       await page.mouse.up();
-      await page.getByRole('dialog', { name: /2 回目の画像 2 番/ }).waitFor();
+      await page.getByRole('dialog', { name: /(?<!\d)2 回目の画像 2 番/ }).waitFor();
       expect(true, `${label}: 横へなぞると、次の画像へ送る`);
     }
 
@@ -413,7 +414,7 @@ try {
       `${label}: 「LLM の合計」の要約は、どの幅でも枠の中で折り返し、はみ出さない${overflowAt.length === 0 ? '' : `（はみ出した幅: ${overflowAt.join(', ')}）`}`,
     );
     await page.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 0）' }).click();
-    const jobDialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
+    const jobDialog = page.getByRole('dialog', { name: /(?<!\d)1 回目の画像 1 番/ });
     await jobDialog.waitFor();
     // ジョブの詳細でも、止まったジョブの画像には採る口も押せない理由も出ず、「この画像に決める（お気に入りにする）」が出る（会話と同じ部品）
     await jobDialog
