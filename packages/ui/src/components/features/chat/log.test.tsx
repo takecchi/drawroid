@@ -346,6 +346,13 @@ describe('ChatLog and the marker for new rows', () => {
     expect(document.activeElement).toBe(log);
   });
 
+  // ログの枠はスクリプトからだけフォーカスを受ける: Tab の並びに入れると、発言の欄へ進む前に毎回ログの枠で止まるため
+  it('keeps the log out of the Tab order while it can take the focus', () => {
+    const { log } = renderWithKey();
+
+    expect(log.getAttribute('tabindex')).toBe('-1');
+  });
+
   it('takes the marker away once a person scrolls back down to the end', () => {
     const { log, size, rowsArrive } = renderWithKey();
     log.scrollTop = 600;
