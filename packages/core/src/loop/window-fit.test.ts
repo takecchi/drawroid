@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_BUDGETS, resolveBudgets } from '../budget/settings.js';
+import {
+  budgetLeafMinimum,
+  DEFAULT_BUDGETS,
+  resolveBudgets,
+  type Budgets,
+} from '../budget/settings.js';
 import { DEFAULT_MODEL_WINDOW, type ModelWindow } from './budget.js';
 import { describeInputOverflow, findInputOverflows } from './window-fit.js';
 
@@ -92,6 +97,33 @@ describe('findInputOverflows', () => {
 
       expect(fieldOf(overflows, 'think')).toBe('candidates.maxSize');
       expect(fieldOf(overflows, 'judge')).toBe('imageLongEdge');
+      // 保存できない値までは下げない: 画像の長辺は 128 より小さく保存できないため
+      expect(overflows.find((o) => o.stage === 'judge')?.largestField?.smallest).toBe(128);
+    });
+
+    // どの欄を小さくしても減らないなら、欄を挙げない: 段が読む欄がもう最小で、読まない欄だけが大きいとき
+    it('names no field when making any field the smallest frees nothing', () => {
+      const atMinimum = (node: object, prefix = ''): object =>
+        Object.fromEntries(
+          Object.entries(node).map(([key, value]) => {
+            const path = prefix === '' ? key : `${prefix}.${key}`;
+            if (typeof value === 'number') return [key, budgetLeafMinimum(path)];
+            return [
+              key,
+              value !== null && typeof value === 'object' ? atMinimum(value, path) : value,
+            ];
+          }),
+        );
+      const smallest = atMinimum(DEFAULT_BUDGETS) as Budgets;
+      const budgets: Budgets = { ...smallest, talk: { ...smallest.talk, messageChars: 100000 } };
+
+      const overflows = findInputOverflows(budgets, { think: tiny, judge: tiny });
+
+      expect(overflows).not.toEqual([]);
+      for (const overflow of overflows) {
+        expect(overflow.largestField).toBeUndefined();
+        expect(describeInputOverflow(overflow)).not.toContain('いちばん大きく効いている欄');
+      }
     });
 
     // 値の大きさでは選ばない: その段が読まない欄は、どれだけ大きくても減らしても窓に入らないため
