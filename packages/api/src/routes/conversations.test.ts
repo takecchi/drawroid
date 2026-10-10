@@ -21,6 +21,8 @@ import {
 } from '../test-support.js';
 
 let hubs: ConversationHubs;
+/** 確定した行に付く時刻。既定は今 */
+let clock: () => Date;
 let beats: (() => void)[];
 /** 話す役の実行器へ知らせた会話 */
 let kicks: string[];
@@ -29,7 +31,8 @@ let app: ReturnType<typeof createApi>;
 
 beforeEach(() => {
   const store = new MemoryConversationStore();
-  hubs = new ConversationHubs({ store });
+  clock = () => new Date();
+  hubs = new ConversationHubs({ store, now: () => clock() });
   beats = [];
   kicks = [];
   interrupts = [];
@@ -351,6 +354,35 @@ describe('conversations', () => {
         lastMessage: '描けます。縦長と横長のどちらにしますか？',
       }),
     ]);
+  });
+
+  it('lists the conversation where something happened last first, even if it was started earlier', async () => {
+    const earlier = await newConversation();
+    const later = await newConversation();
+    clock = () => new Date('2099-01-01T00:00:00.000Z');
+    await say(earlier, '続きを描いて');
+
+    const listed = (await (await app.request('/conversations')).json()) as {
+      conversations: { conversationId: string; lastActiveAt: string }[];
+    };
+
+    expect(listed.conversations.map((c) => c.conversationId)).toEqual([earlier, later]);
+    expect(listed.conversations[0]?.lastActiveAt).toBe('2099-01-01T00:00:00.000Z');
+  });
+
+  it('does not lift a conversation whose last line is older than another one was started', async () => {
+    const earlier = await newConversation();
+    clock = () => new Date('2000-01-01T00:00:00.000Z');
+    await say(earlier, '描いて');
+    const later = await newConversation();
+
+    const listed = (await (await app.request('/conversations')).json()) as {
+      conversations: { conversationId: string; lastActiveAt: string; createdAt: string }[];
+    };
+
+    expect(listed.conversations.map((c) => c.conversationId)).toEqual([later, earlier]);
+    // 行が無い会話は、作った時刻を最後に何かが起きた時刻とする
+    expect(listed.conversations[0]?.lastActiveAt).toBe(listed.conversations[0]?.createdAt);
   });
 
   it('lets a human fix the title', async () => {

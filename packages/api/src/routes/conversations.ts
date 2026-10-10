@@ -52,14 +52,22 @@ export const defaultHeartbeat = (beat: () => void) => {
   return () => clearInterval(timer);
 };
 
-/** 一覧の1行: 最後の発言（人間か話す役か）の先頭と、ターンが走っているか（turn.started があって turn.ended が無い） */
-async function summarize(store: ConversationStore, conversationId: string) {
+/**
+ * 一覧の1行: 最後の発言（人間か話す役か）の先頭と、ターンが走っているか（turn.started があって turn.ended が無い）と、
+ * 最後に何かが起きた時刻（行が無ければ作った時刻）
+ */
+async function summarize(
+  store: ConversationStore,
+  conversation: { conversationId: string; createdAt: string },
+) {
   let lastMessage = '';
+  let lastActiveAt = conversation.createdAt;
   const open = new Set<number>();
   let after = 0;
   for (;;) {
-    const page = await store.readEvents(conversationId, { after });
+    const page = await store.readEvents(conversation.conversationId, { after });
     for (const event of page.events) {
+      lastActiveAt = event.at;
       // 本文の無い返答（ツールだけ呼んで打ち切られたものなど）で、前の発言を消さない
       if (
         (event.type === 'user.message' || event.type === 'assistant.message') &&
@@ -72,7 +80,7 @@ async function summarize(store: ConversationStore, conversationId: string) {
     after = page.last;
     if (!page.more) break;
   }
-  return { lastMessage, running: open.size > 0 };
+  return { lastMessage, running: open.size > 0, lastActiveAt };
 }
 
 /**
@@ -92,8 +100,11 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         const list = [];
         for (const conversationId of ids) {
           const conversation = await store.readConversation(conversationId);
-          list.push({ ...conversation, ...(await summarize(store, conversationId)) });
+          list.push({ ...conversation, ...(await summarize(store, conversation)) });
         }
+        // 最後に何かが起きた順（新しい順）に並べる: 作った順だと、前に作って今も続けている会話が下に埋もれるため。
+        // 同じ時刻は作った順（ID の降順）のまま
+        list.sort((a, b) => Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt));
         return c.json({ conversations: list }, 200);
       })
       .post('/', async (c) => {

@@ -55,7 +55,7 @@ export default function Conversations() {
                   title={conversation.title === '' ? '新しい会話' : conversation.title}
                   preview={conversation.lastMessage}
                   running={conversation.running}
-                  meta={formatTime(conversation.createdAt)}
+                  meta={formatTime(conversation.lastActiveAt)}
                 />
               </Link>
             </li>
