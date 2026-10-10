@@ -36,7 +36,8 @@ export function MemoryList() {
           <ItemList>
             {data.invalid.map(({ id, reason }) => (
               <Item key={id}>
-                <code>{id}</code>: {reason}
+                <code className="min-w-0 break-all">{id}</code>
+                <span>{reason}</span>
               </Item>
             ))}
           </ItemList>

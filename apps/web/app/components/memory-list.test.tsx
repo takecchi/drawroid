@@ -64,6 +64,23 @@ describe('MemoryList', () => {
     expect(screen.getByText(/front matter が無い/)).toBeTruthy();
   });
 
+  // ID と理由を別の行に分ける: 長い ID（名前の長すぎるファイル）が折り返すと、つなぎの「: 」が次の行の頭に1つだけ残るため
+  it('puts the reason of an unreadable file on its own, apart from its name', () => {
+    const longId = 'a'.repeat(235);
+    mocks.useMemoryList.mockReturnValue({
+      data: { items: [], invalid: [{ id: longId, reason: '名前を変える' }] },
+      error: undefined,
+    });
+    render(
+      <MemoryRouter>
+        <MemoryList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(longId).tagName).toBe('CODE');
+    expect(screen.getByText('名前を変える')).toBeTruthy();
+  });
+
   // 空のままでは、覚える仕組みがあることも、いつ増えるのかも分からない
   it('says what comes in here and when, even while it is empty', () => {
     mocks.useMemoryList.mockReturnValue({ data: { items: [], invalid: [] }, error: undefined });
