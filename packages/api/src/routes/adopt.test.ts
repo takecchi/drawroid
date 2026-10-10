@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   basicPermissions,
   DEFAULT_BUDGET,
+  generationRequestSchema,
   JobRunner,
   ManualGenerationRunner,
   type AutoJobSpec,
@@ -111,7 +112,7 @@ function setup(options: { withAdopt?: boolean } = {}) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
-  return { store, llm, runner, judging, submit, adopt };
+  return { store, backend, llm, runner, judging, submit, adopt };
 }
 
 const stopped = async (store: FsJobStore, jobId: string) => {
@@ -169,8 +170,42 @@ describe('POST /jobs/:jobId/adopt', () => {
     const res = await adopt(jobId, { iteration: 1, index: 0 });
 
     expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: { message: '絵がもう止まっていて、画像 1-0 を採れなかった' },
+    });
     expect(await store.listSelections(jobId)).toEqual([]);
     expect(await stopped(store, jobId)).toBe('human');
+  });
+
+  // 手動の生成は採る回を持たない。止まっていないのに「止まっていて」と言わない
+  it('refuses a manual job that has not stopped, saying it is a manual generation', async () => {
+    const { store, backend, adopt } = setup();
+    const request = generationRequestSchema.parse({
+      prompt: 'a cat',
+      steps: 4,
+      cfgScale: 7,
+      width: 64,
+      height: 64,
+    });
+    const { jobId } = await store.createJob(
+      { kind: 'manual', request },
+      { status: 'running', startedAt: '2026-10-09T00:00:20Z', imagesGenerated: 0 },
+      new Date(),
+    );
+    await store.writeGeneration(
+      jobId,
+      1,
+      request,
+      await backend.generate(request, new AbortController().signal),
+    );
+
+    const res = await adopt(jobId, { iteration: 1, index: 0 });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: { message: '手動の生成のジョブには、画像 1-0 を採らせられない' },
+    });
+    expect(await store.listSelections(jobId)).toEqual([]);
   });
 
   it('refuses when this server cannot take images, and an unknown job', async () => {
