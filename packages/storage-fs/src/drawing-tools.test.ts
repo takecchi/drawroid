@@ -399,6 +399,7 @@ describe('revise_drawing and stop_drawing', () => {
       'revise_drawing',
       {
         instruction: '逆光にして',
+        stopConditions: { maxIterations: 5 },
         attachments: [{ uploadId }, { uploadId: '20261009-000000-none' }],
       },
       context,
@@ -436,7 +437,7 @@ describe('revise_drawing and stop_drawing', () => {
 
     const revised = await run(
       'revise_drawing',
-      { instruction: '逆光にして', attachments },
+      { instruction: '逆光にして', stopConditions: { maxIterations: 5 }, attachments },
       context,
     );
 
