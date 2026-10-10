@@ -19,8 +19,10 @@ import {
 } from '@drawroid/ui';
 import { Link } from 'react-router';
 
-import { formatTime, KIND_LABELS } from '../lib/job-labels';
+import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
 import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
+import { summarizeStopReason } from '../lib/stop-reason';
+import { useBackendKind } from '../lib/use-backend-kind';
 import { InterventionList } from './intervention-view';
 import { IterationList } from './iteration-view';
 import { JobOperations } from './job-operations';
@@ -32,8 +34,20 @@ import { StopReasonMessage } from './stop-reason-message';
 
 function JobHeader({ job }: { job: JobDetailData }) {
   const { spec, state } = job;
+  const backendKind = useBackendKind();
+  // 失敗の理由は重ねない: 失敗の知らせ（ErrorNote）は role="alert" で、出たときにもう読まれるため
+  const announced = `ジョブの状態: ${STATUS_LABELS[state.status]}${
+    state.status === 'stopped' && state.reason.kind !== 'error'
+      ? `。止まった理由: ${summarizeStopReason(state.reason, backendKind)}`
+      : ''
+  }`;
   return (
     <Section>
+      {/* 状態の変化を読み上げに届ける: 見えている並び（状態・止まった理由）は知らせの場所ではなく、走っているジョブが止まっても
+          読み上げは黙ったままになるため。場所は初めから置き、中身だけを変える（あとから置いた場所は確実には読まれない） */}
+      <p role="status" className="sr-only">
+        {announced}
+      </p>
       {/* 見出しは依頼の文にする: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す */}
       <h1 className="line-clamp-3 text-2xl font-semibold break-words">
         {spec.kind === 'auto' ? spec.request : '手動の生成'}

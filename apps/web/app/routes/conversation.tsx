@@ -51,9 +51,11 @@ export default function ConversationRoute() {
             会話
           </Link>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="min-w-0 truncate font-medium">
+          {/* 題を画面の見出し（h1）にする: 読み上げで見出しを渡り歩くとき、会話の画面だけ頭が見つからないため。
+              見た目は変えない（h1 の文字の大きさと太さは、基本の書式で周りと同じに戻してある） */}
+          <h1 className="min-w-0 truncate font-medium">
             {title === undefined || title === '' ? '新しい会話' : title}
-          </span>
+          </h1>
           <Link
             to={`/conversations/${conversationId}/llm-calls`}
             className="relative ml-auto shrink-0 text-sm whitespace-nowrap text-muted-foreground after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-foreground"

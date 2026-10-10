@@ -7,7 +7,8 @@ import { bodyHead } from '../lib/memory-form';
 export function MemoryList() {
   const { data, error } = useMemoryList();
   return (
-    <Section title="記憶">
+    // 画面の頭の見出しにする（h1）: この一覧は記憶の画面にだけ置かれ、画面にほかの h1 が無いため
+    <Section title="記憶" level={1}>
       {/* 何がいつここに入るのか: 空のままだと、覚える仕組みがあることも、いつ増えるのかも分からないため */}
       <p className="text-sm text-muted-foreground">
         {
@@ -31,7 +32,7 @@ export function MemoryList() {
         ))}
       </ItemList>
       {data !== undefined && data.invalid.length > 0 && (
-        <SubSection title="読めない項目">
+        <SubSection title="読めない項目" level={2}>
           <ItemList>
             {data.invalid.map(({ id, reason }) => (
               <Item key={id}>

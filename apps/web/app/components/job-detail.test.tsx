@@ -186,6 +186,43 @@ describe('JobDetail', () => {
     },
   );
 
+  // 状態の変化を読み上げに届ける: 見えている並び（状態・止まった理由）は知らせの場所ではないので、走っているジョブが
+  // 止まっても読み上げは黙ったままになるため。知らせの場所は初めから置き、中身だけを変える（あとから置いた場所は確実には読まれない）
+  it('tells a screen reader that the job stopped and why, through a status that is there from the start', () => {
+    const running = {
+      ...stopped({ kind: 'ai', detail: '意図どおり' }),
+      state: { status: 'running', startedAt: '2026-01-01T00:00:01.000Z', imagesGenerated: 0 },
+    } as unknown as JobDetailData;
+    serve(running);
+    const { rerender } = renderDetail();
+    const status = screen
+      .getAllByRole('status')
+      .find((element) => element.textContent?.startsWith('ジョブの状態'));
+    expect(status?.textContent).toBe('ジョブの状態: 走行中');
+
+    serve(stopped({ kind: 'ai', detail: '意図どおり' }));
+    rerender(
+      <MemoryRouter>
+        <JobDetail jobId={JOB} />
+      </MemoryRouter>,
+    );
+
+    expect(status?.isConnected).toBe(true);
+    expect(status?.textContent).toMatch(/^ジョブの状態: 終了。止まった理由: /);
+  });
+
+  // 失敗の理由は重ねて知らせない: 失敗の知らせ（ErrorNote）は role="alert" で、出たときにもう読まれるため
+  it('leaves the reason of a failure to the alert that shows it', () => {
+    serve(stopped({ kind: 'error', detail: '見る段: 形が合わない' }));
+    renderDetail();
+
+    const status = screen
+      .getAllByRole('status')
+      .find((element) => element.textContent?.startsWith('ジョブの状態'));
+    expect(status?.textContent).toBe('ジョブの状態: 終了');
+    expect(screen.getByRole('alert').textContent).toContain('見る段: 形が合わない');
+  });
+
   // 見出しは依頼の文: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す
   it('puts the request as the heading, and keeps the ID below it', () => {
     serve(stopped({ kind: 'ai', detail: '意図どおり' }));

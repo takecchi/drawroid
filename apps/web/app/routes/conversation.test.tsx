@@ -148,6 +148,15 @@ describe('the title of a conversation', () => {
     expect(screen.getByText('新しい会話')).toBeTruthy();
   });
 
+  // 題を画面の見出しにする: 読み上げで見出しを渡り歩くとき、会話の画面だけ見出しが1つも無く、どこが頭か分からないため
+  it('puts the title as the heading of the page', () => {
+    vi.mocked(useConversation).mockReturnValue(conversationOf('c-1', '海辺の少女を描いて'));
+
+    renderApp(['/conversations/c-1']);
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('海辺の少女を描いて');
+  });
+
   it('links the header to the LLM calls page of this conversation', () => {
     renderApp(['/conversations/c-1']);
 
