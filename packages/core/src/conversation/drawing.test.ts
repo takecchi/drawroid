@@ -351,6 +351,21 @@ describe('narrowPermissions reasons for a malformed request', () => {
     );
   });
 
+  it('says the bound when a fixed value is out of range', () => {
+    const hiresFix = (denoisingStrength: number) => ({
+      hiresFix: {
+        mode: 'fixed',
+        value: { upscaler: 'Latent', scale: 2, steps: 0, denoisingStrength },
+      },
+    });
+    expect(reasonOf(hiresFix(-0.5))).toBe(
+      'Hires. fix の value.denoisingStrength: 小さすぎる（0 以上）',
+    );
+    expect(reasonOf(hiresFix(2))).toBe(
+      'Hires. fix の value.denoisingStrength: 大きすぎる（1 以下）',
+    );
+  });
+
   it('never returns an English sentence from the validator', () => {
     const malformed: unknown[] = [
       { kind: 'color', value: 'red' },
@@ -482,6 +497,41 @@ describe('summarizeJobForTalk', () => {
     for (const nextChange of ['背景を明るくする', '背景を明るくする。', '背景を明るくする。。']) {
       const summary = summarizeJobForTalk('job-1', state(nextChange), { chars: 600 });
       expect(summary).toContain('次に変えること: 背景を明るくする。依頼の要点');
+    }
+  });
+
+  it('keeps the full stops and spaces inside the next change', () => {
+    const summary = summarizeJobForTalk(
+      'job-1',
+      {
+        ...running(1),
+        carry: {
+          intent: '海辺の少女',
+          completedIterations: 1,
+          latest: { ...carriedResult(1, 0.5), nextChange: '背景を明るくする。空 も赤く。' },
+        },
+      },
+      { chars: 600 },
+    );
+
+    expect(summary).toContain('次に変えること: 背景を明るくする。空 も赤く。依頼の要点');
+  });
+
+  it('leaves the next change out when it is only full stops', () => {
+    for (const nextChange of ['。', ' 。 。']) {
+      const summary = summarizeJobForTalk(
+        'job-1',
+        {
+          ...running(1),
+          carry: {
+            intent: '海辺の少女',
+            completedIterations: 1,
+            latest: { ...carriedResult(1, 0.5), nextChange },
+          },
+        },
+        { chars: 600 },
+      );
+      expect(summary, JSON.stringify(nextChange)).not.toContain('次に変えること');
     }
   });
 
