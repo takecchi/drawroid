@@ -138,6 +138,24 @@ describe('JobDetail', () => {
     expect(screen.queryByRole('note', { name: 'はじめに要る設定' })).toBeNull();
   });
 
+  // 考える役（LLM）が失敗して止まったら、どの役が失敗したか・何を確かめるかを言い、LLM の設定への道を添える
+  it('says which LLM role failed and leads to the LLM settings', () => {
+    serve(
+      stopped({
+        kind: 'error',
+        detail:
+          '考える段: LLM の呼び出しに失敗した: 呼び出しの上限に当たった（429）。少し待ってから、もう一度頼む',
+      }),
+    );
+    renderDetail();
+
+    expect(screen.getByText('考える役（LLM）が失敗した。')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'LLM の設定へ' }).getAttribute('href')).toBe(
+      '/settings#llm',
+    );
+    expect(screen.queryByText(/結果の保存など/)).toBeNull();
+  });
+
   // 見出しは依頼の文: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す
   it('puts the request as the heading, and keeps the ID below it', () => {
     serve(stopped({ kind: 'ai', detail: '意図どおり' }));

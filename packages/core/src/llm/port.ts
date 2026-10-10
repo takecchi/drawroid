@@ -43,6 +43,9 @@ export type BudgetedMessages = {
   report: BudgetReport;
 };
 
+/** LLM の呼び出しが失敗したときの理由の頭。画面はこの頭で、LLM の設定への道を添えるかを決める */
+export const LLM_CALL_FAILED_PREFIX = 'LLM の呼び出しに失敗した: ';
+
 export function sealMessages(
   system: string,
   user: (TextPart | ImagePart)[],
