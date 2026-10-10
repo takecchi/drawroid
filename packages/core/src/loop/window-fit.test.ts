@@ -48,6 +48,25 @@ describe('findInputOverflows', () => {
     ).toEqual([expect.objectContaining({ over: 1 })]);
   });
 
+  // 考える役は2つの呼び出し（考える段・参照画像の要点を読む段）で入力を組む。どちらも同じ窓に入らなければならない
+  it('checks the stage that reads the reference image gists, too, against the thinking role window', () => {
+    const tiny: ModelWindow = { contextTokens: 100, maxOutputTokens: 0 };
+    const overflows = findInputOverflows(DEFAULT_BUDGETS, { think: tiny });
+
+    expect(overflows.map((o) => o.stage)).toEqual(['think', 'ref-gist']);
+    const gist = overflows.find((o) => o.stage === 'ref-gist')!;
+    expect(gist).toMatchObject({ role: 'think', inputTokenLimit: 100, window: tiny });
+    expect(describeInputOverflow(gist)).toContain('参照画像の要点を読む段');
+
+    // 要点の段にちょうど入る窓なら、その段は挙げない
+    const fits = gist.requiredTokens;
+    expect(
+      findInputOverflows(DEFAULT_BUDGETS, {
+        think: { contextTokens: fits, maxOutputTokens: 0 },
+      }).map((o) => o.stage),
+    ).not.toContain('ref-gist');
+  });
+
   // 窓の分からない役は比べない: 分かっている値でだけ比べ、分からない役は呼び手が知らせる
   it('leaves out the roles whose window is not known, however large their budget is', () => {
     const heavyJudge = resolveBudgets({ imagesPerJudge: 8, imageLongEdge: 1536 });
