@@ -164,6 +164,35 @@ describe('DoctorCheck', () => {
     );
   });
 
+  // runDoctor を偽の ApiError で落とす試験は、500 の体を読む道を通らない。ここでは通信の口（fetch）だけを偽にし、
+  // 本物の runDoctor とクライアントに、本物のサーバ（packages/api の handleUncaught）と同じ形の 500 を読ませる
+  it('shows the message in the body of a real 500 from the api server', async () => {
+    const actual = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
+    vi.mocked(runDoctor).mockImplementation(actual.runDoctor);
+    const fetchStub = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { kind: 'internal_error', message: 'サーバの中で想定外の失敗があった' },
+          }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchStub);
+    try {
+      renderCheck();
+
+      await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
+
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        '確かめられなかった: サーバの中で想定外の失敗があった',
+      );
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   // 200 でも返事が読めないとき（壊れた JSON・report の無い体）に、待つ印を出したままにも、画面を白くもしない
   it.each([
     [
