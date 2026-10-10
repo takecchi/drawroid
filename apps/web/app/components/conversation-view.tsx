@@ -140,9 +140,19 @@ const BACKEND_SETUP_ERRORS: ReadonlySet<string> = new Set([
   'timeout',
 ]);
 
-function JobLink({ jobId }: { jobId: string }) {
+/** 読み上げの名前に、どのジョブの（画像の行なら、何回目の）詳細かを添える */
+// 添える: 会話にはジョブの行と画像の行ごとにこのリンクが並び、どれも同じ「ジョブの詳細」と読まれて区別できないため
+function JobLink({ jobId, iteration }: { jobId: string; iteration?: number }) {
+  const name = useContext(JobNames).get(jobId);
+  const which = [name, iteration === undefined ? undefined : `${iteration} 回目`]
+    .filter((part) => part !== undefined)
+    .join(' ');
   return (
-    <Link to={`/jobs/${jobId}`} className="text-xs text-primary underline-offset-4 hover:underline">
+    <Link
+      to={`/jobs/${jobId}`}
+      {...(which !== '' && { 'aria-label': `ジョブの詳細: ${which}` })}
+      className="text-xs text-primary underline-offset-4 hover:underline"
+    >
       ジョブの詳細
     </Link>
   );
@@ -437,7 +447,7 @@ function ImagesItem({
   return (
     <ImageRow
       iteration={item.iteration}
-      link={<JobLink jobId={item.jobId} />}
+      link={<JobLink jobId={item.jobId} iteration={item.iteration} />}
       images={item.images.map((image: ChatImage) => {
         const imageKey = formatImageKey({ iteration: item.iteration, index: image.index });
         const urls = jobImageUrls(item.jobId, item.iteration, image.index);

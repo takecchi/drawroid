@@ -212,7 +212,12 @@ export function IterationView({
                 </>
               }
             >
-              <SelectionControls jobId={jobId} imageKey={imageKey} verdict={verdict} />
+              <SelectionControls
+                jobId={jobId}
+                imageKey={imageKey}
+                imageLabel={imageTitle(iteration.iteration, image.index)}
+                verdict={verdict}
+              />
               {adopt !== undefined && (
                 <ImageDecision
                   jobId={jobId}
@@ -338,6 +343,7 @@ function JobViewerDetails({
       <SelectionControls
         jobId={jobId}
         imageKey={imageKey}
+        imageLabel={imageTitle(iteration.iteration, index)}
         verdict={verdicts.get(imageKey) ?? null}
       />
       {adopt !== undefined && (

@@ -11,6 +11,7 @@ import {
   Field,
   FilePicker,
   Input,
+  OkNote,
   Spinner,
   Textarea,
   WarnNote,
@@ -108,6 +109,15 @@ describe('ErrorNote', () => {
     render(<ErrorNote>送れない: 依頼が長すぎる</ErrorNote>);
 
     expect(screen.getByRole('alert').textContent).toContain('依頼が長すぎる');
+  });
+});
+
+describe('OkNote', () => {
+  // 押したボタンが消えてフォーカスが外れても、通ったことが読み上げに届くように
+  it('is announced as a status with its message', () => {
+    render(<OkNote>保存した。</OkNote>);
+
+    expect(screen.getByRole('status').textContent).toBe('保存した。');
   });
 });
 

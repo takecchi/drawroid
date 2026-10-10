@@ -1025,6 +1025,46 @@ describe('ConversationView', () => {
     expect(screen.getByText('打ち切り')).toBeTruthy();
   });
 
+  // 会話に複数のジョブがあっても、どのジョブの詳細へのリンクかを読み上げの名前で区別できる
+  // 会話にはジョブの行と画像の行ごとに詳細へのリンクが並ぶ。どれも、どのジョブの（画像の行なら何回目の）詳細かで区別できる
+  it('names each link to a job detail after its job, and after its iteration in an image row', async () => {
+    const other = '20261009-160000-b7c2d4';
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    for (const [jobId, request] of [
+      [JOB, '夕暮れの海'],
+      [other, '森の猫'],
+    ] as const) {
+      stream.emit(
+        confirmed({
+          type: 'job.started',
+          jobId,
+          request,
+          stopConditions: { aiJudgement: true, maxIterations: 3 },
+        }),
+      );
+      for (const iteration of [1, 2]) {
+        stream.emit(
+          confirmed({ type: 'job.images', jobId, iteration, images: [{ index: 0, seed: 1 }] }),
+        );
+      }
+    }
+
+    const links = screen
+      .getAllByRole('link', { name: /^ジョブの詳細/ })
+      .map((link) => [link.getAttribute('aria-label'), link.getAttribute('href')]);
+    expect(links).toEqual([
+      ['ジョブの詳細: 夕暮れの海', `/jobs/${JOB}`],
+      ['ジョブの詳細: 夕暮れの海 1 回目', `/jobs/${JOB}`],
+      ['ジョブの詳細: 夕暮れの海 2 回目', `/jobs/${JOB}`],
+      ['ジョブの詳細: 森の猫', `/jobs/${other}`],
+      ['ジョブの詳細: 森の猫 1 回目', `/jobs/${other}`],
+      ['ジョブの詳細: 森の猫 2 回目', `/jobs/${other}`],
+    ]);
+  });
+
   it('links each image row to the job detail and marks a favorite through the selections API', async () => {
     vi.mocked(setSelection).mockResolvedValue({} as never);
     const { source, stream } = fakeSource([]);
@@ -1035,7 +1075,7 @@ describe('ConversationView', () => {
       confirmed({ type: 'job.images', jobId: JOB, iteration: 2, images: [{ index: 1, seed: 9 }] }),
     );
 
-    expect(screen.getByRole('link', { name: 'ジョブの詳細' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'ジョブの詳細: 2 回目' }).getAttribute('href')).toBe(
       `/jobs/${JOB}`,
     );
     expect(screen.getByAltText(/2 回目の画像 2 番/).getAttribute('src')).toBe(

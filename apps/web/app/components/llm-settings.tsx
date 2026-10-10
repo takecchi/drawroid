@@ -178,6 +178,7 @@ function RoleFields({
         </Field>
         <CheckboxField
           label="画像を読める"
+          aria-label={`${label}は画像を読める`}
           checked={values.imageInput}
           onChange={(event) => onChange({ ...values, imageInput: event.target.checked })}
           className="pb-2"
