@@ -29,4 +29,13 @@ describe('the labels of the budget fields', () => {
     expect(groups.at(-1)).toEqual({ title: 'そのほか', leaves: [{ path: 'future.newField' }] });
     expect(budgetLabel('future.newField')).toBeUndefined();
   });
+
+  // 添えられる枚数と読み違えないように: この欄は、ジョブに添えた参照画像のうち、新しいものから何件の要点を役に渡すか
+  it('says the count of reference images is how many gists the roles get, newest first', () => {
+    const label = budgetLabel('references.maxCount');
+
+    expect(label).toContain('要点の件数');
+    expect(label).toContain('新しいものから');
+    expect(label).not.toContain('枚数');
+  });
 });

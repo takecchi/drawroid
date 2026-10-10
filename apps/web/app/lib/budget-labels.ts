@@ -17,7 +17,7 @@ const LABELS: Record<string, string> = {
   'interventions.maxCount': '1回に取り込む人の指示の件数',
   'interventions.maxSize': '1回に取り込む人の指示の量',
   'interventions.textEach': '人の指示1件の文字数',
-  'references.maxCount': '参照画像の枚数',
+  'references.maxCount': '考える役・見る役に渡す参照画像の要点の件数（新しいものから）',
   'references.gistChars': '参照画像の要点の文字数',
   'references.noteChars': '参照画像に添えた言葉の文字数',
   'memory.think.maxCount': '考える役に渡す記憶の件数',
