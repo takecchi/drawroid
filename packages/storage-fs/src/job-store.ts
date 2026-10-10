@@ -627,7 +627,7 @@ export class FsJobStore implements JobStore {
     return records;
   }
 
-  listLlmCallRecords(jobId: string | null) {
+  async listLlmCallRecords(jobId: string | null) {
     return readLlmCallRecords(jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls);
   }
 
