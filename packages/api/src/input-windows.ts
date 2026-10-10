@@ -57,6 +57,6 @@ export async function checkWindows(
   const unknown = COMPARED_ROLES.filter((role) => windows[role] === undefined);
   if (unknown.length === 0) return {};
   return {
-    notCompared: `窓と比べなかった。理由: ${unknown.map((role) => ROLE_LABELS[role]).join('・')}の文脈の上限が分からない（LLM の /v1/models から読めなかった）`,
+    notCompared: `窓と比べなかった。理由: ${unknown.map((role) => ROLE_LABELS[role]).join('・')}の文脈の上限が分からない（contextTokens を書いておらず、LLM からも読めなかった）`,
   };
 }

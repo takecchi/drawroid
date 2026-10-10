@@ -703,7 +703,7 @@ describe('LlmSettings', () => {
   describe('when the server says it did not compare the budgets with the window', () => {
     const SAVED = '保存した。次に話しかけたときから、この設定を使う。';
     const NOT_COMPARED =
-      '窓と比べなかった。理由: 考える役・見る役の文脈の上限が分からない（LLM の /v1/models から読めなかった）';
+      '窓と比べなかった。理由: 考える役・見る役の文脈の上限が分からない（contextTokens を書いておらず、LLM からも読めなかった）';
 
     it('shows the reason under the note that it saved', async () => {
       mocks.saveLlmSettings.mockResolvedValue({ ...stored, windowNotCompared: NOT_COMPARED });

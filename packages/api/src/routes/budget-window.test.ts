@@ -185,7 +185,7 @@ describe('saving LLM settings whose window is too small for the budgets', () => 
     expect(body).toHaveProperty('config');
     expect(body).toHaveProperty('apiKeyEnv');
     expect(body.windowNotCompared).toBe(
-      '窓と比べなかった。理由: 考える役・見る役の文脈の上限が分からない（LLM の /v1/models から読めなかった）',
+      '窓と比べなかった。理由: 考える役・見る役の文脈の上限が分からない（contextTokens を書いておらず、LLM からも読めなかった）',
     );
   });
 
