@@ -112,9 +112,19 @@ const TOTAL_COLUMNS = ['呼び出し', '入力トークン', '出力トークン
 export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total' | 'byIteration'>) {
   return (
     <Section title="LLM の合計">
+      {/* 折り返すのは「 / 」の所だけ: そのまま流すと、狭い画面で「71 / ms」のように数と単位の間で折れるため */}
       <p className="text-sm">
-        {total.calls} 回 / 入力 {tokens(total.inputTokens)} トークン / 出力{' '}
-        {tokens(total.outputTokens)} トークン / {formatDuration(total.durationMs)}
+        {[
+          `${total.calls} 回`,
+          `入力 ${tokens(total.inputTokens)} トークン`,
+          `出力 ${tokens(total.outputTokens)} トークン`,
+          formatDuration(total.durationMs),
+        ].map((part, i) => (
+          <span key={i}>
+            {i > 0 && ' / '}
+            <span className="whitespace-nowrap">{part}</span>
+          </span>
+        ))}
       </p>
       {/* 狭い画面では、行ごとに「見出し 値」を並べて折り返す: 表のままだと、長いジョブの桁で枠より広くなり、
           右の列が枠の中で横に送らないと見えず、送れることも見た目から分からないため */}

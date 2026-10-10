@@ -246,7 +246,13 @@ describe('JobDetail with the recorded LLM calls (M3:93)', () => {
     renderDetail();
 
     const inTotals = totals();
-    expect(inTotals.getByText('6 回 / 入力 600 トークン / 出力 120 トークン / 6 ms')).toBeTruthy();
+    expect(
+      inTotals.getByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent === '6 回 / 入力 600 トークン / 出力 120 トークン / 6 ms',
+      ),
+    ).toBeTruthy();
     const rows = inTotals
       .getAllByRole('row')
       .slice(1)
