@@ -390,6 +390,32 @@ describe('the size limit of a request body: every other route that reads a body'
     await expectPayloadTooLarge(res, '1 MiB');
   });
 
+  // 本文を直に JSON として読む口は、content-type を問わず読む。JSON と名乗らない本文にも上限が効くことを縛る
+  it.each(
+    PLAIN_ROUTES.filter((route) =>
+      ['POST /jobs/manual', 'POST /stop-conditions/parse', 'PUT /settings/backend'].includes(
+        route.name,
+      ),
+    ),
+  )(
+    '$name refuses a body one byte over 1 MiB with 413 when it is not sent as JSON',
+    async (route) => {
+      const f = await fixtures();
+      const text = paddedJson(route.body, PLAIN_LIMIT + 1);
+
+      const res = await f.api.request(await route.target(f), {
+        method: route.method,
+        headers: {
+          'content-type': 'text/plain',
+          'content-length': String(Buffer.byteLength(text)),
+        },
+        body: text,
+      });
+
+      await expectPayloadTooLarge(res, '1 MiB');
+    },
+  );
+
   it('refuses a chunked body without Content-Length once it passes 1 MiB, without reading the rest', async () => {
     const route = PLAIN_ROUTES[0]!;
     const f = await fixtures();
