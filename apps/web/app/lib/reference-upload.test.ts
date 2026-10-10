@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { MAX_REFERENCES_PER_REQUEST as SERVER_MAX_REFERENCES } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -19,6 +20,13 @@ function pngFile(name = 'ref.png', bytes: number[] = PNG_HEAD): File {
 function problem(file: { name: string; type: string; size: number }, attached = 0) {
   return referenceFileProblem(file, attached);
 }
+
+// 画面は同じ値を自分で持つ（reference-upload.ts）。ずれると、画面で選べた画像をサーバが断るか、サーバが受ける枚数を画面が選ばせない
+describe('the number of reference images', () => {
+  it('lets a request carry as many images as the server takes', () => {
+    expect(MAX_REFERENCES_PER_REQUEST).toBe(SERVER_MAX_REFERENCES);
+  });
+});
 
 describe('buildReferenceUpload', () => {
   it('turns a file into the media type, base64 data and trimmed note to send', async () => {
