@@ -54,6 +54,23 @@ class BigImageBackend extends StubBackend {
   }
 }
 
+/** 口出しと参照画像を書いた順を、種類で残す置き場所 */
+class RecordsWrites extends FsJobStore {
+  readonly written: string[] = [];
+
+  override async addIntervention(...args: Parameters<FsJobStore['addIntervention']>) {
+    const added = await super.addIntervention(...args);
+    this.written.push(added.kind);
+    return added;
+  }
+
+  override async addReference(...args: Parameters<FsJobStore['addReference']>) {
+    const added = await super.addReference(...args);
+    this.written.push('reference');
+    return added;
+  }
+}
+
 const think: Script = (_call, n) => ({
   params: {
     prompt: `girl, beach, sunset, take ${n + 1}`,
@@ -853,6 +870,41 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     ).rejects.toMatchObject(rejected);
     expect(await store.listInterventions(manual.jobId)).toEqual([]);
     expect(await store.listReferences(manual.jobId)).toEqual([]);
+  });
+
+  it('puts the instruction first, then the change of stop conditions, then the images', async () => {
+    const store = new RecordsWrites(root);
+    const { runner } = setup({ scripts: { think, judge: judge() }, store });
+    const spec = await submit(store, { aiJudgement: false, maxIterations: 5 });
+
+    const revised = await runner.revise(spec.jobId, {
+      instruction: '逆光にして',
+      stopConditions: { maxIterations: 3 },
+      references: [
+        { data: new Uint8Array([1]), mediaType: 'image/png' },
+        { data: new Uint8Array([2]), mediaType: 'image/png' },
+      ],
+    });
+
+    expect(store.written).toEqual(['instruction', 'stopConditions', 'reference', 'reference']);
+    expect(revised).toMatchObject({
+      instruction: { kind: 'instruction', text: '逆光にして' },
+      stopConditions: { aiJudgement: false, maxIterations: 3 },
+    });
+    expect(revised.references).toHaveLength(2);
+  });
+
+  it('puts nothing for a revision with nothing in it, and still refuses it once the job has stopped', async () => {
+    const { store, runner } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 1 });
+
+    expect(await runner.revise(spec.jobId, {})).toEqual({ references: [] });
+    expect(await store.listInterventions(spec.jobId)).toEqual([]);
+    expect(await store.listReferences(spec.jobId)).toEqual([]);
+
+    runner.kick();
+    await runner.idle();
+    await expect(runner.revise(spec.jobId, {})).rejects.toThrow(InterventionRejectedError);
   });
 
   it('refuses a change that would leave the job with no way to stop, and writes nothing', async () => {

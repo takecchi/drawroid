@@ -157,6 +157,24 @@ describe('AutoJobQueue', () => {
     });
   });
 
+  it('puts a revision of a waiting job (instruction, stop conditions and images) into the job', async () => {
+    const { queue } = makeQueue({});
+    const spec = await submit(5);
+
+    const revised = await queue.revise(spec.jobId, {
+      instruction: '逆光にして',
+      stopConditions: { maxIterations: 3 },
+      references: [{ data: new Uint8Array([1]), mediaType: 'image/png' }],
+    });
+
+    expect(revised.stopConditions).toEqual({ aiJudgement: false, maxIterations: 3 });
+    expect((await store.listInterventions(spec.jobId)).map((i) => i.kind)).toEqual([
+      'instruction',
+      'stopConditions',
+    ]);
+    expect(await store.listReferences(spec.jobId)).toHaveLength(1);
+  });
+
   it('stays unconfigured and logs the variable name but not its value when the LLM cannot be built', async () => {
     const backend = new StubBackend();
     const { queue } = makeQueue({ backend, env: { TEST_KEY: '', OTHER: 'sk-should-not-leak' } });
