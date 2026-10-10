@@ -444,6 +444,20 @@ describe('LlmSettings', () => {
     ).toEqual(['local', ' local']);
   });
 
+  it('lists a name given to two rows once among the choices of a role, until saving says it is given twice', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.clear(input('provider cloud の名前'));
+    await user.type(input('provider 2番目 の名前'), ' local');
+
+    expect(
+      within(screen.getByRole('combobox', { name: '考える役の provider' }))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['local']);
+  });
+
   it('does not take rows without a name, or names that only look alike, as the same provider', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);
@@ -488,6 +502,55 @@ describe('LlmSettings', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('provider 2番目 に名前が無い');
     expect(mocks.saveLlmSettings).not.toHaveBeenCalled();
     expect(input('provider 2番目 の接続先（baseURL）').value).toBe('http://127.0.0.1:1234/v1');
+  });
+
+  it.each([
+    [
+      'only the variable that holds a key',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.type(input('provider 2番目 の API キーの環境変数'), 'OPENROUTER_API_KEY'),
+    ],
+    [
+      'an endpoint and a name of only spaces',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.type(input('provider 2番目 の接続先（baseURL）'), 'http://127.0.0.1:1234/v1');
+        await user.type(input('provider 2番目 の名前'), '  ');
+      },
+    ],
+  ])('refuses to save a provider row given %s, saying which row', async (_, fillSecondRow) => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.type(input('provider local の接続先（baseURL）'), 'http://127.0.0.1:11434/v1');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await fillSecondRow(user);
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('provider 2番目 に名前が無い');
+    expect(mocks.saveLlmSettings).not.toHaveBeenCalled();
+  });
+
+  // 使っていない行かどうかは、名前・接続先・鍵の変数に何か入れたかで見る。空白だけや、種類だけを変えた行は入れていない
+  it('saves without rows given only spaces or only another kind, as rows left empty', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.type(input('provider local の接続先（baseURL）'), 'http://127.0.0.1:11434/v1');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の接続先（baseURL）'), '  ');
+    await user.type(input('provider 2番目 の API キーの環境変数'), '  ');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.selectOptions(input('provider 3番目 の種類'), 'anthropic');
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(Object.keys(mocks.saveLlmSettings.mock.calls[0]?.[0].providers)).toEqual(['local']);
   });
 
   it('shows only the name of the variable that holds a key and whether it is set', () => {
