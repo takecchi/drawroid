@@ -93,6 +93,11 @@ async function finishedJob(options: FsJobStoreOptions = {}) {
     adoptedAt: '2026-10-09T06:31:00.000Z',
   };
   await store.writeAdopted(jobId, 2, adopted);
+  await store.addIntervention(
+    jobId,
+    { kind: 'instruction', text: '逆光にして' },
+    new Date('2026-10-09T06:30:30Z'),
+  );
   await store.writeLlmCall(callRecord('0001', jobId));
   await store.writeLlmCall(callRecord('0002', jobId));
   return { store, jobId, files: dataPaths(root).jobFiles(jobId) };
@@ -108,6 +113,7 @@ async function readEverything(store: FsJobStore, jobId: string) {
   }
   await store.readState(jobId);
   await store.readJob(jobId);
+  await store.listInterventions(jobId);
   await store.listLlmCallRecords(jobId);
 }
 
@@ -144,15 +150,32 @@ describe('FsJobStore reading finished iteration files', () => {
     for (const path of once) expect(readsOf(path), path).toBe(0);
   });
 
-  it('reads the files that are rewritten (plan, state, job) on every read', async () => {
+  it('reads the files that are rewritten (plan, state, job, interventions) on every read', async () => {
     const { store, jobId, files } = await finishedJob();
     await readEverything(store, jobId);
     vi.mocked(fs.readFile).mockClear();
 
     await readEverything(store, jobId);
 
-    for (const path of [files.iteration(1).plan, files.iteration(2).plan, files.state, files.spec])
+    for (const path of [
+      files.iteration(1).plan,
+      files.iteration(2).plan,
+      files.state,
+      files.spec,
+      files.intervention('000001'),
+    ])
       expect(readsOf(path), path).toBe(1);
+  });
+
+  it('reads an LLM call record outside any job from disk only once across repeated reads', async () => {
+    const { store } = await finishedJob();
+    await store.writeLlmCall({ ...callRecord('global', ''), jobId: null });
+    const path = dataPaths(root).llmCall('global');
+
+    await store.listLlmCallRecords(null);
+    await store.listLlmCallRecords(null);
+
+    expect(readsOf(path)).toBe(1);
   });
 
   // plan.json は、考える役を呼ぶ途中で落ちると再開で書き直される。大きさも時刻も同じ書き直しでも、古い中身を返さない
@@ -233,5 +256,67 @@ describe('FsJobStore reading finished iteration files', () => {
     for (const n of [1, 2, 1, 1]) await roomy.readStage(jobId, n, 'think');
     expect(readsOf(think1)).toBe(1);
     expect(readsOf(think2)).toBe(1);
+  });
+
+  // 手放すのは、最後に読んだのが古いもの。読み直さずに当たっただけでも、使ったことになる
+  it('lets go of the file read least recently, not the one read first', async () => {
+    const { jobId, files } = await finishedJob();
+    await new FsJobStore(root).writeStage(jobId, 3, 'think', { params: { prompt: 'girl' } });
+    const [a, b, c] = [1, 2, 3].map((n) => files.iteration(n).think);
+    const small = new FsJobStore(root, { readCacheBytes: 2 * (await stat(a)).size });
+    vi.mocked(fs.readFile).mockClear();
+
+    for (const n of [1, 2, 1, 3]) await small.readStage(jobId, n, 'think');
+    vi.mocked(fs.readFile).mockClear();
+    for (const n of [1, 3, 2]) await small.readStage(jobId, n, 'think');
+
+    expect([readsOf(a), readsOf(b), readsOf(c)]).toEqual([0, 1, 0]);
+  });
+
+  it('returns the new content of a file a human edited in place to another size, at the same time', async () => {
+    const { store, jobId, files } = await finishedJob();
+    const path = files.iteration(1).think;
+    await pinTime(path);
+    await store.readStage(jobId, 1, 'think');
+    const before = await stat(path);
+    await writeFile(path, '{"params":{"prompt":"a boy on the beach"}}');
+    await pinTime(path);
+    const after = await stat(path);
+    expect(after.size).not.toBe(before.size);
+    expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
+
+    expect(await store.readStage(jobId, 1, 'think')).toEqual({
+      params: { prompt: 'a boy on the beach' },
+    });
+  });
+
+  // 書き直した分を二重に数えると、上限に余裕があるのに、ほかのファイルまで手放してしまう
+  it('keeps both files within the limit after one of them is rewritten at the same size', async () => {
+    const { jobId, files } = await finishedJob();
+    const [a, b] = [1, 2].map((n) => files.iteration(n).think);
+    const writer = new FsJobStore(root);
+    const small = new FsJobStore(root, { readCacheBytes: 2 * (await stat(a)).size });
+    for (const n of [1, 2]) await small.readStage(jobId, n, 'think');
+    await writer.writeStage(jobId, 1, 'think', { params: { prompt: 'boy ' } });
+    await small.readStage(jobId, 1, 'think');
+    vi.mocked(fs.readFile).mockClear();
+
+    for (const n of [1, 2]) await small.readStage(jobId, n, 'think');
+
+    expect([readsOf(a), readsOf(b)]).toEqual([0, 0]);
+  });
+
+  it('keeps the small files it holds when a file larger than the limit is read', async () => {
+    const { jobId, files } = await finishedJob();
+    await new FsJobStore(root).writeStage(jobId, 3, 'think', {
+      params: { prompt: 'girl'.repeat(100) },
+    });
+    const [small, big] = [1, 3].map((n) => files.iteration(n).think);
+    const cache = new FsJobStore(root, { readCacheBytes: (await stat(small)).size });
+    vi.mocked(fs.readFile).mockClear();
+
+    for (const n of [1, 3, 1, 3]) await cache.readStage(jobId, n, 'think');
+
+    expect([readsOf(small), readsOf(big)]).toEqual([1, 2]);
   });
 });
