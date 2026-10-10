@@ -114,6 +114,21 @@ export function definedProviderNames(providers: readonly ProviderRow[]): string[
   return [...new Set(providers.map((row) => row.key.trim()).filter((name) => name !== ''))];
 }
 
+/**
+ * 2つ以上の行に付いた provider の名前（前後の空白を除いて比べる）。無ければ undefined。
+ * サーバに任せずに画面で見る: 保存する形は名前を鍵にしたオブジェクトで、重なりは送る前に後の行で上書きされて届かないため
+ */
+export function duplicatedProviderName(providers: readonly ProviderRow[]): string | undefined {
+  const seen = new Set<string>();
+  for (const row of providers) {
+    const name = row.key.trim();
+    if (name === '') continue;
+    if (seen.has(name)) return name;
+    seen.add(name);
+  }
+  return undefined;
+}
+
 /** 役が使う provider。まだ選んでいなくて、定義した provider が1つだけなら、それを選んだことにする */
 export function roleProviderOf(role: RoleValues, names: readonly string[]): string {
   const chosen = role.provider.trim();
