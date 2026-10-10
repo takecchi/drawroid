@@ -23,6 +23,8 @@ export const manualGenerationRequestSchema = generationRequestSchema.refine(
 export interface ManualGenerationRunnerOptions {
   backend: ImageBackend;
   store: JobStore;
+  /** バックエンドが止めるのに失敗したときの理由の行き先。止める口そのものは失敗させない */
+  log?: (line: string) => void;
   now?: () => Date;
 }
 
@@ -33,6 +35,7 @@ const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
 export class ManualGenerationRunner {
   private readonly backend: ImageBackend;
   private readonly store: JobStore;
+  private readonly log: ((line: string) => void) | undefined;
   private readonly now: () => Date;
   private tail: Promise<void> = Promise.resolve();
   /** 走っている生成。止める口が、その生成だけを切るために持つ */
@@ -40,9 +43,10 @@ export class ManualGenerationRunner {
   /** 鎖の上で待っているうちに止められたジョブ。順番が来ても生成しない */
   private readonly cancelled = new Set<string>();
 
-  constructor({ backend, store, now = () => new Date() }: ManualGenerationRunnerOptions) {
+  constructor({ backend, store, log, now = () => new Date() }: ManualGenerationRunnerOptions) {
     this.backend = backend;
     this.store = store;
+    this.log = log;
     this.now = now;
   }
 
@@ -73,9 +77,19 @@ export class ManualGenerationRunner {
    */
   async stop(jobId: string): Promise<void> {
     if (this.running?.jobId === jobId) {
-      this.running.controller.abort();
+      const { controller } = this.running;
+      // 二度押しでは、もう一度バックエンドに止めさせない: 1回目で止めるよう言ってあるため
+      if (controller.signal.aborted) return;
+      controller.abort();
       // signal の abort は HTTP の待ちを切るだけで、GPU は回り続けるため、バックエンドにも止めさせる
-      await this.backend.interrupt();
+      try {
+        await this.backend.interrupt();
+      } catch (error) {
+        // 止める口は失敗させない: 待ちはもう切ってあり、ジョブは人間の停止として終わるため
+        this.log?.(
+          `drawroid: 手動のジョブ ${jobId} を止めるとき、バックエンドが止めるのに失敗した: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       return;
     }
     // 読む前に印を付ける: 読んでいる間に順番が来ても、生成を始めないため

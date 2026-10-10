@@ -125,7 +125,7 @@ export async function assembleDrawroid({
     // 会話のジョブが止まったら、話す役から話しかける。ジョブを回し始めるのは talkRunner を作ったあと（下の autoQueue.kick）
     onStopped: (stop) => talkRunner.reportJobStopped(stop),
   });
-  const manualRunner = new ManualGenerationRunner({ backend, store });
+  const manualRunner = new ManualGenerationRunner({ backend, store, log });
   write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
   const servedWebRoot = webRoot ?? resolveWebRoot();
   if (!existsSync(join(servedWebRoot, 'index.html'))) {
