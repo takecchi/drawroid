@@ -90,7 +90,6 @@ export function describePermissionIssue(issue: z.core.$ZodIssue): string {
       if (issue.discriminator !== 'mode') return '形が違う';
       // options は実行時には入るが、zod の型には無い
       const modes = ((issue as { options?: readonly unknown[] }).options ?? []).map(String);
-      if (modes.length === 0) return '形が違う';
       // 「mode は」と欄の名前を書かない: 判別の誤りの道は mode で終わり、呼ぶ側が前に付けるので「mode: mode は」と二度出るため
       return `${modes.join('・')} のどれかで書く${modes.includes('off') ? '' : '（この欄は off にできない）'}`;
     }

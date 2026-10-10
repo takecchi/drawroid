@@ -310,15 +310,15 @@ describe('readPermissionOverrides', () => {
   });
 });
 
+const reasonFor = (schema: z.ZodType, value: unknown) => {
+  const result = schema.safeParse(value);
+  const issue = result.error?.issues[0];
+  if (issue === undefined) throw new Error(`${JSON.stringify(value)} が通ってしまった`);
+  return describePermissionIssue(issue);
+};
+
 // 境目を含まない上限を持つ欄が今の許可のスキーマに無いので、範囲の文は合成したスキーマで縛る
 describe('describePermissionIssue for a number out of range', () => {
-  const reasonFor = (schema: z.ZodType, value: unknown) => {
-    const result = schema.safeParse(value);
-    const issue = result.error?.issues[0];
-    if (issue === undefined) throw new Error(`${JSON.stringify(value)} が通ってしまった`);
-    return describePermissionIssue(issue);
-  };
-
   // 境目を含まない範囲を「以上」「以下」と書くと、境目の値なら通るように読める
   it('says whether the upper bound itself is allowed', () => {
     expect(reasonFor(z.number().lt(10), 10)).toBe('大きすぎる（10 より小さく）');
@@ -328,5 +328,46 @@ describe('describePermissionIssue for a number out of range', () => {
   it('says whether the lower bound itself is allowed', () => {
     expect(reasonFor(z.number().gt(0), 0)).toBe('小さすぎる（0 より大きく）');
     expect(reasonFor(z.number().min(0), -1)).toBe('小さすぎる（0 以上）');
+  });
+});
+
+// 今の許可のスキーマからは出にくい形（型の名前・mode 以外の判別・知らない誤り）も、合成したスキーマで文を縛る
+describe('describePermissionIssue for the other kinds of issue', () => {
+  it('names the expected type of each kind a permission can be written as', () => {
+    expect(reasonFor(z.array(z.string()), 'a')).toBe('形が違う（配列で書く）');
+    expect(reasonFor(z.string(), 1)).toBe('形が違う（文字列で書く）');
+    expect(reasonFor(z.boolean(), 'yes')).toBe('形が違う（真偽値で書く）');
+    expect(reasonFor(z.int(), 1.5)).toBe('形が違う（整数で書く）');
+  });
+
+  it('does not name a type it has no word for', () => {
+    expect(reasonFor(z.bigint(), 'a')).toBe('形が違う');
+  });
+
+  it('does not list modes when the field it was told apart by is not mode', () => {
+    const schema = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a') }),
+      z.object({ kind: z.literal('b') }),
+    ]);
+    expect(reasonFor(schema, { kind: 'c' })).toBe('形が違う');
+  });
+
+  it('does not write an empty list of modes', () => {
+    const issue = {
+      code: 'invalid_union',
+      discriminator: 'mode',
+      options: [],
+      errors: [],
+      path: ['mode'],
+      message: '',
+    } as unknown as Parameters<typeof describePermissionIssue>[0];
+    expect(describePermissionIssue(issue)).toBe('形が違う');
+    expect(describePermissionIssue({ ...issue, options: undefined } as typeof issue)).toBe(
+      '形が違う',
+    );
+  });
+
+  it('says only that the shape is wrong for an issue it has no sentence for', () => {
+    expect(reasonFor(z.literal('a'), 'b')).toBe('形が違う');
   });
 });
