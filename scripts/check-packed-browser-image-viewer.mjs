@@ -14,6 +14,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
+import { URL } from 'node:url';
 
 import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
 import { startFakeForge } from './packed-conversation/forge.mjs';
@@ -199,7 +200,18 @@ try {
     await dialog.getByRole('button', { name: 'お気に入りを外す: 1 回目の画像 1 番' }).click();
     await favorite.waitFor();
     // このジョブは止まっているので、採る口（「この画像で決める」）も押せない理由も出ず、止まりのカードと同じ
-    // 「この画像に決める（お気に入りにする）」になる。押すとお気に入りになり、採る口は呼ばれない（ジョブの口出しに adopt が増えない）
+    // 「この画像に決める（お気に入りにする）」になる。押すとお気に入りになり、採る口は呼ばれない。
+    // 採る口へ送ったかは、ジョブの口出しではなく送った読み込みで見る: 止まったジョブは採る口を断る（409）ので、送っても口出しは増えないため
+    /** @type {string[]} */
+    const sent = [];
+    /** @param {import('playwright-core').Request} request */
+    const onRequest = (request) => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() !== 'GET' && path.startsWith(`/api/jobs/${jobId}/`)) {
+        sent.push(`${request.method()} ${path}`);
+      }
+    };
+    page.on('request', onRequest);
     expect(
       (await dialog
         .getByRole('button', { name: 'この画像で決める: 1 回目の画像 1 番' })
@@ -210,20 +222,15 @@ try {
       .getByRole('button', { name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番' })
       .click();
     await dialog.getByText('お気に入り', { exact: true }).waitFor();
-    const { interventions } = /** @type {{ interventions: { kind: string }[] }} */ (
-      await (
-        await fetch(`${base}/api/jobs/auto/${jobId}/interventions`, {
-          signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
-        })
-      ).json()
-    );
-    expect(
-      interventions.every((intervention) => intervention.kind !== 'adopt'),
-      `${label}: 窓の中の「この画像に決める（お気に入りにする）」でお気に入りになり、採る口は呼ばれない`,
-    );
-    // 押したら元に戻す（次の画面の幅でも、同じ形から確かめるため）
+    // 押したら元に戻す（次の画面の幅でも、同じ形から確かめるため）。戻し終えるまでに送ったものを見る
     await dialog.getByRole('button', { name: 'お気に入りを外す: 1 回目の画像 1 番' }).click();
     await favorite.waitFor();
+    page.off('request', onRequest);
+    expect(
+      sent.some((what) => what.startsWith(`PUT /api/jobs/${jobId}/selections/`)) &&
+        !sent.some((what) => what.endsWith('/adopt')),
+      `${label}: 窓の中の「この画像に決める（お気に入りにする）」でお気に入りになり、採る口は呼ばれない（送ったもの: ${sent.join(', ')}）`,
+    );
     expect(
       true,
       `${label}: 窓の中で、見る役の点と言葉が読め、お気に入りを付け外しでき、止まったジョブでは「この画像に決める（お気に入りにする）」が出る`,
