@@ -28,7 +28,7 @@ export function referenceFileProblem(
   attached: number,
 ): string | undefined {
   if (attached >= MAX_REFERENCES_PER_REQUEST) {
-    return `${file.name}: 添えられるのは ${MAX_REFERENCES_PER_REQUEST} 枚まで`;
+    return `${file.name}: 添えられるのは ${MAX_REFERENCES_PER_REQUEST} 枚まで。この画像を添えるなら、ほかの画像を外してから選び直す`;
   }
   if (!isMediaType(file.type)) {
     return `${file.name}: PNG・JPEG・WebP のどれかにする（${file.type === '' ? '種類が分からない' : file.type}）`;
