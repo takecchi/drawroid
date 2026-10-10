@@ -82,7 +82,9 @@ describe('createApp, when the Web UI has not been built', () => {
     const work = await mkdtemp(join(tmpdir(), 'drawroid-no-web-'));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
-      createApp({ webRoot: join(work, 'build', 'client'), deps: stubDeps() });
+      const app = createApp({ webRoot: join(work, 'build', 'client'), deps: stubDeps() });
+      await app.request('/');
+      await app.request('/assets/app.js');
       expect(errors).not.toHaveBeenCalled();
     } finally {
       errors.mockRestore();
