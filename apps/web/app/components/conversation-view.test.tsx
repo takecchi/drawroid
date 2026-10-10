@@ -47,7 +47,10 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   useSelections: vi.fn(),
 }));
 // jsdom には canvas の描画が無い: マスクを PNG にする所は差し替える
-vi.mock('../lib/mask-png', () => ({ encodeMaskPng: vi.fn() }));
+vi.mock('../lib/mask-png', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/mask-png')>()),
+  encodeMaskPng: vi.fn(),
+}));
 
 const JOB = '20261009-153112-a3f9c1';
 const AT = '2026-10-09T15:30:00+09:00';

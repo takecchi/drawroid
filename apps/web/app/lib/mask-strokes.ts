@@ -53,7 +53,8 @@ export function toImagePoint(
 /**
  * 塗った筆をマスクとして描く。黒で埋めてから、塗った所を白、消した所を黒で、描いた順に重ねる。
  */
-// 白黒の2色だけで描く: inpaint は白い所を描き直すので、半端な灰色は「どこまで描き直すか」をぼかしてしまうため
+// 色は白と黒だけを指定する: inpaint は白い所を描き直すため。ただし筆の縁は canvas が滑らかに描くので、
+// 縁には白と黒の間の灰色が混じる（白黒の2色だけにはならない）
 export function drawMask(canvas: MaskCanvas, strokes: readonly Stroke[], size: MaskSize): void {
   canvas.fillStyle = '#000';
   canvas.fillRect(0, 0, size.width, size.height);
