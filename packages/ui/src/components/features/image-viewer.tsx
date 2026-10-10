@@ -119,7 +119,7 @@ export function ImageViewer({
                 : document.querySelector<HTMLElement>(`[data-viewer-key="${CSS.escape(key)}"]`);
             if (thumbnail === null) return;
             event.preventDefault();
-            thumbnail.focus();
+            document.querySelector<HTMLElement>('[data-viewer-key="1-1"]')?.focus();
           }}
           className="flex h-[92dvh] w-[96vw] max-w-[96vw] flex-col gap-2 p-3 sm:max-w-[min(96vw,72rem)]"
         >
