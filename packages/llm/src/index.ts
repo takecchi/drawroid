@@ -3,7 +3,13 @@ import { AiSdkLlm, type AdapterOptions } from './adapter.js';
 import { llmConfigSchema, resolveRoles, type LlmConfig } from './config.js';
 import { createLanguageModel, type ModelEnvironment } from './models.js';
 
-export { AiSdkLlm, extractJson, type AdapterOptions, type RoleModels } from './adapter.js';
+export {
+  AiSdkLlm,
+  extractJson,
+  sentImageMediaType,
+  type AdapterOptions,
+  type RoleModels,
+} from './adapter.js';
 export * from './config.js';
 export { detectContextTokens, type DetectedContext } from './context.js';
 export { createLanguageModel, LlmConfigError, type ModelEnvironment } from './models.js';

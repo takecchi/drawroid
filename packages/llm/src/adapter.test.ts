@@ -10,6 +10,7 @@ import {
   type TalkStepPart,
 } from '@drawroid/core';
 import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test';
+import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AiSdkLlm, extractJson } from './adapter.js';
@@ -349,7 +350,13 @@ describe('AiSdkLlm.generateStructured', () => {
       images: [
         {
           key: 'j/0001/0',
-          data: new Uint8Array([1, 2, 3]),
+          data: new Uint8Array(
+            await sharp({
+              create: { width: 512, height: 512, channels: 3, background: '#c82828' },
+            })
+              .webp()
+              .toBuffer(),
+          ),
           mediaType: 'image/webp',
           longEdge: 512,
         },
@@ -372,7 +379,7 @@ describe('AiSdkLlm.generateStructured', () => {
       m.role === 'user' ? m.content.filter((p) => p.type === 'file') : [],
     );
     expect(files).toHaveLength(1);
-    expect(files?.[0]).toMatchObject({ mediaType: 'image/webp' });
+    expect(files?.[0]).toMatchObject({ mediaType: 'image/jpeg' });
 
     const textOnly = new MockLanguageModelV4({ doStream: [reply('{"ok":true}')] });
     const outcome = await adapter(textOnly, role({ imageInput: false })).generateStructured(

@@ -26,7 +26,13 @@ import {
   type ImageBackend,
   type ToolSpec,
 } from '@drawroid/core';
-import { createLlm, llmConfigSchema, resolveRoles, type LlmConfig } from '@drawroid/llm';
+import {
+  createLlm,
+  llmConfigSchema,
+  resolveRoles,
+  sentImageMediaType,
+  type LlmConfig,
+} from '@drawroid/llm';
 import { makePreview, PREVIEW_MEDIA_TYPE } from '@drawroid/storage-fs';
 import sharp from 'sharp';
 import { z } from 'zod';
@@ -810,7 +816,7 @@ async function structuredRoundTrip(
     if (withoutImage.ok) {
       return {
         ok: false,
-        what: `${who}は、画像（${PREVIEW_MEDIA_TYPE}。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない（画像なしなら返事が来る）。このモデルは画像を読めない可能性がある（読めるモデルなら、サーバがこの形式を読めない）: ${withImage.reason}`,
+        what: `${who}は、画像（${sentImageMediaType(PREVIEW_MEDIA_TYPE)}。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない（画像なしなら返事が来る）。このモデルは画像を読めない可能性がある（読めるモデルなら、サーバがこの形式を読めない）: ${withImage.reason}`,
         todo: '見る役に、画像を読めるモデル（vision に対応したもの）を割り当てる。LLM のサーバ側で、画像の入力やこの形式を読めるようにする設定が要ることもある',
       };
     }
