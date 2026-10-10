@@ -12,6 +12,8 @@ import {
   createReadOnlyTools,
   createReviewTools,
   DEFAULT_BUDGET,
+  describeInputOverflow,
+  findInputOverflows,
   jobSummaryFor,
   ManualGenerationRunner,
   mergePermissions,
@@ -42,6 +44,7 @@ import { backendOptions, createBackendSettings } from './backend-settings.js';
 import { createBudgetSettings } from './budget-settings.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
+import { createInputWindows } from './input-windows.js';
 import { listen, type Listening } from './listen.js';
 import { screenDoctor } from './doctor.js';
 import { logFailedJobs } from './failure-log.js';
@@ -177,12 +180,16 @@ export async function assembleDrawroid({
     }),
     log,
   });
+  // いま効いている LLM の設定（LLM から読んだ窓を埋めたもの）。予算の保存で、窓と比べるために持つ
+  let configuredLlm: LlmConfig | undefined;
+  const inputWindows = createInputWindows({ current: () => configuredLlm, log });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
   const configureLlm = async (llm: LlmConfig) => {
     const { config, detected } = await detectContextTokens(llm, { env });
     for (const { role, contextTokens } of detected) {
       log(`drawroid: ${role} の役の文脈の上限を LLM から読んだ: ${contextTokens}`);
     }
+    configuredLlm = config;
     autoQueue.configure(config);
   };
   const stored = await readLlmSettings(configPath);
@@ -219,7 +226,16 @@ export async function assembleDrawroid({
 
   const budgetSettings = createBudgetSettings(configPath, log);
   // 起動のときに一度読む: 読めない欄があれば、投入を待たずにログで知らせる
-  await budgetSettings.read();
+  const startingBudgets = await budgetSettings.read();
+  // 予算の欄ごとの上限の和が窓に入らなければ知らせる。起動は止めない: 予算か LLM の設定を、画面から直せるようにするため
+  if (configuredLlm !== undefined) {
+    const overflows = findInputOverflows(startingBudgets.effective, await inputWindows());
+    if (overflows.length > 0) {
+      log(
+        `drawroid: 予算が窓に入らない（ジョブは入力を組む段で止まる）: ${overflows.map(describeInputOverflow).join('。')}`,
+      );
+    }
+  }
   const readCandidates = () => readCandidateNotes(dataPaths(root).candidateNotes);
   const humanPermissions = async () => mergePermissions(BASE_PERMISSIONS, await readPermissions());
   // 話す役。LLM は自動ジョブと同じ設定（役 talk、省けば考える役）を使う
@@ -293,6 +309,7 @@ export async function assembleDrawroid({
       autoQueue,
       reselection,
       budgetSettings,
+      inputWindows,
       ...progress.api,
       llmSettings,
       stopConditionParser: createStopConditionParser({

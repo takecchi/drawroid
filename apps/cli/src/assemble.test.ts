@@ -240,3 +240,34 @@ describe('assembleDrawroid and the signals to stop', () => {
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(code));
   });
 });
+
+// 予算の欄ごとの上限の和が窓を超えていても、起動は止めない。端末に1行だけ知らせる
+describe('assembleDrawroid with budgets that do not fit the window', () => {
+  const llmWith = (contextTokens: number) => ({
+    providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' } },
+    roles: { think: { provider: 'local', model: 'm', contextTokens } },
+  });
+
+  it('says so in one line and starts anyway', async () => {
+    await writeLlmSettings(join(root, 'config.json'), llmWith(1500));
+    const written: string[] = [];
+
+    const listening = await start(undefined, undefined, (text) => written.push(text));
+
+    expect(listening.address.port).toBeGreaterThan(0);
+    const lines = written.join('').split('\n');
+    const warned = lines.filter((line) => line.includes('窓に入らない'));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain('考える役の考える段');
+    expect(warned[0]).toContain('1500');
+  });
+
+  it('says nothing about the window when the budgets fit', async () => {
+    await writeLlmSettings(join(root, 'config.json'), llmWith(8192));
+    const written: string[] = [];
+
+    await start(undefined, undefined, (text) => written.push(text));
+
+    expect(written.join('')).not.toContain('窓に入らない');
+  });
+});
