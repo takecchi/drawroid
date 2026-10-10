@@ -81,6 +81,15 @@ export function createFsMemoryStore(dir: string): MemoryStore {
         // 一時ファイル（.tmp-）や、エディタが残す隠しファイルは読まない
         if (name.startsWith('.') || !name.endsWith(MEMORY_FILE_EXTENSION)) continue;
         const id = name.slice(0, -MEMORY_FILE_EXTENSION.length);
+        // 開けない ID の項目を items に並べない: 選ばれて直されるときに失敗するため。手で置いた壊れた項目と同じく、直してもらう
+        if (!isMemoryId(id)) {
+          invalid.push({
+            id,
+            reason:
+              'ファイル名が記憶の ID に使えない（長すぎる、または使えない文字を含む）。名前を変える',
+          });
+          continue;
+        }
         const text = await readText(join(dir, name));
         // readdir と読み込みのあいだに人間が消したもの
         if (text === null) continue;
