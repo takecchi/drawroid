@@ -42,6 +42,8 @@ export class ManualGenerationRunner {
   private running: { jobId: string; controller: AbortController } | undefined;
   /** 鎖の上で待っているうちに止められたジョブ。順番が来ても生成しない */
   private readonly cancelled = new Set<string>();
+  /** このランナーが受け付けて、止まった状態をまだ書いていないジョブ */
+  private readonly accepted = new Set<string>();
 
   constructor({ backend, store, log, now = () => new Date() }: ManualGenerationRunnerOptions) {
     this.backend = backend;
@@ -58,6 +60,7 @@ export class ManualGenerationRunner {
       { status: 'queued' },
       this.now(),
     );
+    this.accepted.add(spec.jobId);
     // 鎖につなぐ: バックエンドは1度に1つしか生成できず、並べて投げると後の依頼が先の生成を壊すため
     this.tail = this.tail.then(() => this.run(spec.jobId, request));
     return { jobId: spec.jobId };
@@ -100,6 +103,9 @@ export class ManualGenerationRunner {
       // 前の「止める」が付けた印は外さない: 二度押しでここへ来たとき（もう stopped と書いてある）に外すと、
       // 順番が来たときに印が見つからず、止めたはずの生成が走り出すため
       if (!alreadyCancelled) this.cancelled.delete(jobId);
+      if (state.status === 'running' && !this.accepted.has(jobId)) {
+        await this.stopOrphan(jobId, state.startedAt);
+      }
       return;
     }
     await this.store.writeState(jobId, {
@@ -110,7 +116,30 @@ export class ManualGenerationRunner {
     });
   }
 
+  /**
+   * 落ちたプロセスが running のまま残した手動のジョブを、人間の停止として止める。置かれた生成の画像は数える
+   */
+  // バックエンドに止めさせない: このプロセスでは誰も走らせておらず、止めさせると、いま走っている別のジョブの生成を切るため
+  private async stopOrphan(jobId: string, startedAt: string): Promise<void> {
+    const generation = await this.store.readGeneration(jobId, 1);
+    await this.store.writeState(jobId, {
+      status: 'stopped',
+      startedAt,
+      stoppedAt: this.now().toISOString(),
+      imagesGenerated: generation?.images.length ?? 0,
+      reason: HUMAN_STOP,
+    });
+  }
+
   private async run(jobId: string, request: GenerationRequest): Promise<void> {
+    try {
+      await this.generateOnce(jobId, request);
+    } finally {
+      this.accepted.delete(jobId);
+    }
+  }
+
+  private async generateOnce(jobId: string, request: GenerationRequest): Promise<void> {
     if (this.cancelled.delete(jobId)) return;
     const controller = new AbortController();
     this.running = { jobId, controller };
