@@ -5,8 +5,27 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { createApi, type ApiDeps } from '@drawroid/api';
 import { Hono } from 'hono';
 
+/** この端末を指す名前。ポートは問わない（開発中は Vite が localhost:5173 の Host のまま中継する） */
+const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
 export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps }) {
   const app = new Hono();
+  // この端末の名前以外の Host は断る: DNS rebinding で別のサイトの名前を 127.0.0.1 へ向け直されると、そのサイトの画面が
+  // 同じオリジンとして API を読み書きできる（LLM の設定の宛先を差し替えて、鍵をそこへ送らせる、など）ため
+  app.use('*', async (c, next) => {
+    if (!LOOPBACK_NAMES.has(new URL(c.req.url).hostname)) {
+      return c.json(
+        {
+          error: {
+            kind: 'forbidden_host',
+            message: 'drawroid は、この端末の名前（127.0.0.1・localhost）で開いたときだけ応える',
+          },
+        },
+        403,
+      );
+    }
+    await next();
+  });
   app.route('/api', createApi(deps));
   // 未知の /api/* を index.html で返さない: API の誤りが 200 の HTML に化けて、呼び手から見えなくなるため
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
