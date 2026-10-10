@@ -104,6 +104,7 @@ describe('UnattachedLlmCalls', () => {
       data: {
         input: { system: 'SYSTEM', user: [{ type: 'text', text: '10回まで' }] },
         budget: { estimatedInputTokens: 30, inputTokenLimit: 7000, notes: [] },
+        attempts: [],
         outcome: { ok: true, value: { maxIterations: 10 } },
       },
       error: undefined,
@@ -177,6 +178,7 @@ describe('ConversationLlmCalls', () => {
   const stored = {
     input: { system: '話す役のシステム', user: [{ type: 'text', text: '描けますか' }] },
     budget: { estimatedInputTokens: 30, inputTokenLimit: 7000, notes: [] },
+    attempts: [],
     outcome: { ok: true, value: { text: '描けます' } },
   };
 
@@ -259,6 +261,58 @@ describe('ConversationLlmCalls', () => {
     render(<ConversationLlmCalls conversationId="c-1" />);
 
     expect(screen.getByText(/読めない: 会話 c-1 は無い/)).toBeTruthy();
+  });
+});
+
+describe('the thinking in the detail of a call', () => {
+  const attempt = (extra: { reasoning?: string; validationError?: string } = {}) => ({
+    rawOutput: '{}',
+    usage: { inputTokens: 1, outputTokens: 1 },
+    durationMs: 1,
+    ...extra,
+  });
+  const detail = (attempts: ReturnType<typeof attempt>[]) => ({
+    input: { system: 'SYSTEM', user: [{ type: 'text', text: '10回まで' }] },
+    budget: { estimatedInputTokens: 30, inputTokenLimit: 7000, notes: [] },
+    attempts,
+    outcome: { ok: true, value: { maxIterations: 10 } },
+  });
+  async function open(attempts: ReturnType<typeof attempt>[]) {
+    mocks.useLlmCall.mockReturnValue({ data: detail(attempts), error: undefined });
+    render(<LlmCallList source={{ kind: 'job', jobId: 'j-1' }} calls={[call]} />);
+    await userEvent.setup().click(screen.getByText('中身を見る'));
+  }
+
+  it('shows a 思考 section with the thinking, before the result', async () => {
+    await open([attempt({ reasoning: '逆光にする' })]);
+
+    const heading = screen.getByRole('heading', { name: '思考' });
+    expect(screen.getByText('逆光にする')).toBeTruthy();
+    const result = screen.getByRole('heading', { name: '結果' });
+    expect(heading.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 試行が1つなら、何回目かは添えない
+    expect(screen.queryByText(/回目の試行/)).toBeNull();
+  });
+
+  it('says which attempt each thinking belongs to when there are two or more attempts', async () => {
+    await open([
+      attempt({ reasoning: '1回目の考え', validationError: 'スキーマに合わない' }),
+      attempt(),
+      attempt({ reasoning: '3回目の考え' }),
+    ]);
+
+    expect(screen.getByText('1 回目の試行')).toBeTruthy();
+    expect(screen.getByText('1回目の考え')).toBeTruthy();
+    // 思考の無い試行は出さない
+    expect(screen.queryByText('2 回目の試行')).toBeNull();
+    expect(screen.getByText('3 回目の試行')).toBeTruthy();
+    expect(screen.getByText('3回目の考え')).toBeTruthy();
+  });
+
+  it('shows no 思考 section when no attempt has thinking', async () => {
+    await open([attempt(), attempt()]);
+    expect(screen.getByRole('heading', { name: '結果' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '思考' })).toBeNull();
   });
 });
 

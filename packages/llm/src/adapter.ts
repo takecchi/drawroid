@@ -233,6 +233,11 @@ function summarizeIssues(error: z.ZodError): string {
 
 type RawResponse = { text: string; usage: LlmUsage };
 
+/** 試行に思考を足す。思考が流れなかった試行は、欄ごと省く（空文字を入れない） */
+function reasoningOf(reasoning: string): { reasoning?: string } {
+  return reasoning === '' ? {} : { reasoning };
+}
+
 type StreamedToolCall = { callId: string; name: string; input: unknown; invalid: boolean };
 
 /** 1回の呼び出しを流し終えたときの中身 */
@@ -380,8 +385,10 @@ export class AiSdkLlm implements LlmPort {
     for (let i = 0; i <= this.options.validationRetries; i += 1) {
       const started = this.now();
       let raw: RawResponse;
+      // 試行ごとに空から溜める: 前の試行の思考を混ぜないため
+      const thought = { text: '' };
       try {
-        raw = await this.callOnce(call, config, previousError);
+        raw = await this.callOnce(call, config, previousError, thought);
       } catch (error) {
         if (call.signal.aborted) throw error;
         const message = error instanceof Error ? error.message : String(error);
@@ -391,6 +398,7 @@ export class AiSdkLlm implements LlmPort {
             rawOutput: cut?.rawOutput ?? '',
             usage: cut?.usage ?? { inputTokens: null, outputTokens: null },
             durationMs: this.now() - started,
+            ...reasoningOf(thought.text),
           });
           return {
             ok: false,
@@ -402,6 +410,7 @@ export class AiSdkLlm implements LlmPort {
           rawOutput: '',
           usage: { inputTokens: null, outputTokens: null },
           durationMs: this.now() - started,
+          ...reasoningOf(thought.text),
         });
         return {
           ok: false,
@@ -415,7 +424,12 @@ export class AiSdkLlm implements LlmPort {
       try {
         const parsed = call.schema.safeParse(extractJson(raw.text));
         if (parsed.success) {
-          attempts.push({ rawOutput: raw.text, usage: raw.usage, durationMs });
+          attempts.push({
+            rawOutput: raw.text,
+            usage: raw.usage,
+            durationMs,
+            ...reasoningOf(thought.text),
+          });
           return { ok: true, value: parsed.data, attempts };
         }
         validationError = `スキーマに合わない: ${summarizeIssues(parsed.error)}`;
@@ -423,7 +437,13 @@ export class AiSdkLlm implements LlmPort {
         validationError = `JSON として読めない: ${error instanceof Error ? error.message : String(error)}`;
       }
       validationError = clip(validationError, ERROR_SUMMARY_LIMIT);
-      attempts.push({ rawOutput: raw.text, usage: raw.usage, durationMs, validationError });
+      attempts.push({
+        rawOutput: raw.text,
+        usage: raw.usage,
+        durationMs,
+        validationError,
+        ...reasoningOf(thought.text),
+      });
       previousError = validationError;
       if (i < this.options.validationRetries) call.onRetry?.();
     }
@@ -438,6 +458,8 @@ export class AiSdkLlm implements LlmPort {
     call: LlmCall<T>,
     config: RoleConfig,
     previousError: string | undefined,
+    // この試行で流れた思考を溜める入れ物: 途中で失敗して投げても、試行の記録に残せるようにするため
+    thought: { text: string },
   ): Promise<RawResponse> {
     const instructions =
       config.structuredOutput === 'native'
@@ -466,9 +488,11 @@ export class AiSdkLlm implements LlmPort {
       content,
       signal: call.signal,
       ...(output === undefined ? {} : { output }),
-      ...(onReasoning === undefined
-        ? {}
-        : { onEvent: (event) => event.kind === 'reasoning' && onReasoning(event.text) }),
+      onEvent: (event) => {
+        if (event.kind !== 'reasoning') return;
+        thought.text += event.text;
+        onReasoning?.(event.text);
+      },
     });
     // 上限で切れたものは別にする: スキーマに合わないとして同じ上限で出し直しても、同じ所で切れるため
     if (streamed.finishReason === 'length') {
@@ -704,6 +728,7 @@ export class AiSdkLlm implements LlmPort {
           rawOutput: '',
           usage: { inputTokens: null, outputTokens: null },
           durationMs: this.now() - started,
+          ...reasoningOf(reasoning),
         });
         yield { type: 'finish', attempts, failure };
         return;
@@ -736,19 +761,25 @@ export class AiSdkLlm implements LlmPort {
       }
       const rawOutput = rawOutputOf(streamed);
       if (streamed.finishReason === 'length') {
-        attempts.push({ rawOutput, usage: streamed.usage, durationMs });
+        attempts.push({ rawOutput, usage: streamed.usage, durationMs, ...reasoningOf(reasoning) });
         yield { type: 'finish', attempts, failure: this.cutAtLimitReason(call.role, undefined) };
         return;
       }
       const checked = checkToolCalls(toolCalls, call.tools);
       if (checked.ok) {
-        attempts.push({ rawOutput, usage: streamed.usage, durationMs });
+        attempts.push({ rawOutput, usage: streamed.usage, durationMs, ...reasoningOf(reasoning) });
         yield* checked.parts;
         yield { type: 'finish', attempts };
         return;
       }
       const validationError = clip(checked.error, ERROR_SUMMARY_LIMIT);
-      attempts.push({ rawOutput, usage: streamed.usage, durationMs, validationError });
+      attempts.push({
+        rawOutput,
+        usage: streamed.usage,
+        durationMs,
+        validationError,
+        ...reasoningOf(reasoning),
+      });
       previousError = validationError;
       if (i < this.options.validationRetries) yield { type: 'retry', reason: validationError };
     }
@@ -797,6 +828,8 @@ export class AiSdkLlm implements LlmPort {
       let streamed: Streamed;
       // 部分的な JSON から取り出して流した reply.text。確定したあとに、残りだけを出すため
       let emitted = '';
+      // この試行で流した思考。試行ごとに空から溜める（記録の attempts に載せる）
+      let reasoning = '';
       try {
         const stream = this.pumpStream(call.role, config, {
           instructions,
@@ -813,6 +846,7 @@ export class AiSdkLlm implements LlmPort {
           }
           const event = next.value;
           if (event.kind === 'reasoning') {
+            reasoning += event.text;
             yield { type: 'reasoning-delta', text: event.text };
             continue;
           }
@@ -833,6 +867,7 @@ export class AiSdkLlm implements LlmPort {
           rawOutput: '',
           usage: { inputTokens: null, outputTokens: null },
           durationMs: this.now() - started,
+          ...reasoningOf(reasoning),
         });
         yield { type: 'finish', attempts, failure };
         return;
@@ -840,7 +875,12 @@ export class AiSdkLlm implements LlmPort {
       const durationMs = this.now() - started;
       lastText = streamed.text;
       if (streamed.finishReason === 'length') {
-        attempts.push({ rawOutput: streamed.text, usage: streamed.usage, durationMs });
+        attempts.push({
+          rawOutput: streamed.text,
+          usage: streamed.usage,
+          durationMs,
+          ...reasoningOf(reasoning),
+        });
         yield { type: 'finish', attempts, failure: this.cutAtLimitReason(call.role, undefined) };
         return;
       }
@@ -849,7 +889,12 @@ export class AiSdkLlm implements LlmPort {
         const extracted = asStepOutput(extractJson(streamed.text), call.tools);
         const parsed = schema.safeParse(extracted);
         if (parsed.success) {
-          attempts.push({ rawOutput: streamed.text, usage: streamed.usage, durationMs });
+          attempts.push({
+            rawOutput: streamed.text,
+            usage: streamed.usage,
+            durationMs,
+            ...reasoningOf(reasoning),
+          });
           const value = parsed.data;
           if (value.kind === 'reply') {
             if (value.text.startsWith(emitted)) {
@@ -884,6 +929,7 @@ export class AiSdkLlm implements LlmPort {
         usage: streamed.usage,
         durationMs,
         validationError,
+        ...reasoningOf(reasoning),
       });
       previousError = validationError;
       if (i < this.options.validationRetries) yield { type: 'retry', reason: validationError };
