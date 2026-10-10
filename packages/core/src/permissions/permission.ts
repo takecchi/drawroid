@@ -69,6 +69,44 @@ export const permissionOverridesSchema = z
   .object(Object.fromEntries(PARAM_KEYS.map((key) => [key, schemaFor(key).optional()])))
   .strict() as unknown as z.ZodType<Partial<Permissions>>;
 
+const EXPECTED_TYPE_LABELS: Record<string, string> = {
+  object: 'オブジェクト',
+  array: '配列',
+  string: '文字列',
+  number: '数',
+  int: '整数',
+  boolean: '真偽値',
+};
+
+/**
+ * 許可の検証が落ちた理由を、短い日本語の文にする。どの欄の誤りかは、呼ぶ側が前に付ける。
+ */
+// zod の message をそのまま返さない: 英語の文が話す役や画面に渡り、何を直せばよいかが伝わらないため（「許可: Unrecognized keys」の実例）
+export function describePermissionIssue(issue: z.core.$ZodIssue): string {
+  switch (issue.code) {
+    case 'unrecognized_keys':
+      return `知らない欄（${issue.keys.join('・')}）`;
+    case 'invalid_union': {
+      if (issue.discriminator !== 'mode') return '形が違う';
+      // options は実行時には入るが、zod の型には無い
+      const modes = ((issue as { options?: readonly unknown[] }).options ?? []).map(String);
+      if (modes.length === 0) return '形が違う';
+      return `mode は ${modes.join('・')} のどれかで書く${modes.includes('off') ? '' : '（この欄は off にできない）'}`;
+    }
+    case 'invalid_type': {
+      const expected = EXPECTED_TYPE_LABELS[issue.expected];
+      return expected === undefined ? '形が違う' : `形が違う（${expected}で書く）`;
+    }
+    // 境目を含まない範囲を「以上」「以下」と書かない: 境目の値なら通るように読めるため
+    case 'too_small':
+      return `小さすぎる（${String(issue.minimum)} ${issue.inclusive === false ? 'より大きく' : '以上'}）`;
+    case 'too_big':
+      return `大きすぎる（${String(issue.maximum)} ${issue.inclusive === false ? 'より小さく' : '以下'}）`;
+    default:
+      return '形が違う';
+  }
+}
+
 /** 読めなかった上書きの行。param が '*' なら、上書き全体が読めなかった */
 export interface InvalidPermission {
   param: string;
@@ -104,7 +142,10 @@ export function readPermissionOverrides(raw: unknown): {
       continue;
     }
     const reason = parsed.error.issues
-      .map((issue) => `${issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}${issue.message}`)
+      .map(
+        (issue) =>
+          `${issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}${describePermissionIssue(issue)}`,
+      )
       .join(' / ');
     invalid.push({ param, reason });
   }
