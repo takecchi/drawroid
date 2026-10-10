@@ -5,6 +5,7 @@ import { isBackendError } from '../backend-error.js';
 import type { Budgets } from '../budget/settings.js';
 import type { JobStore } from '../job/store.js';
 import {
+  MAX_REFERENCES_PER_REQUEST,
   stopConditionsChangeSchema,
   stopConditionsSchema,
   type InterventionRecord,
@@ -163,6 +164,14 @@ async function readAttachments(
   conversationId: string,
   attachments: readonly { uploadId: string; note?: string | undefined }[],
 ): Promise<{ ok: true; references: NewReference[] } | { ok: false; reason: string }> {
+  // スキーマの max にしない: スキーマに合わない呼び出しは、理由を返さずに出力ごと出し直させるため、
+  // 話す役が「何枚までか」を知って人間に伝えられない
+  if (attachments.length > MAX_REFERENCES_PER_REQUEST) {
+    return {
+      ok: false,
+      reason: `添えた画像を参照画像にできるのは、1 回に ${MAX_REFERENCES_PER_REQUEST} 枚まで（${attachments.length} 枚あった）。使う画像を選んで、もう一度呼ぶ`,
+    };
+  }
   const references: NewReference[] = [];
   for (const attachment of attachments) {
     const upload = await conversations.readUpload(conversationId, attachment.uploadId);

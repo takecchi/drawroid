@@ -293,7 +293,49 @@ describe('start_drawing', () => {
     expect(outcome.ok).toBe(false);
     expect(await jobIds(jobs)).toEqual([]);
   });
+
+  it('copies as many attached images as a request takes', async () => {
+    const { jobs, runner, context, conversations, conversationId } = await setup();
+    const attachments = await uploads(conversations, conversationId, 4);
+
+    const outcome = await run('start_drawing', { request: '海辺', attachments }, context);
+
+    expect(outcome.ok).toBe(true);
+    const [jobId] = await jobIds(jobs);
+    expect(await jobs.listReferences(jobId!)).toHaveLength(4);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
+  it('refuses more attached images than a request takes, saying why, and makes no job', async () => {
+    const { jobs, context, conversations, conversationId } = await setup();
+    const attachments = await uploads(conversations, conversationId, 5);
+
+    const outcome = await run('start_drawing', { request: '海辺', attachments }, context);
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.summary).toContain('4 枚');
+    expect(await jobIds(jobs)).toEqual([]);
+  });
 });
+
+/** 会話に画像を count 枚添え、描くツールに渡す形で返す */
+async function uploads(
+  conversations: MemoryConversationStore,
+  conversationId: string,
+  count: number,
+): Promise<{ uploadId: string }[]> {
+  const attached: { uploadId: string }[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const uploadId = await conversations.addUpload(
+      conversationId,
+      { data: STUB_PNG, mediaType: 'image/png' },
+      new Date(),
+    );
+    attached.push({ uploadId });
+  }
+  return attached;
+}
 
 describe('revise_drawing and stop_drawing', () => {
   it('puts an instruction and a change of stop conditions on the drawing going on', async () => {
@@ -364,6 +406,42 @@ describe('revise_drawing and stop_drawing', () => {
 
     expect(revised.ok).toBe(false);
     expect(revised.summary).toContain('20261009-000000-none');
+    expect(await jobs.listReferences(jobId!)).toEqual([]);
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
+  it('adds as many attached images as a request takes', async () => {
+    const { jobs, context, runner, conversations, conversationId } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const attachments = await uploads(conversations, conversationId, 4);
+
+    const revised = await run('revise_drawing', { attachments }, context);
+
+    expect(revised.ok).toBe(true);
+    expect(await jobs.listReferences(jobId!)).toHaveLength(4);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
+  it('changes nothing when more images are attached than a request takes, saying why', async () => {
+    const { jobs, context, runner, conversations, conversationId } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const attachments = await uploads(conversations, conversationId, 5);
+
+    const revised = await run(
+      'revise_drawing',
+      { instruction: '逆光にして', attachments },
+      context,
+    );
+
+    expect(revised.ok).toBe(false);
+    expect(revised.summary).toContain('4 枚');
     expect(await jobs.listReferences(jobId!)).toEqual([]);
     expect(await jobs.listInterventions(jobId!)).toEqual([]);
     await untilRunning(jobs, jobId!);

@@ -192,6 +192,8 @@ export const carrySchema = z.object({
 });
 
 export const REFERENCE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+/** 1回の要求で添えられる参照画像の枚数。クローンが決めた値 */
+export const MAX_REFERENCES_PER_REQUEST = 4;
 
 /**
  * refs/<refId>.json の中身。人間が添えた参照画像1枚の、用途の言葉・要点・渡した印。画像そのものは refs/<refId>.<ext>。
