@@ -56,6 +56,7 @@ export {
   runDoctor,
   startManualJob,
   stopJob,
+  stopManualJob,
 } from './mutations.js';
 export type {
   AddInstructionResponse,

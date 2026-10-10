@@ -262,6 +262,12 @@ export async function stopJob(jobId: string): Promise<void> {
   await refreshJob(jobId);
 }
 
+/** 手動の生成を止める。走っている生成は切り、待っている生成は生成せずに止める */
+export async function stopManualJob(jobId: string): Promise<void> {
+  await unwrap<unknown>(() => client.jobs.manual[':jobId'].stop.$post({ param: { jobId } }));
+  await refreshJob(jobId);
+}
+
 /** 止まったジョブへは ApiError（status 409）、空の指示は 'invalid_request' を投げる */
 export async function addInstruction(jobId: string, text: string): Promise<AddInstructionResponse> {
   const added = await unwrap<AddInstructionResponse>(() =>
