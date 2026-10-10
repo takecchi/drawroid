@@ -898,6 +898,26 @@ describe('LlmSettings', () => {
     expect(alert).toContain('欄は 考える役に見せる候補の量（candidates.maxSize）。');
   });
 
+  // 欄の名前が1つとは限らない: 断る文が複数の欄を挙げても、どれも見出しで名指しする
+  it('names every budget field in the reason of the API, not only one of them', async () => {
+    const user = userEvent.setup();
+    mocks.saveLlmSettings.mockRejectedValue(
+      new ApiError(
+        'invalid_request',
+        'memory.think.maxSize と text.intent と text.intent を減らす',
+        400,
+      ),
+    );
+    render(<LlmSettings />);
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      '保存できない: 考える役に渡す記憶の量（memory.think.maxSize） と ' +
+        '依頼の要点の文字数（text.intent） と 依頼の要点の文字数（text.intent） を減らす',
+    );
+  });
+
   // 予算の欄でない英字は書き換えない: 設定の欄の道筋・環境変数・モデルの名前は、設定に書いた綴りのまま読めないと直せないため
   it('leaves the paths, variables and models in the reason of the API as they are', async () => {
     const user = userEvent.setup();

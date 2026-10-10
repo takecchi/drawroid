@@ -49,6 +49,8 @@ describe('selectMemory', () => {
     { tag: 'ネコ', gist: 'ねこ耳の少女' },
     { tag: 'ねこ', gist: 'ﾈｺ耳の少女' },
     { tag: 'ヴァイオリン', gist: 'ゔぁいおりんを弾く少女' },
+    { tag: 'ヶ月', gist: 'ゖ月間の旅' },
+    { tag: 'ゕ', gist: 'ヵ所の見直し' },
   ])('matches the tag $tag in "$gist" regardless of hiragana and katakana', ({ tag, gist }) => {
     const items = [item({ id: 'cat', tags: [tag] })];
 
@@ -63,12 +65,25 @@ describe('selectMemory', () => {
     { tag: 'はけ', gist: 'バケツを持つ少女' },
     { tag: 'ハン', gist: 'パンを食べる少女' },
     { tag: 'ビヨウイン', gist: 'びょういんの待合室' },
+    { tag: 'ハ', gist: 'バケツを持つ少女' },
+    { tag: 'ウ', gist: 'ヴァイオリンを弾く少女' },
   ])(
     'does not match the tag $tag in "$gist", which differs by a long vowel, voicing or small kana',
     ({ tag, gist }) => {
       const items = [item({ id: 'other', tags: [tag] })];
 
       const { selected } = selectMemory(items, gist, roomy);
+
+      expect(selected).toEqual([]);
+    },
+  );
+
+  it.each([[''], ['  '], ['　']])(
+    'does not pass a tagged item for the empty tag %j, which is in every request',
+    (tag) => {
+      const items = [item({ id: 'blank', tags: [tag] })];
+
+      const { selected } = selectMemory(items, '夕暮れの海辺に立つ少女', roomy);
 
       expect(selected).toEqual([]);
     },

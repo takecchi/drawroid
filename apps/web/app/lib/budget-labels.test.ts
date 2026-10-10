@@ -48,6 +48,12 @@ describe('the labels of the budget fields', () => {
     );
   });
 
+  it('does not replace an internal name that is only a part of a longer word or path', () => {
+    const sentence = 'text.intentional と providers.local.text.intent と imageLongEdgeX';
+
+    expect(nameBudgetFields(sentence)).toBe(sentence);
+  });
+
   // 添えられる枚数と読み違えないように: この欄は、ジョブに添えた参照画像のうち、新しいものから何件の要点を役に渡すか
   it('says the count of reference images is how many gists the roles get, newest first', () => {
     const label = budgetLabel('references.maxCount');
