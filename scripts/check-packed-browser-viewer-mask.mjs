@@ -263,9 +263,6 @@ try {
     // 8. 末尾にいる間は、行が増えても「新しい行」の印を出さない。上を読んでいる間に行が増えたら出し、押すと末尾へ戻る
     const logBox = page.getByRole('log', { name: '会話のログ' });
     const marker = page.getByRole('button', { name: '新しい行へ' });
-    const atEnd = () =>
-      page.evaluate(`(() => { const b = document.querySelector('[role="log"]');
-        return b.scrollTop + b.clientHeight >= b.scrollHeight - 4; })()`);
     const rowsNow = () =>
       page.evaluate(`document.querySelector('[role="log"] > div').children.length`);
     await logBox.hover();
@@ -282,7 +279,8 @@ try {
       `document.querySelector('[role="log"] > div').children.length > ${rowsAtEnd}`,
     );
     // 行が増えた瞬間ではなく、末尾へ寄せ直したあとで見る: 追従は行を描いたあとの effect で寄せるので、増えた瞬間はまだ末尾に
-    // 届いておらず、遅い機械ではそこを読んで落ちていたため。寄せ直さない退行は、この待ちが時間切れになって赤になる
+    // 届いておらず、遅い機械ではそこを読んで落ちていたため。寄せ直さない退行は、この待ちが時間切れになって赤になる。
+    // 寄せ直したのを見たあとに、末尾にいるかを読み直さない: ジョブは回り続けるので、その間にまた行が増えると、寄せる前を読んで落ちるため
     const caughtUp = await page
       .waitForFunction(
         `(() => { const b = document.querySelector('[role="log"]');
@@ -294,7 +292,7 @@ try {
       );
     const markerSeen = Number(await page.evaluate('window.__markerSeen'));
     expect(
-      markerSeen === 0 && caughtUp && Boolean(await atEnd()),
+      markerSeen === 0 && caughtUp,
       `${label}: 末尾にいる間は、行が増えても「新しい行」の印を出さず、末尾を追う（印 ${markerSeen} 回・末尾へ寄せ直した: ${caughtUp ? 'はい' : 'いいえ'}）`,
     );
     await page.mouse.wheel(0, -3_000);
