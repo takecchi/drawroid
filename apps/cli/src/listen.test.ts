@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import v8 from 'node:v8';
 
@@ -43,6 +44,28 @@ describe('listen', () => {
         req.end();
       });
       expect(status).toBe(403);
+    } finally {
+      server.close();
+    }
+  });
+
+  // 要求の行が絶対形（GET http://localhost/… HTTP/1.1）でも、Host の頭が別のサイトなら断る: 配り先は絶対形の URL を
+  // そのまま要求の URL にするので、URL だけを見ると Host の頭が素通りするため
+  it('refuses a request whose Host names another site, even when the request line names this machine', async () => {
+    const { server, address } = await listen({ port: 0, webRoot, deps: stubDeps() });
+    try {
+      const status = await new Promise<string>((resolve, reject) => {
+        const socket = net.connect(address.port, '127.0.0.1', () =>
+          socket.write(
+            `GET http://localhost:${address.port}/api/health HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n`,
+          ),
+        );
+        let data = '';
+        socket.on('data', (chunk) => (data += chunk.toString()));
+        socket.on('close', () => resolve(data.split('\r\n')[0] ?? ''));
+        socket.on('error', reject);
+      });
+      expect(status).toBe('HTTP/1.1 403 Forbidden');
     } finally {
       server.close();
     }
