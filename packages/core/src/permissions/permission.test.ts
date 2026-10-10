@@ -263,6 +263,17 @@ describe('readPermissionOverrides', () => {
     ]);
   });
 
+  // 欄の中の欄の誤りは、道を全部書かないとどこを直すか分からない。1行に誤りが2つあれば、2つとも書く
+  it('names the whole path of each problem in a row, and every problem of the row', () => {
+    const { invalid } = readPermissionOverrides({
+      loras: { mode: 'auto', choices: ['', 'a', ''] },
+    });
+
+    expect(invalid).toHaveLength(1);
+    const where = invalid[0]?.reason.split(' / ').map((problem) => problem.split(': ')[0]);
+    expect(where).toEqual(['choices.0', 'choices.2']);
+  });
+
   it('never gives an English sentence from the validator as the reason', () => {
     const rows: Record<string, unknown>[] = [
       { steps: {} },
