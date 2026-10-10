@@ -111,6 +111,66 @@ describe('narrowPermissions', () => {
     expect(!result.ok && result.reason).toContain(label);
   });
 
+  describe('a fixed Hires. fix, whose second pass names its own checkpoint, sampler and prompt', () => {
+    const humanWithHires = mergePermissions(human, {
+      hiresFix: { mode: 'auto' },
+      sampler: { mode: 'auto', choices: ['Euler a'] },
+      negativePrompt: { mode: 'fixed', value: 'lowres' },
+    });
+    const listsWithHires = {
+      ...lists,
+      upscaler: ['R-ESRGAN 4x+'],
+      sampler: ['Euler a', 'DPM++ 2M'],
+    };
+    const hires = (extra: Record<string, unknown>) => ({
+      hiresFix: {
+        mode: 'fixed',
+        value: {
+          upscaler: 'R-ESRGAN 4x+',
+          scale: 2,
+          steps: 0,
+          denoisingStrength: 0.4,
+          ...extra,
+        },
+      },
+    });
+
+    it.each([
+      [
+        'a checkpoint outside the human candidates',
+        { checkpoint: 'other.safetensors' },
+        'checkpoint',
+      ],
+      ['a sampler outside the human candidates', { sampler: 'DPM++ 2M' }, 'サンプラー'],
+      [
+        'a negative prompt other than the one the human fixed',
+        { negativePrompt: 'none' },
+        'ネガティブプロンプト',
+      ],
+    ] as const)('refuses %s, naming the parameter', (_, extra, label) => {
+      const result = narrowPermissions(humanWithHires, hires(extra), listsWithHires);
+
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reason).toContain(label);
+    });
+
+    it('takes a second pass that stays inside what the human allowed', () => {
+      expect(
+        narrowPermissions(
+          humanWithHires,
+          hires({ checkpoint: 'real.safetensors', sampler: 'Euler a', negativePrompt: 'lowres' }),
+          listsWithHires,
+        ),
+      ).toMatchObject({ ok: true });
+    });
+
+    it('takes a second pass that names nothing of its own', () => {
+      expect(narrowPermissions(humanWithHires, hires({}), listsWithHires)).toMatchObject({
+        ok: true,
+      });
+    });
+  });
+
   it('refuses a fixed value of the wrong shape', () => {
     expect(narrowPermissions(human, { steps: { mode: 'fixed', value: 'many' } }, lists).ok).toBe(
       false,
