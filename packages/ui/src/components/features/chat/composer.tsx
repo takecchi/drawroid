@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { COMPOSER_FIELD_ID } from '../../app-shell/skip-link';
 import { Button, Textarea } from '../../common';
 
 /** 発言に添える画像の1枚。url は縮小版に使う（呼び手が object URL を作り、外したら片付ける） */
@@ -164,6 +165,7 @@ export function ChatComposer({
           </>
         )}
         <Textarea
+          id={COMPOSER_FIELD_ID}
           aria-label="発言"
           value={value}
           onChange={(event) => onChange(event.target.value)}

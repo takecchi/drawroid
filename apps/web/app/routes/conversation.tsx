@@ -1,9 +1,16 @@
 import { useConversation } from '@drawroid/swr';
+import { COMPOSER_FIELD_ID } from '@drawroid/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
 import { ConversationView } from '../components/conversation-view';
+import type { SkipLinksHandle } from '../components/page-skip-links';
 import { apiConversationActions, apiConversationSource } from '../lib/conversation-api';
+
+// 会話はログが長くなり、発言欄はその後ろにある。ログを Tab で通り抜けずに発言欄へ行けるように
+export const handle: SkipLinksHandle = {
+  skipLinks: [{ targetId: COMPOSER_FIELD_ID, label: '発言欄へ移動' }],
+};
 
 export default function ConversationRoute() {
   const { conversationId = '' } = useParams();

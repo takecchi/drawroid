@@ -4,7 +4,12 @@ import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import type { Permissions } from '../permissions/permission.js';
 import { buildParamsSchema } from '../think/params-schema.js';
 import { DEFAULT_BUDGET } from './budget.js';
-import { buildJudgeOutputSchema, buildThinkOutputSchema, THINK_PARAM_KEYS } from './schemas.js';
+import {
+  buildJudgeOutputSchema,
+  buildJudgeRecordSchema,
+  buildThinkOutputSchema,
+  THINK_PARAM_KEYS,
+} from './schemas.js';
 
 const budget = DEFAULT_BUDGET;
 
@@ -77,6 +82,53 @@ describe('buildJudgeOutputSchema', () => {
     const output = valid(1);
     output.images[0] = { score: 1.5, issues: [] };
     expect(buildJudgeOutputSchema(1).safeParse(output).success).toBe(false);
+  });
+
+  // 「意図どおり」なのに意図に合っていない点数を付けた出力は、どちらかが誤り。止めてよいとして読まない
+  const judged = (scores: number[], canStop: boolean) => ({
+    images: scores.map((score) => ({ score, issues: [] })),
+    nextChange: '',
+    canStop,
+  });
+
+  it.each([[[0]], [[0.49]], [[0.49, 0.2]]])(
+    'rejects "can stop" when the best score of %j is below 0.5',
+    (scores) => {
+      const result = buildJudgeOutputSchema(scores.length).safeParse(judged(scores, true));
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.path).toEqual(['canStop']);
+    },
+  );
+
+  it.each([[[0.5]], [[0.9]], [[0.2, 0.5]]])(
+    'accepts "can stop" when the best score of %j is 0.5 or more',
+    (scores) => {
+      expect(buildJudgeOutputSchema(scores.length).safeParse(judged(scores, true)).success).toBe(
+        true,
+      );
+    },
+  );
+
+  it('accepts a low score that does not say it can stop', () => {
+    expect(buildJudgeOutputSchema(1).safeParse(judged([0], false)).success).toBe(true);
+  });
+
+  it('keeps the same JSON Schema for the model to follow', () => {
+    expect(z.toJSONSchema(buildJudgeOutputSchema(1))).toEqual(
+      z.toJSONSchema(buildJudgeRecordSchema(1)),
+    );
+  });
+});
+
+// 検査を入れる前に受け付けた記録（点数が低いまま止めてよいとしたもの）も、読み直せる
+describe('buildJudgeRecordSchema', () => {
+  it('reads a recorded judgement that said it can stop with a score of 0', () => {
+    const recorded = {
+      images: [{ score: 0, issues: [] }],
+      nextChange: '',
+      canStop: true,
+    };
+    expect(buildJudgeRecordSchema(1).safeParse(recorded).success).toBe(true);
   });
 });
 

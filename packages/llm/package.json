@@ -14,6 +14,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:incremental": "tsc -p tsconfig.build.json --incremental --tsBuildInfoFile dist/tsconfig.build.tsbuildinfo",
+    "dev": "pnpm run build:incremental --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +24,7 @@
     "@ai-sdk/openai-compatible": "^3.0.65",
     "@drawroid/core": "workspace:*",
     "ai": "^7.0.131",
+    "sharp": "^0.35.5",
     "zod": "catalog:"
   },
   "devDependencies": {

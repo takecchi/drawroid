@@ -3,6 +3,7 @@ import { MAIN_CONTENT_ID, SkipLink } from '@drawroid/ui';
 import type { ReactNode } from 'react';
 
 import './app.css';
+import { PageSkipLinks } from './components/page-skip-links';
 import { SiteNav } from './components/site-nav';
 
 export function meta() {
@@ -22,6 +23,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <SkipLink />
+        <PageSkipLinks />
         {/* 広い画面では行き先を左の脇に、本文をその右に並べる。狭い画面では上の帯の下に本文を積む */}
         <div className="md:flex">
           <SiteNav />
