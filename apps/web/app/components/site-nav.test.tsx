@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -75,6 +75,7 @@ describe('SiteNav', () => {
     await userEvent.keyboard('{Escape}');
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(menu);
+    // 閉じたすぐあとに確かめない: Radix は閉じた面の片づけの中から、タイマーで焦点を戻すため
+    await waitFor(() => expect(document.activeElement).toBe(menu));
   });
 });
