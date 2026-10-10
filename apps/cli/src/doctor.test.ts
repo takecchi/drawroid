@@ -39,16 +39,19 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
  * 小さな偽の LLM（OpenAI 互換、ストリーム）。ツールを渡されたら doctor_ping を呼び、そうでなければ確かめの JSON を返す。
  * 渡された画像の形式と中身を取っておき、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る。
  * rejectImages なら、画像を読めないモデル（mmproj の無い llama.cpp）と同じ文言の 400 で、どの画像も断る。
- * talkReply を渡したら、話す役の確かめ（doctor_ping を名指す要求）には、ツールを呼ばずにその本文を返す
+ * talkReply を渡したら、話す役の確かめ（doctor_ping を名指す要求）には、ツールを呼ばずにその本文を返す。
+ * thinkReply を渡したら、考える役の確かめ（ok を求める要求）には、その本文を返す
  */
 async function startLlm({
   rejectWebp,
   rejectImages = false,
   talkReply,
+  thinkReply,
 }: {
   rejectWebp: boolean;
   rejectImages?: boolean;
   talkReply?: string;
+  thinkReply?: string;
 }) {
   const imageTypes: string[] = [];
   const images: Buffer[] = [];
@@ -106,7 +109,12 @@ async function startLlm({
         res.write(chunk({}, 'tool_calls'));
       } else {
         const schema = JSON.stringify(request.response_format ?? {});
-        const content = schema.includes('"color"') ? '{"color":"red"}' : '{"ok":true}';
+        const content =
+          thinkReply !== undefined && body.includes('ok に true')
+            ? thinkReply
+            : schema.includes('"color"')
+              ? '{"color":"red"}'
+              : '{"ok":true}';
         res.write(chunk({ role: 'assistant', content }));
         res.write(chunk({}, 'stop'));
       }
@@ -225,7 +233,7 @@ describe('runDoctor', () => {
     expect(text).not.toContain(secret);
   });
 
-  it('checks each distinct assignment once: roles sharing a provider and model are checked together', async () => {
+  it('checks the thinking role together with the judge when they share a provider and model, and never with the talking role', async () => {
     const { url } = await closedUrl();
     const providers = {
       a: { type: 'openai-compatible', baseURL: `${url}/v1` },
@@ -262,9 +270,36 @@ describe('runDoctor', () => {
       },
     });
     const serverTrips = servers.text.split('\n').filter((line) => line.includes('1往復'));
-    expect(serverTrips).toHaveLength(2);
-    expect(serverTrips[0]).toContain('話す役・考える役（a の m');
-    expect(serverTrips[1]).toContain('見る役（b の m');
+    expect(serverTrips).toHaveLength(3);
+    expect(serverTrips[0]).toContain('話す役（a の m');
+    expect(serverTrips[1]).toContain('考える役（a の m');
+    expect(serverTrips[2]).toContain('見る役（b の m');
+  });
+
+  // 考える役の確かめ（{"ok": true}）には、実機（Qwen2.5-VL-3B・1.5B）は30回とも正しく答えた。崩れた本文として、
+  // 同じ実機の Qwen2.5-1.5B が doctor の話す役の確かめに返したもの（ok の欄が無い）を流す
+  it('checks the structured output of the thinking role even when it shares the model of the talking role', async () => {
+    const llm = await startLlm({
+      rejectWebp: false,
+      thinkReply: '{"kind":"reply","text":"pong"}',
+    });
+    const { text } = await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+        validationRetries: 0,
+        roles: {
+          // 話す役は考える役の割り当てを使う。見る役は同じモデルでも、構造化出力の出し方が違う
+          think: { provider: 'a', model: 'm', structuredOutput: 'text' },
+          judge: { provider: 'a', model: 'm', structuredOutput: 'native' },
+        },
+      },
+    });
+
+    expect(text).toMatch(/よい +話す役（a の m、/);
+    expect(text).toMatch(
+      /足りない +考える役（a の m、structuredOutput: text、.*スキーマに合わなかった/,
+    );
+    expect(text).toMatch(/よい +見る役（a の m、structuredOutput: native、/);
   });
 
   // 返す本文は、実機の llama.cpp（Qwen2.5-VL-3B・Qwen2.5-1.5B）が doctor の確かめに返したもの
@@ -428,9 +463,10 @@ describe('runDoctor', () => {
       },
     });
     const trips = text.split('\n').filter((line) => line.includes('1往復'));
+    // 全部の役が同じモデルでも、考える役は構造化出力で確かめる（見る役と出し方が同じなので、見る役の確かめに含める）
     expect(trips).toHaveLength(2);
-    expect(trips[0]).toMatch(/よい +話す役・考える役（a の m、.*1往復できた/);
-    expect(trips[1]).toMatch(/よい +見る役（a の m、.*画像を1枚渡して1往復できた/);
+    expect(trips[0]).toMatch(/よい +話す役（a の m、.*1往復できた/);
+    expect(trips[1]).toMatch(/よい +考える役・見る役（a の m、.*画像を1枚渡して1往復できた/);
   });
 
   it('passes the image only to the judge, and lists the roles as talk, think, judge', async () => {
