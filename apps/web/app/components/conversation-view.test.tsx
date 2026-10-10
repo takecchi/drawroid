@@ -1647,6 +1647,20 @@ describe('ConversationView', () => {
       fireEvent.pointerUp(canvas, { clientX: 256, clientY: 192, pointerId: 1 });
     }
 
+    // 窓を開いただけでは道具へ移さない。「マスクを塗る」を押したら、窓そのものではなく筆の太さへ移す
+    it('moves the focus to the brush size only once painting starts in the window', async () => {
+      const { user, dialog } = await startPainting();
+      expect(document.activeElement).not.toBe(dialog().queryByLabelText('筆の太さ（px）'));
+
+      dialog().getByRole('button', { name: 'マスクを塗る' }).focus();
+      await user.keyboard('{Enter}');
+
+      expect(document.activeElement).toBe(dialog().getByLabelText('筆の太さ（px）'));
+      expect(
+        dialog().getByText('キーボードでは塗れない（マウス・タッチ・ペンで塗る）。'),
+      ).toBeTruthy();
+    });
+
     it('says the original is loading before showing where to paint, then sends the mask through the same API as the job page', async () => {
       const { user, dialog } = await startPainting();
       await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
