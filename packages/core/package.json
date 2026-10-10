@@ -18,6 +18,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:incremental": "tsc -p tsconfig.build.json --incremental --tsBuildInfoFile dist/tsconfig.build.tsbuildinfo",
+    "dev": "pnpm run build:incremental --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
