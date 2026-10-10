@@ -306,15 +306,37 @@ describe('posting a message', () => {
     expect((await say(id, '   ')).status).toBe(400);
   });
 
-  const attachments = (count: number) =>
-    Array.from({ length: count }, (_, i) => ({ uploadId: `u-${i + 1}` }));
+  /** 会話に画像を count 枚置いて、発言に添える形で返す */
+  async function uploaded(id: string, count: number): Promise<{ uploadId: string }[]> {
+    const attachments: { uploadId: string }[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const uploadId = await store.addUpload(
+        id,
+        { data: STUB_PNG, mediaType: 'image/png' },
+        new Date(),
+      );
+      attachments.push({ uploadId });
+    }
+    return attachments;
+  }
+
+  async function expectRefusedTakingNothing(id: string, res: Response) {
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { kind: 'invalid_request' } });
+    const events = (await (await app.request(`/conversations/${id}/events`)).json()) as {
+      events: ConversationEvent[];
+    };
+    expect(events.events).toEqual([]);
+    expect(kicks).toEqual([]);
+  }
 
   it('takes a message with 4 images attached', async () => {
     const id = await newConversation();
+    const attachments = await uploaded(id, 4);
 
     const res = await json('POST', `/conversations/${id}/messages`, {
       text: '描いて',
-      attachments: attachments(4),
+      attachments,
     });
 
     expect(res.status).toBe(202);
@@ -322,7 +344,7 @@ describe('posting a message', () => {
       events: ConversationEvent[];
     };
     expect(events.events.map((e) => e.type === 'user.message' && e.attachments)).toEqual([
-      attachments(4),
+      attachments,
     ]);
   });
 
@@ -331,16 +353,63 @@ describe('posting a message', () => {
 
     const res = await json('POST', `/conversations/${id}/messages`, {
       text: '描いて',
-      attachments: attachments(5),
+      attachments: await uploaded(id, 5),
+    });
+
+    await expectRefusedTakingNothing(id, res);
+  });
+
+  // 添えた画像は、描き始めるときにこの会話から読む。読めない画像を添えた発言を受けると、話す役は添えてもらったと思い込むため
+  it.each([
+    ['an id no image has', async () => [{ uploadId: '20261010-000000-nothere' }]],
+    ['an image of another conversation', async () => uploaded(await newConversation(), 1)],
+    [
+      'an image of this conversation with one that is not',
+      async (id: string) => [...(await uploaded(id, 1)), { uploadId: '20261010-000000-nothere' }],
+    ],
+  ])('refuses an image that is not in this conversation, taking nothing: %s', async (_, made) => {
+    const id = await newConversation();
+    const attachments = await made(id);
+    kicks.length = 0;
+
+    const res = await json('POST', `/conversations/${id}/messages`, {
+      text: '描いて',
+      attachments,
+    });
+
+    await expectRefusedTakingNothing(id, res);
+  });
+
+  // 外から来た文字列をそのまま置き場所へ渡さない: 形と長さを先に見る
+  it.each([['../x'], ['x y'], ['..%2Fx'], ['A-1'], ['1'.repeat(65)]])(
+    'refuses an id that is not the form of an image id, without looking it up: %s',
+    async (uploadId) => {
+      const id = await newConversation();
+      const lookups = vi.spyOn(store, 'readUpload');
+
+      const res = await json('POST', `/conversations/${id}/messages`, {
+        text: '描いて',
+        attachments: [{ uploadId }],
+      });
+
+      await expectRefusedTakingNothing(id, res);
+      expect(lookups).not.toHaveBeenCalled();
+      lookups.mockRestore();
+    },
+  );
+
+  it('looks up a well-formed id of the longest length', async () => {
+    const id = await newConversation();
+    const lookups = vi.spyOn(store, 'readUpload');
+
+    const res = await json('POST', `/conversations/${id}/messages`, {
+      text: '描いて',
+      attachments: [{ uploadId: '1'.repeat(64) }],
     });
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: { kind: 'invalid_request' } });
-    const events = (await (await app.request(`/conversations/${id}/events`)).json()) as {
-      events: ConversationEvent[];
-    };
-    expect(events.events).toEqual([]);
-    expect(kicks).toEqual([]);
+    expect(lookups).toHaveBeenCalledWith(id, '1'.repeat(64));
+    lookups.mockRestore();
   });
 });
 
