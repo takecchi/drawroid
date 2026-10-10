@@ -20,7 +20,7 @@
 
   - LLM をまだ設定していなければ、3 行目の前に「drawroid: LLM が未設定。画面の「設定」の「LLM の設定」（/settings#llm）か PUT /api/settings/llm で設定するまで、自動ジョブは待ち行列に留まる」が出る
   - `pnpm build && pnpm start` でもよい（下の起動の指定も同じように続けて書ける。build していなければ起動せずに止まる）
-  - 開発中は `pnpm dev` で立ち上げ、http://localhost:5173/ を開く（`/api` は 7878 の drawroid へ中継される。データディレクトリは `DRAWROID_HOME=<dir> pnpm dev` で変える）
+  - 開発中は `pnpm dev` で立ち上げ、http://localhost:5173/ を開く（`/api` は 7878 の drawroid へ中継される。データディレクトリは `DRAWROID_HOME=<dir> pnpm dev` で変える。`pnpm dev` には下の起動の指定を渡せないので、別の Forge / A1111 を指すときは `<データディレクトリ>/config.json` の `backend.url` に書く）
 - 起動の指定（`pnpm drawroid` のあとに続ける。**`--` を挟まない**。挟むと「-- を挟まずに打つ（例: …）。-- のあとの指定は受け取らない」と出て落ちる）
   - `--backend-url http://<host>:<port>` — バックエンドの URL。古い名前の `--forge-url` も同じ意味で受ける（両方を付けると落ちる）
   - `--backend a1111` — A1111 に繋ぐ（省けば `forge`）。M6 の節を見る
