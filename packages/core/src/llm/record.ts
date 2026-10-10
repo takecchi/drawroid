@@ -27,7 +27,20 @@ export type LlmCallRecord = {
   budget: BudgetReport;
   attempts: LlmAttempt[];
   usage: { inputTokens: number | null; outputTokens: number | null };
+  /**
+   * 文字数。usage と違い、provider が返さなくても必ず数えられる。
+   * input は system と user のテキストの合計（画像は数えない）、output は試行ごとの生の出力の合計
+   */
+  chars: { input: number; output: number };
   outcome: { ok: true; value: unknown } | { ok: false; reason: string };
+};
+
+/**
+ * 保存先から読んだ記録。chars を持たない古い記録がある。
+ * 0 や推定で埋めず「不明」のまま扱う: 少なく見えて、減らす対象を見誤るため
+ */
+export type StoredLlmCallRecord = Omit<LlmCallRecord, 'chars'> & {
+  chars?: LlmCallRecord['chars'];
 };
 
 function sumOrNull(values: (number | null)[]): number | null {
@@ -69,6 +82,12 @@ export function toLlmCallRecord<T>(args: {
     usage: {
       inputTokens: sumOrNull(outcome.attempts.map((a) => a.usage.inputTokens)),
       outputTokens: sumOrNull(outcome.attempts.map((a) => a.usage.outputTokens)),
+    },
+    chars: {
+      input:
+        messages.system.length +
+        messages.user.reduce((sum, part) => sum + (part.type === 'text' ? part.text.length : 0), 0),
+      output: outcome.attempts.reduce((sum, a) => sum + a.rawOutput.length, 0),
     },
     outcome: outcome.ok
       ? { ok: true, value: outcome.value }

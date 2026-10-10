@@ -178,6 +178,7 @@ export function llmRecord(
     budget: { estimatedInputTokens: 1, inputTokenLimit: 2, notes: [] },
     attempts: [],
     usage: { inputTokens: 10, outputTokens: 5 },
+    chars: { input: 100, output: 20 },
     outcome: { ok: true, value: { answer: 'OUTCOME-VALUE' } },
     ...overrides,
   };

@@ -1,4 +1,4 @@
-import type { LlmCallRecord } from '@drawroid/core';
+import type { StoredLlmCallRecord } from '@drawroid/core';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
@@ -9,6 +9,8 @@ type Totals = {
   inputTokens: number | null;
   outputTokens: number | null;
   durationMs: number;
+  inputChars: number | null;
+  outputChars: number | null;
 };
 
 // 1つでも null なら null: 数えられなかった呼び出しを 0 として足すと、少なく見えて減らす対象を見誤るため
@@ -17,17 +19,19 @@ function sumOrNull(values: (number | null)[]): number | null {
   return values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
-function totalOf(records: LlmCallRecord[]): Totals {
+function totalOf(records: StoredLlmCallRecord[]): Totals {
   return {
     calls: records.length,
     inputTokens: sumOrNull(records.map((r) => r.usage.inputTokens)),
     outputTokens: sumOrNull(records.map((r) => r.usage.outputTokens)),
     durationMs: records.reduce((sum, r) => sum + r.durationMs, 0),
+    inputChars: sumOrNull(records.map((r) => r.chars?.input ?? null)),
+    outputChars: sumOrNull(records.map((r) => r.chars?.output ?? null)),
   };
 }
 
-function byIteration(records: LlmCallRecord[]) {
-  const groups = new Map<number | null, LlmCallRecord[]>();
+function byIteration(records: StoredLlmCallRecord[]) {
+  const groups = new Map<number | null, StoredLlmCallRecord[]>();
   for (const record of records) {
     groups.set(record.iteration, [...(groups.get(record.iteration) ?? []), record]);
   }
@@ -37,7 +41,7 @@ function byIteration(records: LlmCallRecord[]) {
 }
 
 // 中身（input・outcome の value）を入れない: 一覧は数を見る画面で、全呼び出しの入力を毎回運ぶと重いため。読むときは /:callId
-function summaryOf(r: LlmCallRecord) {
+function summaryOf(r: StoredLlmCallRecord) {
   return {
     callId: r.callId,
     iteration: r.iteration,
@@ -48,6 +52,7 @@ function summaryOf(r: LlmCallRecord) {
     startedAt: r.startedAt,
     durationMs: r.durationMs,
     usage: r.usage,
+    chars: r.chars ?? null,
     ok: r.outcome.ok,
     attempts: r.attempts.length,
   };

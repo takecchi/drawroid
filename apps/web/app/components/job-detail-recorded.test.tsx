@@ -213,9 +213,9 @@ describe('JobDetail with the recorded LLM calls (M3:93)', () => {
 
     const rows = callsIn(iterationArticle(1)).map((row) => row.textContent);
     expect(rows).toEqual([
-      '参照画像の要点 / scripted-judge / 入力 100 トークン / 出力 20 トークン / 1 ms / 成功 / 1 回試行中身を見る',
-      '考える役 / scripted-think / 入力 100 トークン / 出力 20 トークン / 1 ms / 成功 / 1 回試行中身を見る',
-      '見る役 / scripted-judge / 入力 100 トークン / 出力 20 トークン / 1 ms / 成功 / 1 回試行中身を見る',
+      '参照画像の要点 / scripted-judge / 入力 100 トークン / 出力 20 トークン / 入力 136 文字 / 出力 28 文字 / 1 ms / 成功 / 1 回試行中身を見る',
+      '考える役 / scripted-think / 入力 100 トークン / 出力 20 トークン / 入力 263 文字 / 出力 167 文字 / 1 ms / 成功 / 1 回試行中身を見る',
+      '見る役 / scripted-judge / 入力 100 トークン / 出力 20 トークン / 入力 193 文字 / 出力 118 文字 / 1 ms / 成功 / 1 回試行中身を見る',
     ]);
     const secondRows = callsIn(iterationArticle(2)).map((row) => row.textContent);
     expect(secondRows.map((text) => text?.split(' / ')[0])).toEqual(['考える役', '見る役']);
@@ -250,7 +250,8 @@ describe('JobDetail with the recorded LLM calls (M3:93)', () => {
       inTotals.getByText(
         (_, element) =>
           element?.tagName === 'P' &&
-          element.textContent === '6 回 / 入力 600 トークン / 出力 120 トークン / 6 ms',
+          element.textContent ===
+            '6 回 / 入力 600 トークン / 出力 120 トークン / 入力 1451 文字 / 出力 609 文字 / 6 ms',
       ),
     ).toBeTruthy();
     const rows = inTotals
@@ -262,9 +263,9 @@ describe('JobDetail with the recorded LLM calls (M3:93)', () => {
           .map((cell) => cell.textContent),
       );
     expect(rows).toEqual([
-      ['1 回目', '3', '300', '60', '3 ms'],
-      ['2 回目', '2', '200', '40', '2 ms'],
-      ['ジョブ単位', '1', '100', '20', '1 ms'],
+      ['1 回目', '3', '300', '60', '592', '313', '3 ms'],
+      ['2 回目', '2', '200', '40', '656', '279', '2 ms'],
+      ['ジョブ単位', '1', '100', '20', '203', '17', '1 ms'],
     ]);
   });
 
@@ -300,7 +301,14 @@ describe('JobDetail with the recorded LLM calls (M3:93)', () => {
       llmCalls: {
         calls: [],
         byIteration: [],
-        total: { calls: 0, inputTokens: 0, outputTokens: 0, durationMs: 0 },
+        total: {
+          calls: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          durationMs: 0,
+          inputChars: 0,
+          outputChars: 0,
+        },
         invalid: [],
       },
     });

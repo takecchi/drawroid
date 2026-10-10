@@ -1,4 +1,5 @@
 {
+  "chars": { "input": 263, "output": 167 },
   "callId": "20260101T000006000Z-000001",
   "iteration": 1,
   "role": "think",

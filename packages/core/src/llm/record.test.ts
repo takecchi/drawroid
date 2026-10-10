@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_BUDGET, DEFAULT_MODEL_WINDOW } from '../loop/budget.js';
 import { createCarry } from '../loop/carry.js';
 import { buildJudgeInput } from '../loop/inputs.js';
+import { sealMessages } from './port.js';
 import { toLlmCallRecord } from './record.js';
 
 const messages = buildJudgeInput({
@@ -69,5 +70,55 @@ describe('toLlmCallRecord', () => {
       outcome: { ok: true, value: {}, attempts: [attempt(100, 5), attempt(null, 7)] },
     });
     expect(unknown.usage.inputTokens).toBeNull();
+  });
+
+  describe('chars', () => {
+    const attempt = (rawOutput: string) => ({
+      rawOutput,
+      usage: { inputTokens: null, outputTokens: null },
+      durationMs: 1,
+    });
+    const sealed = sealMessages(
+      'ああああ',
+      [
+        { type: 'text', text: 'bbbbbb' },
+        {
+          type: 'image',
+          key: 'jobs/j1/iterations/0001/images/0',
+          data: new Uint8Array(8),
+          mediaType: 'image/webp',
+        },
+        { type: 'text', text: 'cc' },
+      ],
+      { estimatedInputTokens: 1, inputTokenLimit: 2, notes: [] },
+    );
+
+    it('counts the system and user text sent as input, and not images', () => {
+      const record = toLlmCallRecord({
+        ...base,
+        messages: sealed,
+        iteration: 1,
+        outcome: { ok: false, reason: 'x', attempts: [] },
+      });
+      expect(record.chars.input).toBe(4 + 6 + 2);
+    });
+
+    it('sums the raw output over every attempt, the way usage does', () => {
+      const record = toLlmCallRecord({
+        ...base,
+        iteration: 1,
+        outcome: { ok: true, value: {}, attempts: [attempt('12345'), attempt('あい')] },
+      });
+      expect(record.chars.output).toBe(7);
+    });
+
+    it('records zero output chars when no attempt produced output', () => {
+      const record = toLlmCallRecord({
+        ...base,
+        iteration: 1,
+        outcome: { ok: false, reason: 'x', attempts: [] },
+      });
+      expect(record.chars.output).toBe(0);
+    });
   });
 });

@@ -32,6 +32,11 @@ function tokens(value: number | null): string {
   return value === null ? '不明' : String(value);
 }
 
+/** 文字数の無い記録（文字数を残す前のもの）は「不明」: 0 と書くと、短い入出力だったように読めるため */
+function charsLabel(label: '入力' | '出力', value: number | null | undefined): string {
+  return `${label} ${value === null || value === undefined ? '不明' : value} 文字`;
+}
+
 /** jobId が null なら、ジョブに属さない呼び出し */
 function CallBody({ jobId, callId }: { jobId: string | null; callId: string }) {
   const { data, error } = useLlmCall(jobId, callId);
@@ -98,6 +103,7 @@ export function LlmCallList({
           <Item key={call.callId} className="block">
             {PURPOSE_LABELS[call.purpose]} / {call.model} / 入力 {tokens(call.usage.inputTokens)}{' '}
             トークン / 出力 {tokens(call.usage.outputTokens)} トークン /{' '}
+            {charsLabel('入力', call.chars?.input)} / {charsLabel('出力', call.chars?.output)} /{' '}
             {formatDuration(call.durationMs)} / {call.ok ? '成功' : '失敗'} / {call.attempts} 回試行
             <CallDetails jobId={jobId} callId={call.callId} />
           </Item>
@@ -107,7 +113,14 @@ export function LlmCallList({
   );
 }
 
-const TOTAL_COLUMNS = ['呼び出し', '入力トークン', '出力トークン', '時間'] as const;
+const TOTAL_COLUMNS = [
+  '呼び出し',
+  '入力トークン',
+  '出力トークン',
+  '入力文字数',
+  '出力文字数',
+  '時間',
+] as const;
 
 export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total' | 'byIteration'>) {
   return (
@@ -118,6 +131,8 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
           `${total.calls} 回`,
           `入力 ${tokens(total.inputTokens)} トークン`,
           `出力 ${tokens(total.outputTokens)} トークン`,
+          charsLabel('入力', total.inputChars),
+          charsLabel('出力', total.outputChars),
           formatDuration(total.durationMs),
         ].map((part, i) => (
           <span key={i}>
@@ -150,6 +165,8 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
                 String(row.calls),
                 tokens(row.inputTokens),
                 tokens(row.outputTokens),
+                tokens(row.inputChars),
+                tokens(row.outputChars),
                 formatDuration(row.durationMs),
               ].map((value, i) => (
                 <TableCell
@@ -182,7 +199,8 @@ export function UnattachedLlmCalls() {
         <>
           <p className="text-sm">
             {data.total.calls} 回 / 入力 {tokens(data.total.inputTokens)} トークン / 出力{' '}
-            {tokens(data.total.outputTokens)} トークン / {formatDuration(data.total.durationMs)}
+            {tokens(data.total.outputTokens)} トークン / {charsLabel('入力', data.total.inputChars)}{' '}
+            / {charsLabel('出力', data.total.outputChars)} / {formatDuration(data.total.durationMs)}
           </p>
           {data.calls.length === 0 ? (
             <EmptyState title="まだ無い。" />
