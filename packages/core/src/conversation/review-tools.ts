@@ -80,7 +80,11 @@ export function createReviewTools(deps: ReviewToolDeps): TalkTool[] {
     jobId: string | undefined,
   ): Promise<{ spec: AutoJobSpec } | { problem: string }> {
     if (jobId !== undefined) {
-      const spec = await deps.jobs.readJob(jobId).catch(() => undefined);
+      // 読めないものはまとめて「この会話のものではない」にする: 置き場所は形の悪い jobId を同期で投げて断るので、
+      // .catch だけでは拾えず、道具そのものが投げてしまうため
+      const spec = await Promise.resolve()
+        .then(() => deps.jobs.readJob(jobId))
+        .catch(() => undefined);
       if (spec?.kind !== 'auto' || spec.conversationId !== conversationId) {
         return { problem: `ジョブ ${jobId} はこの会話のジョブではない` };
       }
