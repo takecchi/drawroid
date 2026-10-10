@@ -415,8 +415,11 @@ describe('assembleDrawroid with budgets that do not fit the window', () => {
 describe('assembleDrawroid, telling what it compared and reading the window once when saving LLM settings', () => {
   type ModelsHandler = (res: import('node:http').ServerResponse) => void;
 
-  /** /v1/models の問い合わせの数を数える偽の LLM を立てて、window を書かない設定を PUT する */
-  async function saveWith(models: ModelsHandler) {
+  /** /v1/models の問い合わせの数を数える偽の LLM を立てて、設定を PUT する。roles を省けば window を書かない */
+  async function saveWith(
+    models: ModelsHandler,
+    roles: Record<string, unknown> = { think: { provider: 'local', model: 'm' } },
+  ) {
     let asked = 0;
     const llm = createServer((req, res) => {
       if (req.url === '/v1/models') {
@@ -439,7 +442,7 @@ describe('assembleDrawroid, telling what it compared and reading the window once
           providers: {
             local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${port}/v1` },
           },
-          roles: { think: { provider: 'local', model: 'm' } },
+          roles,
         }),
       });
       return {
@@ -478,6 +481,23 @@ describe('assembleDrawroid, telling what it compared and reading the window once
 
   it('saves without any note when the window could be read', async () => {
     const saved = await saveWith(answersWith(65536));
+
+    expect(saved.status).toBe(200);
+    expect(Object.keys(saved.body).sort()).toEqual(['apiKeyEnv', 'config']);
+  });
+
+  // 窓を書いた役は、/v1/models が読めなくても比べられている。読めなかったことだけで知らせない
+  it('saves without any note when every role writes its window, even though /v1/models fails', async () => {
+    const saved = await saveWith(
+      (res) => {
+        res.statusCode = 500;
+        res.end();
+      },
+      {
+        think: { provider: 'local', model: 'm', contextTokens: 65536 },
+        judge: { provider: 'local', model: 'v', contextTokens: 65536 },
+      },
+    );
 
     expect(saved.status).toBe(200);
     expect(Object.keys(saved.body).sort()).toEqual(['apiKeyEnv', 'config']);

@@ -25,6 +25,13 @@ const focusHolds = (element: Element) =>
 const expectFocusMovesTo = (element: Element) =>
   waitFor(() => expect(focusHolds(element)).toBe(true));
 
+// 移さないことは、すぐに確かめるだけでは、遅れて移す形を見逃す。しばらく待ってからもう一度確かめる
+const expectFocusStaysOn = async (element: Element) => {
+  expect(document.activeElement).toBe(element);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(element);
+};
+
 /** 形の合った節。返事の形の試験で、1つの欄だけを違えるための土台 */
 const okSection = { title: 'LLM', items: [{ ok: true, what: '考える役と1往復できた' }] };
 
@@ -149,7 +156,7 @@ describe('DoctorCheck', () => {
       await act(async () => settle());
 
       expect(await screen.findByText(outcome)).toBeTruthy();
-      expect(document.activeElement).toBe(field);
+      await expectFocusStaysOn(field);
       expect((field as HTMLInputElement).value).toBe('abc');
     },
   );

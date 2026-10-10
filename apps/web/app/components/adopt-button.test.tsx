@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { adoptImage, ApiError } from '@drawroid/swr';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +22,13 @@ afterEach(() => {
 // findBy* が文を見つけた時点ではまだ走っていないことがある
 const expectFocusMovesTo = (element: Element) =>
   waitFor(() => expect(document.activeElement).toBe(element));
+
+// 移さないことは、すぐに確かめるだけでは、遅れて移す形を見逃す。しばらく待ってからもう一度確かめる
+const expectFocusStaysOn = async (element: Element) => {
+  expect(document.activeElement).toBe(element);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(element);
+};
 
 function renderButton() {
   render(
@@ -125,7 +132,7 @@ describe('AdoptButton', () => {
   });
 
   // 押していないのに決まった（開き直した・会話で決まった）ときは、印へフォーカスを移さない
-  it('leaves the focus alone when the image was chosen without being pressed here', () => {
+  it('leaves the focus alone when the image was chosen without being pressed here', async () => {
     const props = {
       jobId: JOB,
       image: { iteration: 2, index: 0 },
@@ -139,7 +146,7 @@ describe('AdoptButton', () => {
     rerender(<AdoptButton {...props} chosen />);
 
     expect(screen.getByText('この画像に決めた')).toBeTruthy();
-    expect(document.activeElement).toBe(elsewhere);
+    await expectFocusStaysOn(elsewhere);
     elsewhere.remove();
   });
 
@@ -156,14 +163,14 @@ describe('AdoptButton', () => {
   });
 
   // 画像の行が新しく出ただけ（描いている途中に画像が増えた）では、フォーカスを奪わない
-  it('does not take the focus when it appears', () => {
+  it('does not take the focus when it appears', async () => {
     const elsewhere = document.createElement('button');
     document.body.append(elsewhere);
     elsewhere.focus();
 
     renderButton();
 
-    expect(document.activeElement).toBe(elsewhere);
+    await expectFocusStaysOn(elsewhere);
     elsewhere.remove();
   });
 
@@ -177,11 +184,15 @@ describe('AdoptButton', () => {
     const { rerender } = render(<AdoptButton {...props} imageLabel="2 回目の画像 1 番" />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
+    // 形が替わったときの一度の移しを待ってから、ほかの所へ移る: 待たないと、遅れて届いた一度目を取り戻したと読んでしまう
     if (decide) {
       await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
-      await screen.findByText('この画像に決めた');
+      await expectFocusMovesTo(await screen.findByText('この画像に決めた'));
     } else {
       await user.click(screen.getByRole('button', { name: 'やめる' }));
+      await expectFocusMovesTo(
+        screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
+      );
     }
     const elsewhere = document.createElement('button');
     document.body.append(elsewhere);
@@ -189,7 +200,7 @@ describe('AdoptButton', () => {
 
     rerender(<AdoptButton {...props} imageLabel="2 回目の画像 1 番" />);
 
-    expect(document.activeElement).toBe(elsewhere);
+    await expectFocusStaysOn(elsewhere);
     elsewhere.remove();
   });
 });

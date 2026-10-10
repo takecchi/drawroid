@@ -22,6 +22,13 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
+// 移さないことは、すぐに確かめるだけでは、遅れて移す形を見逃す。しばらく待ってからもう一度確かめる
+const expectFocusStaysOn = async (element: Element) => {
+  expect(document.activeElement).toBe(element);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(element);
+};
+
 let setVerdict: (verdict: SelectionVerdict | null) => void = () => undefined;
 
 /**
@@ -71,7 +78,7 @@ describe('ChooseAsFavorite focus', () => {
   });
 
   // 開き直したとき（はじめから決めてある）は、印へフォーカスを移さない
-  it('leaves the focus alone when the image was chosen before', () => {
+  it('leaves the focus alone when the image was chosen before', async () => {
     const elsewhere = document.createElement('button');
     document.body.append(elsewhere);
     elsewhere.focus();
@@ -79,7 +86,7 @@ describe('ChooseAsFavorite focus', () => {
     render(<CardAndRow initial="favorite" />);
 
     expect(screen.getAllByText('この画像に決めた（お気に入り）')).toHaveLength(2);
-    expect(document.activeElement).toBe(elsewhere);
+    await expectFocusStaysOn(elsewhere);
     elsewhere.remove();
   });
 
@@ -98,7 +105,7 @@ describe('ChooseAsFavorite focus', () => {
     act(() => setVerdict('favorite'));
 
     expect(screen.getAllByText('この画像に決めた（お気に入り）')).toHaveLength(2);
-    expect(document.activeElement).toBe(elsewhere);
+    await expectFocusStaysOn(elsewhere);
     elsewhere.remove();
   });
 });
