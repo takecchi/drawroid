@@ -63,7 +63,10 @@ const human = mergePermissions(basicPermissions({ width: 512, height: 512 }), {
   checkpoint: { mode: 'auto', choices: ['anime.safetensors'] },
 });
 
-async function setup(store: FsJobStore = new FsJobStore(root)) {
+async function setup(
+  store: FsJobStore = new FsJobStore(root),
+  drawingRunner?: DrawingToolDeps['runner'],
+) {
   const conversations = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store: conversations });
   const jobs: JobStore = bridgeJobEvents(store, { hubs });
@@ -77,7 +80,7 @@ async function setup(store: FsJobStore = new FsJobStore(root)) {
   const { conversationId } = await conversations.createConversation(new Date());
   const tools = createDrawingTools({
     jobs,
-    runner,
+    runner: drawingRunner ?? runner,
     conversations,
     humanPermissions: async () => human,
     candidateNames: async (kind) =>
@@ -633,6 +636,55 @@ describe('revise_drawing and stop_drawing', () => {
       await run('stop_drawing', {}, context);
       await runner.idle();
     }
+  });
+
+  // 1つの会話で走るジョブは同時に1つのはずだが、2つあっても、答えるジョブと直す・止めるジョブを食い違わせない。
+  // 新しく始めた方を、人がいま話しているジョブとみなす
+  it('answers about, revises and stops the same job, the latest of the jobs going on', async () => {
+    const suffixes = ['aaaaaa', 'bbbbbb'];
+    const store = new FsJobStore(root, { randomSuffix: () => suffixes.shift() ?? 'cccccc' });
+    // 実行器はジョブを回さず、直す・止めるよう言われたジョブを覚えるだけ
+    const revisedJobs: string[] = [];
+    const stoppedJobs: string[] = [];
+    const drawingRunner: DrawingToolDeps['runner'] = {
+      kick: () => undefined,
+      stop: async (jobId) => {
+        stoppedJobs.push(jobId);
+      },
+      adopt: async () => {
+        throw new Error('この試験では採らない');
+      },
+      revise: async (jobId) => {
+        revisedJobs.push(jobId);
+        return { references: [] };
+      },
+    };
+    const { jobs, context } = await setup(store, drawingRunner);
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const older = '20261009-063012-aaaaaa';
+    const spec = await jobs.readJob(older);
+    if (spec.kind !== 'auto') throw new Error(`${older} は自動ジョブのはず`);
+    await jobs.createJob(
+      { ...spec, request: '夕焼け' },
+      await jobs.readState(older),
+      new Date('2026-10-09T06:30:12.000Z'),
+    );
+    const newer = '20261009-063012-bbbbbb';
+    expect((await jobs.readState(newer)).status).not.toBe('stopped');
+    const status = toolIn(
+      createReadOnlyTools({ jobs } as unknown as ReadOnlyToolDeps),
+      'drawing_status',
+    );
+
+    const answered = await status.run({}, context.talk);
+    const revised = await run('revise_drawing', { instruction: '逆光にして' }, context);
+    const stopped = await run('stop_drawing', {}, context);
+
+    expect(answered.result).toContain(`ジョブ ${newer}`);
+    expect(revised.summary).toContain(`ジョブ ${newer}`);
+    expect(revisedJobs).toEqual([newer]);
+    expect(stopped.summary).toContain(`ジョブ ${newer}`);
+    expect(stoppedJobs).toEqual([newer]);
   });
 
   it('describes when to call each tool in its definition, not in a system prompt', () => {

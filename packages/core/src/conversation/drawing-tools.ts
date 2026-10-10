@@ -49,14 +49,8 @@ export async function currentJobOfConversation(
   jobs: Pick<JobStore, 'listJobIds' | 'readJob' | 'readState'>,
   conversationId: string,
 ): Promise<string | undefined> {
-  let latest: string | undefined;
-  for (const jobId of (await jobs.listJobIds()).sort().reverse()) {
-    const spec = await jobs.readJob(jobId);
-    if (spec.kind !== 'auto' || spec.conversationId !== conversationId) continue;
-    latest ??= jobId;
-    if ((await jobs.readState(jobId)).status !== 'stopped') return jobId;
-  }
-  return latest;
+  const { active, latest } = await findJobsOfConversation(jobs, conversationId);
+  return active ?? latest;
 }
 
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
@@ -64,13 +58,24 @@ export async function activeJobOfConversation(
   jobs: Pick<JobStore, 'listJobIds' | 'readJob' | 'readState'>,
   conversationId: string,
 ): Promise<string | undefined> {
-  for (const jobId of await jobs.listJobIds()) {
+  return (await findJobsOfConversation(jobs, conversationId)).active;
+}
+
+/** 会話のジョブのうち、走っているものの最新（active）と、止まったものも含めた最新（latest） */
+// 走っているものが2つあっても新しい方を取る: drawing_status が答えるジョブと、直す・止めるジョブを食い違わせないため。
+// 新しく始めた方が、人がいま話しているジョブなので
+async function findJobsOfConversation(
+  jobs: Pick<JobStore, 'listJobIds' | 'readJob' | 'readState'>,
+  conversationId: string,
+): Promise<{ active?: string; latest?: string }> {
+  let latest: string | undefined;
+  for (const jobId of (await jobs.listJobIds()).sort().reverse()) {
     const spec = await jobs.readJob(jobId);
     if (spec.kind !== 'auto' || spec.conversationId !== conversationId) continue;
-    const state = await jobs.readState(jobId);
-    if (state.status !== 'stopped') return jobId;
+    latest ??= jobId;
+    if ((await jobs.readState(jobId)).status !== 'stopped') return { active: jobId, latest };
   }
-  return undefined;
+  return { latest };
 }
 
 /**
