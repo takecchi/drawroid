@@ -40,21 +40,25 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
  * 渡された画像の形式と中身を取っておき、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る。
  * rejectImages なら、画像を読めないモデル（mmproj の無い llama.cpp）と同じ文言の 400 で、どの画像も断る。
  * talkReply を渡したら、話す役の確かめ（doctor_ping を名指す要求）には、ツールを呼ばずにその本文を返す。
+ * talkReplies を渡したら、話す役の確かめの n 回目に n 番目の本文を返す（null の回と、並びより後の回は doctor_ping を呼ぶ）。
  * thinkReply を渡したら、考える役の確かめ（ok を求める要求）には、その本文を返す
  */
 async function startLlm({
   rejectWebp,
   rejectImages = false,
   talkReply,
+  talkReplies = [],
   thinkReply,
 }: {
   rejectWebp: boolean;
   rejectImages?: boolean;
   talkReply?: string;
+  talkReplies?: (string | null)[];
   thinkReply?: string;
 }) {
   const imageTypes: string[] = [];
   const images: Buffer[] = [];
+  const talk = { requests: 0 };
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (chunk: Buffer) => (body += chunk.toString()));
@@ -89,8 +93,11 @@ async function startLlm({
       const chunk = (delta: object, finish: string | null = null) =>
         `data: ${JSON.stringify({ id: 'c', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       res.writeHead(200, { 'content-type': 'text/event-stream' });
-      if (talkReply !== undefined && body.includes('doctor_ping')) {
-        res.write(chunk({ role: 'assistant', content: talkReply }));
+      const isTalk = body.includes('doctor_ping');
+      const reply = isTalk ? (talkReplies[talk.requests] ?? talkReply) : undefined;
+      if (isTalk) talk.requests += 1;
+      if (reply !== undefined && reply !== null) {
+        res.write(chunk({ role: 'assistant', content: reply }));
         res.write(chunk({}, 'stop'));
       } else if ((request.tools ?? []).length > 0) {
         res.write(
@@ -127,6 +134,7 @@ async function startLlm({
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
     imageTypes,
     images,
+    talk,
   };
 }
 
@@ -302,6 +310,51 @@ describe('runDoctor', () => {
     expect(text).toMatch(/よい +見る役（a の m、structuredOutput: native、/);
   });
 
+  // 実機の llama.cpp（Qwen2.5-1.5B、toolCalling: native）は、同じ確かめに、呼んだり空の応答を返したりした。
+  // 崩れた回に返す本文は、実機が doctor の確かめに返したもの
+  describe('how many times the talking role is asked to call the tool', () => {
+    async function talkCheck(talkReplies: (string | null)[]) {
+      const llm = await startLlm({ rejectWebp: false, talkReplies });
+      const { report } = await setup({
+        llm: {
+          providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+          roles: { think: { provider: 'a', model: 'm' } },
+        },
+      });
+      const item = report.sections
+        .find(({ title }) => title === 'LLM')
+        ?.items.find(({ what }) => what.includes('話す役'));
+      return { item: item!, requests: llm.talk.requests };
+    }
+
+    it('is fine only when the tool is called three times in a row, asking exactly three times', async () => {
+      const { item, requests } = await talkCheck([]);
+
+      expect(item.ok).toBe(true);
+      expect(item.what).toContain('3回続けて1往復できた');
+      expect(requests).toBe(3);
+    });
+
+    it.each([
+      ['a reply in words the second time', [null, 'doctor_ping'], 2, '文で返した: 「doctor_ping」'],
+      ['an empty reply the third time', [null, null, ''], 3, '文も返さなかった'],
+    ] as const)('is lacking, naming the round, on %s', async (_, replies, round, said) => {
+      const { item, requests } = await talkCheck([...replies]);
+
+      expect(item.ok).toBe(false);
+      expect(item.what).toContain(`3回のうち${round}回目`);
+      expect(item.what).toContain(said);
+      expect(requests).toBe(round);
+    });
+
+    it('stops asking at the first round that breaks', async () => {
+      const { item, requests } = await talkCheck(['doctor_ping']);
+
+      expect(item.ok).toBe(false);
+      expect(requests).toBe(1);
+    });
+  });
+
   // 返す本文は、実機の llama.cpp（Qwen2.5-VL-3B・Qwen2.5-1.5B）が doctor の確かめに返したもの
   describe('when the talking role does not call the tool', () => {
     async function talkItem(
@@ -329,6 +382,13 @@ describe('runDoctor', () => {
       expect(item.what).toContain('文も返さなかった');
       expect(item.what).not.toContain('「」');
       expect(item.todo).toContain('toolCalling を json にする');
+    });
+
+    it('says the reply was empty when it held only blanks', async () => {
+      const item = await talkItem({ toolCalling: 'native', structuredOutput: 'native' }, '  \n');
+
+      expect(item.what).toContain('文も返さなかった');
+      expect(item.what).not.toContain('「');
     });
 
     it('quotes the reply, and points native tool calling to json', async () => {

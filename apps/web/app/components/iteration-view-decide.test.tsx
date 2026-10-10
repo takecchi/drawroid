@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { adoptImage } from '@drawroid/swr';
+import { ApiError, adoptImage } from '@drawroid/swr';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -57,5 +57,35 @@ describe('IterationList when deciding stops the job', () => {
     } as unknown as Iteration;
     rerender(list(true, recorded));
     expect(document.activeElement).toBe(screen.getByText('この画像に決めた'));
+  });
+
+  // 決められなかった画像は、決めた画像として扱わない: 止まったら、お気に入りで決められるようにする
+  it('lets an image that failed to decide be settled through the favorite once the job stops', async () => {
+    vi.mocked(adoptImage).mockRejectedValue(
+      new ApiError('conflict', '絵がもう止まっていて、画像 1-0 を採れなかった', 409),
+    );
+    const user = userEvent.setup();
+    const list = (stopped: boolean) => (
+      <IterationList
+        jobId="job-1"
+        heading="回"
+        iterations={[iteration]}
+        calls={[]}
+        verdicts={new Map()}
+        adopt={{ stopped }}
+      />
+    );
+    const { rerender } = render(list(false));
+    screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }).focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    await screen.findByText('決められない: 絵がもう止まっていて、画像 1-0 を採れなかった');
+
+    rerender(list(true));
+    expect(
+      screen.getByRole('button', {
+        name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番',
+      }),
+    ).toBeTruthy();
   });
 });

@@ -13,6 +13,8 @@ import { startFakeLlm } from './packed-conversation/llm.mjs';
 import { freePort, packAndInstall, repoRoot, startDrawroid } from './packed-install-core.mjs';
 
 const FIXTURES = join(repoRoot, 'packages/backend-forge/src/test-support/fixtures');
+/** doctor が話す役にツールを続けて呼ばせる回数（apps/cli/src/doctor.ts の TALK_PING_ROUNDS） */
+const DOCTOR_TALK_ROUNDS = 3;
 // 鍵の値。doctor の出力に出てはいけない
 const SECRET = 'sk-doctor-secret-value';
 
@@ -109,7 +111,7 @@ try {
   forge = await startFakeForge({ fixturesDir: FIXTURES, genMs: 10 });
   llm = await startFakeLlm({ stopAfterIterations: 1 });
   for (const toolCalling of /** @type {const} */ (['native', 'json'])) {
-    llm.queueTalkTool('doctor_ping', {});
+    llm.queueTalkTool('doctor_ping', {}, DOCTOR_TALK_ROUNDS);
     const { code, output } = await runDoctor(
       bin,
       join(work, `doctor-ok-${toolCalling}`),
@@ -149,7 +151,7 @@ try {
 
   // doctor: 考える役・見る役・話す役が別のモデル。役ごとに1往復を確かめ、見る役には画像を渡す
   {
-    llm.queueTalkTool('doctor_ping', {});
+    llm.queueTalkTool('doctor_ping', {}, DOCTOR_TALK_ROUNDS);
     const { code, output } = await runDoctor(
       bin,
       join(work, 'doctor-roles'),
@@ -177,7 +179,7 @@ try {
   {
     const blind = await startFakeLlm({ stopAfterIterations: 1, rejectImages: true });
     try {
-      blind.queueTalkTool('doctor_ping', {});
+      blind.queueTalkTool('doctor_ping', {}, DOCTOR_TALK_ROUNDS);
       const { code, output } = await runDoctor(
         bin,
         join(work, 'doctor-blind-judge'),
