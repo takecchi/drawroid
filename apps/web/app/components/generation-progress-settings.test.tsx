@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -30,6 +30,11 @@ beforeEach(() => {
 const box = () =>
   screen.getByRole<HTMLInputElement>('checkbox', { name: '生成の途中の画像を出す' });
 
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
+
 describe('GenerationProgressSettings', () => {
   it('shows the stored setting, off by default, with what turning it on costs', () => {
     render(<GenerationProgressSettings />);
@@ -56,14 +61,13 @@ describe('GenerationProgressSettings', () => {
     await user.click(box());
     const first = await screen.findByText(SAVED);
     expect(first.getAttribute('role')).toBe('status');
-    expect(document.activeElement).toBe(first);
+    await expectFocusMovesTo(first);
 
     box().focus();
     expect(document.activeElement).toBe(box());
     await user.click(box());
 
-    const second = await screen.findByText(SAVED);
-    expect(document.activeElement).toBe(second);
+    await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
   it('saves off when it is turned off', async () => {

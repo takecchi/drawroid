@@ -2,7 +2,7 @@
 import { describeInputOverflow, findInputOverflows, resolveBudgets } from '@drawroid/core';
 import { ApiError, type BudgetSettingsResponse } from '@drawroid/swr';
 import { Button } from '@drawroid/ui';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -45,6 +45,11 @@ const input = (path: string) =>
   screen.getByLabelText<HTMLInputElement>((name) => name.endsWith(`（${path}）`));
 const saveButton = () => screen.getByRole('button', { name: '予算を保存' });
 
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
+
 describe('BudgetSettings', () => {
   // 保存しても欄の見た目は変わらないので、通ったことを出し、フォーカスをその知らせへ移す。欄を触ったら消す
   it('says it saved and moves the focus there, until the person edits a field again', async () => {
@@ -57,8 +62,7 @@ describe('BudgetSettings', () => {
     saveButton().focus();
     await user.keyboard('{Enter}');
 
-    const note = await screen.findByText(SAVED);
-    expect(document.activeElement).toBe(note);
+    await expectFocusMovesTo(await screen.findByText(SAVED));
 
     await user.type(input('imageLongEdge'), '0');
     expect(screen.queryByText(SAVED)).toBeNull();
@@ -71,13 +75,13 @@ describe('BudgetSettings', () => {
 
     saveButton().focus();
     await user.keyboard('{Enter}');
-    expect(document.activeElement).toBe(await screen.findByText(SAVED));
+    await expectFocusMovesTo(await screen.findByText(SAVED));
 
     saveButton().focus();
     expect(document.activeElement).toBe(saveButton());
     await user.keyboard('{Enter}');
 
-    expect(document.activeElement).toBe(await screen.findByText(SAVED));
+    await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
   it('shows an empty field for every number of the defaults, with the default as the placeholder', () => {
