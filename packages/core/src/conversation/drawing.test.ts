@@ -408,6 +408,22 @@ describe('summarizeJobForTalk', () => {
     expect(summary).not.toContain('人が選んだ');
   });
 
+  it('does not double the full stop when the next change already ends with one', () => {
+    const state = (nextChange: string): JobState => ({
+      ...running(1),
+      carry: {
+        intent: '海辺の少女',
+        completedIterations: 1,
+        latest: { ...carriedResult(1, 0.5), nextChange },
+      },
+    });
+
+    for (const nextChange of ['背景を明るくする', '背景を明るくする。', '背景を明るくする。。']) {
+      const summary = summarizeJobForTalk('job-1', state(nextChange), { chars: 600 });
+      expect(summary).toContain('次に変えること: 背景を明るくする。依頼の要点');
+    }
+  });
+
   it('stays within its budget however many iterations the job has run', () => {
     const lengths = [1, 30, 300].map(
       (n) => summarizeJobForTalk('job-1', running(n), { chars: 600 }).length,

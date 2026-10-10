@@ -322,8 +322,10 @@ export function summarizeJobForTalk(
           : `最良は ${image}で ${best.score.toFixed(2)}（${issues}）。`,
       );
     }
-    if (carry.latest !== undefined && carry.latest.nextChange.trim() !== '') {
-      parts.push(`次に変えること: ${clip(carry.latest.nextChange.trim(), 120)}。`);
+    // 句点を落としてから付ける: 見る役の nextChange は「…。」で終わることがあり、そのまま付けると「。。」になるため
+    const nextChange = (carry.latest?.nextChange ?? '').trim().replace(/[\s。]+$/u, '');
+    if (nextChange !== '') {
+      parts.push(`次に変えること: ${clip(nextChange, 120)}。`);
     }
     parts.push(`依頼の要点: ${carry.intent}`);
   }
