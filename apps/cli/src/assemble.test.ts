@@ -371,3 +371,88 @@ describe('assembleDrawroid with budgets that do not fit the window', () => {
     expect(written.join('')).not.toContain('窓に入らない');
   });
 });
+
+// 窓を書かずに LLM の設定を保存したとき: 窓は /v1/models から読む。読めなかったら比べられなかったことを応答で返し、読みは1回で済ませる
+describe('assembleDrawroid, saving LLM settings that leave the window out', () => {
+  type ModelsHandler = (res: import('node:http').ServerResponse) => void;
+
+  /** /v1/models の問い合わせの数を数える偽の LLM を立てて、window を書かない設定を PUT する */
+  async function saveWith(models: ModelsHandler) {
+    let asked = 0;
+    const llm = createServer((req, res) => {
+      if (req.url === '/v1/models') {
+        asked += 1;
+        models(res);
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) => llm.listen(0, '127.0.0.1', resolve));
+    const { port } = llm.address() as AddressInfo;
+    try {
+      const listening = await start();
+      const started = Date.now();
+      const response = await fetch(`http://127.0.0.1:${listening.address.port}/api/settings/llm`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          providers: {
+            local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${port}/v1` },
+          },
+          roles: { think: { provider: 'local', model: 'm' } },
+        }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as Record<string, unknown>,
+        asked: () => asked,
+        elapsedMs: Date.now() - started,
+      };
+    } finally {
+      llm.closeAllConnections();
+      await new Promise((resolve) => llm.close(resolve));
+    }
+  }
+
+  const answersWith = (nCtx: number): ModelsHandler => (res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ data: [{ id: 'm', meta: { n_ctx: nCtx } }] }));
+  };
+
+  it('saves and says in the response that it did not compare with the window when /v1/models fails', async () => {
+    const saved = await saveWith((res) => {
+      res.statusCode = 500;
+      res.end();
+    });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body).toHaveProperty('config');
+    expect(saved.body).toHaveProperty('apiKeyEnv');
+    const note = JSON.stringify(saved.body);
+    expect(note).toContain('窓と比べなかった');
+    expect(note).toContain('考える役');
+    expect(note).toContain('見る役');
+  });
+
+  it('saves without any note when the window could be read', async () => {
+    const saved = await saveWith(answersWith(65536));
+
+    expect(saved.status).toBe(200);
+    expect(Object.keys(saved.body).sort()).toEqual(['apiKeyEnv', 'config']);
+  });
+
+  it('asks /v1/models once per save when the window can be read', async () => {
+    const saved = await saveWith(answersWith(65536));
+
+    expect(saved.asked()).toBe(1);
+  });
+
+  it('asks /v1/models once per save, and returns in about one timeout, when the server does not answer', async () => {
+    const saved = await saveWith(() => undefined);
+
+    expect(saved.status).toBe(200);
+    expect(saved.asked()).toBe(1);
+    expect(saved.elapsedMs).toBeLessThan(8000);
+  }, 30_000);
+});

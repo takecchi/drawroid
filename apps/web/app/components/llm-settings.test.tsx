@@ -699,6 +699,59 @@ describe('LlmSettings', () => {
     expect(screen.queryByText('保存した。次に話しかけたときから、この設定を使う。')).toBeNull();
   });
 
+  // 保存は通っているので、成功の表示は残したまま、窓と比べなかったことを添える
+  describe('when the server says it did not compare the budgets with the window', () => {
+    const SAVED = '保存した。次に話しかけたときから、この設定を使う。';
+    const NOT_COMPARED =
+      '窓と比べなかった。理由: 考える役・見る役の文脈の上限が分からない（LLM の /v1/models から読めなかった）';
+
+    it('shows the reason under the note that it saved', async () => {
+      mocks.saveLlmSettings.mockResolvedValue({ ...stored, windowNotCompared: NOT_COMPARED });
+      const user = userEvent.setup();
+      render(<LlmSettings />);
+
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      expect(await screen.findByText(SAVED)).toBeTruthy();
+      expect(screen.getByText(NOT_COMPARED)).toBeTruthy();
+    });
+
+    it('takes the reason back once the person edits the settings again', async () => {
+      mocks.saveLlmSettings.mockResolvedValue({ ...stored, windowNotCompared: NOT_COMPARED });
+      const user = userEvent.setup();
+      render(<LlmSettings />);
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+      await screen.findByText(NOT_COMPARED);
+
+      await user.type(input('考える役のモデル'), '-next');
+
+      expect(screen.queryByText(NOT_COMPARED)).toBeNull();
+    });
+
+    it('shows no reason when the response has none', async () => {
+      const user = userEvent.setup();
+      render(<LlmSettings />);
+
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      expect(await screen.findByText(SAVED)).toBeTruthy();
+      expect(screen.queryByText(/窓と比べなかった/)).toBeNull();
+    });
+
+    it('does not carry the reason of one save over to the next save without one', async () => {
+      mocks.saveLlmSettings.mockResolvedValueOnce({ ...stored, windowNotCompared: NOT_COMPARED });
+      const user = userEvent.setup();
+      render(<LlmSettings />);
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+      await screen.findByText(NOT_COMPARED);
+
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      await waitFor(() => expect(screen.queryByText(NOT_COMPARED)).toBeNull());
+      expect(screen.getByText(SAVED)).toBeTruthy();
+    });
+  });
+
   // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る（読み上げは移った先を読む）
   it('moves the focus to the note that it saved', async () => {
     const user = userEvent.setup();
