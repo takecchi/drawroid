@@ -46,6 +46,8 @@ export interface DoctorOptions {
   backendUrl: string | undefined;
   // backendUrl をどこから得たか。省けば CLI 引数とみなす（走っている drawroid は、画面で繋ぎ直した値を渡す）
   backendUrlSource?: keyof typeof URL_SOURCES;
+  // drawroid doctor から呼んだか、設定の画面の「確かめる」から呼んだか。doctor の打ち方の案内は CLI にだけ出す
+  caller: 'cli' | 'screen';
   env: Readonly<Record<string, string | undefined>>;
   webRoot: () => string;
   backendTimeoutMs?: number;
@@ -293,7 +295,7 @@ async function checkBackend(
     section.items.push({
       ok: false,
       what: `繋がらない: ${where}: ${messageOf(error)}`,
-      todo: backendTodo(error, label, source),
+      todo: backendTodo(error, label, source, options.caller),
     });
     return section;
   }
@@ -314,14 +316,20 @@ async function checkBackend(
   return section;
 }
 
-function backendTodo(error: unknown, label: string, source: keyof typeof URL_SOURCES): string {
+function backendTodo(
+  error: unknown,
+  label: string,
+  source: keyof typeof URL_SOURCES,
+  caller: DoctorOptions['caller'],
+): string {
   const kind = isBackendError(error) ? error.kind : undefined;
   switch (kind) {
     case 'unreachable':
       return `${label} を --api を付けて起動する。別の場所で動いているなら、--backend-url か画面の「設定」の「バックエンド」で URL を直す${
         // 既定の URL を見ているときだけ足す: drawroid doctor は待ち受け中の drawroid に聞かず、自分の引数と config.json から
-        // URL を決める。起動にだけ付けた --backend-url は見えず、言われたとおりに直しても同じ所に戻ってくる
-        source === 'default'
+        // URL を決める。起動にだけ付けた --backend-url は見えず、言われたとおりに直しても同じ所に戻ってくる。
+        // 画面の「確かめる」には足さない: 待ち受け中の drawroid が使っている URL そのものを確かめるので、doctor の引数は関わらない
+        caller === 'cli' && source === 'default'
           ? '。drawroid を --backend-url を付けて起動しているなら、drawroid doctor にも同じ --backend-url を付ける'
           : ''
       }`;

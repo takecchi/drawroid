@@ -110,6 +110,7 @@ async function setup(config: unknown, overrides: Partial<DoctorOptions> = {}) {
     configPath,
     backendKind: undefined,
     backendUrl: 'http://127.0.0.1:9',
+    caller: 'cli',
     env: {},
     webRoot: () => webRoot,
     backendTimeoutMs: 2_000,
@@ -364,6 +365,7 @@ describe('runDoctor', () => {
   it('tells to give doctor the same --backend-url only when it could not reach the default URL', async () => {
     const hint = 'drawroid doctor にも同じ --backend-url を付ける';
     // 何も指定しない doctor は既定の URL を見る。起動にだけ付けた --backend-url は見えない
+    // 既定の 7860 の代わりに、何も待ち受けない :9 を既定として渡す: 手元で Forge が 7860 にいると繋がってしまうため
     const byDefault = await setup(undefined, { backendUrlSource: 'default' });
     expect(byDefault.text).toMatch(/足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（既定）/);
     expect(byDefault.text).toContain(hint);
@@ -374,6 +376,15 @@ describe('runDoctor', () => {
       /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（--backend-url で指定）/,
     );
     expect(byFlag.text).not.toContain(hint);
+  });
+
+  it('does not tell the screen to give doctor --backend-url, even when it could not reach the default URL', async () => {
+    const hint = 'drawroid doctor にも同じ --backend-url を付ける';
+    // 画面の「確かめる」の入り方: 待ち受け中の drawroid が使っている URL と、その出所を渡す
+    const fromScreen = await setup(undefined, { backendUrlSource: 'default', caller: 'screen' });
+    expect(fromScreen.text).toMatch(/足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（既定）/);
+    expect(fromScreen.text).toContain('--api を付けて起動する');
+    expect(fromScreen.text).not.toContain(hint);
   });
 
   it('does not tell to give doctor --backend-url when the URL came from config.json or from doctor own --backend-url', async () => {
