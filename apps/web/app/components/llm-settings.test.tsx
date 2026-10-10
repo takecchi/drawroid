@@ -141,6 +141,8 @@ describe('LlmSettings', () => {
     expect(saved.roles.think.provider).toBe('local');
     expect(saved.roles.judge.provider).toBe('local');
     expect(saved.roles.talk.provider).toBe('local');
+    // 自動で持たせたかどうかは画面の中だけの印で、保存する形には載せない
+    expect(saved.roles.think).not.toHaveProperty('providerPinned');
   });
 
   it('keeps the provider each role showed as chosen when a second name is typed into a row added before', async () => {
@@ -168,8 +170,22 @@ describe('LlmSettings', () => {
     expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('local');
   });
 
-  // 役に名前を持たせるのは、2つ目の「名前」が付いたときだけ。空白だけの行や、同じ名前を貼った行は2つ目に数えない。
-  // 数えると、その行を外して1つに戻ったあとも役に古い名前が残り、残った1つの名前を打ち直すと「（定義に無い）」になる
+  // 役に名前を持たせるのは、2つ目の「名前」が付いたときだけ。空白だけの行や、同じ名前を貼った行は2つ目の名前ではない
+  it('keeps following the only provider while a row of only spaces is left, as its name is typed further', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の名前'), '  ');
+
+    await user.type(input('provider local の名前'), '2');
+
+    expect(input('考える役の provider').value).toBe('local2');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('local2');
+  });
+
   it.each([
     [
       'only spaces',
@@ -203,6 +219,115 @@ describe('LlmSettings', () => {
       expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('lm');
     },
   );
+
+  // 2つ目の名前が付いたときに役へ持たせた名前は、人が選んだものではない。1つに戻ったら外し、1つだけのときの既定に戻す
+  it.each([
+    [
+      'taken away',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('button', { name: 'provider cloud を外す' })),
+    ],
+    [
+      'cleared of its name',
+      (user: ReturnType<typeof userEvent.setup>) => user.clear(input('provider cloud の名前')),
+    ],
+  ])(
+    'lets every role follow the only provider again when the second one is %s, and its name is typed again',
+    async (_, backToOne) => {
+      const user = userEvent.setup();
+      mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+      render(<LlmSettings />);
+      await user.type(input('provider 1番目 の名前'), 'local');
+      await user.click(screen.getByLabelText('見る役も考える役と同じモデルを使う'));
+      await user.click(screen.getByLabelText('話す役（会話）も考える役と同じモデルを使う'));
+
+      await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+      await user.type(input('provider 2番目 の名前'), 'cloud');
+      expect(input('考える役の provider').value).toBe('local');
+      await backToOne(user);
+      await user.clear(input('provider local の名前'));
+      await user.type(input('provider 1番目 の名前'), 'lm');
+
+      for (const role of ['考える役', '見る役', '話す役']) {
+        expect(input(`${role}の provider`).value).toBe('lm');
+      }
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+      const saved = mocks.saveLlmSettings.mock.calls[0]?.[0];
+      expect([
+        saved.roles.think.provider,
+        saved.roles.judge.provider,
+        saved.roles.talk.provider,
+      ]).toEqual(['lm', 'lm', 'lm']);
+    },
+  );
+
+  it('lets the roles follow the one left when the provider they were given is taken away', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の名前'), 'cloud');
+
+    await user.click(screen.getByRole('button', { name: 'provider local を外す' }));
+
+    expect(input('考える役の provider').value).toBe('cloud');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('cloud');
+  });
+
+  it('keeps the provider a role was saved with when a second one comes and goes', async () => {
+    const user = userEvent.setup();
+    const { local } = stored.config!.providers;
+    mocks.useLlmSettings.mockReturnValue({
+      data: {
+        config: {
+          ...stored.config!,
+          providers: { local },
+          roles: { think: stored.config!.roles.think },
+        },
+        apiKeyEnv: {},
+      },
+      error: undefined,
+    });
+    render(<LlmSettings />);
+
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の名前'), 'cloud');
+    await user.click(screen.getByRole('button', { name: 'provider cloud を外す' }));
+    await user.clear(input('provider local の名前'));
+    await user.type(input('provider 1番目 の名前'), 'lm');
+
+    expect(input('考える役の provider').value).toBe('local');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('local');
+  });
+
+  // 人が選んだ名前は、たまたま自動で持たせる名前と同じでも外さない
+  it('keeps the provider a person chose when the second one is taken away, while the roles left alone follow the only one', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.click(screen.getByLabelText('見る役も考える役と同じモデルを使う'));
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の名前'), 'cloud');
+
+    const think = screen.getByRole('combobox', { name: '考える役の provider' });
+    await user.selectOptions(think, 'cloud');
+    await user.selectOptions(think, 'local');
+    await user.click(screen.getByRole('button', { name: 'provider cloud を外す' }));
+    await user.clear(input('provider local の名前'));
+    await user.type(input('provider 1番目 の名前'), 'lm');
+
+    expect(input('考える役の provider').value).toBe('local');
+    expect(within(think).getByRole('option', { name: 'local（定義に無い）' })).toBeTruthy();
+    expect(input('見る役の provider').value).toBe('lm');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    const saved = mocks.saveLlmSettings.mock.calls[0]?.[0];
+    expect(saved.roles.think.provider).toBe('local');
+    expect(saved.roles.judge.provider).toBe('lm');
+  });
 
   it('does not choose for the person when two providers are defined and the role has none', async () => {
     const user = userEvent.setup();

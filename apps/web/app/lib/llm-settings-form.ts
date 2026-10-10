@@ -25,6 +25,8 @@ export interface ProviderRow {
 
 export interface RoleValues {
   provider: string;
+  /** provider を画面が自動で持たせたか（2つ目の名前が付いたとき）。人が選んだ値と分けるための画面の中だけの印で、保存しない */
+  providerPinned: boolean;
   model: string;
   contextTokens: string;
   maxOutputTokens: string;
@@ -56,6 +58,7 @@ export function emptyProviderRow(): ProviderRow {
 function roleToValues(role: StoredRole | undefined): RoleValues {
   return {
     provider: role?.provider ?? '',
+    providerPinned: false,
     model: role?.model ?? '',
     contextTokens: role?.contextTokens === undefined ? '' : String(role.contextTokens),
     maxOutputTokens: role?.maxOutputTokens === undefined ? '' : String(role.maxOutputTokens),
@@ -152,7 +155,7 @@ export function roleProviderOf(role: RoleValues, names: readonly string[]): stri
 /**
  * provider の並びを差し替えた値。名前が1つだけだったところに2つ目の名前が付くなら、既定で選んである provider
  * （1つだけのときの名前）を役の値として持たせる。持たせないと、2つ目の名前が付いた途端に既定が効かなくなり、
- * 選んで見えていた役が「選ぶ」に戻るため
+ * 選んで見えていた役が「選ぶ」に戻るため。名前が1つ以下に戻ったら、自動で持たせた値は外して既定に戻す
  */
 function withProviders(
   values: LlmSettingsFormValues,
@@ -160,13 +163,20 @@ function withProviders(
 ): LlmSettingsFormValues {
   const before = definedProviderNames(values.providers);
   // 名前が1つのまま変わるとき（打ち直し）は持たせない: 持たせると、1文字打つごとに古い名前が「（定義に無い）」で残るため
-  if (before.length !== 1 || definedProviderNames(providers).length < 2) {
-    return { ...values, providers };
+  if (definedProviderNames(providers).length < 2) {
+    return {
+      ...values,
+      providers,
+      think: unpinned(values.think),
+      judge: unpinned(values.judge),
+      talk: unpinned(values.talk),
+    };
   }
-  const pin = (role: RoleValues): RoleValues => ({
-    ...role,
-    provider: roleProviderOf(role, before),
-  });
+  if (before.length !== 1) return { ...values, providers };
+  const pin = (role: RoleValues): RoleValues =>
+    role.provider.trim() === ''
+      ? { ...role, provider: before[0] ?? '', providerPinned: true }
+      : role;
   return {
     ...values,
     providers,
@@ -174,6 +184,11 @@ function withProviders(
     judge: pin(values.judge),
     talk: pin(values.talk),
   };
+}
+
+// 人が選んだ値は外さない: 定義に無くなっても「（定義に無い）」で見せ、保存でサーバが理由付きで断る
+function unpinned(role: RoleValues): RoleValues {
+  return role.providerPinned ? { ...role, provider: '', providerPinned: false } : role;
 }
 
 export function withProviderAdded(values: LlmSettingsFormValues): LlmSettingsFormValues {
@@ -188,6 +203,16 @@ export function withProviderChanged(
   return withProviders(
     values,
     values.providers.map((current, i) => (i === index ? row : current)),
+  );
+}
+
+export function withProviderRemoved(
+  values: LlmSettingsFormValues,
+  index: number,
+): LlmSettingsFormValues {
+  return withProviders(
+    values,
+    values.providers.filter((_, i) => i !== index),
   );
 }
 

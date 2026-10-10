@@ -28,6 +28,7 @@ import {
   unnamedProviderRowNumber,
   withProviderAdded,
   withProviderChanged,
+  withProviderRemoved,
   type LlmSettingsFormValues,
   type ProviderRow,
   type ProviderType,
@@ -70,7 +71,9 @@ function RoleFields({
         <Field label="provider">
           <Select
             value={provider}
-            onChange={(event) => onChange({ ...values, provider: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...values, provider: event.target.value, providerPinned: false })
+            }
             aria-label={`${label}の provider`}
             className="w-56"
           >
@@ -320,11 +323,7 @@ export function LlmSettings() {
                         {status.name} は{status.set ? '入っている' : '入っていない'}
                       </span>
                     )}
-                    <Button
-                      onClick={() =>
-                        change({ providers: values.providers.filter((_, i) => i !== index) })
-                      }
-                    >
+                    <Button onClick={() => change(withProviderRemoved(values, index))}>
                       provider {name} を外す
                     </Button>
                   </FieldRow>
