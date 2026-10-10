@@ -71,6 +71,7 @@ const permissions = {
 async function talk(
   toolCalling: 'native' | 'json',
   replies: StreamResult[] | MockLanguageModelV4['doStream'],
+  reasoning?: 'native' | 'think-tag' | 'none',
 ): Promise<{ events: ConversationEvent[]; searches: number }> {
   const store = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store, now });
@@ -81,6 +82,7 @@ async function talk(
     model: 'qwen',
     toolCalling,
     structuredOutput: 'text',
+    ...(reasoning !== undefined && { reasoning }),
   });
   const llm = new AiSdkLlm(
     { think: config, judge: config, talk: config },
@@ -500,4 +502,20 @@ describe('thinking tags and empty text', () => {
     expect(messages(events)).toEqual([]);
     expect(ended(events)).toMatchObject({ outcome: 'error', reason: expect.stringMatching(/空/) });
   });
+
+  // reasoning: none は「思考を受け取らない（画面にも出さない）」。本文に書かれた思考も、返答にも思考にも出さない
+  it.each([
+    ['in tags', `<think>LoRA を探すべきか</think>${REPLY}`],
+    ['before a lone closing tag', `LoRA を探すべきか</think>\n${REPLY}`],
+  ])(
+    'keeps the thinking written %s out of both the reply and the reasoning, with reasoning: none (native)',
+    async (_, text) => {
+      const { events } = await talk('native', [textStream(text)], 'none');
+
+      expect(messages(events)).toEqual([REPLY]);
+      expect(events.filter((e) => e.type === 'assistant.reasoning')).toEqual([]);
+      expect(JSON.stringify(events)).not.toContain('LoRA を探すべきか');
+      expect(ended(events)).toMatchObject({ outcome: 'done' });
+    },
+  );
 });
