@@ -165,16 +165,19 @@ describe('assembleDrawroid after a restart', () => {
     await start(undefined, undefined, (text) => written.push(text));
     await turnEnded(conversations, conversationId);
 
-    expect(written.filter((line) => line.startsWith('drawroid: 描くのを止めた'))).toEqual([
-      expect.stringMatching(
-        new RegExp(`^drawroid: 描くのを止めた（ジョブ ${jobId}）: [^\\n]+\\n$`),
-      ),
-    ]);
-    expect(written.filter((line) => line.startsWith('drawroid: 応答が失敗した'))).toEqual([
-      expect.stringMatching(
-        new RegExp(`^drawroid: 応答が失敗した（会話 ${conversationId}）: [^\\n]+\\n$`),
-      ),
-    ]);
+    // 行が出るまで待つ: ターンの行は turn.ended を確定したあとに出すので、turn.ended が見えた時点ではまだ無いことがあるため
+    await vi.waitFor(() => {
+      expect(written.filter((line) => line.startsWith('drawroid: 描くのを止めた'))).toEqual([
+        expect.stringMatching(
+          new RegExp(`^drawroid: 描くのを止めた（ジョブ ${jobId}）: [^\\n]+\\n$`),
+        ),
+      ]);
+      expect(written.filter((line) => line.startsWith('drawroid: 応答が失敗した'))).toEqual([
+        expect.stringMatching(
+          new RegExp(`^drawroid: 応答が失敗した（会話 ${conversationId}）: [^\\n]+\\n$`),
+        ),
+      ]);
+    });
   });
 });
 
