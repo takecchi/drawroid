@@ -19,7 +19,7 @@ export function DecidedMark({
   const mark = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (focus) mark.current?.focus();
-  }, [focus]);
+  });
   return (
     <p
       ref={mark}
