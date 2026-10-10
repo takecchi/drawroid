@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
 import { invalidConfig, invalidRequest } from '../errors.js';
-import { windowProblem } from '../input-windows.js';
+import { inWindowCheckLine, windowProblem } from '../input-windows.js';
 import { jsonBody } from '../validate.js';
 
 /**
@@ -41,9 +41,15 @@ export function budgetSettingsRoutes(deps: ApiDeps) {
       // 書く本文は厳しく検証するので、書いた直後に読めない欄は無い
       const overrides: BudgetOverrides = c.req.valid('json');
       // 窓に入らない予算は保存しない: 保存すると、次に投入するジョブが入力を組む段で必ず止まるため（architecture の予算）
-      const problem = await windowProblem(deps, resolveBudgets(overrides));
-      if (problem !== undefined) return invalidRequest(c, problem);
-      const effective = await budgetSettings.write(overrides);
-      return c.json(view(overrides, effective, []), 200);
+      const saved = await inWindowCheckLine(
+        deps,
+        async (): Promise<{ problem: string } | { problem: undefined; effective: Budgets }> => {
+          const problem = await windowProblem(deps, resolveBudgets(overrides));
+          if (problem !== undefined) return { problem };
+          return { problem: undefined, effective: await budgetSettings.write(overrides) };
+        },
+      );
+      if (saved.problem !== undefined) return invalidRequest(c, saved.problem);
+      return c.json(view(overrides, saved.effective, []), 200);
     });
 }

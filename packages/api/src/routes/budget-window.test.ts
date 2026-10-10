@@ -1,6 +1,8 @@
 // 予算の欄ごとの上限の和が役の窓を超える組み合わせを、予算の保存と LLM 設定の保存のどちらでも断ることを見る試験
 import {
   DEFAULT_BUDGETS,
+  findInputOverflows,
+  resolveBudgets,
   type BudgetOverrides,
   type ImageBackend,
   type JobStore,
@@ -64,8 +66,12 @@ function makeApp(budgets: BudgetOverrides = {}) {
     stopConditionParser: { parse: () => Promise.reject(new Error('この試験では使わない')) },
     llmSettings: {
       read: async () => savedLlm,
+      // 本物と同じく、書いたあとに設定を効かせ直し、いま効いている窓をその設定のものにする。
+      // 効かせ直すまでの間を置く: 本物は LLM から窓を読むので、書いてから窓が替わるまでに時間がかかるため
       write: async (config) => {
         savedLlm = config;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        currentWindows = await inputWindows(config);
       },
     },
     permissionSettings: noPermissionSettings,
@@ -161,6 +167,52 @@ describe('saving LLM settings whose window is too small for the budgets', () => 
     const res = await put(app, '/settings/llm', llmWith(8192));
 
     expect(res.status).toBe(400);
+  });
+});
+
+// 2つの画面（または API）から、予算と LLM の設定を同時に保存する。どちらも相手の保存の前の値と比べると、
+// 両方とも通って、窓に入らない組み合わせが残る
+describe('saving budgets and LLM settings at the same time', () => {
+  const llmWith = (contextTokens: number) => ({
+    providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:11434/v1' } },
+    roles: { think: { provider: 'local', model: 'm', contextTokens } },
+  });
+  const WIDE: ModelWindow = { contextTokens: 131072, maxOutputTokens: 1024 };
+
+  it.each([
+    ['budgets first', true],
+    ['LLM settings first', false],
+  ])('takes only one of them, so what is saved still fits (%s)', async (_, budgetsFirst) => {
+    currentWindows = { think: WIDE, judge: WIDE };
+    const { app, budgetSettings } = makeApp();
+    // 前提: 重い予算は広い窓に入り、狭い窓の LLM の設定は既定の予算に入る（それぞれ単独なら通る）
+    expect(findInputOverflows(resolveBudgets(heavyCandidates), currentWindows)).toEqual([]);
+    expect(findInputOverflows(DEFAULT_BUDGETS, { think: ROOMY })).toEqual([]);
+
+    const saveBudgets = () => put(app, '/settings/budgets', heavyCandidates);
+    const saveLlm = () => put(app, '/settings/llm', llmWith(ROOMY.contextTokens));
+    const [first, second] = budgetsFirst ? [saveBudgets, saveLlm] : [saveLlm, saveBudgets];
+    const statuses = (await Promise.all([first(), second()])).map((res) => res.status);
+
+    expect(statuses.toSorted()).toEqual([200, 400]);
+    const saved = (await budgetSettings.read()).effective;
+    expect(findInputOverflows(saved, currentWindows)).toEqual([]);
+  });
+
+  // 列に並べても、書くのに失敗した保存で、後ろの保存まで止めない
+  it('still saves after a save that failed to write', async () => {
+    const { app, budgetSettings } = makeApp();
+    const write = budgetSettings.write;
+    budgetSettings.write = () => Promise.reject(new Error('書けなかった'));
+    expect((await put(app, '/settings/budgets', { candidates: { maxSize: 650 } })).status).toBe(
+      500,
+    );
+    budgetSettings.write = write;
+
+    expect((await put(app, '/settings/budgets', { candidates: { maxSize: 650 } })).status).toBe(
+      200,
+    );
+    expect((await put(app, '/settings/llm', llmWith(ROOMY.contextTokens))).status).toBe(200);
   });
 });
 
