@@ -156,6 +156,8 @@ describe('describeCallFailure and the kinds of AI SDK failures', () => {
     'image input is not supported - hint: if this is unexpected, you may need to provide the mmproj',
     'tools are unsupported by this model',
     'This model does not support JSON schema',
+    "This server doesn't support tool calls",
+    'Vision Not Supported for this model',
   ])(
     'tells the settings to change, not to wait, when the server says it does not support it: %s',
     async (said) => {
@@ -170,6 +172,34 @@ describe('describeCallFailure and the kinds of AI SDK failures', () => {
       );
     },
   );
+
+  // 応答の途中の失敗も 5xx と同じ枝なので、「対応していない」と言うなら待つよう促さない
+  it('tells the settings to change when the server says it does not support it in the middle of the stream', async () => {
+    const reason = await reasonFor({
+      status: 200,
+      type: 'text/event-stream',
+      body: sse([delta('{'), { error: { message: 'image input is not supported' } }]),
+    });
+
+    expect(reason).toBe(
+      `${LLM_CALL_FAILED_PREFIX}LLM のサーバが、この使い方に対応していないと返した（応答の途中）。待っても直らない。LLM の設定で、その役のモデルと、構造化出力・ツールの呼び出し方・画像を読めるかを、モデルに合わせて見直す（LLM の返した理由: image input is not supported）`,
+    );
+  });
+
+  // 理由の文は画面に出すときだけ切り詰める。「対応していない」が切った先にあっても見分ける
+  it('tells the settings to change when the server says it does not support it after a long reason', async () => {
+    const said = `${'llama_model_load: tensor data is not aligned; '.repeat(8)}image input is not supported`;
+    const reason = await reasonFor({
+      status: 500,
+      type: 'application/json',
+      body: JSON.stringify({ error: { message: said } }),
+    });
+
+    expect(reason).toContain(
+      'LLM のサーバが、この使い方に対応していないと返した（500）。待っても直らない。',
+    );
+    expect(reason).not.toContain('少し待ってから');
+  });
 
   // 呼び直しの途中で失敗の種類が変わったら、最後の失敗の種類で言う: 最初の失敗（500）で言うと、鍵を直す手が出ないため
   it(
