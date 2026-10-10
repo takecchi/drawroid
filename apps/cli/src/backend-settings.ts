@@ -61,13 +61,20 @@ export function createBackendSettings({
     async read() {
       return inUse;
     },
-    async write({ url, kind = inUse.kind }: UpdateBackendSettings) {
+    async write({ url, kind: chosen }: UpdateBackendSettings) {
       const config = await readConfig(configPath);
+      // 種類を省いた保存は、使っている種類のままで、config.json の backend.kind にも触れない（--backend で起動していると、人が触っていない種類が config.json に残り、次の起動の種類が変わるため）
+      const kind = chosen ?? inUse.kind;
+      const kindSource = chosen === undefined ? inUse.kindSource : 'config';
       // 書く前に差し替える: 「走っていないか」の確かめと差し替えを同期で1度に行い、書いているあいだに始まった生成が古い側に残らないようにするため。走っていれば BackendBusyError で、config.json も書かない
       const previous = backend.replace(createBackend(kind, backendOptions(url, config.backend)));
       try {
         // auth・generateTimeoutMs は config.json にある値を保つ: API では変えさせない
-        await writeBackendSettings(configPath, { ...config.backend, url, kind });
+        await writeBackendSettings(configPath, {
+          ...config.backend,
+          url,
+          ...(chosen !== undefined && { kind: chosen }),
+        });
       } catch (error) {
         try {
           backend.replace(previous);
@@ -81,7 +88,7 @@ export function createBackendSettings({
         }
         throw error;
       }
-      inUse = viewOf({ kind, source: 'config' }, { url, source: 'config' }, config.backend);
+      inUse = viewOf({ kind, source: kindSource }, { url, source: 'config' }, config.backend);
       return inUse;
     },
   };

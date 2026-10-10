@@ -34,7 +34,8 @@ export function BackendUrlSettings() {
     setSaved(undefined);
     try {
       const url = input.trim();
-      await saveBackendSettings({ url, kind });
+      // 種類は触ったときだけ送る: 触っていない種類（--backend で起動した種類など）を config.json に書かないため
+      await saveBackendSettings({ url, ...(editedKind !== undefined && { kind: editedKind }) });
       setEdited(undefined);
       setEditedKind(undefined);
       setSaved({ kind, url });

@@ -155,14 +155,29 @@ describe('backend settings', () => {
       });
     });
 
-    it('keeps the kind in use when the write leaves it out, for the new backend and for config.json', async () => {
+    it('keeps the kind in use when the write leaves it out, and does not write a kind to config.json', async () => {
       const { settings, created } = await setup({});
       const view = await settings.write({ url: 'http://new:7860' });
       expect(created.map(({ kind }) => kind)).toEqual(['a1111']);
       expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
-        backend: { kind: 'a1111', url: 'http://new:7860' },
+        backend: { url: 'http://new:7860' },
       });
       expect(view.kind).toBe('a1111');
+    });
+
+    // --backend で起動していると、人が触っていない種類が config.json に残り、次の起動の種類が変わってしまう
+    it('leaves the kind already in config.json as it is, and the source as cli, when only the URL is saved', async () => {
+      const { settings, created } = await setup(
+        { backend: { kind: 'forge', url: 'http://old:7860' } },
+        { kindSource: 'cli' },
+      );
+      const view = await settings.write({ url: 'http://new:7860' });
+      expect(created.map(({ kind }) => kind)).toEqual(['a1111']);
+      expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
+        backend: { kind: 'forge', url: 'http://new:7860' },
+      });
+      expect(view).toMatchObject({ kind: 'a1111', kindSource: 'cli' });
+      expect(await settings.read()).toEqual(view);
     });
 
     it('refuses while a generation runs, changing neither config.json nor the kind', async () => {
@@ -323,7 +338,7 @@ describe('backend settings', () => {
     await rm(configPath);
     await settings.write({ url: 'http://new:7860' });
     expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
-      backend: { kind: 'a1111', url: 'http://new:7860' },
+      backend: { url: 'http://new:7860' },
     });
   });
 });

@@ -77,10 +77,7 @@ describe('BackendUrlSettings', () => {
     await user.type(field(), 'http://127.0.0.1:7861');
     await user.click(screen.getByRole('button', { name: '保存' }));
 
-    expect(saveBackendSettings).toHaveBeenCalledWith({
-      url: 'http://127.0.0.1:7861',
-      kind: 'forge',
-    });
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7861' });
     expect(
       await screen.findByText('保存した。Forge の http://127.0.0.1:7861 に繋ぐ。'),
     ).toBeTruthy();
@@ -127,10 +124,7 @@ describe('BackendUrlSettings', () => {
     await user.type(field(), '  http://127.0.0.1:7861  ');
     await user.click(saveButton());
 
-    expect(saveBackendSettings).toHaveBeenCalledWith({
-      url: 'http://127.0.0.1:7861',
-      kind: 'forge',
-    });
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7861' });
     expect(
       await screen.findByText('保存した。Forge の http://127.0.0.1:7861 に繋ぐ。'),
     ).toBeTruthy();
@@ -255,7 +249,7 @@ describe('BackendUrlSettings', () => {
     expect(saveButton()).toHaveProperty('disabled', false);
     await user.click(saveButton());
 
-    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860', kind: 'forge' });
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860' });
   });
 
   describe('the kind', () => {
@@ -292,6 +286,26 @@ describe('BackendUrlSettings', () => {
         url: 'http://127.0.0.1:7860',
         kind: 'a1111',
       });
+      expect(
+        await screen.findByText('保存した。A1111 の http://127.0.0.1:7860 に繋ぐ。'),
+      ).toBeTruthy();
+    });
+
+    // 触っていない種類を送ると、--backend で起動した種類が config.json に残り、次の起動の種類が変わる
+    it('sends only the URL when the kind field was left alone, and still says which kind it is on', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', 'config', 'a1111', 'cli'),
+        error: undefined,
+      } as never);
+      vi.mocked(saveBackendSettings).mockResolvedValue(
+        view('http://127.0.0.1:7860', 'config', 'a1111', 'cli'),
+      );
+      render(<BackendUrlSettings />);
+
+      await user.click(saveButton());
+
+      expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7860' });
       expect(
         await screen.findByText('保存した。A1111 の http://127.0.0.1:7860 に繋ぐ。'),
       ).toBeTruthy();
