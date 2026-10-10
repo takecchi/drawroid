@@ -26,7 +26,8 @@
     "check:packed-browser-conversation": "node ./scripts/check-packed-browser-conversation.mjs",
     "check:packed-browser-long-conversation": "node ./scripts/check-packed-browser-long-conversation.mjs",
     "check:packed-browser-image-viewer": "node ./scripts/check-packed-browser-image-viewer.mjs",
-    "check:packed-browser-viewer-mask": "node ./scripts/check-packed-browser-viewer-mask.mjs"
+    "check:packed-browser-viewer-mask": "node ./scripts/check-packed-browser-viewer-mask.mjs",
+    "check:packed-browser-stop-conditions": "node ./scripts/check-packed-browser-stop-conditions.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
