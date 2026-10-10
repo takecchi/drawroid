@@ -111,6 +111,34 @@ describe('search_candidates', () => {
     expect(outcome.result).not.toContain('miku_v2');
   });
 
+  it('lists only the LoRAs of the fixed value, written as the list of names and weights it really is', async () => {
+    const { run } = setup({
+      permissions: permissionsWith({ mode: 'fixed', value: [{ name: 'rin_v1', weight: 0.8 }] }),
+    });
+
+    const outcome = await run('search_candidates', { kind: 'lora' });
+
+    expect(outcome.result).toContain('rin_v1');
+    expect(outcome.result).not.toContain('miku_v2');
+  });
+
+  it('lists every LoRA of the fixed value when it fixes more than one', async () => {
+    const { run } = setup({
+      permissions: permissionsWith({
+        mode: 'fixed',
+        value: [
+          { name: 'rin_v1', weight: 0.8 },
+          { name: 'miku_v2', weight: 1 },
+        ],
+      }),
+    });
+
+    const outcome = await run('search_candidates', { kind: 'lora' });
+
+    expect(outcome.result).toContain('rin_v1');
+    expect(outcome.result).toContain('miku_v2');
+  });
+
   it('matches by the name, ignoring width and case, and by the label', async () => {
     const { run } = setup({
       loras: [{ name: 'Miku_V2', label: '初音ミク' }, { name: 'rin_v1' }],

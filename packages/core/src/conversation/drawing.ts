@@ -38,7 +38,7 @@ const labelOf = (key: PropertyKey) =>
     : String(key);
 
 /** 候補から選ぶパラメータの値が使う候補の名前。候補から選ばないパラメータは undefined */
-function candidateNamesOf(key: ParamKey, value: unknown): string[] | undefined {
+export function candidateNamesOf(key: ParamKey, value: unknown): string[] | undefined {
   if (!(key in CANDIDATE_PARAMS)) return undefined;
   if (typeof value === 'string') return [value];
   if (key === 'loras' && Array.isArray(value)) {
