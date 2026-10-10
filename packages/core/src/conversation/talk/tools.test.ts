@@ -38,6 +38,7 @@ function setup(
     permissions?: Permissions;
     memory?: MemoryStore;
     jobs?: JobStore;
+    now?: () => Date;
   } = {},
 ) {
   const { backend, called } = spyBackend(
@@ -53,6 +54,7 @@ function setup(
     permissions: async () => permissions,
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     jobs: options.jobs ?? ({} as JobStore),
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   const tool = (name: string): TalkTool => {
     const found = tools.find((t) => t.name === name);
@@ -276,7 +278,15 @@ describe('describe_backend', () => {
 });
 
 describe('drawing_status', () => {
-  type Stored = { conversationId: string; kind?: string; state: Record<string, unknown> };
+  type Stored = {
+    conversationId: string;
+    kind?: string;
+    state: Record<string, unknown>;
+    /** job.json の止める条件 */
+    stopConditions?: Record<string, unknown>;
+    /** interventions/ の止める条件の変更（古い順） */
+    stopChanges?: Record<string, unknown>[];
+  };
   /** 置き場所にあるジョブ。ID の並び順は問わない（ツールが時刻順に引く） */
   const storeOf = (stored: Record<string, Stored>) => {
     const jobs = {
@@ -285,11 +295,29 @@ describe('drawing_status', () => {
         jobId,
         kind: stored[jobId]?.kind ?? 'auto',
         conversationId: stored[jobId]?.conversationId,
+        stopConditions: stored[jobId]?.stopConditions ?? { aiJudgement: true },
       }),
       readState: async (jobId: string) => stored[jobId]?.state,
+      listInterventions: async (jobId: string) =>
+        (stored[jobId]?.stopChanges ?? []).map((stopConditions, i) => ({
+          kind: 'stopConditions',
+          interventionId: `i${i}`,
+          receivedAt: at,
+          stopConditions,
+        })),
     } as unknown as JobStore;
     return { jobs };
   };
+  const runningAt = (
+    completedIterations: number,
+    imagesGenerated: number,
+  ): Record<string, unknown> => ({
+    status: 'running',
+    startedAt: at,
+    imagesGenerated,
+    carry: { intent: '夕焼け', completedIterations },
+  });
+  const minutesAfterStart = (minutes: number) => () => new Date(Date.parse(at) + minutes * 60_000);
   const queued = (conversationId = 'c1'): Stored => ({
     conversationId,
     state: { status: 'queued' },
@@ -389,6 +417,150 @@ describe('drawing_status', () => {
     const outcome = await run('drawing_status', {});
 
     expect(outcome.result).toContain('最良は 2 回目の 2枚目（1.00）');
-    expect(outcome.result).toContain('止まった理由: 人間が画像を選んだ');
+    expect(outcome.result).toContain('人間が画像を選んだ');
+  });
+
+  it('says why a stopped job stopped once, not again after the status', async () => {
+    const { jobs } = storeOf({ '20261010-100000-aaaaaa': stopped() });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result.split('人間が止めた')).toHaveLength(2);
+  });
+
+  it('tells the status of the job in Japanese, in the result and in the summary', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': { conversationId: 'c1', state: runningAt(0, 0) },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('走っている');
+    expect(outcome.summary).toContain('走っている');
+    expect(outcome.result + outcome.summary).not.toMatch(/running|queued|stopped/);
+  });
+
+  it('tells a job waiting in the queue as waiting for its turn', async () => {
+    const { jobs } = storeOf({ '20261010-100000-aaaaaa': queued() });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('順番を待っている');
+    expect(outcome.summary).toContain('順番を待っている');
+  });
+
+  it('tells a stopped job as stopped, with the reason, in Japanese', async () => {
+    const { jobs } = storeOf({ '20261010-100000-aaaaaa': stopped() });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('止まった');
+    expect(outcome.result).toContain('人間が止めた');
+    expect(outcome.summary).toContain('止まった');
+    expect(outcome.result + outcome.summary).not.toMatch(/stopped/);
+  });
+
+  it('tells how much is left of every stop condition of a job going on', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: runningAt(2, 4),
+        stopConditions: {
+          aiJudgement: true,
+          maxIterations: 6,
+          maxImages: 8,
+          maxDurationMs: 600_000,
+        },
+      },
+    });
+    const { run } = setup({ jobs, now: minutesAfterStart(3) });
+
+    const outcome = await run('drawing_status', {});
+
+    // 3 回目を回すところ（残り 4 回）・あと 4 枚・あと 7 分
+    expect(outcome.result).toContain('残り 4 回・4 枚・約 7 分');
+  });
+
+  it('counts the remainder with the stop conditions changed while the job runs', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: runningAt(2, 0),
+        stopConditions: { aiJudgement: true, maxIterations: 6 },
+        stopChanges: [{ maxIterations: 4 }],
+      },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('残り 2 回');
+    expect(outcome.result).not.toContain('残り 4 回');
+  });
+
+  it('tells the remainder of a job waiting in the queue too', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: { status: 'queued' },
+        stopConditions: { aiJudgement: true, maxIterations: 5 },
+      },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('残り 5 回');
+  });
+
+  it('says no remainder for a job that has no limit to stop at', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': { conversationId: 'c1', state: runningAt(1, 1) },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).not.toContain('残り');
+  });
+
+  it('tells no remainder of a stopped job, only why it stopped', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        ...stopped(),
+        stopConditions: { aiJudgement: true, maxIterations: 6 },
+      },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).not.toContain('残り');
+    expect(outcome.result).toContain('人間が止めた');
+  });
+
+  it('tells the remainder of the job of this conversation, not of another conversation', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: runningAt(0, 0),
+        stopConditions: { aiJudgement: true, maxIterations: 3 },
+      },
+      '20261010-110000-bbbbbb': {
+        conversationId: 'c2',
+        state: runningAt(0, 0),
+        stopConditions: { aiJudgement: true, maxIterations: 9 },
+      },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('残り 3 回');
+    expect(outcome.result).not.toContain('残り 9 回');
   });
 });

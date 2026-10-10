@@ -707,8 +707,14 @@ describe('TalkRunner', () => {
         kind: 'auto',
         jobId,
         conversationId: stored.get(jobId)?.conversationId,
+        stopConditions: { aiJudgement: false, maxIterations: 3 },
       }),
-      readState: async (jobId: string) => ({ status: stored.get(jobId)?.status }),
+      listInterventions: async () => [],
+      readState: async (jobId: string) => ({
+        status: stored.get(jobId)?.status,
+        startedAt: '2026-10-10T20:09:02.000Z',
+        imagesGenerated: 0,
+      }),
     } as unknown as JobStore;
     const ref: { hubs?: ConversationHubs } = {};
     // 描くツールと同じ順で、置き場所にジョブを作ってから job.started を確定する
@@ -740,7 +746,7 @@ describe('TalkRunner', () => {
     await say('夕焼けを描いて');
 
     const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e] : []));
-    expect(results.map((r) => r.summary)).toEqual(['描き始めた', 'running']);
+    expect(results.map((r) => r.summary)).toEqual(['描き始めた', '走っている']);
   });
 
   it('closes the turn as an error when no LLM is set up', async () => {

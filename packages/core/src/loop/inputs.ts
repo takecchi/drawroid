@@ -52,7 +52,7 @@ export function progressOf(args: {
 }
 
 /** 進み具合の残りを、回数 → 枚数 → 時間の順に1行で書く（止める条件を確かめる順と同じ） */
-function describeRemaining(progress: Progress): string {
+export function describeRemaining(progress: Progress): string {
   const parts = [
     ...(progress.remainingIterations === undefined ? [] : [`${progress.remainingIterations} 回`]),
     ...(progress.remainingImages === undefined ? [] : [`${progress.remainingImages} 枚`]),
