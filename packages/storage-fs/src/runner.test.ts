@@ -504,39 +504,56 @@ describe('a broken structured output stops the job with the reason (:73)', () =>
     expect(human.imagesGenerated).toBe(0);
   });
 
-  // 落ちて running のまま残ったジョブを、ランナーが拾う前に人が止めても、置かれた画像は数える（拾ったあとに止めたときと同じ）
-  it('counts the images placed before a crash when a person stops the job before it is resumed', async () => {
-    const { store, runner, backend } = setup({ scripts: { think, judge: judge() } });
-    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2);
-    await store.writeState(spec.jobId, {
-      status: 'running',
-      carry: { intent: spec.request, completedIterations: 0 },
-      startedAt: '2026-10-09T00:00:20Z',
-      imagesGenerated: 0,
-    });
-    const request = generationRequestSchema.parse({
-      prompt: 'girl, beach, sunset',
-      negativePrompt: '',
-      loras: [],
-      steps: 28,
-      cfgScale: 7,
-      width: 1024,
-      height: 768,
-      batchSize: 2,
-    });
-    await store.writeGeneration(
-      spec.jobId,
-      1,
-      request,
-      await backend.generate(request, new AbortController().signal),
-    );
+  // 落ちて running のまま残ったジョブを、ランナーが拾う前に人が止めても、置かれた画像は数える（拾ったあとに止めたときと同じ）。
+  // 見る役の出力を置いたあと state.json を進める前に落ちた回も、まだ数に入っていないので数える
+  it.each([
+    ['before the judge looked at them', false],
+    ['after the judge output, before state.json moved on', true],
+  ])(
+    'counts the images placed before a crash when a person stops the job before it is resumed: %s',
+    async (_, judged) => {
+      const { store, runner, backend } = setup({ scripts: { think, judge: judge() } });
+      const spec = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2);
+      await store.writeState(spec.jobId, {
+        status: 'running',
+        carry: { intent: spec.request, completedIterations: 0 },
+        startedAt: '2026-10-09T00:00:20Z',
+        imagesGenerated: 0,
+      });
+      const request = generationRequestSchema.parse({
+        prompt: 'girl, beach, sunset',
+        negativePrompt: '',
+        loras: [],
+        steps: 28,
+        cfgScale: 7,
+        width: 1024,
+        height: 768,
+        batchSize: 2,
+      });
+      await store.writeGeneration(
+        spec.jobId,
+        1,
+        request,
+        await backend.generate(request, new AbortController().signal),
+      );
+      if (judged) {
+        await store.writeStage(spec.jobId, 1, 'judge', {
+          images: [
+            { score: 0.4, issues: [] },
+            { score: 0.3, issues: [] },
+          ],
+          nextChange: 'もっと逆光にする',
+          canStop: false,
+        });
+      }
 
-    await runner.stop(spec.jobId);
+      await runner.stop(spec.jobId);
 
-    const state = await stoppedState(store, spec.jobId);
-    expect(state.reason.kind).toBe('human');
-    expect(state.imagesGenerated).toBe(2);
-  });
+      const state = await stoppedState(store, spec.jobId);
+      expect(state.reason.kind).toBe('human');
+      expect(state.imagesGenerated).toBe(2);
+    },
+  );
 
   it('stops before thinking when the backend is down at the start of the job', async () => {
     const backend = new BigImageBackend();
