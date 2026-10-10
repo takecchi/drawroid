@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 
-import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
+import { collectProblems, expect, keepsHolding, launchBrowser } from './packed-browser-core.mjs';
 import { startFakeForge } from './packed-conversation/forge.mjs';
 import { startFakeLlm } from './packed-conversation/llm.mjs';
 import { freePort, packAndInstall, repoRoot, startDrawroid } from './packed-install-core.mjs';
@@ -129,16 +129,17 @@ try {
       );
     }
 
-    // 1 回目の隣の画像（2 回目）ができてから窓を開く: 1 回目しか無いと「次の画像」は塗る錠と関わりなく押せないので、
+    // 回の数の前に数字が無いことを求める（(?<!\d)）: 無いと「1 回目」が、ジョブが進んでできた「11 回目」にも当たるため。
+    // 1 回目の隣の画像（2 回目）ができてから窓を開く:1 回目しか無いと「次の画像」は塗る錠と関わりなく押せないので、
     // 塗っている間に隣へ送らないこと（2.）も、送ったあと前後へ送れること（4.）も、生成の速さ次第の確かめになるため
     await page
-      .getByRole('button', { name: /^大きく見る: .*2 回目の画像 1 番/ })
+      .getByRole('button', { name: /^大きく見る: .*(?<!\d)2 回目の画像 1 番/ })
       .first()
       .waitFor({ state: 'attached' });
-    const thumbnail = page.getByRole('button', { name: /^大きく見る: .*1 回目の画像 1 番/ });
+    const thumbnail = page.getByRole('button', { name: /^大きく見る: .*(?<!\d)1 回目の画像 1 番/ });
     await thumbnail.scrollIntoViewIfNeeded();
     await thumbnail.click();
-    const dialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
+    const dialog = page.getByRole('dialog', { name: /(?<!\d)1 回目の画像 1 番/ });
     await dialog.waitFor();
 
     // 1. 塗り始めると、画像の代わりに塗る面が出る（原寸の読み込みが済んでから）
@@ -158,7 +159,7 @@ try {
     await page.mouse.up();
     await page.keyboard.press('ArrowRight');
     expect(
-      (await page.getByRole('dialog', { name: /1 回目の画像 1 番/ }).count()) === 1,
+      (await page.getByRole('dialog', { name: /(?<!\d)1 回目の画像 1 番/ }).count()) === 1,
       `${label}: 塗っている間は、塗る面を横になぞっても、右のキーでも、隣の画像へ送らない`,
     );
 
@@ -184,13 +185,17 @@ try {
       );
     }
 
-    // 3. 塗りかけがある間は、Esc でも窓の外を押しても閉じない
-    await page.keyboard.press('Escape');
-    await page.mouse.click(2, 2);
-    expect(
+    // 3. 塗りかけがある間は、Esc でも窓の外を押しても閉じない（押した直後だけでなく、しばらく閉じないまま）
+    const staysOpen = async () =>
       (await dialog.count()) === 1 &&
-        (await dialog.getByText(/Esc や窓の外を押しても閉じない/).count()) === 1,
-      `${label}: 塗りかけがある間は、Esc でも窓の外を押しても閉じず、そのことが出る`,
+      (await dialog.getByText(/Esc や窓の外を押しても閉じない/).count()) === 1;
+    await page.keyboard.press('Escape');
+    const afterEscape = await keepsHolding(staysOpen);
+    await page.mouse.click(2, 2);
+    const afterOutside = await keepsHolding(staysOpen);
+    expect(
+      afterEscape && afterOutside,
+      `${label}: 塗りかけがある間は、Esc でも窓の外を押しても閉じず、そのことが出る（Esc のあと: ${afterEscape ? '閉じない' : '閉じた'}・窓の外のあと: ${afterOutside ? '閉じない' : '閉じた'}）`,
     );
 
     if (width < 768) {
@@ -242,10 +247,15 @@ try {
     await dialog.getByRole('button', { name: '閉じる' }).click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     await thumbnail.click();
-    await dialog.getByRole('button', { name: 'マスクを塗る' }).waitFor();
+    // 塗る前の窓（「マスクを塗る」）と塗りかけの窓（塗る面）の、どちらかが出るまで待ってから見る: 前者だけを待つと、
+    // 塗りかけが残る退行では待ちの時間切れになり、どの段が赤かが出ないため
+    const paintButton = dialog.getByRole('button', { name: 'マスクを塗る' });
+    const surface = dialog.getByLabel('マスクを塗る所');
+    await paintButton.or(surface).first().waitFor();
+    const reopened = { paintButton: await paintButton.count(), surface: await surface.count() };
     expect(
-      (await dialog.getByLabel('マスクを塗る所').count()) === 0,
-      `${label}: 閉じるボタンは塗りかけを捨てて閉じ、開き直すと塗る前の窓に戻る`,
+      reopened.paintButton === 1 && reopened.surface === 0,
+      `${label}: 閉じるボタンは塗りかけを捨てて閉じ、開き直すと塗る前の窓に戻る（${JSON.stringify(reopened)}）`,
     );
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'detached' });
@@ -329,6 +339,7 @@ try {
     const jobId = /** @type {{ jobId: string }[]} */ (jobs)[0]?.jobId;
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     page.setDefaultTimeout(STEP_TIMEOUT_MS);
+    const problems = collectProblems(page, base);
     await page.goto(`${base}/jobs/${jobId}`);
     await page.getByText('1 回目の画像 1 番にマスクを塗った').waitFor();
     expect(
@@ -341,6 +352,10 @@ try {
       heading === '夕焼けの海辺の少女' &&
         (await page.locator('dd code').first().textContent()) === jobId,
       `ジョブの詳細の見出しは依頼の文で、ID は下の並びにある（見出し: ${String(heading)}）`,
+    );
+    expect(
+      problems.length === 0,
+      `ジョブの詳細で、コンソールのエラー・失敗した読み込みが無い${problems.length === 0 ? '' : `:\n${problems.join('\n')}`}`,
     );
     await page.close();
   }
