@@ -53,6 +53,34 @@ function drag(canvas: HTMLElement, from: [number, number], to: [number, number])
 }
 
 describe('MaskPainter', () => {
+  // 押した「マスクを塗る」は消えるので、フォーカスは最初の道具へ移る。塗る面はキーボードでは塗れないことも、文で知らせる
+  it('moves the focus to the brush size once painting starts, and says the keyboard cannot paint', async () => {
+    const user = userEvent.setup();
+    render(
+      <MaskPainter
+        jobId="job-1"
+        image={{ iteration: 2, index: 1, url: '/api/jobs/job-1/images/2-1.png' }}
+      />,
+    );
+    screen.getByRole('button', { name: 'マスクを塗る' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(document.activeElement).toBe(screen.getByLabelText('筆の太さ（px）'));
+    expect(screen.getByText('キーボードでは塗れない（マウス・タッチ・ペンで塗る）。')).toBeTruthy();
+  });
+
+  // 塗っている間に道具を使っても、フォーカスを筆の太さへ取り戻さない
+  it('leaves the focus where the person moved it while painting', async () => {
+    const { user, canvas } = await openPainter();
+
+    await user.click(screen.getByLabelText('消しゴム'));
+    drag(canvas, [10, 10], [50, 50]);
+
+    // 塗った筆で道具が描き直されても、フォーカスは消しゴムのまま
+    expect(screen.getByRole('button', { name: 'ひとつ戻す' })).toHaveProperty('disabled', false);
+    expect(document.activeElement).toBe(screen.getByLabelText('消しゴム'));
+  });
+
   it('names the first image of an iteration number 1, as the other views do', async () => {
     render(
       <MaskPainter
