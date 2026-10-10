@@ -28,6 +28,8 @@ const turnStarted = z.object({
   turn: turnSchema,
   /** このターンでまとめて読んだ人間の発言の seq */
   messageSeqs: z.array(z.number().int().positive()),
+  /** 会話のジョブが止まったことを受けて起こしたターンなら、そのジョブ。同じジョブで2度は起こさない */
+  jobId: z.string().min(1).optional(),
 });
 
 const assistantReasoning = z.object({

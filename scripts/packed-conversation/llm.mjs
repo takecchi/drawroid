@@ -1,12 +1,16 @@
 // 台本の LLM（OpenAI 互換 /v1/chat/completions、ストリーム対応）。役は model 名で見分ける: talk-model / think-model / judge-model。
 // 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing を呼び、結果が来たら短く返す。
 // toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
-// holdTalk() で、次の話す役の呼び出しを releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
+// holdTalk() で、次の話す役の呼び出し（ツールを渡すもの）を releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
+// ツールを渡さない呼び出し（ジョブが止まったことを伝えるターン）には TOOLLESS_REPLY を返す。
 // queueTalkTool(name, input) で、次の話す役の呼び出しに、start_drawing の代わりにそのツールを呼ばせる（結果が来たあとは短く返す）。
 // native では tools に、json では response_format のスキーマにそのツールがあるときに効く。
 // 構造化出力は渡されたスキーマの必須項目を最小の値で埋める（スキーマが変わっても追従するため、固定の JSON を持たない）。
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
+
+/** ツールを渡さない話す役の呼び出しへの返答。描き始めの返答（「描き始めました。…」）と取り違えない文にする */
+export const TOOLLESS_REPLY = '描き終わりました。いかがですか？';
 
 /**
  * @param {any} schema
@@ -57,13 +61,19 @@ function generate(schema, hint = '') {
  * @param {{ stopAfterIterations: number, rejectImages?: boolean, echoKey?: boolean }} options stopAfterIterations は見る役が何回目で止めてよいと言うか。
  *   rejectImages なら、画像を含む呼び出しを 400 で断る（画像を読めないモデルの代わり）。
  *   echoKey なら、どの呼び出しも 401 で断り、受け取った鍵（Authorization の値）を断りの本文に入れて返す（鍵を文に返すサーバの代わり）
- * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown) => void }>}
+ * @returns {Promise<{ url: string, close: () => Promise<void>, stats: { nativeTalkCalls: number, jsonTalkCalls: number, heldTalkCalls: number, abortedTalkCalls: number, toollessTalkCalls: number }, restartJudge: (stopAfter: number) => void, holdTalk: () => void, releaseTalk: () => void, queueTalkTool: (name: string, input: unknown) => void }>}
  */
 export async function startFakeLlm({ stopAfterIterations, rejectImages = false, echoKey = false }) {
   let judgeCalls = 0;
   let stopAfter = stopAfterIterations;
   // 話す役が、どの経路で呼ばれたか。native に倒れて通っただけ、を見分けるために数える
-  const stats = { nativeTalkCalls: 0, jsonTalkCalls: 0, heldTalkCalls: 0, abortedTalkCalls: 0 };
+  const stats = {
+    nativeTalkCalls: 0,
+    jsonTalkCalls: 0,
+    heldTalkCalls: 0,
+    abortedTalkCalls: 0,
+    toollessTalkCalls: 0,
+  };
   let holdNext = false;
   /** @type {(() => void) | null} */
   let releaseHeld = null;
@@ -89,7 +99,15 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
         return res.end(JSON.stringify({ error: { message: 'image input is not supported' } }));
       }
       const role = String(request.model).replace('-model', '');
-      if (role === 'talk' && holdNext) {
+      // ジョブが止まったことを伝えるだけのターン（ツールを渡さない）。入力に入る止まりの一文で見分ける:
+      // 「ツールが無い talk-model の呼び出し」で見分けると、doctor が talk-model で確かめる見る役の構造化出力まで拾うため
+      const toolless =
+        role === 'talk' &&
+        !(Array.isArray(request.tools) && request.tools.length > 0) &&
+        JSON.stringify(request.messages).includes('会話のジョブが止まった');
+      // holdTalk は、ツールを渡す呼び出し（人間の発言を読むターン）だけを止める: ジョブの止まりで起きたターンに、
+      // 確かめが止めたい呼び出しの待ちを横取りさせないため
+      if (role === 'talk' && holdNext && !toolless) {
         holdNext = false;
         stats.heldTalkCalls++;
         await new Promise((resolve) => {
@@ -132,7 +150,14 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
         role === 'talk' &&
         !hasTools &&
         (queued !== null || JSON.stringify(talkSchema ?? {}).includes('"start_drawing"'));
-      if (isJsonTalk) {
+      if (toolless) {
+        stats.toollessTalkCalls++;
+        kind = talkSchema === undefined ? 'text' : 'json';
+        content =
+          talkSchema === undefined
+            ? TOOLLESS_REPLY
+            : JSON.stringify({ kind: 'reply', text: TOOLLESS_REPLY });
+      } else if (isJsonTalk) {
         stats.jsonTalkCalls++;
         kind = 'json';
         content = JSON.stringify(

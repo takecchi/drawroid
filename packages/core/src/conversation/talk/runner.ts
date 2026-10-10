@@ -1,7 +1,9 @@
+import type { StopReason } from '../../job/types.js';
 import type { LlmAttempt, LlmCallOutcome, LlmPort } from '../../llm/port.js';
 import { toLlmCallRecord } from '../../llm/record.js';
 import type { ConversationEvent } from '../events.js';
 import type { ConversationHubs } from '../hub.js';
+import type { StoppedJob } from '../job-bridge.js';
 import type { ConversationStore } from '../store.js';
 import { buildTalkInput, type TalkStepRecord } from './input.js';
 import { DEFAULT_TALK_LIMITS, type TalkLimits } from './limits.js';
@@ -76,7 +78,27 @@ type ActiveTurn = {
 const INTERRUPTED_REASON = '人間の割り込みで打ち切った';
 
 /**
- * 会話の実行器。人間の発言を受けてターンを始め、話す役のステップを、ツールを実行しながら繰り返す。
+ * 止まった理由ごとに、話す役から話しかけるか。人が止めた・人が選んで止まったときは、止まったことも結果も人が知っているので話しかけない
+ */
+const SPEAKS_AFTER_STOP: Record<StopReason['kind'], boolean> = {
+  ai: true,
+  'limit:iterations': true,
+  'limit:duration': true,
+  'limit:images': true,
+  error: true,
+  human: false,
+  adopted: false,
+};
+
+export function speaksAfterJobStop(reason: StopReason): boolean {
+  return SPEAKS_AFTER_STOP[reason.kind];
+}
+
+/** 話しかけてよいかを見るときに、会話の末尾から1回に読む件数 */
+const STOP_SCAN_PAGE = 50;
+
+/**
+ * 会話の実行器。人間の発言（または会話のジョブの止まり）を受けてターンを始め、話す役のステップを、ツールを実行しながら繰り返す。
  * ターンは会話ごとに直列。ターンの最中に新しい発言が来たら、LLM の出力を待っていればその呼び出しを打ち切り、
  * ツールの実行中ならツールが終わってから打ち切って、次のターンで読む。
  * 会話にジョブが走っていれば、発言を受けてから会話のターンが全部終わるまで、ジョブの LLM の段を待たせる。
@@ -88,6 +110,8 @@ export class TalkRunner {
   /** 会話ごとに待たせているジョブ。ターンが全部終わったら必ず解く */
   private readonly holds = new Map<string, { jobId: string; release: () => void }>();
   private readonly holdOps = new Map<string, Promise<void>>();
+  /** 会話ごとの、話しかけるのを待っている止まったジョブ */
+  private readonly stoppedJobs = new Map<string, string>();
   private readonly now: () => Date;
   private readonly newCallId: (now: Date) => string;
   private readonly window: TalkWindowReader;
@@ -110,6 +134,21 @@ export class TalkRunner {
       this.deps.hubs.get(conversationId).live({ type: 'status', status: 'queued' });
       void this.noticeNewMessage(conversationId);
     }
+    this.schedule(conversationId);
+  }
+
+  /**
+   * 会話のジョブが止まったことを受ける。AI の判断・上限・エラーで止まったなら、話す役のターンを1回起こして結果を伝えさせる。
+   * 走っているターンは打ち切らず、終わってから起こす。そのときに未読の発言があれば、同じターンで読む。
+   */
+  // 再起動では起こし直さない（落ちる前の止まりは、ここに知らされない）: 途切れたターンを自動でやり直さないのと同じ考え（設計の推奨 8）
+  reportJobStopped(stop: StoppedJob): void {
+    if (!speaksAfterJobStop(stop.reason)) return;
+    this.stoppedJobs.set(stop.conversationId, stop.jobId);
+    this.schedule(stop.conversationId);
+  }
+
+  private schedule(conversationId: string): void {
     const previous = this.chains.get(conversationId) ?? Promise.resolve();
     const run = previous.then(() => this.drain(conversationId));
     this.chains.set(
@@ -214,7 +253,37 @@ export class TalkRunner {
     }
   }
 
-  /** 未読の発言があればターンを1つ回す。回したら true */
+  /** 話しかけるのを待っている止まったジョブを取り出す。もう話しかけた・新しいジョブに替わったなら undefined */
+  private async takeStoppedJob(conversationId: string): Promise<string | undefined> {
+    const jobId = this.stoppedJobs.get(conversationId);
+    if (jobId === undefined) return undefined;
+    this.stoppedJobs.delete(conversationId);
+    return (await this.stillToReport(conversationId, jobId)) ? jobId : undefined;
+  }
+
+  /**
+   * 会話の末尾から、そのジョブの job.stopped まで遡って、話しかけてよいかを見る。job.stopped より後に、そのジョブで起こした
+   * ターンがあれば、もう話しかけた。別のジョブが始まっていれば、そのジョブの話に、古いジョブの報告を割り込ませない
+   */
+  // 頭から全部は読まない: そのジョブで起こすターンも、替わったジョブも、job.stopped より後にしか無いので、そこまでで足りる
+  private async stillToReport(conversationId: string, jobId: string): Promise<boolean> {
+    let before: number | undefined;
+    for (;;) {
+      const page = await this.deps.store.readEventsBefore(conversationId, {
+        ...(before === undefined ? {} : { before }),
+        limit: STOP_SCAN_PAGE,
+      });
+      for (const event of page.toReversed()) {
+        if (event.type === 'turn.started' && event.jobId === jobId) return false;
+        if (event.type === 'job.started' && event.jobId !== jobId) return false;
+        if (event.type === 'job.stopped' && event.jobId === jobId) return true;
+      }
+      if (page.length < STOP_SCAN_PAGE) return false;
+      before = page[0]!.seq;
+    }
+  }
+
+  /** 未読の発言か、話しかけるのを待っている止まったジョブがあれば、ターンを1つ回す。回したら true */
   private async runTurn(conversationId: string): Promise<boolean> {
     let finish = () => {};
     const done = new Promise<void>((resolve) => (finish = resolve));
@@ -245,8 +314,14 @@ export class TalkRunner {
     // 設定を読んでから足りなければ読み足す（読む前に設定を待たない: 発言を受けてからターンを始めるまでを延ばさないため）
     const window = await this.window.read(conversationId, this.recentMessages);
     const { unread, nextTurn: turn } = window;
-    if (unread.length === 0) return false;
-    await hub.confirm({ type: 'turn.started', turn, messageSeqs: unread });
+    const jobId = await this.takeStoppedJob(conversationId);
+    if (unread.length === 0 && jobId === undefined) return false;
+    await hub.confirm({
+      type: 'turn.started',
+      turn,
+      messageSeqs: unread,
+      ...(jobId !== undefined && { jobId }),
+    });
     const end: TurnEnd = (outcome, reason) =>
       hub.confirm({
         type: 'turn.ended',
@@ -257,7 +332,7 @@ export class TalkRunner {
     // 始めたターンは、どの抜け方でも閉じる: 閉じないと、ターンが開いたまま残り、次のターンが重なって始まる。
     // 会話の一覧と起動時の復帰は、ターンが1つずつ閉じる前提で末尾だけを読むので、走っているかを取り違える
     try {
-      return await this.runStartedTurn(conversationId, state, window, end);
+      return await this.runStartedTurn(conversationId, state, window, end, jobId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await end('error', `ターンが失敗した: ${message}`);
@@ -271,9 +346,14 @@ export class TalkRunner {
     state: ActiveTurn,
     window: TalkWindow,
     end: TurnEnd,
+    /** 止まったことを受けて起こしたなら、そのジョブ */
+    stoppedJob: string | undefined,
   ): Promise<boolean> {
     const hub = this.deps.hubs.get(conversationId);
     const { unread, nextTurn: turn } = window;
+    // 人間の発言の無い、止まりを伝えるだけのターンには、ツールを渡さず1ステップで返答させる: 描き直すツールを呼べると、
+    // 描く → 止まる → 話しかける → また描く、が人間抜きで続きうるため。トークンも1回ぶんで済む
+    const reportOnly = unread.length === 0;
     state.readSeqs = new Set(unread);
     // 発言を受けたら、ターンが全部終わるまでジョブの LLM の段を待たせる
     await this.ensureHold(conversationId);
@@ -304,7 +384,7 @@ export class TalkRunner {
       for (let step = 0; step < limits.maxSteps; step += 1) {
         // 同じ呼び出しを繰り返したら、次のステップはツールを渡さず返答させる: 小さいモデルが同じツールを呼び続けて、
         // 上限まで同じことを走らせ（副作用のあるツールなら何度も効かせ）ないように
-        const final = step === limits.maxSteps - 1 || repeated;
+        const final = reportOnly || step === limits.maxSteps - 1 || repeated;
         const messages = buildTalkInput({
           events,
           earlierMessages: oldest !== undefined,
@@ -312,6 +392,7 @@ export class TalkRunner {
           ...(job === undefined ? {} : { job }),
           steps,
           final,
+          jobStopped: stoppedJob !== undefined,
           limits,
           window: info.window,
         });
