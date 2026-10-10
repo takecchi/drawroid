@@ -55,6 +55,7 @@ export type {
   PermissionSettingsStore,
 } from './deps.js';
 export type { ApiErrorBody } from './errors.js';
+export { describeStorageFailure } from './errors.js';
 
 // 機能ごとのルートは routes/ に1ファイルずつ置き、ここには1行ずつ足す
 export function createApi(deps: ApiDeps) {
