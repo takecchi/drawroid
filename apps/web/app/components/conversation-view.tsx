@@ -57,6 +57,7 @@ import {
   type ChatImage,
   type ChatItem,
 } from '../lib/chat-state';
+import { describeBackendError } from '../lib/backend-error';
 import { useConversationStream, type ConversationSource } from '../lib/conversation-stream';
 import { formatScore } from '../lib/format';
 import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
@@ -501,6 +502,10 @@ function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped
   const showsLearned = offersChoice && item.reason.kind !== 'human';
   const { data: job } = useJob(offersChoice ? item.jobId : undefined);
   const best = offersChoice ? job?.state.carry?.best : undefined;
+  const backendAction =
+    item.reason.kind === 'error' && item.reason.backendErrorKind !== undefined
+      ? describeBackendError(item.reason.backendErrorKind)?.action
+      : undefined;
   return (
     <div className="space-y-2">
       <StopNotice
@@ -522,6 +527,8 @@ function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped
         }
       >
         描くのを止めた: {summarizeStopReason(item.reason)}
+        {/* バックエンドの失敗には、次に何をするかも添える（ジョブの詳細を開かなくても分かるように） */}
+        {backendAction}
       </StopNotice>
       {best !== undefined && (
         <BestChoice
