@@ -531,6 +531,71 @@ describe('conversations', () => {
   });
 });
 
+// 一覧の画面は数秒ごとに読み直す。変わっていない会話の末尾まで毎回読まず、変わった会話だけを読み直す
+describe('listing conversations again', () => {
+  type Listed = { conversationId: string; title: string; lastMessage: string };
+  const list = async () =>
+    ((await (await app.request('/conversations')).json()) as { conversations: Listed[] })
+      .conversations;
+  /** 一覧のあいだに置き場所から読んだイベントの数 */
+  const eventsReadWhile = async (read: () => Promise<unknown>) => {
+    const spy = vi.spyOn(store, 'readEventsBefore');
+    try {
+      await read();
+      return (
+        await Promise.all(spy.mock.results.map((result) => result.value as Promise<unknown[]>))
+      ).reduce((sum, events) => sum + events.length, 0);
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  it('reads only the last event of each conversation when nothing has changed since the last list', async () => {
+    for (let c = 0; c < 3; c += 1) {
+      const id = await newConversation();
+      for (let m = 0; m < 10; m += 1) await say(id, `会話 ${c} の ${m}`);
+    }
+    await list();
+
+    const read = await eventsReadWhile(list);
+
+    expect(read).toBe(3);
+  });
+
+  it('reads again the conversation that another process added to, and shows what it added', async () => {
+    const quiet = await newConversation();
+    await say(quiet, '静かな会話');
+    const busy = await newConversation();
+    await say(busy, '最初の発言');
+    await list();
+
+    // 別のプロセス（もう1つの drawroid や起動し直す前）が書いたのと同じく、口を通さずに置き場所へ直に足す
+    await store.appendEvent(
+      busy,
+      { type: 'user.message', text: '外から足した発言', attachments: [] },
+      new Date(),
+    );
+    let listed: Listed[] = [];
+    const read = await eventsReadWhile(async () => (listed = await list()));
+
+    expect(listed.find((c) => c.conversationId === busy)?.lastMessage).toBe('外から足した発言');
+    expect(listed.find((c) => c.conversationId === quiet)?.lastMessage).toBe('静かな会話');
+    // 静かな会話は最後の1件だけ、足された会話は最後の1件と末尾の読み直し
+    expect(read).toBeGreaterThan(2);
+    expect(read).toBeLessThanOrEqual(1 + 1 + 2);
+  });
+
+  it('shows a new title given after the conversation was listed', async () => {
+    const id = await newConversation();
+    await say(id, '海辺の少女を描いて');
+    await list();
+
+    await json('PATCH', `/conversations/${id}`, { title: '海辺' });
+
+    expect((await list())[0]?.title).toBe('海辺');
+  });
+});
+
 describe('images attached in a conversation', () => {
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString(
     'base64',
