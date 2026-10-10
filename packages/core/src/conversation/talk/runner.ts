@@ -274,7 +274,6 @@ export class TalkRunner {
         limit: STOP_SCAN_PAGE,
       });
       for (const event of page.toReversed()) {
-        if (event.type === 'turn.started' && event.jobId === jobId) return false;
         if (event.type === 'job.started' && event.jobId !== jobId) return false;
         if (event.type === 'job.stopped' && event.jobId === jobId) return true;
       }
