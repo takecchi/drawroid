@@ -58,7 +58,7 @@ export function DoctorCheck() {
       // API の失敗でないもの（200 の体が JSON でない、など）も、待つ印を出したままにせず、読めなかったと出す
       setState({
         step: 'failed',
-        message: isApiError(caught) ? `確かめられなかった: ${caught.message}` : UNREADABLE,
+        message: isApiError(caught) ? `確かめられなかった: ${caught.message}` : `確かめられなかった: ${UNREADABLE}`,
       });
       return;
     }
@@ -66,7 +66,7 @@ export function DoctorCheck() {
     setState(
       parsed.success
         ? { step: 'done', report: parsed.data.report }
-        : { step: 'failed', message: UNREADABLE },
+        : { step: 'failed', message: `確かめられなかった: ${UNREADABLE}` },
     );
   }
 
