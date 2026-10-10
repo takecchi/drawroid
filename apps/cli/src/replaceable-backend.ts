@@ -10,10 +10,13 @@ import type {
   ImageBackend,
 } from '@drawroid/core';
 
-// 起動したままバックエンドの URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる
+// 起動したままバックエンドの URL を変えられるようにする入れ物。ManualGenerationRunner などが握るのはこの入れ物で、中身だけが替わる。
+// 生成を1本ずつ通す役も持つ: 手動の生成と自動のジョブの生成はどちらもここを通り、GPU は1枚と仮定するので重ねて投げないため
 export class ReplaceableBackend implements ImageBackend {
   private current: ImageBackend;
   private running = 0;
+  /** いちばん後ろに並んだ生成が終わったら解ける。次の生成はこれを待ってから中身へ渡す */
+  private tail: Promise<void> = Promise.resolve();
 
   constructor(initial: ImageBackend) {
     this.current = initial;
@@ -42,15 +45,26 @@ export class ReplaceableBackend implements ImageBackend {
     return this.current.listCandidates(kind, signal);
   }
 
+  /**
+   * 来た順に1本ずつ中身へ渡す。待っている間に signal が止められたら、中身へ渡さずに AbortError で抜ける。
+   */
+  // 待たせるのは生成だけ: 進み具合・中断・候補の取得まで待たせると、走っている生成を見ることも止めることもできなくなるため。
+  // 1回の生成の間だけ持つ: ジョブ1つの間持つと、手動の生成が自動のジョブが止まるまで始まらなくなるため
   async generate(
     req: GenerationRequest,
     signal: AbortSignal,
     images?: GenerationImages,
   ): Promise<GenerationResult> {
     this.running += 1;
+    const before = this.tail;
+    let done!: () => void;
+    this.tail = new Promise((resolve) => (done = resolve));
     try {
+      await waitUnlessAborted(before, signal);
       return await this.current.generate(req, signal, images);
     } finally {
+      // 順番待ちのまま抜けたときも、前の生成が終わってから後ろへ譲る: 先に譲ると、後ろが前の生成と重なるため
+      void before.then(done);
       this.running -= 1;
     }
   }
@@ -71,4 +85,21 @@ export class ReplaceableBackend implements ImageBackend {
   ): Promise<GenerationProgress | undefined> {
     return this.current.progress?.(signal, options);
   }
+}
+
+/** turn が解けるまで待つ。先に signal が止められたら AbortError で抜ける */
+function waitUnlessAborted(turn: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    void turn.then(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    });
+  });
+}
+
+function abortError(): Error {
+  return Object.assign(new Error('生成の順番を待っている間に止められた'), { name: 'AbortError' });
 }
