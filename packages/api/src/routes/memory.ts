@@ -65,7 +65,15 @@ export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
         if (!(error instanceof HTTPException)) throw error;
         return error.status === 400 ? invalidRequest(c, error.message) : error.getResponse();
       })
-      .get('/', async (c) => c.json(await memoryStore.list(), 200))
+      // 更新した時刻の新しい順に並べる（同じ時刻は ID の順）: 置き場所の順（ID の順）だと、直したばかりの記憶が探しにくいため。
+      // 並べ替えるのはこの口だけ: 置き場所の list は LLM へ渡す記憶を選ぶ側も使い、その順は変えないため
+      .get('/', async (c) => {
+        const listing = await memoryStore.list();
+        const items = listing.items.toSorted(
+          (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || a.id.localeCompare(b.id),
+        );
+        return c.json({ ...listing, items }, 200);
+      })
       .get('/:id', async (c) => {
         const id = c.req.param('id');
         if (!isMemoryId(id)) return notFound(c, `記憶 ${id} は無い`);
