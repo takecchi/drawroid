@@ -369,6 +369,26 @@ try {
   expect(true, '生成の進み具合のカードが出る');
   // ジョブが終わるまで待つ（止めるボタンが消える）
   await stopButton.waitFor({ state: 'hidden', timeout: 60_000 });
+  // ジョブが止まると、話す役から1度話しかける（turn.started に jobId）。そのターンが閉じるまで、置き場所のイベントで待つ:
+  // 止まってから話しかけるまでの間にも止めるボタンは消えるので、ボタンだけを見ると、次の holdTalk の前にその呼び出しが残りうるため
+  const wakeDeadline = Date.now() + STEP_TIMEOUT_MS;
+  for (;;) {
+    const all = /** @type {{ type: string, turn?: number, jobId?: string }[]} */ (
+      (
+        await api(
+          base,
+          'GET',
+          `/api/conversations/${conversation.conversationId}/events?limit=1000`,
+        )
+      ).events
+    );
+    const wake = all.find((e) => e.type === 'turn.started' && e.jobId !== undefined);
+    if (wake !== undefined && all.some((e) => e.type === 'turn.ended' && e.turn === wake.turn))
+      break;
+    if (Date.now() > wakeDeadline)
+      throw new Error('ジョブが止まったあとに話しかけるターンが閉じなかった');
+    await sleep(50);
+  }
 
   // 3. 話す役のターンの途中で止めるを押すと、ターンが止まって表示が戻る
   const heldBeforeStop = llm.stats.heldTalkCalls;

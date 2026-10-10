@@ -220,8 +220,19 @@ try {
   streams.push(late);
 
   const stopped = (/** @type {Sse} */ s) => s.frames.some((f) => f.event === 'job.stopped');
-  if (has(main, 'job.started')) await waitFor(() => stopped(main) && stopped(late), 'job.stopped');
-  else await waitFor(() => has(late, 'turn.ended'), 'turn.ended');
+  // ジョブが（見る役の判断か上限で）止まったことを受けて、話す役から話しかけたターン（turn.started に jobId）が閉じたか
+  const wakeEnded = (/** @type {Sse} */ s) => {
+    const wake = s.frames.find((f) => f.event === 'turn.started' && f.data?.jobId !== undefined);
+    return (
+      wake !== undefined &&
+      s.frames.some((f) => f.event === 'turn.ended' && f.data?.turn === wake.data?.turn)
+    );
+  };
+  if (has(main, 'job.started')) {
+    await waitFor(() => stopped(main) && stopped(late), 'job.stopped');
+    // 話しかけるターンが閉じてから数える: 閉じる前に数えると、あとから確定した分だけ SSE と events/ の件数がずれるため
+    await waitFor(() => wakeEnded(main) && wakeEnded(late), '話しかけるターンの turn.ended');
+  } else await waitFor(() => has(late, 'turn.ended'), 'turn.ended');
 
   const confirmed = main.frames.filter((f) => f.id !== undefined);
   const types = confirmed.map((f) => f.event);
@@ -303,6 +314,18 @@ try {
   );
 
   const jobId = String(ofType('job.started')[0]?.data?.jobId);
+  const wakes = ofType('turn.started').filter((f) => f.data?.jobId !== undefined);
+  const wakeTurn = wakes[0]?.data?.turn;
+  assert(
+    wakes.length === 1 &&
+      wakes[0]?.data?.jobId === jobId &&
+      wakes[0]?.data?.messageSeqs?.length === 0 &&
+      types.indexOf('job.stopped') < confirmed.indexOf(/** @type {Frame} */ (wakes[0])) &&
+      ofType('turn.ended').some((f) => f.data?.turn === wakeTurn && f.data?.outcome === 'done') &&
+      llm.stats.toollessTalkCalls === 1,
+    'ジョブが止まると、そのあとに話す役から1度だけ、ツールを渡さずに話しかける（turn.started に jobId）',
+    `${JSON.stringify(wakes.map((f) => f.data))} ${JSON.stringify(llm.stats)}`,
+  );
   for (let iteration = 1; iteration <= STOP_AFTER_ITERATIONS; iteration++) {
     for (const [file, type] of [
       ['0.png', 'image/png'],
@@ -524,6 +547,8 @@ try {
   // 生成を解くと、ターンが終わったあともジョブが回り続け、自分で（ai の判断で）終わる
   forge.releaseGeneration();
   await waitFor(() => stopped(turnConv.stream), 'turn: job.stopped');
+  // 話しかけるターンが閉じるまで待つ: 次の確かめの holdTalk より前に、その呼び出しを済ませておくため
+  await waitFor(() => wakeEnded(turnConv.stream), 'turn: 話しかけるターンの turn.ended');
   const turnConfirmed = turnConv.stream.frames.filter((f) => f.id !== undefined);
   const turnEndedAt = turnConfirmed.indexOf(/** @type {Frame} */ (turnEnded));
   const turnStoppedAt = turnConfirmed.findIndex((f) => f.event === 'job.stopped');

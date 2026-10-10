@@ -89,15 +89,25 @@ export const jobEvents = {
   },
 };
 
+/** 会話に属するジョブが止まり、その job.stopped を会話に確定したこと */
+export type StoppedJob = { conversationId: string; jobId: string; reason: StopReason };
+
 /**
  * ジョブの置き場所を包み、会話に属するジョブの段が書けたら、その会話のイベント（job.*）を確定する。
  * 包んだ置き場所をジョブ実行器に渡すと、実行器に手を入れずに、ジョブの各段が会話のログに出る。
+ * job.stopped を確定したら onStopped で知らせる（話す役から話しかけるため）。
  */
 // 書けたあとに確定する: ジョブのファイルが正で、会話のイベントはその写しのため。
-// イベントが書けなくてもジョブは止めない（onError に渡す）: 写しの失敗で、絵の試行錯誤を止めないため
+// イベントが書けなくてもジョブは止めない（onError に渡す）: 写しの失敗で、絵の試行錯誤を止めないため。
+// 止まりはハブではなくここで知らせる: 起動時の書き足し（backfillJobEvents）はハブへ直に書くので、ここを通らない。
+// 再起動のあとに、落ちる前の止まりで話しかけ直さないため
 export function bridgeJobEvents(
   inner: JobStore,
-  deps: { hubs: ConversationHubs; onError?: (error: unknown) => void },
+  deps: {
+    hubs: ConversationHubs;
+    onError?: (error: unknown) => void;
+    onStopped?: (stop: StoppedJob) => void;
+  },
 ): JobStore {
   const conversations = new Map<string, string | null>();
 
@@ -111,14 +121,21 @@ export function bridgeJobEvents(
     return conversationId ?? undefined;
   }
 
-  async function emit(jobId: string, event: () => Promise<NewConversationEvent | undefined>) {
+  /** 確定できたら、その会話 ID を返す */
+  async function emit(
+    jobId: string,
+    event: () => Promise<NewConversationEvent | undefined>,
+  ): Promise<string | undefined> {
     try {
       const conversationId = await conversationOf(jobId);
-      if (conversationId === undefined) return;
+      if (conversationId === undefined) return undefined;
       const built = await event();
-      if (built !== undefined) await deps.hubs.get(conversationId).confirm(built);
+      if (built === undefined) return undefined;
+      await deps.hubs.get(conversationId).confirm(built);
+      return conversationId;
     } catch (error) {
       deps.onError?.(error);
+      return undefined;
     }
   }
 
@@ -173,7 +190,15 @@ export function bridgeJobEvents(
     async writeState(jobId: string, state: JobState) {
       await inner.writeState(jobId, state);
       if (state.status === 'stopped') {
-        await emit(jobId, async () => jobEvents.stopped(jobId, state.reason));
+        const conversationId = await emit(jobId, async () =>
+          jobEvents.stopped(jobId, state.reason),
+        );
+        if (conversationId === undefined) return;
+        try {
+          deps.onStopped?.({ conversationId, jobId, reason: state.reason });
+        } catch (error) {
+          deps.onError?.(error);
+        }
       }
     },
   };
