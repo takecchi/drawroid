@@ -17,6 +17,10 @@ export class ReplaceableBackend implements ImageBackend {
   private running = 0;
   /** いちばん後ろに並んだ生成が終わったら解ける。次の生成はこれを待ってから中身へ渡す */
   private tail: Promise<void> = Promise.resolve();
+  /** 中身へ渡した（走っている）生成の signal */
+  private handed: AbortSignal | undefined;
+  /** 順番待ちの生成が、いま止められたところか。同じ流れの中で来た interrupt() を、走っている別の生成へ渡さないために持つ */
+  private waitingStopped = false;
 
   constructor(initial: ImageBackend) {
     this.current = initial;
@@ -60,13 +64,22 @@ export class ReplaceableBackend implements ImageBackend {
     let done!: () => void;
     this.tail = new Promise((resolve) => (done = resolve));
     try {
-      await waitUnlessAborted(before, signal);
+      await waitUnlessAborted(before, signal, () => this.markWaitingStopped());
+      this.handed = signal;
       return await this.current.generate(req, signal, images);
     } finally {
+      if (this.handed === signal) this.handed = undefined;
       // 順番待ちのまま抜けたときも、前の生成が終わってから後ろへ譲る: 先に譲ると、後ろが前の生成と重なるため
       void before.then(done);
       this.running -= 1;
     }
+  }
+
+  // 止める口（JobRunner.stop・ManualGenerationRunner.stop）は、signal を止めたその流れの中で interrupt() を呼ぶ。
+  // 印はその流れの間だけ持つ: 残すと、あとで来る interrupt()（終わるときの合図の処理など）まで握りつぶすため
+  private markWaitingStopped(): void {
+    this.waitingStopped = true;
+    queueMicrotask(() => (this.waitingStopped = false));
   }
 
   /** drawroid の生成が走っているか（この入れ物を通した generate が返っていないか） */
@@ -74,7 +87,13 @@ export class ReplaceableBackend implements ImageBackend {
     return this.running > 0;
   }
 
+  /**
+   * 走っている生成を止めさせる。ただし、順番待ちの生成を止めた流れで来たものは、走っている別の生成へは渡さない
+   */
+  // interrupt() はバックエンドの今の生成を止めるので、順番待ちの生成を止めるために呼ばれたものを渡すと、
+  // 走っている別のジョブの生成まで止まるため。走っている生成そのものが止められたときは渡す
   interrupt(): Promise<void> {
+    if (this.waitingStopped && this.handed?.aborted !== true) return Promise.resolve();
     return this.current.interrupt();
   }
 
@@ -87,11 +106,18 @@ export class ReplaceableBackend implements ImageBackend {
   }
 }
 
-/** turn が解けるまで待つ。先に signal が止められたら AbortError で抜ける */
-function waitUnlessAborted(turn: Promise<void>, signal: AbortSignal): Promise<void> {
+/** turn が解けるまで待つ。先に signal が止められたら onAborted を呼び、AbortError で抜ける */
+function waitUnlessAborted(
+  turn: Promise<void>,
+  signal: AbortSignal,
+  onAborted: () => void,
+): Promise<void> {
   if (signal.aborted) return Promise.reject(abortError());
   return new Promise((resolve, reject) => {
-    const onAbort = () => reject(abortError());
+    const onAbort = () => {
+      onAborted();
+      reject(abortError());
+    };
     signal.addEventListener('abort', onAbort, { once: true });
     void turn.then(() => {
       signal.removeEventListener('abort', onAbort);
