@@ -152,6 +152,8 @@ describe('detectContextTokens', () => {
     ['meta is null', { id: '/models/a.gguf', meta: null }],
     ['the window is 0', { id: '/models/a.gguf', meta: { n_ctx: 0 } }],
     ['the window is not a number', { id: '/models/a.gguf', meta: { n_ctx: 'bad' } }],
+    // id が無いと、どのモデルの窓かを端末に名指せないため
+    ['it has no id', { meta: { n_ctx: 8192 } }],
   ])('leaves it unset when the only model listed is broken (%s)', async (_, broken) => {
     const { fetch } = modelsFetch({ data: [broken] });
 
