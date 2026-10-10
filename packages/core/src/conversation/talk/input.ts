@@ -25,6 +25,7 @@ export const TALK_SYSTEM = [
 
 // ステップの上限のほか、同じツールを同じ引数で繰り返したときにも使う
 const FINAL_STEP = 'ここからはツールは使わず、ここまでの結果で人間に返答する。';
+const JOB_STOPPED = '会話のジョブが止まった。その結果を、人間に短く伝える。';
 
 /** このターンの中で、前のステップまでに起きたこと。次のステップの入力に載せる */
 export type TalkStepRecord = {
@@ -59,6 +60,8 @@ export function buildTalkInput(args: {
   steps: readonly TalkStepRecord[];
   /** 最後のステップ。ツールを渡さず返答させる */
   final: boolean;
+  /** 会話のジョブが止まったことを受けたターン。その結果を伝えさせる */
+  jobStopped?: boolean;
   limits: TalkLimits;
   window: ModelWindow;
 }): BudgetedMessages {
@@ -112,7 +115,10 @@ export function buildTalkInput(args: {
     }
     return { name: `step[${i}]`, text: lines.join('\n') };
   });
-  const trailing: Section[] = args.final ? [{ name: 'final', text: FINAL_STEP }] : [];
+  const trailing: Section[] = [
+    ...(args.jobStopped === true ? [{ name: 'jobStopped', text: JOB_STOPPED }] : []),
+    ...(args.final ? [{ name: 'final', text: FINAL_STEP }] : []),
+  ];
 
   const inputTokenLimit = window.contextTokens - window.maxOutputTokens;
   const size = (s: Section) => estimateTextTokens(s.text) + 1;

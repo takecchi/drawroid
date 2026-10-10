@@ -107,6 +107,8 @@ async function main() {
       log(
         `drawroid: ジョブの段を会話に書けなかった（ジョブは続ける）: ${error instanceof Error ? error.message : String(error)}`,
       ),
+    // 会話のジョブが止まったら、話す役から話しかける。ジョブを回し始めるのは talkRunner を作ったあと（下の autoQueue.kick）
+    onStopped: (stop) => talkRunner.reportJobStopped(stop),
   });
   const manualRunner = new ManualGenerationRunner({ backend, store });
   process.stdout.write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
@@ -189,8 +191,6 @@ async function main() {
       );
     }
   }
-  // 落ちる前の自動ジョブを再開する
-  autoQueue.kick();
   const reselection = new ReselectionDistiller({
     store,
     memory: memoryStore,
@@ -270,6 +270,8 @@ async function main() {
     limits: async () => (await budgetSettings.read()).effective.talk,
     log,
   });
+  // 落ちる前の自動ジョブを再開する。talkRunner を作ってから回す: 再開したジョブが止まったときに、橋渡しが話す役へ知らせるため
+  autoQueue.kick();
   const { address } = await listen({
     port: args.port,
     webRoot: resolveWebRoot(),

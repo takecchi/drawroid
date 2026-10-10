@@ -470,14 +470,42 @@ function buildConfirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[
 // 確定したイベントの配列は、取り込むたびに新しく作り直し、作ったあとは書き換えない（applyConfirmedAll）。だから配列ごとに覚えてよい
 const confirmedItemsCache = new WeakMap<readonly ConversationEvent[], ChatItem[]>();
 
-/** 同じ確定の配列には、同じ行（同じオブジェクト）を返す: 書きかけの増分だけが変わる間、確定した行を描き直さずに済むため */
+/** 前に組んだ確定の行（key ごと）。中身が変わらない行は、組み直しても前のオブジェクトを使い回す */
+let previousItems: ReadonlyMap<string, ChatItem> = new Map();
+
+/**
+ * 同じ確定の配列には、同じ行（同じオブジェクト）を返す: 書きかけの増分だけが変わる間、確定した行を描き直さずに済むため。
+ * 確定が1つ増えて組み直したときも、中身の変わらない行は前のオブジェクトを使う: 組み直すたびに全部の行が新しくなると、
+ * 走っているジョブの段が確定するたび（数秒ごと）に、長い会話の全部の行を描き直すため
+ */
+// 前の行は中身で比べてから使う（key だけで使い回さない）: 評価が画像の行に重なる・途切れたターンの発言に「送り直す」が付くなど、
+// あとのイベントで前の行が書き換わるため
 function confirmedItems(confirmed: readonly ConversationEvent[]): ChatItem[] {
   let items = confirmedItemsCache.get(confirmed);
   if (items === undefined) {
-    items = buildConfirmedItems(confirmed);
+    items = buildConfirmedItems(confirmed).map((item) => {
+      const previous = previousItems.get(item.key);
+      return previous !== undefined && sameValue(previous, item) ? previous : item;
+    });
+    previousItems = new Map(items.map((item) => [item.key, item]));
     confirmedItemsCache.set(confirmed, items);
   }
   return items;
+}
+
+/** 行の中身（JSON と同じ形の値）が同じか */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.hasOwn(b, key) &&
+      sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+  );
 }
 
 /** ログの行の並びを作る */
