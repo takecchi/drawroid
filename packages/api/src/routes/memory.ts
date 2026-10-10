@@ -11,14 +11,21 @@ import { validator } from 'hono/validator';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { conflict, invalidFile, invalidRequest, notFound } from '../errors.js';
+import { conflict, describeIssues, invalidFile, invalidRequest, notFound } from '../errors.js';
 
 // 蒸留の出力と同じ上限を人間の編集にも掛ける: 手で長く書けると、予算で締めた LLM への入力が人間の編集で膨らむため。
 // 上限は設定で変わるので、要求のたびに読んで組み立てる
+// 断りの文は記憶の画面にそのまま出るので、人が直せる欄の文は日本語で書く
 const updateMemorySchema = (limit: DistillBudget['output']) =>
   z.object({
-    body: z.string().trim().min(1).max(limit.body),
-    tags: z.array(z.string().min(1).max(limit.tag)).max(limit.tags),
+    body: z
+      .string()
+      .trim()
+      .min(1, '本文が空')
+      .max(limit.body, `本文は ${limit.body} 文字まで`),
+    tags: z
+      .array(z.string().min(1, '空のタグがある').max(limit.tag, `タグは1つ ${limit.tag} 文字まで`))
+      .max(limit.tags, `タグは ${limit.tags} 個まで`),
     scope: memoryScopeSchema,
     expectedUpdatedAt: z.iso.datetime({ offset: true }),
   });
@@ -96,7 +103,7 @@ export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
         validator('json', async (value, c) => {
           const { effective } = await budgetSettings.read();
           const parsed = updateMemorySchema(effective.distill.output).safeParse(value);
-          return parsed.success ? parsed.data : invalidRequest(c, parsed.error.message);
+          return parsed.success ? parsed.data : invalidRequest(c, describeIssues(parsed.error));
         }),
         async (c) => {
           const id = c.req.param('id');

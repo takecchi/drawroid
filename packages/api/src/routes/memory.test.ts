@@ -318,6 +318,24 @@ describe('PUT /memory/:id', () => {
     }
     expect(await readFile(path, 'utf8')).toBe(before);
   });
+
+  // 断りの文は記憶の画面にそのまま出る。検証の生の出力（JSON・英語）を人に見せない
+  it('says in Japanese what is wrong with the edit, without the raw validation output', async () => {
+    await putFile('no-broken-fingers', itemFile());
+    const reason = async (body: unknown) =>
+      ((await (await put('no-broken-fingers', body)).json()) as { error: { message: string } })
+        .error.message;
+
+    const blank = await reason({ ...edit, body: '   ' });
+    const long = await reason({ ...edit, body: 'あ'.repeat(81) });
+    const tooManyTags = await reason({ ...edit, tags: ['a', 'b', 'c', 'd', 'e'] });
+    const emptyTag = await reason({ ...edit, tags: [''] });
+
+    expect(blank).toBe('body: 本文が空');
+    expect(long).toBe('body: 本文は 80 文字まで');
+    expect(tooManyTags).toBe('tags: タグは 4 個まで');
+    expect(emptyTag).toBe('tags.0: 空のタグがある');
+  });
 });
 
 describe('DELETE /memory/:id', () => {

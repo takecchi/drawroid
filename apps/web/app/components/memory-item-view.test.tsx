@@ -187,6 +187,29 @@ describe('MemoryItemView sources', () => {
     expect(screen.getByText(/消えたジョブ/)).toBeTruthy();
   });
 
+  it('names the kind of each learned job in Japanese, as the job list does', () => {
+    mocks.useMemoryItem.mockReturnValue({
+      data: {
+        item: { ...detail.item, sources: ['job-1', 'job-2'] },
+        sources: [
+          detail.sources[0]!,
+          {
+            kind: 'job',
+            jobId: 'job-2',
+            job: { kind: 'manual', createdAt: '2026-10-01T00:00:00.000Z', request: 'a cat' },
+          },
+        ],
+      },
+      error: undefined,
+      mutate: reload,
+    });
+    renderView();
+
+    const [auto, manual] = screen.getAllByRole('listitem');
+    expect(auto?.textContent).toMatch(/^job-1 自動 /);
+    expect(manual?.textContent).toMatch(/^job-2 手動 /);
+  });
+
   it('links a conversation it learned from to that conversation, not to a job', () => {
     mocks.useMemoryItem.mockReturnValue({
       data: {
