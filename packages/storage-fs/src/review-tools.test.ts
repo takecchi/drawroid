@@ -163,4 +163,31 @@ describe('review_image over the files of a job', () => {
 
     expect(await call(review, { jobId, iteration: 1 })).toMatchObject({ ok: true });
   });
+
+  // 1つの会話で走るジョブは同時に1つのはずだが、2つあっても、描く・止めるツールと同じく新しく始めた方を見る
+  it('looks at the latest of the jobs going on in the conversation when no job is named', async () => {
+    const { jobs, review, call, context } = await setup();
+    const queuedAt = async (at: string) =>
+      (
+        await jobs.createJob(
+          {
+            kind: 'auto',
+            request: '夕暮れの海辺に立つ少女',
+            stopConditions: { aiJudgement: false, maxIterations: 2 },
+            batchSize: 1,
+            conversationId: context.conversationId,
+            turn: 1,
+          },
+          { status: 'queued', carry: { intent: '夕暮れの海辺に立つ少女', completedIterations: 0 } },
+          new Date(at),
+        )
+      ).jobId;
+    const older = await queuedAt('2026-10-09T06:00:00.000Z');
+    const newer = await queuedAt('2026-10-09T07:00:00.000Z');
+
+    const result = await call(review, { iteration: 1 });
+
+    expect(result.result).toContain(`ジョブ ${newer}`);
+    expect(result.result).not.toContain(older);
+  });
 });
