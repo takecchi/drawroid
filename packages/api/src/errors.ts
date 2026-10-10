@@ -61,6 +61,13 @@ export function invalidRequest(c: Context, message: string) {
   return c.json(errorBody('invalid_request', message), 400);
 }
 
+export function payloadTooLarge(c: Context, maxBytes: number) {
+  return c.json(
+    errorBody('payload_too_large', `本文が大きすぎる（上限 ${maxBytes / (1024 * 1024)} MiB）`),
+    413,
+  );
+}
+
 /** 要求は正しいが、対象の今の状態では受けられない（止まったジョブへの口出し・走っている生成など） */
 export function conflict(c: Context, kind: string, message: string) {
   return c.json(errorBody(kind, message), 409);
