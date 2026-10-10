@@ -126,6 +126,28 @@ async function listNames(dir: string): Promise<string[]> {
   }
 }
 
+/**
+ * llm-calls/ の記録を、読めないファイルを外して返す。ジョブの分と会話の分で同じ読み方にするため、置き場所をまたいで共有する
+ */
+export async function readLlmCallRecords(dir: string): Promise<{
+  records: StoredLlmCallRecord[];
+  invalid: { callId: string; reason: string }[];
+}> {
+  const records: StoredLlmCallRecord[] = [];
+  const invalid: { callId: string; reason: string }[] = [];
+  for (const name of (await listNames(dir)).filter((n) => n.endsWith('.json'))) {
+    try {
+      const parsed = llmCallRecordShape.safeParse(await readJson(join(dir, name)));
+      if (!parsed.success) throw new StoredFileError(join(dir, name), parsed.error);
+      records.push(parsed.data as unknown as StoredLlmCallRecord);
+    } catch (error) {
+      if (!(error instanceof StoredFileError)) throw error;
+      invalid.push({ callId: name.slice(0, -'.json'.length), reason: error.message });
+    }
+  }
+  return { records, invalid };
+}
+
 const EXTENSIONS: Record<ReferenceRecord['mediaType'], string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -605,21 +627,8 @@ export class FsJobStore implements JobStore {
     return records;
   }
 
-  async listLlmCallRecords(jobId: string | null) {
-    const dir = jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls;
-    const records: StoredLlmCallRecord[] = [];
-    const invalid: { callId: string; reason: string }[] = [];
-    for (const name of (await listNames(dir)).filter((n) => n.endsWith('.json'))) {
-      try {
-        const parsed = llmCallRecordShape.safeParse(await readJson(join(dir, name)));
-        if (!parsed.success) throw new StoredFileError(join(dir, name), parsed.error);
-        records.push(parsed.data as unknown as StoredLlmCallRecord);
-      } catch (error) {
-        if (!(error instanceof StoredFileError)) throw error;
-        invalid.push({ callId: name.slice(0, -'.json'.length), reason: error.message });
-      }
-    }
-    return { records, invalid };
+  listLlmCallRecords(jobId: string | null) {
+    return readLlmCallRecords(jobId === null ? this.paths.llmCalls : this.jobFiles(jobId).llmCalls);
   }
 
   /** データディレクトリからの相対で、拡張子の無い形（記録と UI で画像を指す） */

@@ -230,6 +230,94 @@ describe('FsConversationStore', () => {
     expect(await readdir(files.dir)).not.toContain('x.json');
   });
 
+  describe('listLlmCallRecords', () => {
+    const recordOf = (callId: string): LlmCallRecord => ({
+      callId,
+      jobId: null,
+      iteration: null,
+      role: 'talk',
+      purpose: 'talk',
+      provider: 'local',
+      model: 'qwen',
+      startedAt: at.toISOString(),
+      durationMs: 5,
+      input: { system: '話す役', user: [{ type: 'text', text: '描けますか' }] },
+      budget: { estimatedInputTokens: 10, inputTokenLimit: 100, notes: [] },
+      attempts: [],
+      usage: { inputTokens: 10, outputTokens: 2 },
+      chars: { input: 8, output: 4 },
+      outcome: { ok: true, value: { text: '描けます', toolCalls: [] } },
+    });
+
+    it('lists the readable records in call order and reports the broken ones with a reason', async () => {
+      const store = new FsConversationStore(root);
+      const { conversationId } = await store.createConversation(at);
+      await store.writeLlmCall(conversationId, recordOf('0001'));
+      const dir = dataPaths(root).conversationFiles(conversationId).llmCalls;
+      await writeFile(join(dir, '0002.json'), '{ not json');
+      await writeFile(join(dir, '0003.json'), JSON.stringify({ callId: '0003' }));
+      await store.writeLlmCall(conversationId, recordOf('0004'));
+      await writeFile(
+        join(dir, '0005.json'),
+        JSON.stringify({ ...recordOf('0005'), outcome: undefined }),
+      );
+
+      const { records, invalid } = await store.listLlmCallRecords(conversationId);
+
+      expect(records.map((r) => r.callId)).toEqual(['0001', '0004']);
+      expect(records[0]).toMatchObject({ role: 'talk', chars: { input: 8, output: 4 } });
+      expect(invalid.map((i) => i.callId)).toEqual(['0002', '0003', '0005']);
+      expect(invalid.every((i) => i.reason.length > 0)).toBe(true);
+    });
+
+    it('reads a record written before chars were kept, leaving chars unknown', async () => {
+      const store = new FsConversationStore(root);
+      const { conversationId } = await store.createConversation(at);
+      const old: Partial<LlmCallRecord> = recordOf('0001');
+      delete old.chars;
+      const dir = dataPaths(root).conversationFiles(conversationId).llmCalls;
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, '0001.json'), JSON.stringify(old));
+
+      const { records, invalid } = await store.listLlmCallRecords(conversationId);
+
+      expect(invalid).toEqual([]);
+      expect(records[0]?.chars).toBeUndefined();
+    });
+
+    it('returns nothing for a conversation that has made no call', async () => {
+      const store = new FsConversationStore(root);
+      const { conversationId } = await store.createConversation(at);
+      expect(await store.listLlmCallRecords(conversationId)).toEqual({ records: [], invalid: [] });
+    });
+
+    it('returns nothing for a conversation that does not exist', async () => {
+      const store = new FsConversationStore(root);
+      expect(await store.listLlmCallRecords('20261009-063012-abcdef')).toEqual({
+        records: [],
+        invalid: [],
+      });
+    });
+
+    it('does not mix in the records of another conversation or of the root', async () => {
+      const store = new FsConversationStore(root);
+      const a = await store.createConversation(at);
+      const b = await store.createConversation(new Date('2026-10-09T06:31:00.000Z'));
+      await store.writeLlmCall(a.conversationId, recordOf('0001'));
+      await store.writeLlmCall(b.conversationId, recordOf('0002'));
+      await new FsJobStore(root).writeLlmCall(recordOf('0003'));
+
+      const { records } = await store.listLlmCallRecords(a.conversationId);
+
+      expect(records.map((r) => r.callId)).toEqual(['0001']);
+    });
+
+    it('refuses a conversation ID that would point outside the conversations directory', async () => {
+      const store = new FsConversationStore(root);
+      await expect(store.listLlmCallRecords('../x')).rejects.toThrow('conversationId');
+    });
+  });
+
   it('refuses a conversation ID that would point outside the conversations directory', async () => {
     const store = new FsConversationStore(root);
 

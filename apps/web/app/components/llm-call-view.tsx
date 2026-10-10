@@ -1,4 +1,12 @@
-import { useLlmCall, useUnattachedLlmCalls, type LlmCallsResponse } from '@drawroid/swr';
+import {
+  useConversationLlmCall,
+  useConversationLlmCalls,
+  useLlmCall,
+  useUnattachedLlmCalls,
+  type LlmCallDetail,
+  type LlmCallsResponse,
+  type UnattachedLlmCallsResponse,
+} from '@drawroid/swr';
 import {
   CodeBlock,
   Disclosure,
@@ -37,9 +45,46 @@ function charsLabel(label: '入力' | '出力', value: number | null | undefined
   return `${label} ${value === null || value === undefined ? '不明' : value} 文字`;
 }
 
+/** 記録がどの置き場所のものか。置き場所ごとに読む口が違う */
+export type LlmCallSource =
+  | { kind: 'job'; jobId: string }
+  | { kind: 'unattached' }
+  | { kind: 'conversation'; conversationId: string };
+
+// 置き場所ごとに部品を分ける: フックは条件で呼び分けられず、全部を呼ぶと、使わない置き場所の記録まで取りに行くため
+function CallBody({ source, callId }: { source: LlmCallSource; callId: string }) {
+  switch (source.kind) {
+    case 'job':
+      return <JobCallBody jobId={source.jobId} callId={callId} />;
+    case 'unattached':
+      return <JobCallBody jobId={null} callId={callId} />;
+    case 'conversation':
+      return <ConversationCallBody conversationId={source.conversationId} callId={callId} />;
+  }
+}
+
 /** jobId が null なら、ジョブに属さない呼び出し */
-function CallBody({ jobId, callId }: { jobId: string | null; callId: string }) {
-  const { data, error } = useLlmCall(jobId, callId);
+function JobCallBody({ jobId, callId }: { jobId: string | null; callId: string }) {
+  return <CallContent {...useLlmCall(jobId, callId)} />;
+}
+
+function ConversationCallBody({
+  conversationId,
+  callId,
+}: {
+  conversationId: string;
+  callId: string;
+}) {
+  return <CallContent {...useConversationLlmCall(conversationId, callId)} />;
+}
+
+function CallContent({
+  data,
+  error,
+}: {
+  data: LlmCallDetail | undefined;
+  error: { message: string } | undefined;
+}) {
   if (data === undefined) {
     return error === undefined ? (
       <Muted>読み込み中</Muted>
@@ -79,21 +124,20 @@ function CallBody({ jobId, callId }: { jobId: string | null; callId: string }) {
 }
 
 // 開くまで取らない: 全呼び出しの入力を、見ない人にも毎回運ばないため
-function CallDetails({ jobId, callId }: { jobId: string | null; callId: string }) {
+function CallDetails({ source, callId }: { source: LlmCallSource; callId: string }) {
   const [opened, setOpened] = useState(false);
   return (
     <Disclosure summary="中身を見る" onToggle={(event) => setOpened(event.currentTarget.open)}>
-      {opened && <CallBody jobId={jobId} callId={callId} />}
+      {opened && <CallBody source={source} callId={callId} />}
     </Disclosure>
   );
 }
 
-/** jobId が null なら、ジョブに属さない呼び出しの一覧 */
 export function LlmCallList({
-  jobId,
+  source,
   calls,
 }: {
-  jobId: string | null;
+  source: LlmCallSource;
   calls: readonly LlmCallSummary[];
 }) {
   return (
@@ -105,7 +149,7 @@ export function LlmCallList({
             トークン / 出力 {tokens(call.usage.outputTokens)} トークン /{' '}
             {charsLabel('入力', call.chars?.input)} / {charsLabel('出力', call.chars?.output)} /{' '}
             {formatDuration(call.durationMs)} / {call.ok ? '成功' : '失敗'} / {call.attempts} 回試行
-            <CallDetails jobId={jobId} callId={call.callId} />
+            <CallDetails source={source} callId={call.callId} />
           </Item>
         ))}
       </ItemList>
@@ -195,31 +239,57 @@ export function UnattachedLlmCalls() {
     <Section title="ジョブに属さない LLM 呼び出し">
       <Muted>止める条件の自然言語の変換など、ジョブを作る前の呼び出しの記録。</Muted>
       {error !== undefined && <ErrorNote>読めない: {error.message}</ErrorNote>}
+      {data !== undefined && <CallsOverview data={data} source={{ kind: 'unattached' }} />}
+    </Section>
+  );
+}
+
+/**
+ * 会話の LLM 呼び出し（話す役の1ステップ1記録）の一覧と合計。新しい順に出す。
+ */
+export function ConversationLlmCalls({ conversationId }: { conversationId: string }) {
+  const { data, error } = useConversationLlmCalls(conversationId);
+  return (
+    <Section title="この会話の LLM 呼び出し">
+      {error !== undefined && <ErrorNote>読めない: {error.message}</ErrorNote>}
       {data !== undefined && (
-        <>
-          <p className="text-sm">
-            {data.total.calls} 回 / 入力 {tokens(data.total.inputTokens)} トークン / 出力{' '}
-            {tokens(data.total.outputTokens)} トークン / {charsLabel('入力', data.total.inputChars)}{' '}
-            / {charsLabel('出力', data.total.outputChars)} / {formatDuration(data.total.durationMs)}
-          </p>
-          {data.calls.length === 0 ? (
-            <EmptyState title="まだ無い。" />
-          ) : (
-            <LlmCallList jobId={null} calls={data.calls} />
-          )}
-          {data.invalid.length > 0 && (
-            <SubSection title="読めない記録" level={4}>
-              <ItemList>
-                {data.invalid.map(({ callId, reason }) => (
-                  <Item key={callId}>
-                    <code>{callId}</code>: {reason}
-                  </Item>
-                ))}
-              </ItemList>
-            </SubSection>
-          )}
-        </>
+        <CallsOverview data={data} source={{ kind: 'conversation', conversationId }} />
       )}
     </Section>
+  );
+}
+
+/** ジョブの分でない一覧の中身: 要約の1行・呼び出しの行・読めない記録 */
+function CallsOverview({
+  data,
+  source,
+}: {
+  data: Pick<UnattachedLlmCallsResponse, 'calls' | 'total' | 'invalid'>;
+  source: LlmCallSource;
+}) {
+  return (
+    <>
+      <p className="text-sm">
+        {data.total.calls} 回 / 入力 {tokens(data.total.inputTokens)} トークン / 出力{' '}
+        {tokens(data.total.outputTokens)} トークン / {charsLabel('入力', data.total.inputChars)} /{' '}
+        {charsLabel('出力', data.total.outputChars)} / {formatDuration(data.total.durationMs)}
+      </p>
+      {data.calls.length === 0 ? (
+        <EmptyState title="まだ無い。" />
+      ) : (
+        <LlmCallList source={source} calls={data.calls} />
+      )}
+      {data.invalid.length > 0 && (
+        <SubSection title="読めない記録" level={4}>
+          <ItemList>
+            {data.invalid.map(({ callId, reason }) => (
+              <Item key={callId}>
+                <code>{callId}</code>: {reason}
+              </Item>
+            ))}
+          </ItemList>
+        </SubSection>
+      )}
+    </>
   );
 }

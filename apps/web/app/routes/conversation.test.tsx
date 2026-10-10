@@ -146,6 +146,14 @@ describe('the title of a conversation', () => {
     expect(screen.getByText('新しい会話')).toBeTruthy();
   });
 
+  it('links the header to the LLM calls page of this conversation', () => {
+    renderApp(['/conversations/c-1']);
+
+    expect(screen.getByRole('link', { name: 'LLM の記録' }).getAttribute('href')).toBe(
+      '/conversations/c-1/llm-calls',
+    );
+  });
+
   // 「会話」のリンクも指で押せる 44px にする（文字の見た目は変えず、押せる範囲だけ ::after で広げる）。実際の大きさは、ブラウザで測る
   it('widens the area that can be pressed on the link back to the list', () => {
     renderApp(['/conversations/c-1']);

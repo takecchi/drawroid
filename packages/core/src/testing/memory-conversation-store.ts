@@ -11,7 +11,7 @@ import {
   type ConversationStore,
   type ConversationUpload,
 } from '../conversation/store.js';
-import type { LlmCallRecord } from '../llm/record.js';
+import type { LlmCallRecord, StoredLlmCallRecord } from '../llm/record.js';
 
 /**
  * 試験のための、メモリに置く ConversationStore。ファイルの実装（storage-fs）と同じく、seq を欠けなく振る。
@@ -104,6 +104,13 @@ export class MemoryConversationStore implements ConversationStore {
   async writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void> {
     this.listOf(conversationId);
     this.llmCalls.set(conversationId, [...(this.llmCalls.get(conversationId) ?? []), record]);
+  }
+
+  async listLlmCallRecords(conversationId: string) {
+    const records: StoredLlmCallRecord[] = [...(this.llmCalls.get(conversationId) ?? [])].sort(
+      (a, b) => (a.callId < b.callId ? -1 : a.callId > b.callId ? 1 : 0),
+    );
+    return { records, invalid: [] };
   }
 
   private listOf(conversationId: string): ConversationEvent[] {

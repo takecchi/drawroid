@@ -3,14 +3,21 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LlmTotals, UnattachedLlmCalls } from './llm-call-view';
+import { ConversationLlmCalls, LlmCallList, LlmTotals, UnattachedLlmCalls } from './llm-call-view';
 
-const mocks = vi.hoisted(() => ({ useUnattachedLlmCalls: vi.fn(), useLlmCall: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  useUnattachedLlmCalls: vi.fn(),
+  useLlmCall: vi.fn(),
+  useConversationLlmCalls: vi.fn(),
+  useConversationLlmCall: vi.fn(),
+}));
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   useUnattachedLlmCalls: mocks.useUnattachedLlmCalls,
   useLlmCall: mocks.useLlmCall,
+  useConversationLlmCalls: mocks.useConversationLlmCalls,
+  useConversationLlmCall: mocks.useConversationLlmCall,
 }));
 
 afterEach(cleanup);
@@ -112,6 +119,7 @@ describe('UnattachedLlmCalls', () => {
     await userEvent.setup().click(screen.getByText('中身を見る'));
     // ジョブに属さない呼び出しとして読む（jobId は null）
     expect(mocks.useLlmCall).toHaveBeenCalledWith(null, '20261009T000002Z-b');
+    expect(mocks.useConversationLlmCall).not.toHaveBeenCalled();
     expect(screen.getByText('10回まで')).toBeTruthy();
   });
 
@@ -155,5 +163,113 @@ describe('UnattachedLlmCalls', () => {
     });
     render(<UnattachedLlmCalls />);
     expect(screen.getByText('まだ無い。')).toBeTruthy();
+  });
+});
+
+describe('ConversationLlmCalls', () => {
+  const talkCall = {
+    ...call,
+    callId: '20261009T000003Z-c',
+    role: 'talk' as const,
+    purpose: 'talk' as const,
+  };
+  const talkTotal = { ...total, calls: 2, durationMs: 2400, inputChars: 150, outputChars: 22 };
+  const stored = {
+    input: { system: '話す役のシステム', user: [{ type: 'text', text: '描けますか' }] },
+    budget: { estimatedInputTokens: 30, inputTokenLimit: 7000, notes: [] },
+    outcome: { ok: true, value: { text: '描けます' } },
+  };
+
+  it('headlines the calls of this conversation with the same summary line as the calls of no job', () => {
+    mocks.useConversationLlmCalls.mockReturnValue({
+      data: { calls: [talkCall, call], total: talkTotal, invalid: [] },
+      error: undefined,
+    });
+    render(<ConversationLlmCalls conversationId="c-1" />);
+
+    expect(screen.getByRole('heading', { name: 'この会話の LLM 呼び出し' })).toBeTruthy();
+    expect(mocks.useConversationLlmCalls).toHaveBeenCalledWith('c-1');
+    expect(
+      screen.getByText(
+        '2 回 / 入力 30 トークン / 出力 4 トークン / 入力 150 文字 / 出力 22 文字 / 2.4 秒',
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByText(/^話す役 \/ qwen \/ /)).toHaveLength(1);
+    expect(screen.getAllByText('中身を見る')).toHaveLength(2);
+  });
+
+  it('reads one call of the conversation only when opened, and never as a call of a job or of no job', async () => {
+    mocks.useConversationLlmCalls.mockReturnValue({
+      data: { calls: [talkCall], total: talkTotal, invalid: [] },
+      error: undefined,
+    });
+    mocks.useConversationLlmCall.mockReturnValue({ data: stored, error: undefined });
+    render(<ConversationLlmCalls conversationId="c-1" />);
+    expect(mocks.useConversationLlmCall).not.toHaveBeenCalled();
+
+    await userEvent.setup().click(screen.getByText('中身を見る'));
+
+    expect(mocks.useConversationLlmCall).toHaveBeenCalledWith('c-1', '20261009T000003Z-c');
+    expect(mocks.useLlmCall).not.toHaveBeenCalled();
+    expect(screen.getByText('描けますか')).toBeTruthy();
+    expect(screen.getByText('話す役のシステム')).toBeTruthy();
+  });
+
+  it('says there is none yet', () => {
+    mocks.useConversationLlmCalls.mockReturnValue({
+      data: {
+        calls: [],
+        total: {
+          calls: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          durationMs: 0,
+          inputChars: 0,
+          outputChars: 0,
+        },
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(<ConversationLlmCalls conversationId="c-1" />);
+
+    expect(screen.getByText('まだ無い。')).toBeTruthy();
+  });
+
+  it('lists the records it could not read, with the reason', () => {
+    mocks.useConversationLlmCalls.mockReturnValue({
+      data: {
+        calls: [talkCall],
+        total: talkTotal,
+        invalid: [{ callId: '20261009T000001Z-x', reason: '形が違う' }],
+      },
+      error: undefined,
+    });
+    render(<ConversationLlmCalls conversationId="c-1" />);
+
+    expect(screen.getByText('20261009T000001Z-x')).toBeTruthy();
+    expect(screen.getByText(/形が違う/)).toBeTruthy();
+  });
+
+  it('shows why it could not read the calls', () => {
+    mocks.useConversationLlmCalls.mockReturnValue({
+      data: undefined,
+      error: { message: '会話 c-1 は無い' },
+    });
+    render(<ConversationLlmCalls conversationId="c-1" />);
+
+    expect(screen.getByText(/読めない: 会話 c-1 は無い/)).toBeTruthy();
+  });
+});
+
+describe('LlmCallList of a job', () => {
+  it('reads a call by the job, not as a call of a conversation', async () => {
+    mocks.useLlmCall.mockReturnValue({ data: undefined, error: undefined });
+    render(<LlmCallList source={{ kind: 'job', jobId: 'j-1' }} calls={[call]} />);
+
+    await userEvent.setup().click(screen.getByText('中身を見る'));
+
+    expect(mocks.useLlmCall).toHaveBeenCalledWith('j-1', '20261009T000002Z-b');
+    expect(mocks.useConversationLlmCall).not.toHaveBeenCalled();
   });
 });

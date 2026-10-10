@@ -54,6 +54,12 @@ export default function ConversationRoute() {
           <span className="min-w-0 truncate font-medium">
             {title === undefined || title === '' ? '新しい会話' : title}
           </span>
+          <Link
+            to={`/conversations/${conversationId}/llm-calls`}
+            className="relative ml-auto shrink-0 text-sm whitespace-nowrap text-muted-foreground after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-foreground"
+          >
+            LLM の記録
+          </Link>
         </>
       }
     />

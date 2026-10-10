@@ -115,3 +115,33 @@ export function unattachedLlmCallsRoutes({ store }: ApiDeps) {
       return notFound(c, `呼び出し ${callId} は無い`);
     });
 }
+
+/**
+ * 話す役の LLM 呼び出しの記録（conversations/<id>/llm-calls/）。conversations.ts と別に置くのは、
+ * 記録の読み方（要約・合計・一覧に在る callId だけを通す）をジョブの分と同じ所に揃えるため。
+ */
+export function conversationLlmCallsRoutes({ conversations }: ApiDeps) {
+  const { store } = conversations;
+  const missing = (id: string) => `会話 ${id} は無い`;
+  return new Hono()
+    .get('/', async (c) => {
+      const id = c.req.param('conversationId') ?? '';
+      if (!(await store.hasConversation(id))) return notFound(c, missing(id));
+      const { records, invalid } = await store.listLlmCallRecords(id);
+      // 新しい順: 直前の返答の記録を、一覧の先頭で見られるように
+      const calls = [...records].reverse().map(summaryOf);
+      return c.json({ calls, total: totalOf(records), invalid }, 200);
+    })
+    .get('/:callId', async (c) => {
+      const id = c.req.param('conversationId') ?? '';
+      const callId = c.req.param('callId');
+      if (!(await store.hasConversation(id))) return notFound(c, missing(id));
+      // 一覧に在る callId だけを通す: 外から来た文字列でパスを組まないため
+      const { records, invalid } = await store.listLlmCallRecords(id);
+      const record = records.find((r) => r.callId === callId);
+      if (record !== undefined) return c.json(record, 200);
+      const broken = invalid.find((i) => i.callId === callId);
+      if (broken !== undefined) return invalidFile(c, broken.reason);
+      return notFound(c, `呼び出し ${callId} は無い`);
+    });
+}
