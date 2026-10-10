@@ -1903,6 +1903,29 @@ describe('ConversationView', () => {
     ).toBeTruthy();
   });
 
+  // バックエンドの失敗で止まったジョブには、ジョブの詳細を開かなくても、次に何をするかを添える
+  it('tells what to do next when the backend failed the job', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(
+      confirmed({
+        type: 'job.stopped',
+        jobId: JOB,
+        reason: { kind: 'error', detail: '生成の段: 500', backendErrorKind: 'failed' },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          '描くのを止めた: バックエンド（Forge / A1111）が処理に失敗したと返した。メモリ不足などが考えられる。バックエンド（Forge / A1111）のログを見て、画像サイズや枚数を小さくして試す。',
+        ),
+      ).toBeTruthy(),
+    );
+  });
+
   describe('painting a mask in the large view', () => {
     // 1回目の画像を2枚出し、1枚目を大きく見る窓で開いて、塗り始める
     async function startPainting(extra: ConversationEvent[] = []) {
