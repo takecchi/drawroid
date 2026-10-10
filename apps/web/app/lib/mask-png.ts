@@ -40,5 +40,5 @@ export async function encodeMaskPng(strokes: readonly Stroke[], size: MaskSize):
   drawMask(context, strokes, size);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (blob === null) throw new Error('マスクを PNG にできなかった');
-  return toBase64(new Uint8Array(await blob.arrayBuffer()));
+  return 'data:image/png;base64,' + toBase64(new Uint8Array(await blob.arrayBuffer()));
 }
