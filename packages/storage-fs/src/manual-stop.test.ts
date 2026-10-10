@@ -55,6 +55,18 @@ class HoldFinishedStore extends FsJobStore {
   }
 }
 
+/** 生成を終えたジョブの「止まった」の書き込みに、1度だけ失敗する置き場所（ディスクが一時いっぱいなど） */
+class FailFinishOnceStore extends FsJobStore {
+  private failed = false;
+  override async writeState(jobId: string, state: JobState): Promise<void> {
+    if (!this.failed && state.status === 'stopped' && state.reason.kind === 'limit:iterations') {
+      this.failed = true;
+      throw new Error('書けなかった');
+    }
+    return super.writeState(jobId, state);
+  }
+}
+
 const reasonOf = (state: JobState) =>
   state.status === 'stopped' ? state.reason.kind : state.status;
 
@@ -245,6 +257,23 @@ describe('stopping a manual generation left running by a process that died', () 
     store.release();
     await runner.idle();
     expect(reasonOf(await store.readState(jobId))).toBe('limit:iterations');
+    expect(backend.interruptCount).toBe(0);
+  });
+
+  // このプロセスが走らせ終えたのに「止まった」を書けずに running で残ったものも、もう誰も走らせていない
+  it('stops a generation this process finished but could not mark stopped, counting its images', async () => {
+    const backend = new StubBackend();
+    const store = new FailFinishOnceStore(root);
+    const runner = new ManualGenerationRunner({ backend, store });
+    const { jobId } = await runner.start(request);
+    await runner.idle();
+    expect(reasonOf(await store.readState(jobId))).toBe('running');
+
+    await runner.stop(jobId);
+
+    const state = await store.readState(jobId);
+    expect(reasonOf(state)).toBe('human');
+    expect(state.imagesGenerated).toBe(1);
     expect(backend.interruptCount).toBe(0);
   });
 
