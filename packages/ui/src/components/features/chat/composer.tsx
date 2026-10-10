@@ -121,6 +121,7 @@ export function ChatComposer({
                 alt={attachment.name}
                 className="size-14 rounded-md border border-border object-cover"
               />
+              {/* 見た目は小さな丸のまま、押せる範囲だけを ::after で 44px に広げる: 縮小版の角に置くので、丸を大きくすると画像を隠すため */}
               {onRemoveAttachment !== undefined && (
                 <button
                   type="button"
@@ -130,7 +131,7 @@ export function ChatComposer({
                     removedAt.current = index;
                     onRemoveAttachment(attachment.id);
                   }}
-                  className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground after:absolute after:-inset-2.5 after:content-[''] hover:text-foreground disabled:opacity-50"
                 >
                   <X className="size-3.5" aria-hidden />
                 </button>
@@ -158,7 +159,7 @@ export function ChatComposer({
               title="画像を添える"
               disabled={sending}
               onClick={() => picker.current?.click()}
-              className="min-h-11 px-3 md:min-h-9"
+              className="min-h-11 min-w-11 px-3 md:min-h-9 md:min-w-0"
             >
               <ImagePlus className="size-4" aria-hidden />
             </Button>
@@ -186,7 +187,7 @@ export function ChatComposer({
             }}
             aria-label="止める"
             title="止める"
-            className="min-h-11 px-3 md:min-h-9"
+            className="min-h-11 min-w-11 px-3 md:min-h-9 md:min-w-0"
           >
             <Square className="size-3.5 fill-current" aria-hidden />
             <span className="max-md:sr-only">止める</span>
@@ -198,7 +199,7 @@ export function ChatComposer({
           disabled={!canSend}
           loading={sending}
           title="送る"
-          className="min-h-11 px-3 md:min-h-9"
+          className="min-h-11 min-w-11 px-3 md:min-h-9 md:min-w-0"
         >
           {!sending && <Send className="size-4" aria-hidden />}
           <span className="max-md:sr-only">送る</span>

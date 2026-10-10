@@ -44,6 +44,9 @@ function candidateNamesOf(key: ParamKey, value: unknown): string[] | undefined {
   if (key === 'loras' && Array.isArray(value)) {
     return value.map((lora) => String((lora as { name?: unknown }).name));
   }
+  if (key === 'controlnet' && Array.isArray(value)) {
+    return value.map((unit) => String((unit as { model?: unknown }).model));
+  }
   if (key === 'hiresFix' && typeof value === 'object' && value !== null) {
     return [String((value as { upscaler?: unknown }).upscaler)];
   }
@@ -99,7 +102,11 @@ function refuseWidening(
   const kind = (CANDIDATE_PARAMS as Partial<Record<ParamKey, CandidateKind>>)[key];
   const allowed = human.choices ?? (kind === undefined ? undefined : lists[kind]);
   if (wanted.mode === 'auto') {
-    if (wanted.choices === undefined || allowed === undefined) return undefined;
+    // 絞り込みを省いた上書きも断る: ジョブの上書きは欄ごと置き換わるので、人間が選んだ候補が消え、全候補に広がるため
+    if (wanted.choices === undefined) {
+      return human.choices === undefined ? undefined : '人間が選んだ候補の絞り込みは外せない';
+    }
+    if (allowed === undefined) return undefined;
     return wanted.choices.every((name) => allowed.includes(name))
       ? undefined
       : '人間が選んだ候補の外は選べない';

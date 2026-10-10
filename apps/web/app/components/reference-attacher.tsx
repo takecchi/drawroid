@@ -96,7 +96,7 @@ export function ReferenceAttacher({
             <Button
               disabled={disabled}
               aria-label={`${item.file.name} を外す`}
-              className="h-7 px-2 text-xs"
+              size="sm"
               onClick={() => onChange(items.filter((it) => it.id !== item.id))}
             >
               外す

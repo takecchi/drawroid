@@ -208,7 +208,7 @@ export function CandidateNotes() {
                       <dt>{name}</dt>
                       <dd>
                         {notes[name]}{' '}
-                        <Button className="h-7 px-2 text-xs" onClick={() => change(name, '')}>
+                        <Button size="sm" onClick={() => change(name, '')}>
                           {name} の説明を消す
                         </Button>
                       </dd>

@@ -32,6 +32,7 @@ import {
   resolveRoles,
   sentImageMediaType,
   type LlmConfig,
+  type RoleConfig,
 } from '@drawroid/llm';
 import { makePreview, PREVIEW_MEDIA_TYPE } from '@drawroid/storage-fs';
 import sharp from 'sharp';
@@ -684,13 +685,14 @@ async function toolRoundTrip(
     };
   }
   if (!called) {
+    const said = text.trim();
     return {
       ok: false,
-      what: `${who}が、ツールを呼ばずに文で返した: 「${clip(text.trim(), REPLY_EXCERPT)}」`,
-      todo:
-        role.toolCalling === 'native'
-          ? 'ツールの呼び出しに弱いモデルかもしれない。LLM の設定で、話す役（無ければ考える役）の toolCalling を json にする'
-          : '指示に従えるモデルに変える',
+      what:
+        said === ''
+          ? `${who}が、ツールを呼ばず、文も返さなかった（空の応答）`
+          : `${who}が、ツールを呼ばずに文で返した: 「${clip(said, REPLY_EXCERPT)}」`,
+      todo: notCalledTodo(role),
     };
   }
   if (role.reasoning === 'none' && text.includes('<think>')) {
@@ -703,6 +705,18 @@ async function toolRoundTrip(
   const thinking =
     role.reasoning === 'none' ? '' : thought ? '。思考を受け取った' : '。思考は流れてこなかった';
   return { ok: true, what: `${who}と1往復できた（${seconds} 秒${thinking}）` };
+}
+
+// json でも structuredOutput が native なら、先に json を勧める: llama.cpp などは、native の構造化出力のスキーマを
+// 出力の縛りにだけ使い、指示文に載せない。モデルからは、どのツールがあり何をするのかが見えず、返答に逃げる
+function notCalledTodo(role: RoleConfig): string {
+  if (role.toolCalling === 'native') {
+    return 'ツールの呼び出しに弱いモデルかもしれない。LLM の設定で、話す役（無ければ考える役）の toolCalling を json にする';
+  }
+  if (role.structuredOutput === 'native') {
+    return 'LLM の設定で、話す役（無ければ考える役）の structuredOutput を json にする（native では、サーバによってはツールの一覧がモデルに見えない）';
+  }
+  return '指示に従えるモデルに変える';
 }
 
 const TOOL_CALLING_HINT = '。ツールの呼び出しに弱いモデルなら、toolCalling を json にする';

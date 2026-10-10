@@ -204,7 +204,7 @@ export function MaskTools({
             max={512}
             value={radius}
             onChange={(event) => setRadius(Math.max(1, Number(event.target.value) || 1))}
-            className="h-7 w-20"
+            className="h-11 w-20 md:h-7"
           />
         </Field>
         <CheckboxField
@@ -214,27 +214,23 @@ export function MaskTools({
           className="pb-1"
         />
         <Button
-          className="h-7 px-2 text-xs"
+          size="sm"
           disabled={strokes.length === 0}
           onClick={() => setStrokes((current) => current.slice(0, -1))}
         >
           ひとつ戻す
         </Button>
-        <Button
-          className="h-7 px-2 text-xs"
-          disabled={strokes.length === 0}
-          onClick={() => setStrokes(() => [])}
-        >
+        <Button size="sm" disabled={strokes.length === 0} onClick={() => setStrokes(() => [])}>
           全部消す
         </Button>
         <Button
-          className="h-7 px-2 text-xs"
+          size="sm"
           disabled={sending || strokes.length === 0 || size === undefined}
           onClick={() => void painting.send()}
         >
           マスクを送る
         </Button>
-        <Button className="h-7 px-2 text-xs" onClick={onClose}>
+        <Button size="sm" onClick={onClose}>
           {closeLabel}
         </Button>
       </div>
@@ -263,7 +259,7 @@ export function MaskPainter({
 
   if (!open) {
     return (
-      <Button className="h-7 px-2 text-xs" onClick={() => setOpen(true)}>
+      <Button size="sm" onClick={() => setOpen(true)}>
         マスクを塗る
       </Button>
     );
