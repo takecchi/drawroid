@@ -14,7 +14,7 @@ import { selectMemory } from '../../memory/select.js';
 import type { MemoryStore } from '../../memory/store.js';
 import type { ParamKey } from '../../params/param-key.js';
 import type { Permissions } from '../../permissions/permission.js';
-import { talkImageLabel } from '../drawing.js';
+import { candidateNamesOf, talkImageLabel } from '../drawing.js';
 import type { ConversationEvent } from '../events.js';
 import type { TalkLimits } from './limits.js';
 
@@ -69,6 +69,22 @@ const PARAM_OF_KIND: Record<CandidateKind, ParamKey> = {
   controlnetModule: 'controlnet',
 } as Record<CandidateKind, ParamKey>;
 
+/**
+ * 固定の値が使う、その種類の候補の名前。LoRA・ControlNet は配列、Hires. fix は物なので、文字列にして照らさない。
+ * ControlNet の前処理は、同じ固定の値（ユニットの配列）の module から取る
+ */
+function fixedNamesOf(kind: CandidateKind, value: unknown): string[] {
+  if (kind === 'controlnetModule') {
+    return Array.isArray(value)
+      ? value.flatMap((unit) => {
+          const module = (unit as { module?: unknown }).module;
+          return typeof module === 'string' ? [module] : [];
+        })
+      : [];
+  }
+  return candidateNamesOf(PARAM_OF_KIND[kind], value) ?? [];
+}
+
 const searchInput = z.object({
   kind: z.enum(CANDIDATE_KINDS),
   /** 名前・表示名・人間の説明に含まれる語。空なら許可された候補を予算の内で挙げる */
@@ -122,7 +138,7 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
       // 固定なら、その値だけ。任せていて絞り込みがあれば、その中だけ
       const choices =
         permission.mode === 'fixed'
-          ? [String(permission.value)]
+          ? fixedNamesOf(kind, permission.value)
           : kind === 'controlnetModule'
             ? undefined
             : permission.choices;
