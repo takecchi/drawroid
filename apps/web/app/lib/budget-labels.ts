@@ -71,9 +71,7 @@ export function budgetFieldName(path: string): string {
 
 /** 文の中の欄の内部名を、欄の呼び名に置き換える。知らない英字（HTTP など）や知らない欄は触らない */
 export function nameBudgetFields(text: string): string {
-  return text.replace(/[A-Za-z]+(?:\.[A-Za-z]+)*/g, (word) =>
-    budgetLabel(word) === undefined ? word : budgetFieldName(word),
-  );
+  return Object.keys(LABELS).reduce((t, k) => t.split(k).join(budgetFieldName(k)), text);
 }
 
 /** 欄のまとまり。内部名の頭で分ける */
