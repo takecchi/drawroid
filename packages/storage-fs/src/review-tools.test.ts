@@ -104,7 +104,7 @@ async function setup() {
     const [jobId] = await jobs.listJobIds();
     return jobId!;
   };
-  return { jobs, llm, review, call, draw };
+  return { jobs, llm, review, call, draw, context };
 }
 
 describe('review_image over the files of a job', () => {
@@ -141,5 +141,26 @@ describe('review_image over the files of a job', () => {
     expect(reviewed[0]!.usage.inputTokens).not.toBeNull();
     // ループの段の出力は書かない: ループ・再開・止める判定が、この評価で変わらない
     await expect(readFile(files.iteration(2).judge)).rejects.toThrow();
+  });
+
+  // 置き場所は形の悪い jobId を同期で投げて断る。道具はそれを、ほかの会話のジョブと同じ答えにする
+  it.each(['../../../../etc', '20261009-063000-abc123\n', 'a/b'])(
+    'answers that the job %j is not of this conversation, instead of throwing',
+    async (jobId) => {
+      const { review, draw, context } = await setup();
+      await draw();
+
+      const result = await review.run({ jobId, iteration: 1 }, context);
+
+      expect(result).toMatchObject({ ok: false });
+      expect(result.result).toContain('この会話のジョブではない');
+    },
+  );
+
+  it('still reviews this conversation job when it is named', async () => {
+    const { review, call, draw } = await setup();
+    const jobId = await draw();
+
+    expect(await call(review, { jobId, iteration: 1 })).toMatchObject({ ok: true });
   });
 });

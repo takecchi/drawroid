@@ -5,6 +5,7 @@ import {
   addReference,
   changeStopConditions,
   stopJob,
+  stopManualJob,
   useStopConditions,
   type JobDetail,
   type ChangeStopConditionsResponse,
@@ -18,6 +19,7 @@ import { JobOperations } from './job-operations';
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   stopJob: vi.fn(),
+  stopManualJob: vi.fn(),
   addInstruction: vi.fn(),
   addReference: vi.fn(),
   changeStopConditions: vi.fn(),
@@ -105,8 +107,25 @@ describe('JobOperations', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('shows no operations for a manual job', () => {
+  // 手動の生成は口出しを受けないので、止めるだけを出す
+  it('shows only the stop for a manual job that has not stopped, and stops it through the manual stop', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(stopManualJob).mockResolvedValue(undefined);
     render(<JobOperations job={manualJob()} />);
+
+    expect(screen.getByRole('heading', { name: '操作' })).toBeTruthy();
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'ジョブを止める',
+    ]);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'ジョブを止める' }));
+
+    expect(stopManualJob).toHaveBeenCalledWith('job-m');
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('shows no operations for a manual job that has stopped', () => {
+    const job = manualJob();
+    render(<JobOperations job={{ ...job, state: stoppedAuto().state }} />);
 
     expect(screen.queryByRole('heading', { name: '操作' })).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();

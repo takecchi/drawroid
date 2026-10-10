@@ -44,6 +44,40 @@ describe('createApp', () => {
   });
 });
 
+describe('createApp, when the Web UI has not been built', () => {
+  async function withoutWebBuild(run: (app: ReturnType<typeof createApp>) => Promise<void>) {
+    const emptyRoot = await mkdtemp(join(tmpdir(), 'drawroid-no-web-'));
+    try {
+      await run(createApp({ webRoot: emptyRoot, deps: stubDeps() }));
+    } finally {
+      await rm(emptyRoot, { recursive: true, force: true });
+    }
+  }
+
+  it.each(['/', '/settings'])(
+    'tells what to open or build instead of an internal error at %s',
+    async (path) => {
+      await withoutWebBuild(async (app) => {
+        const res = await app.request(path);
+        expect(res.status).toBe(503);
+        expect(res.headers.get('content-type')).toContain('text/html');
+        const body = await res.text();
+        expect(body).toContain('http://localhost:5173/');
+        expect(body).toContain('pnpm build');
+      });
+    },
+  );
+
+  it('still serves the API', async () => {
+    await withoutWebBuild(async (app) => {
+      expect((await app.request('/api/health')).status).toBe(200);
+      const unknown = await app.request('/api/no-such-route');
+      expect(unknown.status).toBe(404);
+      expect(await unknown.json()).toEqual({ error: 'not_found' });
+    });
+  });
+});
+
 describe('createApp, asked under a name other than this machine', () => {
   // DNS rebinding: 別のサイトの名前を 127.0.0.1 へ向け直すと、ブラウザはそのサイトの名前（Host）のまま、ここへ要求を送る
   it.each([

@@ -163,6 +163,17 @@ export function isSequenceId(value: string): boolean {
   return SEQUENCE_ID_PATTERN.test(value);
 }
 
+// 呼び出しの ID は作り手ごとに形が違う（日時と乱数・連番・台本の名前）ので、ファイル名として安全な文字だけに絞る
+const CALL_ID_PATTERN = /^[0-9A-Za-z][0-9A-Za-z_-]{0,127}$/;
+
+/**
+ * LLM 呼び出しの記録のファイル名にしてよい callId か。満たさなければ投げる。
+ */
+// 書く口で確かめる: いまの callId はどれも内部で作るが、パスになる値を作り手に任せると、1か所の誤りで llm-calls/ の外へ書けるため
+export function assertCallId(callId: string): void {
+  if (!CALL_ID_PATTERN.test(callId)) throw new Error(`callId の形ではない: ${callId}`);
+}
+
 export type FsJobStoreOptions = {
   /** jobId の末尾に付ける短い乱数（試験で差し替える） */
   randomSuffix?: () => string;
@@ -576,6 +587,7 @@ export class FsJobStore implements JobStore {
   }
 
   async writeLlmCall(record: LlmCallRecord): Promise<void> {
+    assertCallId(record.callId);
     const dir = record.jobId === null ? this.paths.llmCalls : this.jobFiles(record.jobId).llmCalls;
     const path =
       record.jobId === null

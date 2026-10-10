@@ -4,6 +4,7 @@ import {
   changeStopConditions,
   isApiError,
   stopJob,
+  stopManualJob,
   useStopConditions,
   type JobDetail,
 } from '@drawroid/swr';
@@ -31,7 +32,7 @@ import {
 import { ReferenceAttacher } from './reference-attacher';
 import { StopConditionsEditor } from './stop-conditions-editor';
 
-function StopButton({ jobId }: { jobId: string }) {
+function StopButton({ jobId, manual = false }: { jobId: string; manual?: boolean }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
@@ -40,7 +41,7 @@ function StopButton({ jobId }: { jobId: string }) {
     setPending(true);
     setError(undefined);
     try {
-      await stopJob(jobId);
+      await (manual ? stopManualJob(jobId) : stopJob(jobId));
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
@@ -247,10 +248,18 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
   );
 }
 
-/** 止まっていない自動ジョブにだけ出す。どれも HTTP API の口出しの経路を呼ぶ */
+/** 止まっていないジョブにだけ出す。どれも HTTP API の口出しの経路を呼ぶ */
 export function JobOperations({ job }: { job: JobDetail }) {
   const { spec, state } = job;
-  if (spec.kind !== 'auto' || state.status === 'stopped') return null;
+  if (state.status === 'stopped') return null;
+  // 手動の生成は口出しを受けないので、止めるだけを出す
+  if (spec.kind === 'manual') {
+    return (
+      <Section title="操作">
+        <StopButton jobId={spec.jobId} manual />
+      </Section>
+    );
+  }
   return (
     <Section title="操作">
       <StopButton jobId={spec.jobId} />
