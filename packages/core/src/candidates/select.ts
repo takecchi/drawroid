@@ -1,5 +1,6 @@
 import type { Candidate } from '../backend.js';
 import { type PackLimits, type PackResult, packWithinBudget } from '../budget/pack.js';
+import { normalizeForMatch } from '../text/normalize.js';
 
 export interface ShownCandidate {
   name: string;
@@ -12,11 +13,9 @@ export interface CandidateSelection {
   notesDroppedByBudget: PackResult<string>['dropped'];
 }
 
-const normalize = (text: string) => text.normalize('NFKC').toLowerCase();
-
 function appearsInGist(candidate: Candidate, gist: string): boolean {
   return [candidate.name, candidate.label ?? ''].some((word) => {
-    const needle = normalize(word).trim();
+    const needle = normalizeForMatch(word).trim();
     return needle !== '' && gist.includes(needle);
   });
 }
@@ -29,7 +28,7 @@ export function selectCandidates(
   requestGist: string,
   limits: PackLimits,
 ): CandidateSelection {
-  const gist = normalize(requestGist);
+  const gist = normalizeForMatch(requestGist);
   const allowed =
     choices === undefined ? candidates : candidates.filter((c) => choices.includes(c.name));
   const rank = (c: Candidate) => (notes.has(c.name) ? 0 : appearsInGist(c, gist) ? 1 : 2);
