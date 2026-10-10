@@ -270,6 +270,113 @@ describe('ChatComposer', () => {
   });
 });
 
+/** 添えた画像を持ち、外せる入力欄（呼び手と同じく、外したら並びから除く） */
+function ComposerWithAttachments({ names }: { names: string[] }) {
+  const [attachments, setAttachments] = useState(
+    names.map((name) => ({ id: name, name, url: `blob:${name}` })),
+  );
+  return (
+    <ChatComposer
+      value=""
+      onChange={() => undefined}
+      onSend={() => undefined}
+      attachments={attachments}
+      onAttach={() => undefined}
+      onRemoveAttachment={(id) => setAttachments((current) => current.filter((a) => a.id !== id))}
+    />
+  );
+}
+
+// 押したボタンは消えるか押せなくなる。フォーカスをページの外（body）に落とさず、次に使う所へ移す。押していないときは移さない
+describe('ChatComposer focus', () => {
+  const field = () => screen.getByLabelText('発言');
+
+  it('moves the focus to the message field after sending with the send button', async () => {
+    const user = userEvent.setup();
+    render(<Composer onSend={() => undefined} />);
+    await user.type(field(), '海の絵');
+
+    screen.getByRole('button', { name: /送る/ }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(document.activeElement).toBe(field());
+  });
+
+  it('moves the focus to the message field after stopping', async () => {
+    const user = userEvent.setup();
+    render(<Composer onSend={() => undefined} running />);
+
+    screen.getByRole('button', { name: '止める' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(document.activeElement).toBe(field());
+  });
+
+  it.each([
+    ['the one in the middle', 'b.png を外す', 'c.png を外す'],
+    ['the last one', 'c.png を外す', 'b.png を外す'],
+  ])(
+    'moves the focus to the attachment left in its place after removing %s',
+    async (_, removed, next) => {
+      const user = userEvent.setup();
+      render(<ComposerWithAttachments names={['a.png', 'b.png', 'c.png']} />);
+
+      screen.getByRole('button', { name: removed }).focus();
+      await user.keyboard('{Enter}');
+
+      expect(screen.queryByRole('button', { name: removed })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: next }));
+    },
+  );
+
+  it('moves the focus to adding an image after removing the only attachment', async () => {
+    const user = userEvent.setup();
+    render(<ComposerWithAttachments names={['a.png']} />);
+
+    screen.getByRole('button', { name: 'a.png を外す' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '画像を添える' }));
+  });
+
+  // 送ったあとに呼び手が添付を空にしても、外したことにはしない（フォーカスは発言欄のまま）
+  it('does not move the focus when the attachments change without a removal', () => {
+    const props = { value: '', onChange: () => undefined, onSend: () => undefined };
+    const { rerender } = render(
+      <ChatComposer {...props} attachments={[{ id: 'a', name: 'a.png', url: 'blob:a' }]} />,
+    );
+    field().focus();
+
+    rerender(<ChatComposer {...props} attachments={[]} onAttach={() => undefined} />);
+
+    expect(document.activeElement).toBe(field());
+  });
+
+  it('moves the focus to the message field when it starts with the focus, and only then', () => {
+    const props = { value: '', onChange: () => undefined, onSend: () => undefined };
+    const { unmount } = render(<ChatComposer {...props} focusOnMount />);
+    expect(document.activeElement).toBe(field());
+    unmount();
+
+    render(<ChatComposer {...props} />);
+    expect(document.activeElement).not.toBe(field());
+  });
+
+  // 出たときの一度だけ: 描き直しても、ほかの所へ移したフォーカスを取り戻さない
+  it('does not take the focus back when it is drawn again', () => {
+    const props = { value: '', onChange: () => undefined, onSend: () => undefined };
+    const { rerender } = render(<ChatComposer {...props} focusOnMount />);
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    rerender(<ChatComposer {...props} value="海" focusOnMount />);
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+});
+
 describe('ChatLayout status', () => {
   const layout = (status?: 'waiting-llm' | 'job.held') => (
     <ChatLayout

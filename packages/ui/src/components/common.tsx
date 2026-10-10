@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -357,9 +358,31 @@ export function WarnNote({ className, children }: { className?: string; children
 }
 
 /** 操作が通ったことの知らせ。読み上げにも知らせる（押したボタンが消えるとフォーカスが外れ、知らせの文まで辿り着けないため） */
-export function OkNote({ className, children }: { className?: string; children: ReactNode }) {
+export function OkNote({
+  className,
+  focus = false,
+  children,
+}: {
+  className?: string;
+  /**
+   * 出たときに、知らせへフォーカスを移す。押して保存したときに渡す: 押した保存は送っている間押せなくなり、フォーカスがページの外に落ちる。
+   * 知らせへ移すと、読み上げは移った先を必ず読む（status の領域を読まない読み上げでも届く）
+   */
+  focus?: boolean;
+  children: ReactNode;
+}) {
+  const note = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (focus) note.current?.focus();
+    // 出たときの一度だけ: 描き直すたびに移すと、ほかの欄を触り始めた人からフォーカスを奪うため
+  }, []);
   return (
-    <p role="status" className={cn('rounded-md bg-ok/10 px-3 py-2 text-sm text-ok', className)}>
+    <p
+      ref={note}
+      role="status"
+      {...(focus && { tabIndex: -1 })}
+      className={cn('rounded-md bg-ok/10 px-3 py-2 text-sm text-ok', className)}
+    >
       {children}
     </p>
   );

@@ -43,6 +43,24 @@ const input = (path: string) =>
 const saveButton = () => screen.getByRole('button', { name: '予算を保存' });
 
 describe('BudgetSettings', () => {
+  // 保存しても欄の見た目は変わらないので、通ったことを出し、フォーカスをその知らせへ移す。欄を触ったら消す
+  it('says it saved and moves the focus there, until the person edits a field again', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+    const SAVED = '保存した。次に投入するジョブから効く。走っているジョブは変わらない。';
+    expect(screen.queryByText(SAVED)).toBeNull();
+
+    await user.type(input('imageLongEdge'), '256');
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+
+    const note = await screen.findByText(SAVED);
+    expect(document.activeElement).toBe(note);
+
+    await user.type(input('imageLongEdge'), '0');
+    expect(screen.queryByText(SAVED)).toBeNull();
+  });
+
   it('shows an empty field for every number of the defaults, with the default as the placeholder', () => {
     render(<BudgetSettings />);
 
