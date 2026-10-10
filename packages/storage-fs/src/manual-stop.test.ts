@@ -66,6 +66,40 @@ describe('stopping a manual generation', () => {
     expect(reasonOf(await store.readState(second.jobId))).toBe('human');
   });
 
+  // 「止める」の二度押しや、別のタブからの止めでも、順番が来たときに走り出さない
+  it('keeps a waiting generation stopped when it is stopped twice', async () => {
+    const backend = new GatedBackend(true);
+    const { store, runner } = setup(backend);
+    const first = await runner.start({ ...request, prompt: 'first' });
+    await backend.generated(1);
+    const second = await runner.start({ ...request, prompt: 'second' });
+
+    await runner.stop(second.jobId);
+    await runner.stop(second.jobId);
+
+    backend.openGenerate();
+    await runner.idle();
+    expect(reasonOf(await store.readState(first.jobId))).toBe('limit:iterations');
+    expect(backend.requests.map((sent) => sent.prompt)).toEqual(['first']);
+    expect(reasonOf(await store.readState(second.jobId))).toBe('human');
+    expect(await store.listGenerations(second.jobId)).toEqual([]);
+  });
+
+  it('keeps a waiting generation stopped when it is stopped twice at once', async () => {
+    const backend = new GatedBackend(true);
+    const { store, runner } = setup(backend);
+    await runner.start({ ...request, prompt: 'first' });
+    await backend.generated(1);
+    const second = await runner.start({ ...request, prompt: 'second' });
+
+    await Promise.all([runner.stop(second.jobId), runner.stop(second.jobId)]);
+
+    backend.openGenerate();
+    await runner.idle();
+    expect(backend.requests.map((sent) => sent.prompt)).toEqual(['first']);
+    expect(reasonOf(await store.readState(second.jobId))).toBe('human');
+  });
+
   it('does nothing to a generation that has already stopped', async () => {
     const backend = new StubBackend();
     const { store, runner } = setup(backend);

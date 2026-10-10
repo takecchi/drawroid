@@ -79,10 +79,13 @@ export class ManualGenerationRunner {
       return;
     }
     // 読む前に印を付ける: 読んでいる間に順番が来ても、生成を始めないため
+    const alreadyCancelled = this.cancelled.has(jobId);
     this.cancelled.add(jobId);
     const state = await this.store.readState(jobId);
     if (state.status !== 'queued') {
-      this.cancelled.delete(jobId);
+      // 前の「止める」が付けた印は外さない: 二度押しでここへ来たとき（もう stopped と書いてある）に外すと、
+      // 順番が来たときに印が見つからず、止めたはずの生成が走り出すため
+      if (!alreadyCancelled) this.cancelled.delete(jobId);
       return;
     }
     await this.store.writeState(jobId, {
