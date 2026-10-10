@@ -970,6 +970,53 @@ try {
     'restart: 再開したジョブが、job.images を出して、自分の判断で job.stopped まで進む',
     JSON.stringify(afterRestart.frames.map((f) => f.event)),
   );
+
+  // 止める合図。生成の途中に SIGINT を送ると、Forge に中断を送ってから 130 で終わる。
+  // 固めた drawroid で見る: 合図を受ける処理（shutdownHandler）を合図につなぐのは index.ts の main で、単体の試験からは届かないため
+  forge.holdGeneration();
+  const heldBeforeSignal = forge.stats.heldGenerations;
+  const signalConv = await startConversation('夕焼けの海を描いて', 's1');
+  await signalConv.say();
+  await waitFor(
+    () => (forge?.stats.heldGenerations ?? 0) > heldBeforeSignal,
+    'signal: 合図を送る前の、Forge の生成の途中',
+  );
+  const interruptsBeforeSignal = forge.stats.interrupts;
+  const signalExited = new Promise((resolve) =>
+    child?.once('exit', (code, signal) => resolve({ code, signal })),
+  );
+  child?.kill('SIGINT');
+  const signalEnd = /** @type {{ code: number | null, signal: string | null }} */ (
+    await signalExited
+  );
+  child = undefined;
+  assert(
+    signalEnd.code === 130 && forge.stats.interrupts > interruptsBeforeSignal,
+    'signal: 生成の途中の SIGINT で、Forge に中断を送ってから、終わりのコード 130 で終わる',
+    `終わり ${JSON.stringify(signalEnd)}・Forge が受けた中断 ${interruptsBeforeSignal} → ${forge.stats.interrupts}`,
+  );
+
+  // 起動し直すと、止める合図で止めたジョブは（状態を書き換えていないので）続きから生成を始める。そこへ SIGTERM を送る
+  forge.holdGeneration();
+  const heldBeforeTerm = forge.stats.heldGenerations;
+  ({ child, output: drawroidOutput } = await launch());
+  await waitFor(
+    () => (forge?.stats.heldGenerations ?? 0) > heldBeforeTerm,
+    'signal: 起動し直したあと、合図で止めたジョブが生成を続きから始める',
+  );
+  const interruptsBeforeTerm = forge.stats.interrupts;
+  const termExited = new Promise((resolve) =>
+    child?.once('exit', (code, signal) => resolve({ code, signal })),
+  );
+  child?.kill('SIGTERM');
+  const termEnd = /** @type {{ code: number | null, signal: string | null }} */ (await termExited);
+  child = undefined;
+  assert(
+    termEnd.code === 143 && forge.stats.interrupts > interruptsBeforeTerm,
+    'signal: 生成の途中の SIGTERM で、Forge に中断を送ってから、終わりのコード 143 で終わる',
+    `終わり ${JSON.stringify(termEnd)}・Forge が受けた中断 ${interruptsBeforeTerm} → ${forge.stats.interrupts}`,
+  );
+  forge.releaseGeneration();
 } catch (error) {
   assert(false, '確かめの途中で例外', error instanceof Error ? error.message : String(error));
 } finally {

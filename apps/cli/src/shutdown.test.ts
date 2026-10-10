@@ -1,7 +1,7 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { generationRequestSchema } from '@drawroid/core';
+import { generationRequestSchema, type ImageBackend } from '@drawroid/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { backendFactory } from './backend-factory.js';
@@ -135,4 +135,63 @@ describe('shutdownHandler', () => {
 
     expect(exit).toHaveBeenCalledWith(130);
   });
+
+  it('exits with the code of the second signal, not of the first', async () => {
+    const exit = vi.fn();
+    const handle = shutdownHandler({ backend: hanging(), exit, log: () => undefined });
+
+    void handle('SIGINT');
+    await handle('SIGTERM');
+
+    expect(exit.mock.calls).toEqual([[143]]);
+  });
+
+  it.each([
+    ['answered', () => Promise.resolve({ images: [], metadata: {} })],
+    ['failed', () => Promise.reject(new Error('Forge が落ちた'))],
+  ])('does not tell the backend to stop once the generation has %s', async (_, generate) => {
+    const inner = { generate: vi.fn(generate), interrupt: vi.fn(async () => undefined) };
+    const backend = new ReplaceableBackend(inner as unknown as ImageBackend);
+    await backend.generate(request, new AbortController().signal).catch(() => undefined);
+    const exit = vi.fn();
+
+    await shutdownHandler({ backend, exit, log: () => undefined })('SIGINT');
+
+    expect(inner.interrupt).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(130);
+  });
+
+  it('waits 3 seconds by default for a backend that does not answer the interrupt', async () => {
+    vi.useFakeTimers();
+    try {
+      const exit = vi.fn();
+      void shutdownHandler({ backend: hanging(), exit, log: () => undefined })('SIGINT');
+
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(exit).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(exit).toHaveBeenCalledWith(130);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still exits, saying why, when telling the backend to stop fails', async () => {
+    const exit = vi.fn();
+    const lines: string[] = [];
+    const backend = {
+      generating: true,
+      interrupt: () => Promise.reject(new Error('Forge に繋がらない')),
+    };
+
+    await shutdownHandler({ backend, exit, log: (line) => lines.push(line) })('SIGINT');
+
+    expect(exit).toHaveBeenCalledWith(130);
+    expect(lines).toContainEqual(expect.stringContaining('Forge に繋がらない'));
+  });
 });
+
+/** 生成が走っていて、中断に答えないバックエンド */
+function hanging() {
+  return { generating: true, interrupt: () => new Promise<void>(() => undefined) };
+}
