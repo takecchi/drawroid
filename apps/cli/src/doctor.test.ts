@@ -677,17 +677,23 @@ describe('runDoctor', () => {
 describe('the check from the settings screen', () => {
   const webRoot = fileURLToPath(new URL('./test-fixtures/web', import.meta.url));
 
-  async function checkFromScreen(initial: { url: string; source: 'cli' | 'config' | 'default' }) {
+  async function checkFromScreen(
+    initial: { url: string; source: 'cli' | 'config' | 'default' },
+    // 画面で保存してから確かめる
+    saved?: { url: string; kind: 'forge' | 'a1111' },
+  ) {
     const dir = await mkdtemp(join(tmpdir(), 'drawroid-doctor-screen-'));
     const configPath = join(dir, 'config.json');
     await writeFile(configPath, '{}');
-    const createBackend = backendFactory('forge');
     const backendSettings = createBackendSettings({
       configPath,
-      backend: new ReplaceableBackend(createBackend(backendOptions(initial.url, undefined))),
-      createBackend,
-      initial: { kind: 'forge', ...initial, config: {} },
+      backend: new ReplaceableBackend(
+        backendFactory('forge')(backendOptions(initial.url, undefined)),
+      ),
+      createBackend: (kind, options) => backendFactory(kind)(options),
+      initial: { kind: 'forge', kindSource: 'default', ...initial, config: {} },
     });
+    if (saved !== undefined) await backendSettings.write(saved);
     const doctor = screenDoctor({ configPath, backendSettings, env: {}, webRoot: () => webRoot });
     const app = createApp({ webRoot, deps: { ...stubDeps(), doctor } });
     const res = await app.request('/api/doctor', { method: 'POST' });
@@ -706,6 +712,14 @@ describe('the check from the settings screen', () => {
     expect(backend?.items[0]?.todo).not.toContain(
       'drawroid doctor にも同じ --backend-url を付ける',
     );
+  });
+
+  it('checks with the kind saved from the screen, not the kind it started with', async () => {
+    const { url } = await closedUrl();
+    const { body } = await checkFromScreen({ url, source: 'default' }, { url, kind: 'a1111' });
+    const titles = body.report.sections.map(({ title }) => title);
+    expect(titles).toContain('画像のバックエンド（A1111）');
+    expect(titles).not.toContain('画像のバックエンド（Forge）');
   });
 
   // 画面の試験（apps/web の doctor-check）に流す記録。手で組み立てず、ここで取った応答を置く。

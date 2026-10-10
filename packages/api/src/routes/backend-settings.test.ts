@@ -15,7 +15,7 @@ import {
 
 function setup(initial: BackendSettingsView, { busy = false } = {}) {
   let view = initial;
-  const written: { url: string }[] = [];
+  const written: { url: string; kind?: string }[] = [];
   const backend = new StubBackend();
   const store = new FsJobStore('/nonexistent-drawroid-test-root');
   const api = createApi({
@@ -29,7 +29,12 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
       write: async (input) => {
         if (busy) throw new BackendBusyError('生成が走っている');
         written.push(input);
-        view = { ...view, url: input.url, urlSource: 'config' };
+        view = {
+          ...view,
+          url: input.url,
+          urlSource: 'config',
+          ...(input.kind !== undefined && { kind: input.kind, kindSource: 'config' as const }),
+        };
         return view;
       },
     },
@@ -64,6 +69,7 @@ const initial: BackendSettingsView = {
   kind: 'a1111',
   url: 'http://127.0.0.1:7860',
   urlSource: 'default',
+  kindSource: 'cli',
   auth: null,
   generateTimeoutMs: null,
 };
@@ -77,6 +83,7 @@ describe('GET /settings/backend', () => {
       kind: 'a1111',
       url: 'http://127.0.0.1:7860',
       urlSource: 'default',
+      kindSource: 'cli',
       auth: { username: 'u' },
       generateTimeoutMs: null,
     });
@@ -124,15 +131,42 @@ describe('PUT /settings/backend', () => {
     expect(written).toEqual([]);
   });
 
-  it('ignores the kind, auth and generateTimeoutMs in the body', async () => {
+  it('ignores the auth and generateTimeoutMs in the body', async () => {
     const { put, written } = setup(initial);
     await put({
-      kind: 'forge',
       url: 'http://gpu:7860',
       auth: { username: 'x', password: 'y' },
       generateTimeoutMs: 1,
     });
     expect(written).toEqual([{ url: 'http://gpu:7860' }]);
+  });
+
+  it('passes the kind to the implementation and returns the kind now in use with where it came from', async () => {
+    const { put, written } = setup(initial);
+    const res = await put({ kind: 'forge', url: 'http://gpu:7860' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ kind: 'forge', kindSource: 'config' });
+    expect(written).toEqual([{ kind: 'forge', url: 'http://gpu:7860' }]);
+  });
+
+  it('accepts a body without the kind, leaving the kind as it is', async () => {
+    const { put, written } = setup(initial);
+    const res = await put({ url: 'http://gpu:7860' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ kind: 'a1111', kindSource: 'cli' });
+    expect(written).toEqual([{ url: 'http://gpu:7860' }]);
+  });
+
+  it.each([
+    ['an unknown kind', { kind: 'comfyui', url: 'http://gpu:7860' }],
+    ['a kind that is not a string', { kind: 1, url: 'http://gpu:7860' }],
+    ['a kind without a url', { kind: 'forge' }],
+  ])('refuses %s with invalid_request and saves nothing', async (_name, body) => {
+    const { put, written } = setup(initial);
+    const res = await put(body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { kind: 'invalid_request' } });
+    expect(written).toEqual([]);
   });
 });
 

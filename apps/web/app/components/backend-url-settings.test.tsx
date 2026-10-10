@@ -14,7 +14,12 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
 
 beforeEach(() => {
   vi.mocked(useBackendSettings).mockReturnValue({
-    data: { kind: 'forge', url: 'http://127.0.0.1:7860', urlSource: 'default' },
+    data: {
+      kind: 'forge',
+      url: 'http://127.0.0.1:7860',
+      urlSource: 'default',
+      kindSource: 'default',
+    },
     error: undefined,
   } as never);
   vi.mocked(saveBackendSettings).mockResolvedValue({} as never);
@@ -61,7 +66,7 @@ describe('BackendUrlSettings', () => {
     const user = userEvent.setup();
     vi.mocked(saveBackendSettings).mockImplementation(async ({ url }) => {
       vi.mocked(useBackendSettings).mockReturnValue({
-        data: { kind: 'forge', url, urlSource: 'config' },
+        data: { kind: 'forge', url, urlSource: 'config', kindSource: 'config' },
         error: undefined,
       } as never);
       return {} as never;
@@ -72,8 +77,13 @@ describe('BackendUrlSettings', () => {
     await user.type(field(), 'http://127.0.0.1:7861');
     await user.click(screen.getByRole('button', { name: '保存' }));
 
-    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7861' });
-    expect(await screen.findByText('保存した。http://127.0.0.1:7861 に繋ぐ。')).toBeTruthy();
+    expect(saveBackendSettings).toHaveBeenCalledWith({
+      url: 'http://127.0.0.1:7861',
+      kind: 'forge',
+    });
+    expect(
+      await screen.findByText('保存した。Forge の http://127.0.0.1:7861 に繋ぐ。'),
+    ).toBeTruthy();
     expect(field().value).toBe('http://127.0.0.1:7861');
   });
 
@@ -100,8 +110,12 @@ describe('BackendUrlSettings', () => {
   });
 
   // 欠けた形や {} で流さない: 本番の API が返す view（保存は urlSource 'config'）でしか起きない崩れを見落とすため
-  const view = (url: string, urlSource: 'cli' | 'config' | 'default') =>
-    ({ kind: 'forge', url, urlSource, auth: null, generateTimeoutMs: null }) as const;
+  const view = (
+    url: string,
+    urlSource: 'cli' | 'config' | 'default',
+    kind: 'forge' | 'a1111' = 'forge',
+    kindSource: 'cli' | 'config' | 'default' = urlSource,
+  ) => ({ kind, url, urlSource, kindSource, auth: null, generateTimeoutMs: null }) as const;
   const saveButton = () => screen.getByRole('button', { name: '保存' });
 
   it('saves the URL without the spaces around it, and says the trimmed URL', async () => {
@@ -113,8 +127,13 @@ describe('BackendUrlSettings', () => {
     await user.type(field(), '  http://127.0.0.1:7861  ');
     await user.click(saveButton());
 
-    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7861' });
-    expect(await screen.findByText('保存した。http://127.0.0.1:7861 に繋ぐ。')).toBeTruthy();
+    expect(saveBackendSettings).toHaveBeenCalledWith({
+      url: 'http://127.0.0.1:7861',
+      kind: 'forge',
+    });
+    expect(
+      await screen.findByText('保存した。Forge の http://127.0.0.1:7861 に繋ぐ。'),
+    ).toBeTruthy();
   });
 
   it('cannot save a field of only spaces', async () => {
@@ -236,6 +255,83 @@ describe('BackendUrlSettings', () => {
     expect(saveButton()).toHaveProperty('disabled', false);
     await user.click(saveButton());
 
-    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860' });
+    expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860', kind: 'forge' });
+  });
+
+  describe('the kind', () => {
+    const kindField = () => screen.getByLabelText<HTMLSelectElement>('バックエンドの種類');
+    const warning =
+      /ここで保存した種類はいまの起動中だけ効き、次に起動したときも同じ --backend を付ければ、そちらが勝つ/;
+
+    it('offers Forge and A1111, with the kind in use selected', () => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', 'config', 'a1111'),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(kindField().value).toBe('a1111');
+      expect(Array.from(kindField().options).map((option) => option.textContent)).toEqual([
+        'Forge',
+        'A1111',
+      ]);
+      expect(screen.queryByText(/起動時の --backend か config.json の/)).toBeNull();
+    });
+
+    it('saves the chosen kind with the URL, and says which kind it connects to', async () => {
+      const user = userEvent.setup();
+      vi.mocked(saveBackendSettings).mockResolvedValue(
+        view('http://127.0.0.1:7860', 'config', 'a1111'),
+      );
+      render(<BackendUrlSettings />);
+
+      await user.selectOptions(kindField(), 'a1111');
+      await user.click(saveButton());
+
+      expect(saveBackendSettings).toHaveBeenCalledWith({
+        url: 'http://127.0.0.1:7860',
+        kind: 'a1111',
+      });
+      expect(
+        await screen.findByText('保存した。A1111 の http://127.0.0.1:7860 に繋ぐ。'),
+      ).toBeTruthy();
+    });
+
+    it('keeps the chosen kind when the settings are read again', async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<BackendUrlSettings />);
+      await user.selectOptions(kindField(), 'a1111');
+
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', 'default'),
+        error: undefined,
+      } as never);
+      rerender(<BackendUrlSettings />);
+
+      expect(kindField().value).toBe('a1111');
+    });
+
+    it('warns that the start-up --backend wins next time when the kind comes from it', () => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', 'default', 'a1111', 'cli'),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(screen.getByText(warning)).toBeTruthy();
+    });
+
+    it('does not show the kind warning when the kind comes from config or the default', () => {
+      for (const kindSource of ['config', 'default'] as const) {
+        vi.mocked(useBackendSettings).mockReturnValue({
+          data: view('http://127.0.0.1:7860', 'cli', 'forge', kindSource),
+          error: undefined,
+        } as never);
+        const { unmount } = render(<BackendUrlSettings />);
+
+        expect(screen.queryByText(warning)).toBeNull();
+        unmount();
+      }
+    });
   });
 });
