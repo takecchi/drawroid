@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { adoptImage, ApiError } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,6 +17,11 @@ afterEach(() => {
   cleanup();
   vi.resetAllMocks();
 });
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 function renderButton() {
   render(
@@ -102,8 +107,7 @@ describe('AdoptButton', () => {
 
     await user.keyboard('{Enter}');
     await user.keyboard('{Enter}');
-    const mark = await screen.findByText('この画像に決めた');
-    expect(document.activeElement).toBe(mark);
+    await expectFocusMovesTo(await screen.findByText('この画像に決めた'));
   });
 
   it('moves the focus back to choosing when the image could not be taken', async () => {
@@ -115,7 +119,7 @@ describe('AdoptButton', () => {
     await user.keyboard('{Enter}');
 
     await screen.findByText('決められない: 採れなかった');
-    expect(document.activeElement).toBe(
+    await expectFocusMovesTo(
       screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
     );
   });

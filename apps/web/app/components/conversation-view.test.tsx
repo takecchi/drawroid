@@ -841,8 +841,9 @@ describe('ConversationView', () => {
     screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }).focus();
     await user.keyboard('{Enter}');
     await user.keyboard('{Enter}');
+    // 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、まだ走っていないことがある
     const mark = await screen.findByText('この画像に決めた');
-    expect(document.activeElement).toBe(mark);
+    await waitFor(() => expect(document.activeElement).toBe(mark));
 
     stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: ADOPTED_STOP }));
     // 決めていない行は、止まったのでお気に入りの口に変わる。決めた行は印のまま
