@@ -103,12 +103,15 @@ describe('llmConfigSchema', () => {
       roles: {
         think: { provider: '', model: '' },
         judge: { provider: 'local', model: '' },
+        talk: { provider: '', model: '' },
       },
     });
     expect(result.error?.issues.map(({ path, message }) => ({ path, message }))).toEqual([
       { path: ['roles', 'think', 'provider'], message: '考える役の provider を選ぶ' },
       { path: ['roles', 'think', 'model'], message: '考える役のモデルの名前を入れる' },
       { path: ['roles', 'judge', 'model'], message: '見る役のモデルの名前を入れる' },
+      { path: ['roles', 'talk', 'provider'], message: '話す役の provider を選ぶ' },
+      { path: ['roles', 'talk', 'model'], message: '話す役のモデルの名前を入れる' },
       {
         path: ['roles', 'judge', 'provider'],
         message: '見る役の provider「local」が、定義した provider（まだ無い）に無い',
