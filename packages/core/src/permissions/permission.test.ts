@@ -240,6 +240,51 @@ describe('readPermissionOverrides', () => {
     expect(invalid[2]?.reason).toBe('知らないパラメータ');
   });
 
+  // 理由は画面（設定の許可）と drawroid doctor に出る。zod の英語のままだと、人が何を直せばよいか分からない
+  it('says in short Japanese what to fix in each row it leaves out', () => {
+    const { invalid } = readPermissionOverrides({
+      cfgScale: { mode: 'fixed', value: 'seven' },
+      prompt: { mode: 'off' },
+      loras: { mode: 'sometimes' },
+      steps: 'auto',
+      width: { mode: 'fixed', value: -1 },
+    });
+
+    expect(invalid).toEqual([
+      { param: 'cfgScale', reason: 'value: 形が違う（数で書く）' },
+      {
+        param: 'prompt',
+        reason: 'mode: mode は auto・fixed のどれかで書く（この欄は off にできない）',
+      },
+      { param: 'loras', reason: 'mode: mode は auto・fixed・off のどれかで書く' },
+      { param: 'steps', reason: '形が違う（オブジェクトで書く）' },
+      // 幅の下限は 0 を含まない。「0 以上」と書くと、0 なら通るように読める
+      { param: 'width', reason: 'value: 小さすぎる（0 より大きく）' },
+    ]);
+  });
+
+  it('never gives an English sentence from the validator as the reason', () => {
+    const rows: Record<string, unknown>[] = [
+      { steps: {} },
+      { steps: { mode: 'x' } },
+      { steps: 'auto' },
+      { steps: null },
+      { steps: { mode: 'fixed' } },
+      { steps: { mode: 'fixed', value: 'many' } },
+      { loras: { mode: 'auto', choices: 'a' } },
+      { loras: { mode: 'auto', choices: [''] } },
+      { width: { mode: 'fixed', value: -1 } },
+      { hiresFix: { mode: 'fixed', value: { scale: 1 } } },
+    ];
+    for (const row of rows) {
+      const { invalid } = readPermissionOverrides(row);
+      expect(invalid, JSON.stringify(row)).toHaveLength(1);
+      expect(invalid[0]?.reason, JSON.stringify(row)).not.toMatch(
+        /Invalid|Unrecognized|Expected|expected|received|Too (small|big)|Required|must/,
+      );
+    }
+  });
+
   it('reads nothing written as no overrides', () => {
     expect(readPermissionOverrides(undefined)).toEqual({ overrides: {}, invalid: [] });
   });
