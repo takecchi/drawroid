@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
 import { conflict, invalidRequest, notFound } from '../errors.js';
+import { imageProblem } from '../images.js';
 import { maskUploadSchema } from '../masks.js';
 import { referencePreviewUrl, referenceUploadSchema } from '../references.js';
 import { jsonBody } from '../validate.js';
@@ -68,8 +69,18 @@ export function interventionsRoutes({ store, autoQueue }: ApiDeps) {
       })
       .post('/:jobId/interventions', jsonBody(bodySchema), async (c) => {
         const jobId = c.req.param('jobId');
-        if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
         const body = c.req.valid('json');
+        // ジョブの有無より先に読む: 画像の誤りは、ほかの本文の検証と同じく、対象を見る前に断るため
+        const problem =
+          body.kind === 'reference'
+            ? await imageProblem(body.image.data, body.image.mediaType)
+            : body.kind === 'mask'
+              ? await imageProblem(body.mask, 'image/png')
+              : undefined;
+        if (problem !== undefined) {
+          return invalidRequest(c, `${body.kind === 'mask' ? 'mask' : 'image'}.data: ${problem}`);
+        }
+        if (!(await isAutoJob(store, jobId))) return notFound(c, `自動ジョブ ${jobId} は無い`);
         try {
           if (body.kind === 'instruction') {
             const intervention = await autoQueue.addInstruction(jobId, body.text);
