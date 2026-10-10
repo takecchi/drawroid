@@ -14,7 +14,7 @@ import {
   type JudgeOutput,
 } from '../loop/schemas.js';
 import type { MemoryStore } from '../memory/store.js';
-import { activeJobOfConversation } from './drawing-tools.js';
+import { currentJobOfConversation } from './drawing-tools.js';
 import {
   describeJudgement,
   indexOfTalkImageNumber,
@@ -90,7 +90,7 @@ export function createReviewTools(deps: ReviewToolDeps): TalkTool[] {
       }
       return { spec };
     }
-    const active = await activeJobOfConversation(deps.jobs, conversationId);
+    const active = await currentJobOfConversation(deps.jobs, conversationId);
     if (active !== undefined) {
       const spec = await deps.jobs.readJob(active);
       if (spec.kind === 'auto') return { spec };
