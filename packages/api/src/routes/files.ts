@@ -33,8 +33,7 @@ export function filesRoutes({ store }: ApiDeps) {
         );
         return c.body(data as Uint8Array<ArrayBuffer>, 200, { 'content-type': 'image/webp' });
       } catch (error) {
-        if (error instanceof UnreadableImageError) return invalidFile(c, error.message);
-        throw error;
+        return invalidFile(c, error instanceof UnreadableImageError ? error.message : '読めない');
       }
     })
     .get('/jobs/:jobId/iterations/:iteration/images/:file', async (c) => {
@@ -62,8 +61,7 @@ export function filesRoutes({ store }: ApiDeps) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           return notFound(c, 'そのファイルは無い');
         }
-        if (error instanceof UnreadableImageError) return invalidFile(c, error.message);
-        throw error;
+        return invalidFile(c, error instanceof UnreadableImageError ? error.message : '読めない');
       }
     });
 }
