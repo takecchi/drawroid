@@ -1,6 +1,7 @@
 import { ImagePlus, Send, Square, X } from 'lucide-react';
 import {
   useEffect,
+  useId,
   useRef,
   type ChangeEvent,
   type FormEvent,
@@ -34,6 +35,7 @@ export function ChatComposer({
   notice,
   attachments = [],
   onAttach,
+  attachUnavailable,
   onRemoveAttachment,
   accept = 'image/png,image/jpeg,image/webp',
   focusOnMount = false,
@@ -53,6 +55,8 @@ export function ChatComposer({
   attachments?: readonly ComposerAttachment[];
   /** 画像を選んだとき。渡したときだけ「画像を添える」を出す */
   onAttach?: (files: File[]) => void;
+  /** 画像を添えられない理由。渡すと「画像を添える」を押せなくし、理由を title と読み上げの説明に出す */
+  attachUnavailable?: string;
   onRemoveAttachment?: (id: string) => void;
   accept?: string;
   /** 出たときに発言欄へフォーカスを移す。新しい会話を始めたときだけ渡す（開き直しただけでは移さない） */
@@ -63,6 +67,7 @@ export function ChatComposer({
   const form = useRef<HTMLFormElement>(null);
   // 外した添付の位置。外したあとの描き直しで、残りの添付か「画像を添える」へフォーカスを移すために覚える
   const removedAt = useRef<number | null>(null);
+  const attachReasonId = useId();
 
   // 押したボタン（送る・止める・外す）は消えるか押せなくなるので、フォーカスの行き先を決めて移す。
   // 移さないとページの外（body）に落ち、キーボードの人はページの先頭から辿り直すことになるため
@@ -86,6 +91,13 @@ export function ChatComposer({
       next ?? form.current?.querySelector<HTMLButtonElement>('button[aria-label="画像を添える"]')
     )?.focus();
   }, [attachments]);
+
+  // 選ぶ口から戻るとフォーカスは「画像を添える」にある。そのまま押せなくなると body に落ちるので、発言欄へ移す。
+  // 別の所にフォーカスがあるときは奪わない
+  useEffect(() => {
+    const attach = form.current?.querySelector('button[aria-label="画像を添える"]');
+    if (attachUnavailable !== undefined && document.activeElement === attach) focusField();
+  }, [attachUnavailable]);
 
   function pick(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -156,13 +168,19 @@ export function ChatComposer({
             />
             <Button
               aria-label="画像を添える"
-              title="画像を添える"
-              disabled={sending}
+              title={attachUnavailable ?? '画像を添える'}
+              aria-describedby={attachUnavailable === undefined ? undefined : attachReasonId}
+              disabled={sending || attachUnavailable !== undefined}
               onClick={() => picker.current?.click()}
               className="min-h-11 min-w-11 px-3 md:pointer-fine:min-h-9 md:pointer-fine:min-w-0"
             >
               <ImagePlus className="size-4" aria-hidden />
             </Button>
+            {attachUnavailable !== undefined && (
+              <span id={attachReasonId} className="sr-only">
+                {attachUnavailable}
+              </span>
+            )}
           </>
         )}
         <Textarea
