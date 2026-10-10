@@ -25,6 +25,7 @@ import {
   changedConditions,
   describeStopConditions,
   stopConditionsToForm,
+  type EditedStopConditionFields,
   type StopConditionsFormValues,
 } from '../lib/stop-conditions-form';
 import { ReferenceAttacher } from './reference-attacher';
@@ -152,9 +153,9 @@ function ReferenceForm({ jobId }: { jobId: string }) {
 function StopConditionsChanger({ jobId }: { jobId: string }) {
   // 走行中の画面にだけ出すので live 固定: 別の口出し（別タブ・API）で変わった条件も、取り直して見せるため
   const { data, error: loadError } = useStopConditions(jobId, { live: true });
-  // 触ったあとは、フォーム全体を下書きとして持つ: 取り直した current で毎回上書きすると、入力の途中を消してしまうため。
-  // そのため、1欄を触ると、ほかの欄もその時点の値で止まり、変えると4欄とも送る（別のタブで変えた欄も、この値で戻る）
-  const [draft, setDraft] = useState<StopConditionsFormValues | undefined>();
+  // 手で直した欄だけを下書きとして持ち、取り直した current に重ねて出す: 直した欄を取り直しで消さず、直していない欄は
+  // 別のタブや API で変わった値に追従させるため。送るのも直した欄だけ（ほかの欄を、この画面の古い値で戻さない）
+  const [edits, setEdits] = useState<Partial<StopConditionsFormValues>>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
@@ -171,11 +172,25 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
   }
 
   const { submitted, current } = data;
-  const values = draft ?? stopConditionsToForm(current);
+  const values: StopConditionsFormValues = { ...stopConditionsToForm(current), ...edits };
+  const edited = Object.fromEntries(
+    Object.keys(edits).map((key) => [key, true]),
+  ) as EditedStopConditionFields;
   const changed = changedConditions(submitted, current);
 
+  // 部品は全部の欄を返すので、出していた値と違う欄だけを直した欄に足す
+  function edit(next: StopConditionsFormValues) {
+    setEdits((previous) => {
+      const merged = { ...previous };
+      for (const key of Object.keys(next) as (keyof StopConditionsFormValues)[]) {
+        if (next[key] !== values[key]) Object.assign(merged, { [key]: next[key] });
+      }
+      return merged;
+    });
+  }
+
   async function change() {
-    const change = buildStopConditionsChange(values);
+    const change = buildStopConditionsChange(values, edited);
     if (!change.ok) {
       setError(change.reason);
       return;
@@ -185,7 +200,7 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
     try {
       // 成功したら下書きを捨てる: changeStopConditions が current を取り直すので、欄は重ねたあとの実際の値になる
       await changeStopConditions(jobId, change.value);
-      setDraft(undefined);
+      setEdits({});
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
@@ -218,8 +233,14 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
       )}
       <StopConditionsEditor
         values={values}
-        onChange={setDraft}
-        confirm={{ label: '条件を変える', pending, onConfirm: () => void change() }}
+        onChange={edit}
+        confirm={{
+          label: '条件を変える',
+          pending,
+          // 直した欄が無いときは押せない: 送る欄が無く、API も「変える欄が無い」で断るため
+          disabled: Object.keys(edits).length === 0,
+          onConfirm: () => void change(),
+        }}
       />
       {error !== undefined && <ErrorNote>変えられない: {error}</ErrorNote>}
     </SubSection>

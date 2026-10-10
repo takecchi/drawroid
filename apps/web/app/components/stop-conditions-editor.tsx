@@ -41,8 +41,8 @@ export function StopConditionsEditor({
 }: {
   values: StopConditionsFormValues;
   onChange: (values: StopConditionsFormValues) => void;
-  /** 付けると確定のボタンを出す。止まらない条件のあいだは押せない */
-  confirm?: { label: string; pending: boolean; onConfirm: () => void };
+  /** 付けると確定のボタンを出す。止まらない条件のあいだと、disabled のあいだは押せない */
+  confirm?: { label: string; pending: boolean; disabled?: boolean; onConfirm: () => void };
 }) {
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -144,7 +144,10 @@ export function StopConditionsEditor({
       {blocker !== undefined && <ErrorNote>{blocker}</ErrorNote>}
       {confirm !== undefined && (
         <div>
-          <Button disabled={blocker !== undefined || confirm.pending} onClick={confirm.onConfirm}>
+          <Button
+            disabled={blocker !== undefined || confirm.pending || confirm.disabled === true}
+            onClick={confirm.onConfirm}
+          >
             {confirm.label}
           </Button>
         </div>

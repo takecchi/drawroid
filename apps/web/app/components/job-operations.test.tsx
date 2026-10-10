@@ -281,7 +281,43 @@ describe('JobOperations', () => {
       expect(screen.queryByText(/AI の判断:/)).toBeNull();
     });
 
-    it('sends every field, removing limits that were cleared, and fills in the refetched current conditions', async () => {
+    it('sends only the field the user changed, so a field another tab changed is not put back', async () => {
+      const { rerender } = render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
+
+      await user.type(screen.getByLabelText(/枚数の上限/), '6');
+      // 別のタブが、回数の上限を 10 回 → 4 回に変えた（ポーリングで取り直した current に入る）
+      serve({
+        submitted: autoSpec.stopConditions,
+        current: { aiJudgement: true, maxIterations: 4 },
+      });
+      rerender(<JobOperations job={runningAuto()} />);
+
+      expect(screen.getByLabelText(/回数の上限/)).toHaveProperty('value', '4');
+      expect(screen.getByLabelText(/枚数の上限/)).toHaveProperty('value', '6');
+      await user.click(screen.getByRole('button', { name: '条件を変える' }));
+
+      expect(change).toHaveBeenCalledWith('job-7', { maxImages: 6 });
+    });
+
+    it('removes only the limit the user cleared', async () => {
+      render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
+
+      await user.clear(screen.getByLabelText(/回数の上限/));
+      await user.type(screen.getByLabelText(/枚数の上限/), '6');
+      await user.click(screen.getByRole('button', { name: '条件を変える' }));
+
+      expect(change).toHaveBeenCalledWith('job-7', { maxIterations: null, maxImages: 6 });
+    });
+
+    it('keeps the change button disabled while no field has been changed', () => {
+      render(<JobOperations job={runningAuto()} />);
+
+      expect(screen.getByRole('button', { name: '条件を変える' })).toHaveProperty('disabled', true);
+    });
+
+    it('sends every field the user changed, removing limits that were cleared, and fills in the refetched current conditions', async () => {
       change.mockImplementation(async () => {
         serve({
           submitted: autoSpec.stopConditions,
@@ -324,8 +360,10 @@ describe('JobOperations', () => {
     it('shows the reason when the API answers 409', async () => {
       change.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
       render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
 
-      await userEvent.setup().click(screen.getByRole('button', { name: '条件を変える' }));
+      await user.type(screen.getByLabelText(/枚数の上限/), '6');
+      await user.click(screen.getByRole('button', { name: '条件を変える' }));
 
       expect((await screen.findByText(/変えられない/)).textContent).toContain('もう止まっている');
     });
