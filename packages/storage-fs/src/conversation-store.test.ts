@@ -219,6 +219,14 @@ describe('FsConversationStore', () => {
     const files = dataPaths(root).conversationFiles(conversationId);
     expect(JSON.parse(await readFile(files.llmCall(record.callId), 'utf8'))).toEqual(record);
     expect(await readdir(dataPaths(root).llmCalls).catch(() => [])).toEqual([]);
+
+    // callId もパスになる: llm-calls/ の外を指す名前は、書く前に断る
+    for (const callId of ['20261009-063000-abc123/../../x', '../x', '..', '', 'a/b', 'x.json']) {
+      await expect(store.writeLlmCall(conversationId, { ...record, callId })).rejects.toThrow(
+        'callId',
+      );
+    }
+    expect(await readdir(files.dir)).not.toContain('x.json');
   });
 
   it('refuses a conversation ID that would point outside the conversations directory', async () => {
