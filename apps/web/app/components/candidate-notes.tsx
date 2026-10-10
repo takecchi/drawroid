@@ -89,7 +89,7 @@ function KindSection({
   return (
     // 名前付きの region を外へ残す: 画面の試験が region の名前で種類ごとの欄を引くため（SubSection は名前を持たない）
     <section aria-label={KIND_LABELS[kind]} className="border-t border-border pt-3">
-      <SubSection title={KIND_LABELS[kind]}>
+      <SubSection title={KIND_LABELS[kind]} level={2}>
         {error !== undefined && <ErrorNote>候補を読めない: {error.message}</ErrorNote>}
         {data !== undefined && names.length === 0 && <Muted>候補が無い。</Muted>}
         {names.length > 0 && shown.length === 0 && <Muted>絞った名前に合う候補が無い。</Muted>}
@@ -166,7 +166,9 @@ export function CandidateNotes() {
         );
 
   return (
-    <Section title="候補の説明">
+    // 画面の頭の見出しにする（h1）: この部品は候補の説明の画面にだけ置かれ、画面にほかの h1 が無いため。
+    // 種類ごとの小見出しは h2 にする（h1 の直下で段を飛ばさない）
+    <Section title="候補の説明" level={1}>
       <Muted>
         checkpoint・LoRA などに、人間の短い説明（{MAX_CANDIDATE_NOTE_CHARS}{' '}
         文字まで）を付ける。保存すると、次のジョブから考える役に渡る。
@@ -200,7 +202,7 @@ export function CandidateNotes() {
           ))}
           {orphans.length > 0 && (
             <section aria-label="今の候補に無い説明" className="border-t border-border pt-3">
-              <SubSection title="今の候補に無い説明">
+              <SubSection title="今の候補に無い説明" level={2}>
                 <Muted>バックエンドの候補に無い名前への説明。考える役には渡らない。</Muted>
                 <DescriptionList>
                   {orphans.map((name) => (

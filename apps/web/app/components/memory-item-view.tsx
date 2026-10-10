@@ -38,6 +38,9 @@ export function MemoryItemView({ id }: { id: string }) {
   const { data, error, mutate } = useMemoryItem(id);
   return (
     <Section>
+      {/* 画面の頭の見出しにする（h1）: この部品は記憶の1項目の画面にだけ置かれ、画面にほかの h1 が無いため。
+          見える題を足さずに見た目を変えない（sr-only は流れから外れ、枠の隙間も増えない）。本文は長いので題にせず、どの画面かを言う */}
+      <h1 className="sr-only">記憶の項目</h1>
       <p>
         <Link to="/memory" className="underline underline-offset-2">
           記憶の一覧へ
@@ -115,7 +118,7 @@ function MemoryItemBody({
         作成 {formatTime(base.createdAt)} / 更新 {formatTime(base.updatedAt)}
       </p>
 
-      <SubSection title="学んだ元">
+      <SubSection title="学んだ元" level={2}>
         {detail.sources.length === 0 && <Muted>無い。</Muted>}
         <ItemList>
           {detail.sources.map((source) =>
@@ -151,7 +154,7 @@ function MemoryItemBody({
         </ItemList>
       </SubSection>
 
-      <SubSection title="直す">
+      <SubSection title="直す" level={2}>
         <form onSubmit={save} className="space-y-3">
           <Field label="本文" wide>
             <Textarea
