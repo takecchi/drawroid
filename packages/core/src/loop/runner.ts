@@ -382,6 +382,7 @@ export class JobRunner {
             this.now(),
           );
     if (change !== undefined) {
+      await this.acceptingJob(jobId);
       await store.addIntervention(
         jobId,
         { kind: 'stopConditions', stopConditions: change },
