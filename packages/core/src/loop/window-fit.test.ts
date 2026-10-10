@@ -107,7 +107,9 @@ describe('findInputOverflows', () => {
 
       expect(overflows).not.toEqual([]);
       for (const overflow of overflows) {
-        expect(overflow.largestField?.path).toMatch(/^(text|candidates|interventions|references|image)/);
+        expect(overflow.largestField?.path).toMatch(
+          /^(text|candidates|interventions|references|image)/,
+        );
       }
     });
 

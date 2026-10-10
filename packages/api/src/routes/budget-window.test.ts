@@ -114,7 +114,9 @@ describe('saving budgets whose sum goes over a window', () => {
     expect(body.error.kind).toBe('invalid_request');
     expect(body.error.message).toMatch(/考える役の考える段.*8192.*1024.*トークン超える/);
     // どの欄を減らせばよいかも添える
-    expect(body.error.message).toMatch(/考える段.*いちばん大きく効いている欄は candidates\.maxSize/);
+    expect(body.error.message).toMatch(
+      /考える段.*いちばん大きく効いている欄は candidates\.maxSize/,
+    );
     expect((await budgetSettings.read()).overrides).toEqual({});
   });
 
