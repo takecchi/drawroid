@@ -81,10 +81,9 @@ export function summarizeToolRow(
   if (
     name === 'drawing_status' &&
     state === 'ok' &&
-    summary !== undefined &&
-    Object.hasOwn(JOB_STATUS_WORDS, summary)
+    summary !== undefined
   ) {
-    return JOB_STATUS_WORDS[summary as JobState['status']];
+    return JOB_STATUS_WORDS[summary as JobState['status']] ?? '描いている';
   }
   return summarizeToolResult(state, summary);
 }
