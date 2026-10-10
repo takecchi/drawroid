@@ -78,10 +78,16 @@ describe('buildJudgeOutputSchema', () => {
     expect(buildJudgeOutputSchema(1).safeParse(output).success).toBe(true);
   });
 
-  it('rejects a score outside 0 to 1', () => {
+  it.each([[-0.1], [1.5]])('rejects a score of %d, outside 0 to 1', (score) => {
     const output = valid(1);
-    output.images[0] = { score: 1.5, issues: [] };
+    output.images[0] = { score, issues: [] };
     expect(buildJudgeOutputSchema(1).safeParse(output).success).toBe(false);
+  });
+
+  it.each([[0], [1]])('accepts a score of %d at the edge of 0 to 1', (score) => {
+    const output = valid(1);
+    output.images[0] = { score, issues: [] };
+    expect(buildJudgeOutputSchema(1).safeParse(output).success).toBe(true);
   });
 
   // 「意図どおり」なのに意図に合っていない点数を付けた出力は、どちらかが誤り。止めてよいとして読まない
