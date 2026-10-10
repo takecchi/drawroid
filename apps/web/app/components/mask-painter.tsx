@@ -2,7 +2,7 @@ import { addMask, isApiError } from '@drawroid/swr';
 import { Button, CheckboxField, ErrorNote, Field, Input, OkNote } from '@drawroid/ui';
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 
-import { encodeMaskPng } from '../lib/mask-png';
+import { encodeMaskPng, maskPngProblem } from '../lib/mask-png';
 import { drawMask, toImagePoint, type MaskSize, type Stroke } from '../lib/mask-strokes';
 
 const DEFAULT_RADIUS = 32;
@@ -59,6 +59,12 @@ export function useMaskPainting(target: MaskTarget | undefined): MaskPainting {
     setError(undefined);
     try {
       const png = await encodeMaskPng(strokes, size);
+      // 送る前に断る: 上限を超えたマスクを送ると、送り終えるまで待たせたうえで、サーバに断られるだけになるため
+      const problem = maskPngProblem(png);
+      if (problem !== undefined) {
+        setError(problem);
+        return;
+      }
       await addMask(target.jobId, { iteration: target.iteration, index: target.index }, png);
       setStrokes([]);
       setSent(true);

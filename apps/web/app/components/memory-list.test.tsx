@@ -82,6 +82,23 @@ describe('MemoryList', () => {
     expect(screen.getByText('名前を変える')).toBeTruthy();
   });
 
+  // 折れ方は jsdom で測れないので、箱の中で折る印（break-all・min-w-0）を見る: 外すと、長い名前が箱の外へはみ出すため
+  it('lets a long name of an unreadable file break inside its box', () => {
+    const longId = 'a'.repeat(235);
+    mocks.useMemoryList.mockReturnValue({
+      data: { items: [], invalid: [{ id: longId, reason: '名前を変える' }] },
+      error: undefined,
+    });
+    render(
+      <MemoryRouter>
+        <MemoryList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(longId).classList).toContain('break-all');
+    expect(screen.getByText(longId).classList).toContain('min-w-0');
+  });
+
   // 空のままでは、覚える仕組みがあることも、いつ増えるのかも分からない
   it('says what comes in here and when, even while it is empty', () => {
     mocks.useMemoryList.mockReturnValue({ data: { items: [], invalid: [] }, error: undefined });

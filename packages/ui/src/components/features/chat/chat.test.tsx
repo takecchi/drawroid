@@ -289,6 +289,63 @@ describe('ChatComposer', () => {
     }
   });
 
+  describe('when no more image can be attached', () => {
+    const REASON = '添えられるのは 4 枚まで。ほかの画像を外すと添えられる';
+    const attachButton = () => screen.getByRole('button', { name: '画像を添える' });
+    const describedBy = (element: HTMLElement) =>
+      element
+        .getAttribute('aria-describedby')
+        ?.split(' ')
+        .map((id) => document.getElementById(id)?.textContent)
+        .join(' ');
+    const props = { value: '', onChange: () => undefined, onSend: () => undefined };
+
+    it('disables adding an image and gives the reason as its title and description', () => {
+      render(<ChatComposer {...props} onAttach={() => undefined} attachUnavailable={REASON} />);
+
+      expect((attachButton() as HTMLButtonElement).disabled).toBe(true);
+      expect(attachButton().getAttribute('title')).toBe(REASON);
+      expect(describedBy(attachButton())).toBe(REASON);
+    });
+
+    it('keeps adding an image available, without a description, when nothing is passed', () => {
+      render(<ChatComposer {...props} onAttach={() => undefined} />);
+
+      expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
+      expect(attachButton().getAttribute('title')).toBe('画像を添える');
+      expect(attachButton().getAttribute('aria-describedby')).toBeNull();
+    });
+
+    // 選ぶ口から戻るとフォーカスは「画像を添える」にある。押せなくなると body に落ちる
+    it('moves the focus to the message field when the button that had it becomes disabled', () => {
+      const { rerender } = render(<ChatComposer {...props} onAttach={() => undefined} />);
+      attachButton().focus();
+
+      rerender(<ChatComposer {...props} onAttach={() => undefined} attachUnavailable={REASON} />);
+
+      expect(document.activeElement).toBe(screen.getByLabelText('発言'));
+    });
+
+    it('does not take the focus from elsewhere when adding an image becomes unavailable', () => {
+      const { rerender } = render(
+        <>
+          <ChatComposer {...props} onAttach={() => undefined} />
+          <button type="button">ほか</button>
+        </>,
+      );
+      screen.getByRole('button', { name: 'ほか' }).focus();
+
+      rerender(
+        <>
+          <ChatComposer {...props} onAttach={() => undefined} attachUnavailable={REASON} />
+          <button type="button">ほか</button>
+        </>,
+      );
+
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'ほか' }));
+    });
+  });
+
   // 添えた画像の「外す」は見た目の丸のまま、押せる範囲だけを ::after で 44px に広げる。実際の大きさは、ブラウザで測る
   it('widens the area that can be pressed on the button that removes an attached image', () => {
     render(<ComposerWithAttachments names={['a.png']} />);

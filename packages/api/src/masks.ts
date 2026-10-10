@@ -1,7 +1,7 @@
+import { MAX_MASK_BYTES } from '@drawroid/core';
 import { z } from 'zod';
 
-/** マスク1枚の大きさの上限（base64 を戻したあとのバイト数）。参照画像と同じ値 */
-export const MAX_MASK_BYTES = 8 * 1024 * 1024;
+export { MAX_MASK_BYTES };
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;

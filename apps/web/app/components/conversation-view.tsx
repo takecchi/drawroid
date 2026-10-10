@@ -64,7 +64,11 @@ import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-bac
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { llmStageFailure, summarizeStopReason } from '../lib/stop-reason';
 import { summarizeToolRow, toolTitle } from '../lib/tool-rows';
-import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
+import {
+  buildReferenceUpload,
+  MAX_REFERENCES_PER_REQUEST,
+  referenceFileProblem,
+} from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
 import { ChooseAsFavorite } from './choose-as-favorite';
 import { MaskSurface, MaskTools, useMaskPainting } from './mask-painter';
@@ -1223,6 +1227,9 @@ export function ConversationView({
                 url: item.url,
               })),
               onAttach: attach,
+              ...(attached.length >= MAX_REFERENCES_PER_REQUEST && {
+                attachUnavailable: `添えられるのは ${MAX_REFERENCES_PER_REQUEST} 枚まで。ほかの画像を外すと添えられる`,
+              }),
               onRemoveAttachment: removeAttachment,
             })}
           />
