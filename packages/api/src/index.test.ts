@@ -19,6 +19,7 @@ import {
 let root: string;
 let backend: StubBackend;
 let api: ReturnType<typeof createApi>;
+let manualRunner: ManualGenerationRunner;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-api-'));
@@ -28,11 +29,12 @@ beforeEach(async () => {
   // 呼ぶたびに1秒進める: jobId は秒までしか持たず、同じ秒に作ったジョブの順は決まらないため
   let clock = Date.parse('2026-10-09T06:30:00Z');
   const now = () => new Date((clock += 1000));
+  manualRunner = new ManualGenerationRunner({ backend, store, now });
   api = createApi({
     backend,
     store,
     memoryStore,
-    manualRunner: new ManualGenerationRunner({ backend, store, now }),
+    manualRunner,
     backendSettings: {
       read: () => Promise.reject(new Error('この試験では使わない')),
       write: () => Promise.reject(new Error('この試験では使わない')),
@@ -74,12 +76,12 @@ async function generate(body: unknown = params): Promise<string> {
   const res = await post('/jobs/manual', body);
   expect(res.status).toBe(202);
   const { jobId } = (await res.json()) as { jobId: string };
-  await vi.waitFor(async () => {
-    const detail = (await (await api.request(`/jobs/${jobId}`)).json()) as {
-      state: { status: string };
-    };
-    expect(detail.state.status).toBe('stopped');
-  });
+  // 生成が終わるのを待つ: 状態を時間で見回ると、混んだときに見回りの上限（1 秒）を超えるため
+  await manualRunner.idle();
+  const detail = (await (await api.request(`/jobs/${jobId}`)).json()) as {
+    state: { status: string };
+  };
+  expect(detail.state.status).toBe('stopped');
   return jobId;
 }
 

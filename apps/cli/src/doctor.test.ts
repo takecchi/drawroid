@@ -457,6 +457,8 @@ describe('runDoctor', () => {
     const { text } = await setup({
       llm: {
         providers: { a: { type: 'openai-compatible', baseURL: `${url}/v1` } },
+        // 繋がらない所へ再試行を重ねない: 見るのは見る役の行だけで、再試行の待ちだけで試験の上限（5 秒）に近づくため
+        networkRetries: 0,
         roles: {
           think: { provider: 'a', model: 'm1' },
           judge: { provider: 'a', model: 'm2', imageInput: false },
