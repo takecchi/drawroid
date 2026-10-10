@@ -56,7 +56,7 @@ export function ChooseAsFavorite({
       {/* 折り返すのは言葉のかたまりの境目だけ: ボタンの中でそのまま折り返すと、日本語はどの字の間でも折れ、
           「決め / る」のように言葉の途中で切れるため。画像の枡は狭いので短い文にし、お気に入りになることは名前と title に残す */}
       <Button
-        className="h-auto min-h-11 max-w-full px-2 py-1 text-left text-xs whitespace-normal md:min-h-7"
+        className="h-auto min-h-11 max-w-full px-2 py-1 text-left text-xs whitespace-normal md:pointer-fine:min-h-7"
         variant={prominent ? 'primary' : 'default'}
         disabled={pending}
         aria-label={`この画像に決める（お気に入りにする）: ${imageLabel}`}

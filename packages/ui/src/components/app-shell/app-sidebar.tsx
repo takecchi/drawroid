@@ -96,8 +96,8 @@ export function sidebarLinkClassName({
 }): string {
   return cn(
     'mb-0.5 flex items-center gap-2.5 rounded-sm px-2.5 text-sm transition-colors',
-    // ドロワーでは指で押せる高さ（44px）にする
-    inDrawer ? 'min-h-11' : 'py-1.5',
+    // ドロワーと、指で操作するとき（pointer: coarse）は、指で押せる高さ（44px）にする
+    inDrawer ? 'min-h-11' : 'py-1.5 pointer-coarse:min-h-11',
     isActive
       ? 'lumen-edge bg-accent text-accent-foreground'
       : 'text-muted-foreground hover:bg-muted hover:text-foreground',

@@ -195,7 +195,7 @@ describe('the stop card', () => {
     await waitFor(() => expect(recheckJobDistill).toHaveBeenCalledWith(JOB));
   });
 
-  // 狭い画面では、画像の行のボタンも指で押せる 44px の高さにする（広い画面では詰める）。実際の大きさは、ブラウザで測る
+  // 画像の行のボタンも指で押せる 44px の高さにする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
   it('makes the buttons of an image row 44px tall on a narrow screen', async () => {
     vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
     const { source, stream } = fakeSource([]);
@@ -220,7 +220,7 @@ describe('the stop card', () => {
     ];
     for (const name of running) {
       expect(screen.getByRole('button', { name }).className.split(' ')).toEqual(
-        expect.arrayContaining(['h-11', 'md:h-7']),
+        expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']),
       );
     }
     // 止まったあとの行（お気に入りで決める）
@@ -228,7 +228,7 @@ describe('the stop card', () => {
     const rows = await screen.findAllByRole('button', { name: CHOOSE });
     for (const button of rows) {
       expect(button.className.split(' ')).toEqual(
-        expect.arrayContaining(['min-h-11', 'md:min-h-7']),
+        expect.arrayContaining(['min-h-11', 'md:pointer-fine:min-h-7']),
       );
     }
   });

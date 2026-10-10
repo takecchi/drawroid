@@ -158,12 +158,13 @@ export function MaskSurface({
           }
         />
         {/* 黒は screen で透けるので、白く塗った所だけが画像の上に見える */}
+        {/* 長押しの吹き出し（iOS の Safari）を止める: 指を止めて塗り始めると、保存・共有の吹き出しが出て塗るのを遮るため */}
         <canvas
           ref={canvasRef}
           aria-label="マスクを塗る所"
           width={size?.width ?? 0}
           height={size?.height ?? 0}
-          className="absolute inset-0 size-full cursor-crosshair touch-none opacity-60 mix-blend-screen"
+          className="absolute inset-0 size-full cursor-crosshair touch-none opacity-60 mix-blend-screen [-webkit-touch-callout:none]"
           onPointerDown={start}
           onPointerMove={extend}
           onPointerUp={() => setDrawing(false)}
@@ -204,7 +205,7 @@ export function MaskTools({
             max={512}
             value={radius}
             onChange={(event) => setRadius(Math.max(1, Number(event.target.value) || 1))}
-            className="h-11 w-20 md:h-7"
+            className="h-11 w-20 md:pointer-fine:h-7"
           />
         </Field>
         <CheckboxField

@@ -159,7 +159,7 @@ export function ChatComposer({
               title="画像を添える"
               disabled={sending}
               onClick={() => picker.current?.click()}
-              className="min-h-11 min-w-11 px-3 md:min-h-9 md:min-w-0"
+              className="min-h-11 min-w-11 px-3 md:pointer-fine:min-h-9 md:pointer-fine:min-w-0"
             >
               <ImagePlus className="size-4" aria-hidden />
             </Button>
@@ -174,7 +174,7 @@ export function ChatComposer({
           placeholder={placeholder}
           rows={1}
           maxHeight="min(40dvh,15rem)"
-          className="min-h-11 flex-1 md:min-h-9"
+          className="min-h-11 flex-1 md:pointer-fine:min-h-9"
         />
         {/* 狭い画面では、止める・送るも印だけにする（名前は読み上げに残す）: 文字のままだと、描いている間は入力欄が細くなり、
             案内の文が3段に折れるため。押しやすいよう、高さは「画像を添える」とそろえる */}
@@ -187,7 +187,7 @@ export function ChatComposer({
             }}
             aria-label="止める"
             title="止める"
-            className="min-h-11 min-w-11 px-3 md:min-h-9 md:min-w-0"
+            className="min-h-11 min-w-11 px-3 md:pointer-fine:min-h-9 md:pointer-fine:min-w-0"
           >
             <Square className="size-3.5 fill-current" aria-hidden />
             <span className="max-md:sr-only">止める</span>
@@ -199,7 +199,7 @@ export function ChatComposer({
           disabled={!canSend}
           loading={sending}
           title="送る"
-          className="min-h-11 min-w-11 px-3 md:min-h-9 md:min-w-0"
+          className="min-h-11 min-w-11 px-3 md:pointer-fine:min-h-9 md:pointer-fine:min-w-0"
         >
           {!sending && <Send className="size-4" aria-hidden />}
           <span className="max-md:sr-only">送る</span>

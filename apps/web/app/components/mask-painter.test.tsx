@@ -53,6 +53,15 @@ function drag(canvas: HTMLElement, from: [number, number], to: [number, number])
 }
 
 describe('MaskPainter', () => {
+  // 指で塗る面は、なぞってもページが動かず、長押しでも選択や吹き出し（iOS）が出ない。jsdom は CSS を評価しないので class で見る
+  it('keeps a finger on the surface for painting, not for scrolling, selecting or the long-press callout', async () => {
+    const { canvas } = await openPainter();
+
+    expect(canvas.className.split(' ')).toEqual(
+      expect.arrayContaining(['touch-none', '[-webkit-touch-callout:none]']),
+    );
+  });
+
   // 押した「マスクを塗る」は消えるので、フォーカスは最初の道具へ移る。塗る面はキーボードでは塗れないことも、文で知らせる
   it('moves the focus to the brush size once painting starts, and says the keyboard cannot paint', async () => {
     const user = userEvent.setup();

@@ -131,7 +131,12 @@ export function ImageViewer({
               </span>
             </DialogTitle>
             <DialogClose asChild>
-              <Button variant="ghost" size="sm" aria-label="閉じる" className="min-w-11 md:min-w-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="閉じる"
+                className="min-w-11 md:pointer-fine:min-w-0"
+              >
                 <X aria-hidden />
               </Button>
             </DialogClose>
