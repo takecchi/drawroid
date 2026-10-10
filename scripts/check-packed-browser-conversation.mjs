@@ -22,7 +22,13 @@ import { clearTimeout, setTimeout } from 'node:timers';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { URL } from 'node:url';
 
-import { collectProblems, expect, launchBrowser } from './packed-browser-core.mjs';
+import {
+  collectProblems,
+  expect,
+  keepsHolding,
+  launchBrowser,
+  STEADY_MS,
+} from './packed-browser-core.mjs';
 import { makePng, startFakeForge } from './packed-conversation/forge.mjs';
 import { startFakeLlm } from './packed-conversation/llm.mjs';
 import { freePort, packAndInstall, repoRoot, startDrawroid } from './packed-install-core.mjs';
@@ -338,12 +344,21 @@ try {
   };
 
   // 1. 思考と返答が流れて画面に出る。思考は、返答の本文が来る前に出る（流れている）
+  // 中継が本文の手前で止まったことを確かめてから、本文が出ないことをしばらく見続ける: 止まっていなければ本文は少し遅れて届くので、
+  // 思考が出た直後に 1 回だけ読むと、思考と本文が同時に出る退行でも緑になるため
+  const heldBeforeFirst = relay.stats.thinkingHeld;
   relay.holdAfterThinking();
   await say('夕焼けの海辺の少女を描いて');
   await log.getByText(THINKING).waitFor();
+  const heldBy = Date.now() + STEADY_MS;
+  while (relay.stats.thinkingHeld === heldBeforeFirst && Date.now() < heldBy) await sleep(50);
+  const firstHeld = relay.stats.thinkingHeld === heldBeforeFirst + 1;
+  const replyWaits =
+    firstHeld &&
+    (await keepsHolding(async () => (await log.getByText('描き始めました').count()) === 0));
   expect(
-    !(await log.getByText('描き始めました').isVisible()),
-    '思考が、返答より先に流れて画面に出る',
+    firstHeld && replyWaits,
+    `思考が、返答より先に流れて画面に出る（中継が本文の手前で止まった: ${firstHeld}・その間に本文が出なかった: ${replyWaits}）`,
   );
   relay.releaseThinking();
   await log.getByText('描き始めました。少しお待ちください。').waitFor();
@@ -429,9 +444,12 @@ try {
     '思考が流れている間に送ると、前のターンが打ち切られ、新しい発言を読んだターンが始まる',
   );
   expect(
-    (await log.getByText(REPLY).count()) === repliesBefore + 1 &&
-      (await log.getByText('打ち切り').count()) === 0,
-    '割り込んだあと、画面に返答が二重に残らない',
+    await keepsHolding(
+      async () =>
+        (await log.getByText(REPLY).count()) === repliesBefore + 1 &&
+        (await log.getByText('打ち切り').count()) === 0,
+    ),
+    '割り込んだあと、画面に返答が二重に残らない（ターンが閉じたあとも、しばらく 1 つのまま）',
   );
 
   // 6. 人が画像を選ぶ: 見る役が済む前に「この画像でいい」と言うと、会話に「選んだ」が出て、待たせていたジョブはその画像で止まる
