@@ -116,6 +116,8 @@ export function ChatLog({
     following.current = true;
     element.scrollTop = element.scrollHeight;
     setUnseen(false);
+    // 押した印は消えるので、フォーカスをログへ移す: 移さないと body に落ち、キーボードではどこにいるか分からなくなるため
+    element.focus({ preventScroll: true });
   };
   // 行が増えなくても背は伸びる（画像があとから読み込まれる・カードが開く）。伸びたときも末尾を追う
   useEffect(() => {
@@ -133,6 +135,8 @@ export function ChatLog({
       ref={ref}
       role="log"
       aria-label="会話のログ"
+      // スクリプトからだけフォーカスを受ける（「新しい行」の印を押したあとの行き先）。Tab の並びには入れない
+      tabIndex={-1}
       onScroll={(event) => {
         const element = event.currentTarget;
         const distance = element.scrollHeight - element.scrollTop - element.clientHeight;

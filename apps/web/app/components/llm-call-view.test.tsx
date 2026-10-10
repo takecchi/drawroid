@@ -164,6 +164,10 @@ describe('UnattachedLlmCalls', () => {
     });
     render(<UnattachedLlmCalls />);
     expect(screen.getByText('まだ無い。')).toBeTruthy();
+    // LLM の記録の画面の頭の見出し: この一覧はその画面にだけ置かれ、ほかに h1 が無いため
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'ジョブに属さない LLM 呼び出し',
+    );
   });
 });
 
@@ -189,7 +193,8 @@ describe('ConversationLlmCalls', () => {
     });
     render(<ConversationLlmCalls conversationId="c-1" />);
 
-    expect(screen.getByRole('heading', { name: 'この会話の LLM 呼び出し' })).toBeTruthy();
+    // 会話の LLM の記録の画面の頭の見出し: この一覧はその画面にだけ置かれ、ほかに h1 が無いため
+    expect(screen.getByRole('heading', { level: 1, name: 'この会話の LLM 呼び出し' })).toBeTruthy();
     expect(mocks.useConversationLlmCalls).toHaveBeenCalledWith('c-1');
     expect(
       screen.getByText(

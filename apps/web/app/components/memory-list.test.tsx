@@ -78,4 +78,16 @@ describe('MemoryList', () => {
       screen.getByText(/描いたジョブが止まったときと、止まったあとに選び直したときに/),
     ).toBeTruthy();
   });
+
+  // 記憶の画面の頭の見出しにする: この一覧は記憶の画面にだけ置かれ、ほかに h1 が無いため
+  it('heads the page with 記憶', () => {
+    mocks.useMemoryList.mockReturnValue({ data: { items: [], invalid: [] }, error: undefined });
+    render(
+      <MemoryRouter>
+        <MemoryList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('記憶');
+  });
 });

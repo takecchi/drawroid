@@ -23,8 +23,9 @@ import { Spinner as ShadcnSpinner } from '@/components/ui/spinner';
 import { Textarea as ShadcnTextarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
-// 見出しの段を呼び手が選べるようにする: 同じ枠がページの直下（h2）にも、操作の中（h3）にも置かれ、段を固定すると見出しの入れ子が崩れるため
-type HeadingLevel = 2 | 3 | 4;
+// 見出しの段を呼び手が選べるようにする: 同じ枠がページの直下（h2）にも、操作の中（h3）にも置かれ、段を固定すると見出しの入れ子が崩れるため。
+// 1 は、枠1つだけの画面で、その枠の見出しが画面の頭になるとき（Page に title を渡さない画面）
+type HeadingLevel = 1 | 2 | 3 | 4;
 
 export function Section({
   title,

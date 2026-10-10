@@ -251,7 +251,8 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
 export function UnattachedLlmCalls() {
   const { data, error } = useUnattachedLlmCalls();
   return (
-    <Section title="ジョブに属さない LLM 呼び出し">
+    // 画面の頭の見出しにする（h1）: この一覧は LLM の記録の画面にだけ置かれ、画面にほかの h1 が無いため
+    <Section title="ジョブに属さない LLM 呼び出し" level={1}>
       <Muted>止める条件の自然言語の変換など、ジョブを作る前の呼び出しの記録。</Muted>
       {error !== undefined && <ErrorNote>読めない: {error.message}</ErrorNote>}
       {data !== undefined && <CallsOverview data={data} source={{ kind: 'unattached' }} />}
@@ -265,7 +266,8 @@ export function UnattachedLlmCalls() {
 export function ConversationLlmCalls({ conversationId }: { conversationId: string }) {
   const { data, error } = useConversationLlmCalls(conversationId);
   return (
-    <Section title="この会話の LLM 呼び出し">
+    // 画面の頭の見出しにする（h1）: この一覧は会話の LLM の記録の画面にだけ置かれ、画面にほかの h1 が無いため
+    <Section title="この会話の LLM 呼び出し" level={1}>
       {error !== undefined && <ErrorNote>読めない: {error.message}</ErrorNote>}
       {data !== undefined && (
         <CallsOverview data={data} source={{ kind: 'conversation', conversationId }} />

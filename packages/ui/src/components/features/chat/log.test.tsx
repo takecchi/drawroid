@@ -327,6 +327,25 @@ describe('ChatLog and the marker for new rows', () => {
     expect(log.scrollTop).toBe(1500);
   });
 
+  // 印は押すと消えるので、押した所にフォーカスを残せない。ログへ移す: 移さないとフォーカスが body に落ち、キーボードでは
+  // どこにいるか分からなくなるため
+  it('moves the focus to the log when the marker that held it goes away', () => {
+    const { log, size, rowsArrive } = renderWithKey();
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    size.scrollHeight = 1200;
+    rowsArrive(2);
+    const button = marker()!;
+    button.focus();
+
+    fireEvent.click(button);
+
+    expect(marker()).toBeNull();
+    expect(document.activeElement).toBe(log);
+  });
+
   it('takes the marker away once a person scrolls back down to the end', () => {
     const { log, size, rowsArrive } = renderWithKey();
     log.scrollTop = 600;
