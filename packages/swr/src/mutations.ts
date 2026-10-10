@@ -373,7 +373,7 @@ export async function adoptImage(
 
 // 一覧も取り直す: 止めた・口出しした直後に、一覧の状態が古いまま残らないようにするため
 async function refreshJob(jobId: string): Promise<void> {
-  await Promise.all([mutate(keys.job(jobId)), mutate(keys.jobs)]);
+  await Promise.all([mutate(keys.job(jobId)), mutate(keys.jobOverview(jobId)), mutate(keys.jobs)]);
 }
 
 /**

@@ -129,6 +129,33 @@ describe('GET /jobs/:jobId', () => {
   });
 });
 
+// 画面は走っている間これを毎秒読む: 回の一覧は /iterations から取るので、ここには回を載せない
+describe('GET /jobs/:jobId/overview', () => {
+  it('returns the spec and the state, without the iterations', async () => {
+    const res = await env.api.request(`/jobs/${jobId}/overview`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      spec: await env.store.readJob(jobId),
+      state: await env.store.readState(jobId),
+    });
+  });
+
+  it('answers even when an iteration cannot be read', async () => {
+    await writeFile(env.paths.jobFiles(jobId).iteration(1).think, '{ broken');
+
+    const res = await env.api.request(`/jobs/${jobId}/overview`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ state: { status: 'stopped' } });
+  });
+
+  it('answers 404 for a job that does not exist or an id that is not a job id', async () => {
+    expect((await env.api.request('/jobs/20261009-063012-zzzzzz/overview')).status).toBe(404);
+    expect((await env.api.request('/jobs/..%2F..%2Fx/overview')).status).toBe(404);
+  });
+});
+
 describe('GET /files/.../images/:n.preview.webp', () => {
   const path = (id: string, file: string) => `/files/jobs/${id}/iterations/1/images/${file}`;
 

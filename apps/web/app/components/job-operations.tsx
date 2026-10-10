@@ -6,7 +6,7 @@ import {
   stopJob,
   stopManualJob,
   useStopConditions,
-  type JobDetail,
+  type JobOverview,
 } from '@drawroid/swr';
 import {
   BulletList,
@@ -249,7 +249,7 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
 }
 
 /** 止まっていないジョブにだけ出す。どれも HTTP API の口出しの経路を呼ぶ */
-export function JobOperations({ job }: { job: JobDetail }) {
+export function JobOperations({ job }: { job: JobOverview }) {
   const { spec, state } = job;
   if (state.status === 'stopped') return null;
   // 手動の生成は口出しを受けないので、止めるだけを出す

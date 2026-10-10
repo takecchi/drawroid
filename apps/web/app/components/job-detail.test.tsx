@@ -9,6 +9,7 @@ import {
   useInterventions,
   useIterations,
   useJob,
+  useJobOverview,
   useLlmCalls,
   useLlmSettings,
   useReferences,
@@ -29,6 +30,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   useInterventions: vi.fn(),
   useIterations: vi.fn(),
   useJob: vi.fn(),
+  useJobOverview: vi.fn(),
   useLlmCalls: vi.fn(),
   useLlmSettings: vi.fn(),
   useReferences: vi.fn(),
@@ -67,6 +69,8 @@ const backendFailed: StopReason = {
 };
 
 function serve(job: JobDetailData, backendError?: ApiError) {
+  vi.mocked(useJobOverview).mockReturnValue({ data: job } as never);
+  // 詳細を読んでも画面は崩れない形で返す: 読んだかどうかを、それを見る試験の1件だけで捕まえるため
   vi.mocked(useJob).mockReturnValue({ data: job } as never);
   vi.mocked(useBackendStatus).mockReturnValue({ error: backendError } as never);
 }
@@ -97,7 +101,36 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
+const imagelessIteration = (iteration: number) => ({
+  iteration,
+  think: {},
+  images: [],
+  request: null,
+  judge: null,
+  adopted: null,
+  excluded: null,
+});
+
 describe('JobDetail', () => {
+  // 走っている間は毎秒読む: 全回を載せた詳細を毎秒運ぶと、回数に比例して重くなるため。回の一覧は /iterations の1か所から取る
+  it('polls the overview of the job, never the detail that carries every iteration', () => {
+    serve(stopped({ kind: 'ai', detail: '意図どおり' }));
+    renderDetail();
+
+    expect(useJobOverview).toHaveBeenCalledWith(JOB);
+    expect(useJob).not.toHaveBeenCalled();
+  });
+
+  it('counts the iterations in the heading from the iteration list it shows', () => {
+    serve(stopped({ kind: 'ai', detail: '意図どおり' }));
+    vi.mocked(useIterations).mockReturnValue({
+      data: { iterations: [imagelessIteration(1), imagelessIteration(2)], invalid: [] },
+    } as never);
+    renderDetail();
+
+    expect(screen.getByRole('heading', { name: '回（2）' })).toBeTruthy();
+  });
+
   it('reads the backend again once when the job stopped because the backend failed, however often the job is read', () => {
     serve(stopped(backendFailed));
     const { rerender } = renderDetail();

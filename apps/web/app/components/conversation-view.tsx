@@ -9,7 +9,7 @@ import {
   isApiError,
   jobImageUrls,
   setSelection,
-  useJob,
+  useJobOverview,
   useJobDistill,
   useSelections,
   type ReferenceUpload,
@@ -507,7 +507,7 @@ function ImagesItem({
 function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped' }> }) {
   const offersChoice = item.reason.kind !== 'adopted';
   const showsLearned = offersChoice && item.reason.kind !== 'human';
-  const { data: job } = useJob(offersChoice ? item.jobId : undefined);
+  const { data: job } = useJobOverview(offersChoice ? item.jobId : undefined);
   const best = offersChoice ? job?.state.carry?.best : undefined;
   const backendAction =
     item.reason.kind === 'error' && item.reason.backendErrorKind !== undefined

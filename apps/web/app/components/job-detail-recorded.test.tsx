@@ -6,7 +6,7 @@ import {
   useBackendStatus,
   useInterventions,
   useIterations,
-  useJob,
+  useJobOverview,
   useLlmCall,
   useLlmCalls,
   useLlmSettings,
@@ -36,7 +36,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   useBackendStatus: vi.fn(),
   useInterventions: vi.fn(),
   useIterations: vi.fn(),
-  useJob: vi.fn(),
+  useJobOverview: vi.fn(),
   useLlmCall: vi.fn(),
   useLlmCalls: vi.fn(),
   useLlmSettings: vi.fn(),
@@ -51,7 +51,7 @@ const THINK_1_CALL = thinkRecord.callId;
 const BROKEN_CALL = '20260101T000099000Z-broken';
 
 function serve(overrides: { llmCalls?: LlmCallsResponse } = {}) {
-  vi.mocked(useJob).mockReturnValue({ data: job } as never);
+  vi.mocked(useJobOverview).mockReturnValue({ data: job } as never);
   vi.mocked(useIterations).mockReturnValue({ data: iterations } as never);
   vi.mocked(useLlmCalls).mockReturnValue({ data: overrides.llmCalls ?? llmCalls } as never);
   vi.mocked(useReferences).mockReturnValue({ data: references } as never);
