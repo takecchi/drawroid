@@ -139,7 +139,9 @@ export function describeCallFailure(error: unknown): string {
   if (error instanceof CallTimedOut) {
     return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に答えなかった（${error.seconds} 秒、何も返らなかった）。LLM のサーバが動いているかを確かめる。遅いモデルなら、LLM の設定の「応答を待つ上限（秒）」を延ばす`;
   }
-  const message = clip(error instanceof Error ? error.message : String(error), ERROR_SUMMARY_LIMIT);
+  // 見分けるのは切り詰める前の文で行う: 切り詰めるのは画面に出す長さのためで、理由が切った先に書かれていることもあるため
+  const whole = error instanceof Error ? error.message : String(error);
+  const message = clip(whole, ERROR_SUMMARY_LIMIT);
   const said = message === '' ? '' : `（LLM の返した理由: ${message}）`;
   const status = APICallError.isInstance(error) ? error.statusCode : undefined;
   if (status === 401 || status === 403) {
@@ -153,7 +155,7 @@ export function describeCallFailure(error: unknown): string {
   }
   // 応答の途中でサーバが失敗を返したのも、5xx と同じ手（待って頼み直す）なので、同じ言い方にする
   if ((status !== undefined && status >= 500) || StreamProviderError.isInstance(error)) {
-    if (SAYS_UNSUPPORTED.test(message)) {
+    if (SAYS_UNSUPPORTED.test(whole)) {
       return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが、この使い方に対応していないと返した（${status ?? '応答の途中'}）。待っても直らない。LLM の設定で、その役のモデルと、構造化出力・ツールの呼び出し方・画像を読めるかを、モデルに合わせて見直す${said}`;
     }
     return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（${status ?? '応答の途中'}）。少し待ってから、もう一度頼む${said}`;
