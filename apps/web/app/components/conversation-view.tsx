@@ -56,7 +56,7 @@ import { formatScore } from '../lib/format';
 import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
 import { describeStopConditions } from '../lib/stop-conditions-form';
 import { summarizeStopReason } from '../lib/stop-reason';
-import { summarizeToolResult, toolTitle } from '../lib/tool-rows';
+import { summarizeToolRow, toolTitle } from '../lib/tool-rows';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
 import { ChooseAsFavorite } from './choose-as-favorite';
@@ -649,7 +649,7 @@ function AdoptedItem({ item }: { item: Extract<ChatItem, { kind: 'adopted' }> })
  */
 function ToolRow({ item }: { item: Extract<ChatItem, { kind: 'tool' }> }) {
   const title = toolTitle(item.name);
-  const short = summarizeToolResult(item.state, item.summary);
+  const short = summarizeToolRow(item.name, item.state, item.summary);
   const args = describeInput(item.input);
   return (
     <ToolCallCard

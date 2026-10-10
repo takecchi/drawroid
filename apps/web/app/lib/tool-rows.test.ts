@@ -5,7 +5,7 @@ import {
 } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
-import { summarizeToolResult, toolTitle } from './tool-rows';
+import { summarizeToolResult, summarizeToolRow, toolTitle } from './tool-rows';
 
 describe('toolTitle', () => {
   it('gives the human title of a tool, and nothing for one it does not know', () => {
@@ -54,6 +54,40 @@ describe('summarizeToolResult', () => {
 
   it('has nothing to say while the tool runs', () => {
     expect(summarizeToolResult('running', undefined)).toBeUndefined();
+  });
+});
+
+// drawing_status は、要約にジョブの状態の値（state.json の status）をそのまま残す。人には言葉にして出す
+describe('summarizeToolRow', () => {
+  it.each([
+    ['queued', '順番を待っている'],
+    ['running', '描いている'],
+    ['stopped', '止まった'],
+  ] as const)('puts the job status %s into words', (status, words) => {
+    expect(summarizeToolRow('drawing_status', 'ok', status)).toBe(words);
+  });
+
+  it('reads the rest of drawing_status as any other summary', () => {
+    expect(summarizeToolRow('drawing_status', 'ok', 'ジョブは無い')).toBe('ジョブは無い');
+    expect(summarizeToolRow('drawing_status', 'ok', 'paused')).toBe('paused');
+    expect(summarizeToolRow('drawing_status', 'running', undefined)).toBeUndefined();
+    expect(summarizeToolRow('drawing_status', 'error', `${TOOL_THREW_PREFIX}読めない。`)).toBe(
+      'できなかった: 読めない。',
+    );
+  });
+
+  it('leaves the same words from another tool as they are', () => {
+    expect(summarizeToolRow('remember', 'ok', 'running')).toBe('running');
+  });
+
+  it('reads other tools as summarizeToolResult does', () => {
+    expect(
+      summarizeToolRow(
+        'start_drawing',
+        'ok',
+        'ジョブ 20261009-222644-6484ae で描き始めた。止める条件: 1000 回まで',
+      ),
+    ).toBe('ジョブで描き始めた。');
   });
 });
 
