@@ -25,6 +25,7 @@ import {
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
   withProviderAdded,
+  withProviderChanged,
   type LlmSettingsFormValues,
   type ProviderRow,
   type ProviderType,
@@ -203,7 +204,7 @@ export function LlmSettings() {
 
   function changeProvider(index: number, row: ProviderRow) {
     if (values === undefined) return;
-    change({ providers: values.providers.map((current, i) => (i === index ? row : current)) });
+    change(withProviderChanged(values, index, row));
   }
 
   async function save(event: FormEvent) {
