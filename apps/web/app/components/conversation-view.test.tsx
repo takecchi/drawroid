@@ -798,6 +798,26 @@ describe('ConversationView', () => {
     expect(whole.closest('details')?.open).toBe(false);
   });
 
+  // 様子を見たときの要約は、ジョブの状態の値（running など）で残る（実行器が会話の記録に残した形）。人には言葉で出し、値は「詳しく」に残す
+  it('puts the job status of drawing_status into words', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    stream.emit(
+      confirmed({ type: 'tool.call', turn: 2, callId: 'c2', name: 'drawing_status', input: {} }),
+    );
+    stream.emit(
+      confirmed({ type: 'tool.result', turn: 2, callId: 'c2', ok: true, summary: 'running' }),
+    );
+
+    const card = await screen.findByRole('group', {
+      name: 'ツール 描いている絵の様子を見る: 済み',
+    });
+    expect(within(card).getByText('描いている')).toBeTruthy();
+    expect(within(card).getByText('running').closest('details')?.open).toBe(false);
+  });
+
   it('shows a row for each kind of streamed event', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);

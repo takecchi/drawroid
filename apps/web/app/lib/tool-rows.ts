@@ -1,4 +1,4 @@
-import { REPEATED_TOOL_CALL_REASON, TOOL_THREW_PREFIX } from '@drawroid/core';
+import { REPEATED_TOOL_CALL_REASON, TOOL_THREW_PREFIX, type JobState } from '@drawroid/core';
 
 // 話す役のツールの、人が読む呼び方。知らない名前（あとから足したツールなど）は名前のまま出す
 const TOOL_TITLES: Record<string, string> = {
@@ -60,4 +60,31 @@ export function summarizeToolResult(
       : `できなかった: ${firstSentence(withoutJobIds(reason))}`;
   }
   return firstSentence(withoutJobIds(summary));
+}
+
+// 言葉は、会話のほかの所（ツールの見出しの「描いている絵」・状態の行の「順番を待っています」・止まりのカード）にそろえる
+const JOB_STATUS_WORDS: Record<JobState['status'], string> = {
+  queued: '順番を待っている',
+  running: '描いている',
+  stopped: '止まった',
+};
+
+/**
+ * ツールの行の要約。drawing_status は要約にジョブの状態の値（running など）をそのまま残すので、人の言葉にする。
+ * core の要約を日本語に替えるのではなく、ここで読む: すでに会話の記録に残った値も、同じ言葉で出すため
+ */
+export function summarizeToolRow(
+  name: string,
+  state: 'running' | 'ok' | 'error',
+  summary: string | undefined,
+): string | undefined {
+  if (
+    name === 'drawing_status' &&
+    state === 'ok' &&
+    summary !== undefined &&
+    Object.hasOwn(JOB_STATUS_WORDS, summary)
+  ) {
+    return JOB_STATUS_WORDS[summary as JobState['status']];
+  }
+  return summarizeToolResult(state, summary);
 }
