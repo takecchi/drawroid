@@ -18,11 +18,7 @@ import { conflict, describeIssues, invalidFile, invalidRequest, notFound } from 
 // 断りの文は記憶の画面にそのまま出るので、人が直せる欄の文は日本語で書く
 const updateMemorySchema = (limit: DistillBudget['output']) =>
   z.object({
-    body: z
-      .string()
-      .trim()
-      .min(1, '本文が空')
-      .max(limit.body, `本文は ${limit.body} 文字まで`),
+    body: z.string().trim().min(1, '本文が空').max(limit.body, `本文は ${limit.body} 文字まで`),
     tags: z
       .array(z.string().min(1, '空のタグがある').max(limit.tag, `タグは1つ ${limit.tag} 文字まで`))
       .max(limit.tags, `タグは ${limit.tags} 個まで`),
