@@ -226,9 +226,20 @@ describe('narrowPermissions', () => {
             steps: { mode: 'fixed', value: 150 },
             width: { mode: 'fixed', value: 4096 },
             height: { mode: 'fixed', value: 4096 },
-            hiresFix: hires({ scale: 4, steps: 150, prompt: long(4000) }),
+            hiresFix: hires({ scale: 2, steps: 150, prompt: long(4000) }),
             prompt: { mode: 'fixed', value: long(4000) },
             negativePrompt: { mode: 'fixed', value: long(4000) },
+          },
+          listsWithUpscaler,
+        ),
+      ).toMatchObject({ ok: true });
+      expect(
+        narrowPermissions(
+          humanLeavesAll,
+          {
+            width: { mode: 'fixed', value: 2048 },
+            height: { mode: 'fixed', value: 2048 },
+            hiresFix: hires({ scale: 4 }),
           },
           listsWithUpscaler,
         ),
@@ -241,6 +252,56 @@ describe('narrowPermissions', () => {
 
       expect(
         narrowPermissions(humanFixedLarge, { steps: { mode: 'fixed', value: 200 } }, lists),
+      ).toMatchObject({ ok: true });
+    });
+
+    // Hires. fix の倍率をかけたあとの大きさも、話す役の固定では 8192 まで（4096 を2倍まで）
+    it.each([
+      [
+        'a width that the scale takes past 8192',
+        { width: { mode: 'fixed', value: 4096 }, hiresFix: hires({ scale: 2.5 }) },
+        '幅',
+      ],
+      [
+        'a height that the scale takes past 8192',
+        { height: { mode: 'fixed', value: 4000 }, hiresFix: hires({ scale: 3 }) },
+        '高さ',
+      ],
+    ] as const)('refuses %s, naming the parameter', (_, requested, label) => {
+      const result = narrowPermissions(humanLeavesAll, requested, listsWithUpscaler);
+
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reason).toContain(label);
+      expect(!result.ok && result.reason).toContain('上限（8192）');
+    });
+
+    it('refuses a scale that takes the width the human fixed past 8192', () => {
+      const humanFixedWidth = mergePermissions(humanLeavesAll, {
+        width: { mode: 'fixed', value: 4096 },
+      });
+
+      const result = narrowPermissions(
+        humanFixedWidth,
+        { hiresFix: hires({ scale: 3 }) },
+        listsWithUpscaler,
+      );
+
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reason).toContain('上限（8192）');
+    });
+
+    it('leaves the size the human fixed, with the scale the human fixed, as it is', () => {
+      const humanFixedLarge = mergePermissions(humanLeavesAll, {
+        width: { mode: 'fixed', value: 4096 },
+        hiresFix: { mode: 'fixed', value: hires({ scale: 4 }).value },
+      });
+
+      expect(
+        narrowPermissions(
+          humanFixedLarge,
+          { width: { mode: 'fixed', value: 4096 }, hiresFix: hires({ scale: 4 }) },
+          listsWithUpscaler,
+        ),
       ).toMatchObject({ ok: true });
     });
   });
