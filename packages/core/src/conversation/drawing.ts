@@ -80,8 +80,44 @@ export function narrowPermissions(
   for (const [key, wanted] of Object.entries(parsed.data) as [ParamKey, Permission][]) {
     const refusal = refuseWidening(key, human[key], wanted, lists);
     if (refusal !== undefined) return { ok: false, reason: `${PARAM_LABELS[key]}: ${refusal}` };
+    if (key === 'hiresFix' && wanted.mode === 'fixed') {
+      const second = refuseSecondPassWidening(human, wanted.value, lists);
+      if (second !== undefined) return { ok: false, reason: second };
+    }
   }
   return { ok: true, value: parsed.data };
+}
+
+/** Hires. fix の二段目が自分で持てる、一段目と同じ意味の欄 */
+const SECOND_PASS_KEYS = [
+  'checkpoint',
+  'sampler',
+  'scheduler',
+  'prompt',
+  'negativePrompt',
+  'cfgScale',
+] as const satisfies readonly ParamKey[];
+
+/**
+ * 固定した Hires. fix の二段目の欄を、一段目の同じパラメータを固定する求めとして確かめる。
+ */
+// 二段目の欄も人間の許可に照らす: 照らさないと、checkpoint を候補で絞っていても、二段目の checkpoint に候補の外を書けば
+// その checkpoint で描けてしまい、Hires. fix を通して人間の許可を迂回できるため（north_star の問い5）
+function refuseSecondPassWidening(
+  human: Permissions,
+  value: unknown,
+  lists: Partial<Record<CandidateKind, readonly string[]>>,
+): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  for (const key of SECOND_PASS_KEYS) {
+    const named = (value as Record<string, unknown>)[key];
+    if (named === undefined) continue;
+    const refusal = refuseWidening(key, human[key], { mode: 'fixed', value: named }, lists);
+    if (refusal !== undefined) {
+      return `${PARAM_LABELS.hiresFix} の二段目の${PARAM_LABELS[key]}: ${refusal}`;
+    }
+  }
+  return undefined;
 }
 
 function refuseWidening(
