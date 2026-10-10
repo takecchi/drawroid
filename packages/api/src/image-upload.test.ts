@@ -2,6 +2,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { crc32 } from 'node:zlib';
 
 import {
   DEFAULT_BUDGET,
@@ -59,6 +60,31 @@ const post = async (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+
+/**
+ * 幅と高さのヘッダと、空の画素のデータ（IDAT）だけを持つ PNG。画素を作らずに、とても大きな画像を名乗らせるため。
+ * IDAT が無いと、sharp は寸法に関わらずヘッダが壊れていると読む
+ */
+function headerOnlyPng(width: number, height: number): Uint8Array {
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const typed = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(typed));
+    return Buffer.concat([length, typed, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01])),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 async function prepare(): Promise<Record<MouthName, Mouth>> {
   const created = await post('/jobs/auto', { request: '夕暮れの海辺の少女' });
@@ -209,6 +235,17 @@ describe.each(MOUTHS)('%s', (name) => {
     expect(await mouth.saved()).toBe(0);
   });
 
+  // sharp の既定の画素数の上限（約 2.68 億）を超える画像も、「読めない」ではなく「大きすぎる」と言う
+  it('says an image of over 268 million pixels is too large, not unreadable', async () => {
+    const mouth = (await prepare())[name];
+
+    const error = await refusal(await mouth.send(headerOnlyPng(20000, 20000), 'png'));
+    expect(error.message).toContain('大きすぎる');
+    expect(error.message).toContain('20000×20000');
+
+    expect(await mouth.saved()).toBe(0);
+  });
+
   it('accepts an image of exactly 8192 x 8192 px', async () => {
     const mouth = (await prepare())[name];
 
@@ -247,19 +284,23 @@ describe('an image whose content is not the type it says', () => {
 });
 
 describe('several references in one submission', () => {
-  it('starts no job when one of them cannot be read', async () => {
-    await prepare();
-    const before = await store.listJobIds();
+  // 読めない1枚が前にあっても後ろにあっても、どの1枚でも断る
+  it.each(['first', 'last'] as const)(
+    'starts no job when the %s of them cannot be read',
+    async (where) => {
+      await prepare();
+      const before = await store.listJobIds();
+      const readable = { mediaType: 'image/png', data: b64(await solidImage('png', 4, 4)) };
+      const unreadable = { mediaType: 'image/png', data: b64(signatureOnly('png')) };
 
-    const res = await post('/jobs/auto', {
-      request: '海辺',
-      references: [
-        { mediaType: 'image/png', data: b64(await solidImage('png', 4, 4)) },
-        { mediaType: 'image/png', data: b64(signatureOnly('png')) },
-      ],
-    });
+      const res = await post('/jobs/auto', {
+        request: '海辺',
+        references: where === 'first' ? [unreadable, readable] : [readable, unreadable],
+      });
 
-    await refusal(res);
-    expect(await store.listJobIds()).toEqual(before);
-  });
+      const error = await refusal(res);
+      expect(error.message).toContain(`references.${where === 'first' ? 0 : 1}.data`);
+      expect(await store.listJobIds()).toEqual(before);
+    },
+  );
 });
