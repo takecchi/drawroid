@@ -85,7 +85,48 @@ export function narrowPermissions(
       if (second !== undefined) return { ok: false, reason: second };
     }
   }
+  const finalSize = refuseOverFinalSize(human, parsed.data);
+  if (finalSize !== undefined) return { ok: false, reason: finalSize };
   return { ok: true, value: parsed.data };
+}
+
+/** 話す役が固定するとき、Hires. fix の倍率をかけたあとの幅・高さの上限（4096 を2倍まで） */
+const FIXED_FINAL_SIZE_LIMIT = 8192;
+
+/** 固定された値と、それが話す役の固定か。人間が固定したものは、その前の確かめで同じ値だけが通るので人間の値として扱う */
+function fixedValueOf(
+  human: Permissions,
+  requested: Partial<Record<ParamKey, Permission>>,
+  key: ParamKey,
+): { value: unknown; byTalk: boolean } | undefined {
+  const own = human[key];
+  if (own.mode === 'fixed') return { value: own.value, byTalk: false };
+  const wanted = requested[key];
+  return wanted?.mode === 'fixed' ? { value: wanted.value, byTalk: true } : undefined;
+}
+
+/**
+ * Hires. fix の倍率をかけたあとの幅・高さが上限を超えるなら、断る理由を返す。
+ * 幅・高さと倍率のどちらかが話す役の固定のときだけ比べる（人間が両方を固定したものには掛けない）
+ */
+// 最終の大きさも締める: 幅と倍率はそれぞれ上限の内でも、掛け合わせると 16384 などになり、バックエンドを長く占められるため。
+// 幅・高さを AI に任せたままのときは、ここでは大きさが決まらないので比べない（考える役の出力のスキーマが締める）
+function refuseOverFinalSize(
+  human: Permissions,
+  requested: Partial<Record<ParamKey, Permission>>,
+): string | undefined {
+  const hires = fixedValueOf(human, requested, 'hiresFix');
+  const scale = (hires?.value as { scale?: unknown } | undefined)?.scale;
+  if (hires === undefined || typeof scale !== 'number') return undefined;
+  for (const side of ['width', 'height'] as const) {
+    const size = fixedValueOf(human, requested, side);
+    if (size === undefined || typeof size.value !== 'number') continue;
+    if (!size.byTalk && !hires.byTalk) continue;
+    if (size.value * scale > FIXED_FINAL_SIZE_LIMIT) {
+      return `${PARAM_LABELS[side]}: Hires. fix の倍率をかけたあとの大きさの上限（${FIXED_FINAL_SIZE_LIMIT}）を超える値では固定できない（${size.value} × ${scale}）`;
+    }
+  }
+  return undefined;
 }
 
 /** Hires. fix の二段目が自分で持てる、一段目と同じ意味の欄 */
