@@ -79,7 +79,7 @@ describe('IterationList and what was sent to the backend', () => {
 describe('IterationList and an iteration that made no image', () => {
   const imageless = (think: unknown): Iteration =>
     ({ ...iteration, think, images: [], request: null }) as unknown as Iteration;
-  const renderStopped = (stopped: boolean, shown: Iteration) =>
+  const renderStopped = (stopped: boolean, shown: Iteration, stoppedInGeneration = false) =>
     render(
       <IterationList
         jobId="job-1"
@@ -88,8 +88,21 @@ describe('IterationList and an iteration that made no image', () => {
         calls={[]}
         verdicts={new Map()}
         stopped={stopped}
+        stoppedInGeneration={stoppedInGeneration}
       />,
     );
+
+  // 考えたあと、生成でバックエンドが失敗して止まった回を、考える段で止まったと書かない
+  it('says the backend failed while making the images when the job stopped in generation', () => {
+    renderStopped(true, { ...imageless({}), iteration: 2 }, true);
+
+    expect(
+      screen.getByText(
+        '画像を作る途中でバックエンドが失敗してジョブが止まり、この回の画像は無い。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/考える段まで進んだところで/)).toBeNull();
+  });
 
   it('says the job stopped after thinking, without making an image, so the count of iterations and images can differ', () => {
     renderStopped(true, { ...imageless({}), iteration: 2 });

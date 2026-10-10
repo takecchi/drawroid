@@ -121,10 +121,12 @@ function AdoptedSection({ adopted }: { adopted: NonNullable<Iteration['adopted']
  * 画像の無い回の書き方。回の数と生成した枚数が食い違って見えるので、画像を作らずに止まった回はそう書く。
  * 止まっていないジョブでは、その回を進めている途中である
  */
-function noImagesNote(iteration: Iteration, stopped: boolean): string {
+function noImagesNote(iteration: Iteration, stopped: boolean, inGeneration: boolean): string {
   if (!stopped) return 'この回の画像はまだ無い（進めている途中）。';
-  return iteration.think === null
-    ? '考える前にジョブが止まり、この回は画像を作っていない。'
+  if (iteration.think === null) return '考える前にジョブが止まり、この回は画像を作っていない。';
+  // 考えたあとでも、生成で失敗して止まったなら、考える段で止まったとは書かない
+  return inGeneration
+    ? '画像を作る途中でバックエンドが失敗してジョブが止まり、この回の画像は無い。'
     : '考える段まで進んだところでジョブが止まり、この回は画像を作っていない。';
 }
 
@@ -137,6 +139,7 @@ export function IterationView({
   interventions = [],
   canPaintMask = false,
   stopped = false,
+  stoppedInGeneration = false,
   adopt,
   open,
 }: {
@@ -148,6 +151,8 @@ export function IterationView({
   interventions?: Intervention[];
   /** ジョブが止まったか。画像の無い回を「途中」と書くか「画像を作らずに止まった」と書くかを分ける */
   stopped?: boolean;
+  /** 止まった理由がバックエンドの失敗（生成の段で止まった）か。画像の無い回を「考える段で止まった」と書かないため */
+  stoppedInGeneration?: boolean;
   /** 画像にマスクを塗って送れるか。自動ジョブで、まだ止まっていないときだけ */
   canPaintMask?: boolean;
   /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
@@ -171,7 +176,9 @@ export function IterationView({
         <ExcludedSection excluded={iteration.excluded} />
       )}
       {iteration.think !== null && <ThinkSection think={iteration.think} />}
-      {iteration.images.length === 0 && <Muted>{noImagesNote(iteration, stopped)}</Muted>}
+      {iteration.images.length === 0 && (
+        <Muted>{noImagesNote(iteration, stopped, stoppedInGeneration)}</Muted>
+      )}
       <ImageGrid>
         {iteration.images.map((image) => {
           // 評価の並びは画像の並びと同じ: 見る役の出力が画像の枚数ぶんをちょうど返すため
@@ -371,6 +378,7 @@ export function IterationList({
   interventions = [],
   canPaintMask = false,
   stopped = false,
+  stoppedInGeneration = false,
   adopt,
 }: {
   jobId: string;
@@ -381,6 +389,7 @@ export function IterationList({
   interventions?: Intervention[];
   canPaintMask?: boolean;
   stopped?: boolean;
+  stoppedInGeneration?: boolean;
   /** 自動ジョブなら渡す。stopped（止まった）なら、採る口の代わりに「この画像に決める（お気に入りにする）」を出す */
   adopt?: { stopped: boolean };
 }) {
@@ -416,6 +425,7 @@ export function IterationList({
           verdicts={verdicts}
           canPaintMask={canPaintMask}
           stopped={stopped}
+          stoppedInGeneration={stoppedInGeneration}
           {...(adopt !== undefined && { adopt })}
           open={setViewing}
           interventions={interventions.filter(
