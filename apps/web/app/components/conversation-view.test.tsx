@@ -556,6 +556,43 @@ describe('ConversationView', () => {
     expect([image.getAttribute('width'), image.getAttribute('height')]).toEqual(['512', '768']);
   });
 
+  // 長い会話を開くと、縮小版の要求が何百もいっぺんに飛ぶ。背が取れるなら、画面に近づくまで読まない
+  it('loads the images of a row only as they come near, when the record holds their size', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 1,
+        images: [
+          { index: 0, seed: 1 },
+          { index: 1, seed: 2 },
+        ],
+        size: { width: 512, height: 768 },
+      }),
+    );
+
+    await screen.findByAltText('1 回目の画像 1 番（seed 1）');
+    expect(
+      screen.getAllByAltText(/^1 回目の画像 \d 番/).map((image) => image.getAttribute('loading')),
+    ).toEqual(['lazy', 'lazy']);
+  });
+
+  // 大きさの無い古い記録の画像は背が取れないので、遅れて読まない: 上へ読む途中で読み込まれると、行が押し下げられるため
+  it('loads at once the images of an old record that has no size', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+
+    const image = await screen.findByAltText('1 回目の画像 1 番（seed 1）');
+    expect(image.getAttribute('loading')).toBeNull();
+  });
+
   it('does not draw the log rows again while a person types', async () => {
     const { source, stream } = fakeSource([]);
     const { user } = renderView(source);

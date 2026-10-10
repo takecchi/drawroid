@@ -90,6 +90,9 @@ export function ImageCard({
   caption?: ReactNode;
   children?: ReactNode;
 }) {
+  // 背が取れるときだけ、画面に近づくまで読まない: 長い会話を開くと、縮小版の要求が何百もいっぺんに飛ぶため。
+  // 大きさの無い画像（古い記録）は今までどおりすぐ読む: 遅れて読むと、上へ読む途中で読み込まれた画像の背のぶん行が押し下げられるため
+  const loading = size === undefined ? undefined : 'lazy';
   return (
     <figure
       data-verdict={verdict ?? undefined}
@@ -108,6 +111,7 @@ export function ImageCard({
             alt={alt}
             width={size?.width}
             height={size?.height}
+            loading={loading}
             className="block h-auto w-full rounded-md bg-muted"
           />
         </a>
@@ -125,6 +129,7 @@ export function ImageCard({
             alt={alt}
             width={size?.width}
             height={size?.height}
+            loading={loading}
             className="block h-auto w-full rounded-md bg-muted"
           />
         </button>
