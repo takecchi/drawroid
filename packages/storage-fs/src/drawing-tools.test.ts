@@ -386,6 +386,28 @@ describe('revise_drawing and stop_drawing', () => {
     await runner.idle();
   });
 
+  it('leaves no instruction behind when the stop-condition change is refused', async () => {
+    const { jobs, context, runner } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+
+    // 断りは例外で返り、話す役には失敗として渡る
+    await expect(
+      run(
+        'revise_drawing',
+        {
+          instruction: '夜っぽくして',
+          stopConditions: { aiJudgement: false, maxIterations: null },
+        },
+        context,
+      ),
+    ).rejects.toThrow('止まらなくなる');
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
   it('adds the images attached in the conversation to the references of the drawing going on', async () => {
     const { jobs, context, runner, conversations, conversationId } = await setup();
     await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
@@ -498,28 +520,6 @@ describe('revise_drawing and stop_drawing', () => {
     expect(interventions.map((i) => i.kind).sort()).toEqual(['instruction', 'stopConditions']);
     expect(await jobs.listReferences(jobId!)).toHaveLength(2);
     expect((await jobs.readState(jobId!)).status).toBe('stopped');
-  });
-
-  it('changes nothing when the change of stop conditions would leave the drawing with no way to stop', async () => {
-    const { jobs, context, runner, conversations, conversationId } = await setup();
-    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
-    const [jobId] = await jobIds(jobs);
-    const attachments = await uploads(conversations, conversationId, 1);
-
-    // 断りは投げて伝わる（会話の実行器が、投げた理由を失敗の結果にして話す役へ返す）
-    await expect(
-      run(
-        'revise_drawing',
-        { instruction: '逆光にして', stopConditions: { maxIterations: null }, attachments },
-        context,
-      ),
-    ).rejects.toThrow(/止まらなくなる/);
-
-    expect(await jobs.listInterventions(jobId!)).toEqual([]);
-    expect(await jobs.listReferences(jobId!)).toEqual([]);
-    await untilRunning(jobs, jobId!);
-    await runner.stop(jobId!);
-    await runner.idle();
   });
 
   it('changes nothing when more images are attached than a request takes, saying why', async () => {
