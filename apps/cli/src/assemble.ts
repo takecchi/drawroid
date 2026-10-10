@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { BackendKind } from '@drawroid/api';
 import {
   activeJobOfConversation,
   backfillJobEvents,
@@ -48,11 +49,11 @@ import {
 import type { CliOptions } from './args.js';
 import { AutoJobQueue, BASE_PERMISSIONS } from './auto-job-queue.js';
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
-import { backendOptions, createBackendSettings } from './backend-settings.js';
+import { backendOptions, createBackendSettings, type BackendOptions } from './backend-settings.js';
 import { createBudgetSettings } from './budget-settings.js';
 import { createDetectedOnSave } from './detected-on-save.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
-import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
+import { readConfig, resolveBackendKindWithSource, resolveBackendUrlWithSource } from './config.js';
 import { createInputWindows } from './input-windows.js';
 import { listen, type Listening } from './listen.js';
 import { screenDoctor } from './doctor.js';
@@ -104,15 +105,16 @@ export async function assembleDrawroid({
   // 待ち受ける drawroid がどのアダプタを使うかを決めるのは、組み立ての根であるここだけ（drawroid doctor は自分の引数と config.json で別に決める）
   const configPath = dataPaths(root).config;
   const config = await readConfig(configPath);
-  const kind = resolveBackendKind(args.backend, config);
+  const { kind, source: kindSource } = resolveBackendKindWithSource(args.backend, config);
   const { url, source } = resolveBackendUrlWithSource(args.backendUrl, config);
-  const createBackend = backendFactory(kind);
-  const backend = new ReplaceableBackend(createBackend(backendOptions(url, config.backend)));
+  const createBackend = (backendKind: BackendKind, options: BackendOptions) =>
+    backendFactory(backendKind)(options);
+  const backend = new ReplaceableBackend(createBackend(kind, backendOptions(url, config.backend)));
   const backendSettings = createBackendSettings({
     configPath,
     backend,
     createBackend,
-    initial: { kind, url, source, config },
+    initial: { kind, kindSource, url, source, config },
   });
   const log = (line: string) => write(`${line}\n`);
   const shutdown = shutdownHandler({ backend, log, exit });

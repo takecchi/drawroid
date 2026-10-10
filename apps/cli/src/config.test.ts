@@ -9,6 +9,7 @@ import {
   DEFAULT_BACKEND_URL,
   readConfig,
   resolveBackendKind,
+  resolveBackendKindWithSource,
   resolveBackendUrl,
 } from './config.js';
 
@@ -121,5 +122,18 @@ describe('resolveBackendKind', () => {
     expect(resolveBackendKind(undefined, config)).toBe('a1111');
     expect(resolveBackendKind(undefined, {})).toBe(DEFAULT_BACKEND_KIND);
     expect(DEFAULT_BACKEND_KIND).toBe('forge');
+  });
+
+  it('says where the kind came from, in the same order', () => {
+    const config = { backend: { kind: 'a1111' as const } };
+    expect(resolveBackendKindWithSource('forge', config)).toEqual({ kind: 'forge', source: 'cli' });
+    expect(resolveBackendKindWithSource(undefined, config)).toEqual({
+      kind: 'a1111',
+      source: 'config',
+    });
+    expect(resolveBackendKindWithSource(undefined, {})).toEqual({
+      kind: 'forge',
+      source: 'default',
+    });
   });
 });

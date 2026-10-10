@@ -1,8 +1,12 @@
 import { isApiError, saveBackendSettings, useBackendSettings } from '@drawroid/swr';
-import { Button, ErrorNote, Input, OkNote, Section } from '@drawroid/ui';
+import { Button, ErrorNote, Input, OkNote, Section, Select } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
-import { BACKEND_KIND_LABELS } from '../lib/backend-error';
+import { BACKEND_KIND_LABELS, type BackendKind } from '../lib/backend-error';
+
+const BACKEND_KINDS = Object.keys(BACKEND_KIND_LABELS) as BackendKind[];
+// 設定を読めるまでの見かけの値。保存は読めた（data がある）あとにしか意味を持たない
+const DEFAULT_KIND: BackendKind = 'forge';
 
 const SOURCE_LABELS = {
   cli: '起動の引数',
@@ -15,10 +19,13 @@ export function BackendUrlSettings() {
   // 触るまでは、いま繋いでいる URL を欄に出す: 空の欄に既定の見本だけがあると、いまの URL が既定に見えるため
   const [edited, setEdited] = useState<string | undefined>();
   const input = edited ?? data?.url ?? '';
+  // 種類も同じく、触るまではいま使っている種類を出す
+  const [editedKind, setEditedKind] = useState<BackendKind | undefined>();
+  const kind = editedKind ?? data?.kind ?? DEFAULT_KIND;
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
-  // 保存した URL。保存しても欄の見た目は変わらないので、効いたことを知らせる
-  const [saved, setSaved] = useState<string | undefined>();
+  // 保存した種類と URL。保存しても欄の見た目は変わらないので、効いたことを知らせる
+  const [saved, setSaved] = useState<{ kind: BackendKind; url: string } | undefined>();
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -27,9 +34,10 @@ export function BackendUrlSettings() {
     setSaved(undefined);
     try {
       const url = input.trim();
-      await saveBackendSettings({ url });
+      await saveBackendSettings({ url, kind });
       setEdited(undefined);
-      setSaved(url);
+      setEditedKind(undefined);
+      setSaved({ kind, url });
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setSaveError(caught.message);
@@ -44,9 +52,15 @@ export function BackendUrlSettings() {
       {data !== undefined && (
         <>
           <p>
-            種類: {BACKEND_KIND_LABELS[data.kind]}（起動時の --backend か config.json の
-            backend.kind で変える）
+            種類: {BACKEND_KIND_LABELS[data.kind]}（{SOURCE_LABELS[data.kindSource]}）
           </p>
+          {data.kindSource === 'cli' && (
+            <p>
+              注意: 起動時に --backend
+              で指定されている。ここで保存した種類はいまの起動中だけ効き、次に起動したときも同じ
+              --backend を付ければ、そちらが勝つ。
+            </p>
+          )}
           <p>
             いまの URL: <code>{data.url}</code>（{SOURCE_LABELS[data.urlSource]}）
           </p>
@@ -59,6 +73,20 @@ export function BackendUrlSettings() {
         </>
       )}
       <form onSubmit={(event) => void save(event)} className="flex flex-wrap items-center gap-2">
+        <Select
+          value={kind}
+          onChange={(event) => {
+            setEditedKind(event.target.value as BackendKind);
+            setSaved(undefined);
+          }}
+          aria-label="バックエンドの種類"
+        >
+          {BACKEND_KINDS.map((value) => (
+            <option key={value} value={value}>
+              {BACKEND_KIND_LABELS[value]}
+            </option>
+          ))}
+        </Select>
         <Input
           type="text"
           value={input}
@@ -74,7 +102,11 @@ export function BackendUrlSettings() {
           保存
         </Button>
       </form>
-      {saved !== undefined && <OkNote focus>保存した。{saved} に繋ぐ。</OkNote>}
+      {saved !== undefined && (
+        <OkNote focus>
+          保存した。{BACKEND_KIND_LABELS[saved.kind]} の {saved.url} に繋ぐ。
+        </OkNote>
+      )}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
     </Section>
   );

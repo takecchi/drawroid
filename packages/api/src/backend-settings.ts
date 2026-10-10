@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// 繋ぐ先の種類。選ぶのは config.json と CLI 引数で、API では変えさせない
+// 繋ぐ先の種類。起動時は config.json と CLI 引数で、起動後は設定の API で選ぶ
 export const backendKindSchema = z.enum(['forge', 'a1111']);
 export type BackendKind = z.infer<typeof backendKindSchema>;
 
@@ -10,14 +10,17 @@ export const backendSettingsViewSchema = z.object({
   url: z.string(),
   // 'cli' のときは、次の起動で --backend-url（古い名前 --forge-url）が config.json より勝つ
   urlSource: z.enum(['cli', 'config', 'default']),
+  // 'cli' のときは、次の起動で --backend が config.json より勝つ
+  kindSource: z.enum(['cli', 'config', 'default']),
   auth: z.object({ username: z.string() }).nullable(),
   generateTimeoutMs: z.number().nullable(),
 });
 export type BackendSettingsView = z.infer<typeof backendSettingsViewSchema>;
 
-// API で変えるのは URL だけ: auth と generateTimeoutMs は config.json を手で書く（秘密を HTTP で受け取らない）。種類は繋ぎ直しで作り分けると試験の面が広がるので、M6 では config.json と CLI 引数だけで選ぶ
+// API で変えるのは URL と種類だけ: auth と generateTimeoutMs は config.json を手で書く（秘密を HTTP で受け取らない）。種類を省けば、いま使っている種類のまま
 export const updateBackendSettingsSchema = z.object({
   url: z.url({ protocol: /^https?$/ }),
+  kind: backendKindSchema.optional(),
 });
 export type UpdateBackendSettings = z.infer<typeof updateBackendSettingsSchema>;
 

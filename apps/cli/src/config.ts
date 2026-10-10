@@ -75,8 +75,17 @@ export function resolveBackendUrlWithSource(
 }
 
 // 優先順位は URL と同じく CLI 引数 > config.json > 既定
+export function resolveBackendKindWithSource(
+  cliArg: BackendKind | undefined,
+  config: Config,
+): { kind: BackendKind; source: 'cli' | 'config' | 'default' } {
+  if (cliArg !== undefined) return { kind: cliArg, source: 'cli' };
+  if (config.backend?.kind !== undefined) return { kind: config.backend.kind, source: 'config' };
+  return { kind: DEFAULT_BACKEND_KIND, source: 'default' };
+}
+
 export function resolveBackendKind(cliArg: BackendKind | undefined, config: Config): BackendKind {
-  return cliArg ?? config.backend?.kind ?? DEFAULT_BACKEND_KIND;
+  return resolveBackendKindWithSource(cliArg, config).kind;
 }
 
 export function resolveBackendUrl(cliArg: string | undefined, config: Config): string {
