@@ -208,6 +208,8 @@ describe('narrowPermissions', () => {
         { hiresFix: hires({ prompt: long(4001) }) },
         'プロンプト',
       ],
+      // 二段目の steps も、一段目と同じくバックエンドを長く占められる
+      ['second-pass steps over 150', { hiresFix: hires({ steps: 151 }) }, 'steps'],
     ] as const)('refuses %s, naming the parameter', (_, requested, label) => {
       const result = narrowPermissions(humanLeavesAll, requested, listsWithUpscaler);
 
@@ -224,7 +226,7 @@ describe('narrowPermissions', () => {
             steps: { mode: 'fixed', value: 150 },
             width: { mode: 'fixed', value: 4096 },
             height: { mode: 'fixed', value: 4096 },
-            hiresFix: hires({ scale: 4, prompt: long(4000) }),
+            hiresFix: hires({ scale: 4, steps: 150, prompt: long(4000) }),
             prompt: { mode: 'fixed', value: long(4000) },
             negativePrompt: { mode: 'fixed', value: long(4000) },
           },
