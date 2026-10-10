@@ -73,6 +73,7 @@ export {
   type MemoryInput,
   type PreviewImage,
   type Progress,
+  UnreadableImageError,
 } from './loop/inputs.js';
 export * from './job/manual.js';
 export * from './job/store.js';

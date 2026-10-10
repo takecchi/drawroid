@@ -153,9 +153,32 @@ export function createAutoJob(
 }
 
 export async function png(width: number, height: number): Promise<Uint8Array> {
+  return solidImage('png', width, height);
+}
+
+export type ImageFormat = 'png' | 'jpeg' | 'webp';
+
+/** 単色の画像。大きさだけが要る試験のために、できるだけ小さいファイルにする */
+export async function solidImage(
+  format: ImageFormat,
+  width: number,
+  height: number,
+): Promise<Uint8Array> {
   return sharp({ create: { width, height, channels: 3, background: '#336699' } })
-    .png()
+    [format]()
     .toBuffer();
+}
+
+/** 形式の署名だけが正しく、画像としては読めないバイト列 */
+export function signatureOnly(format: ImageFormat): Uint8Array {
+  switch (format) {
+    case 'png':
+      return Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13);
+    case 'jpeg':
+      return Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0, 16);
+    case 'webp':
+      return Uint8Array.of(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 1, 2);
+  }
 }
 
 export function llmRecord(

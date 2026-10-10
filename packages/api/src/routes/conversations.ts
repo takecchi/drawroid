@@ -5,7 +5,8 @@ import { z } from 'zod';
 
 import { createMessageIntake } from '../conversation-messages.js';
 import type { ApiDeps } from '../deps.js';
-import { notFound } from '../errors.js';
+import { invalidRequest, notFound } from '../errors.js';
+import { imageProblem } from '../images.js';
 import { referenceUploadSchema } from '../references.js';
 import { jsonBody, queryParams } from '../validate.js';
 
@@ -218,8 +219,10 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
       // 会話で添える画像。描き始めるときに、ジョブの参照画像へ写す（用途の言葉は、描き始めるときに話す役が付ける）
       .post('/:conversationId/uploads', jsonBody(referenceUploadSchema), async (c) => {
         const id = c.req.param('conversationId');
-        if (!(await store.hasConversation(id))) return notFound(c, missing(id));
         const { data, mediaType } = c.req.valid('json');
+        const problem = await imageProblem(data, mediaType);
+        if (problem !== undefined) return invalidRequest(c, `data: ${problem}`);
+        if (!(await store.hasConversation(id))) return notFound(c, missing(id));
         const uploadId = await store.addUpload(id, { data, mediaType }, new Date());
         return c.json({ uploadId }, 201);
       })
