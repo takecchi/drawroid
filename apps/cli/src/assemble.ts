@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import {
   activeJobOfConversation,
   backfillJobEvents,
@@ -124,6 +127,12 @@ export async function assembleDrawroid({
   });
   const manualRunner = new ManualGenerationRunner({ backend, store });
   write(`drawroid: ${BACKEND_LABELS[kind]} ${url}\n`);
+  const servedWebRoot = webRoot ?? resolveWebRoot();
+  if (!existsSync(join(servedWebRoot, 'index.html'))) {
+    write(
+      'drawroid: web の build が無いので、画面は http://localhost:5173/（開発中）か、pnpm build のあとで配る\n',
+    );
+  }
 
   // 自動ジョブを再開する前・話す役を立てる前に、落ちる前の会話を整える: 途切れたターンを閉じ、
   // 段のファイルはあるのに会話に出ていないジョブのイベントを書き足す
@@ -299,7 +308,7 @@ export async function assembleDrawroid({
   autoQueue.kick();
   return listen({
     port: args.port,
-    webRoot: webRoot ?? resolveWebRoot(),
+    webRoot: servedWebRoot,
     deps: {
       backend,
       store,

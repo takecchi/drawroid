@@ -179,6 +179,74 @@ describe('the time the LLM may stay silent', () => {
     expect((outcome.value as LlmCallOutcome<unknown>).ok).toBe(true);
   });
 
+  // 思考だけ・ツール呼び出しの断片だけが流れていても、答えは来ている: 思考の長いモデルや、引数の長いツール呼び出しを切らない
+  it.each([
+    [
+      'only the thinking',
+      { type: 'reasoning-start', id: 'r' },
+      (i: number): StreamPart => ({ type: 'reasoning-delta', id: 'r', delta: `考え${i}` }),
+    ],
+    [
+      'only pieces of a tool call',
+      { type: 'tool-input-start', id: 'c', toolName: 'search_candidates' },
+      (i: number): StreamPart => ({ type: 'tool-input-delta', id: 'c', delta: `{"q${i}":` }),
+    ],
+  ] as [string, StreamPart, (i: number) => StreamPart][])(
+    'does not give up while %s keeps coming',
+    async (_, start, piece) => {
+      const { model, push } = silentAfter([{ type: 'stream-start', warnings: [] }, start]);
+      const controller = new AbortController();
+      const outcome = track(adapter(model).generateStructured(call(controller.signal)));
+
+      for (let i = 0; i < 4; i += 1) {
+        await vi.advanceTimersByTimeAsync(299_000);
+        push(piece(i));
+      }
+      await flush();
+      expect(outcome.settled).toBe(false);
+
+      controller.abort();
+      await flush();
+    },
+  );
+
+  // 中身の無い部品は、答えが来たことにしない: 空の断片を送り続けるサーバで、いつまでも打ち切れなくならないように
+  it.each([
+    ['empty text', [{ type: 'text-delta', id: 't', delta: '' }]],
+    [
+      'empty thinking',
+      [
+        { type: 'reasoning-start', id: 'r' },
+        { type: 'reasoning-delta', id: 'r', delta: '' },
+      ],
+    ],
+    [
+      'empty pieces of a tool call',
+      [
+        { type: 'tool-input-start', id: 'c', toolName: 'search_candidates' },
+        { type: 'tool-input-delta', id: 'c', delta: '' },
+      ],
+    ],
+    ['metadata only', [{ type: 'response-metadata', id: 'x', modelId: 'qwen' }]],
+  ] as [string, StreamPart[]][])(
+    'gives up after 300 seconds even when the server keeps sending %s',
+    async (_, pieces) => {
+      const { model, push } = silentAfter(START);
+      const outcome = track(adapter(model).generateStructured(call()));
+
+      await vi.advanceTimersByTimeAsync(200_000);
+      for (const piece of pieces) push(piece);
+      await vi.advanceTimersByTimeAsync(99_999);
+      expect(outcome.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await flush();
+      expect(outcome.settled).toBe(true);
+
+      const result = outcome.value as LlmCallOutcome<unknown>;
+      expect(!result.ok && result.reason).toContain('LLM が時間内に答えなかった（300 秒、');
+    },
+  );
+
   it('says the same for the talk role in a conversation', async () => {
     const { model } = silentAfter([]);
     const parts: TalkStepPart[] = [];

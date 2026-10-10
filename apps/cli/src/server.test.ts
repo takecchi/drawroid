@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { stubDeps } from './test-support.js';
 
@@ -75,6 +75,41 @@ describe('createApp, when the Web UI has not been built', () => {
       expect(unknown.status).toBe(404);
       expect(await unknown.json()).toEqual({ error: 'not_found' });
     });
+  });
+
+  // 起動の知らせは assemble が日本語で出す。serveStatic の英語の警告（root path … is not found）は出さない
+  it('does not print an English warning about the missing web build', async () => {
+    const work = await mkdtemp(join(tmpdir(), 'drawroid-no-web-'));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const app = createApp({ webRoot: join(work, 'build', 'client'), deps: stubDeps() });
+      await app.request('/');
+      await app.request('/assets/app.js');
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+      await rm(work, { recursive: true, force: true });
+    }
+  });
+
+  it('serves a web build made after it started, without a restart', async () => {
+    const work = await mkdtemp(join(tmpdir(), 'drawroid-no-web-'));
+    const lateRoot = join(work, 'build', 'client');
+    try {
+      const app = createApp({ webRoot: lateRoot, deps: stubDeps() });
+      expect((await app.request('/assets/app.js')).status).not.toBe(200);
+
+      await mkdir(join(lateRoot, 'assets'), { recursive: true });
+      await writeFile(join(lateRoot, 'index.html'), '<p>late index</p>');
+      await writeFile(join(lateRoot, 'assets', 'app.js'), 'late = true');
+
+      const asset = await app.request('/assets/app.js');
+      expect(asset.status).toBe(200);
+      expect(await asset.text()).toContain('late = true');
+      expect(await (await app.request('/')).text()).toContain('late index');
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
   });
 });
 
@@ -148,18 +183,52 @@ describe('createApp, sent a change from a page of another site', () => {
     },
   );
 
+  // 同じ端末の別のポート・別のスキームのページも、別のサイト（別のオリジン）: Forge の画面や、ほかの開発用の配り先など
+  it.each([
+    'http://localhost:3000',
+    'http://127.0.0.1:7860',
+    'https://127.0.0.1:7878',
+    'http://localhost:7878',
+  ])('refuses the origin %s, which is not the origin the request came to', async (origin) => {
+    const res = await app.request('http://127.0.0.1:7878/api/conversations', {
+      method: 'POST',
+      headers: { Origin: origin },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: { kind: 'forbidden_origin' } });
+  });
+
+  // Origin を付けない要求でも、ブラウザが別のサイトからと言っているものは断る（same-site には同じ端末の別のポートが入る）
+  it.each(['cross-site', 'same-site'])(
+    'refuses a change without Origin that the browser marks %s',
+    async (site) => {
+      const res = await app.request('http://127.0.0.1:7878/api/conversations', {
+        method: 'POST',
+        headers: { 'Sec-Fetch-Site': site },
+      });
+      expect(res.status).toBe(403);
+    },
+  );
+
   // 読むだけの要求は、別のサイトのページからは中身が読めない（CORS を許していない）ので、断らない
   it('still answers a read from another site', async () => {
     const res = await app.request('/api/health', { headers: fromAttacker });
     expect(res.status).toBe(200);
   });
 
+  // ブラウザは、ページと同じオリジンの Host へ送る。開発中は Vite が Host（localhost:5173）を変えずに中継する
   it.each([
-    ['this machine', { Origin: 'http://127.0.0.1:7878' }],
-    ['the dev server', { Origin: 'http://localhost:5173' }],
-    ['a tool without Origin (curl)', {}],
-  ])('takes a change sent from %s', async (_, headers) => {
-    const res = await app.request('/api/conversations', { method: 'POST', headers });
+    ['this machine', 'http://127.0.0.1:7878', { Origin: 'http://127.0.0.1:7878' }],
+    ['this machine by name', 'http://localhost:7878', { Origin: 'http://localhost:7878' }],
+    ['the dev server', 'http://localhost:5173', { Origin: 'http://localhost:5173' }],
+    [
+      'the browser, marking it same-origin',
+      'http://127.0.0.1:7878',
+      { 'Sec-Fetch-Site': 'same-origin' },
+    ],
+    ['a tool without Origin (curl)', 'http://127.0.0.1:7878', {}],
+  ])('takes a change sent from %s', async (_, base, headers) => {
+    const res = await app.request(`${base}/api/conversations`, { method: 'POST', headers });
     expect(res.status).toBe(201);
   });
 });

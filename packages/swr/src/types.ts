@@ -33,6 +33,14 @@ export type ConversationEventsResponse = InferResponseType<
   (typeof client.conversations)[':conversationId']['events']['$get'],
   200
 >;
+export type ConversationLlmCallsResponse = InferResponseType<
+  (typeof client.conversations)[':conversationId']['llm-calls']['$get'],
+  200
+>;
+export type ConversationLlmCallDetail = InferResponseType<
+  (typeof client.conversations)[':conversationId']['llm-calls'][':callId']['$get'],
+  200
+>;
 export type PostedMessageResponse = InferResponseType<
   (typeof client.conversations)[':conversationId']['messages']['$post'],
   202

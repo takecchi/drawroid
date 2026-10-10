@@ -184,9 +184,14 @@ function refuseOverSafetyLimit(key: ParamKey, value: unknown): string | undefine
     return `文字数の上限（${FIXED_TEXT_LIMIT} 文字）を超える値では固定できない`;
   }
   if (key === 'hiresFix' && typeof value === 'object' && value !== null) {
-    const { scale } = value as { scale?: unknown };
+    const { scale, steps } = value as { scale?: unknown; steps?: unknown };
     if (typeof scale === 'number' && scale > FIXED_HIRES_SCALE_LIMIT) {
       return `倍率の上限（${FIXED_HIRES_SCALE_LIMIT}）を超える値では固定できない`;
+    }
+    // 二段目の steps も一段目と同じ上限にする: 二段目も同じだけバックエンドを占めるため（0 は一段目と同じ steps）
+    const stepsLimit = FIXED_NUMBER_LIMITS.steps!;
+    if (typeof steps === 'number' && steps > stepsLimit) {
+      return `二段目の steps の上限（${stepsLimit}）を超える値では固定できない`;
     }
   }
   return undefined;

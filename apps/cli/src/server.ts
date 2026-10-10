@@ -1,19 +1,40 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createApi, type ApiDeps } from '@drawroid/api';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 
 /** この端末を指す名前。ポートは問わない（開発中は Vite が localhost:5173 の Host のまま中継する） */
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
 /** 何も書き換えない要求 */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** Origin がこの端末のページか。`null`（サンドボックスの iframe・file:）や読めない値は、この端末のものとしない */
-function isLoopbackOrigin(origin: string): boolean {
+/** 別のサイトから来たとブラウザが言う Sec-Fetch-Site。same-site には、同じ端末の別のポートのページが入る */
+const CROSS_SITE = new Set(['cross-site', 'same-site']);
+
+/**
+ * 要求が来た先のオリジン（スキームと Host の頭）。Host の頭を使う: 要求の行が絶対形（GET http://localhost/… HTTP/1.1）だと、
+ * 配り先はその URL をそのまま要求の URL にするので、URL だけを見ると Host の頭が素通りするため。Host の頭が無ければ（HTTP/1.0）URL のもの
+ */
+function requestOrigin(url: string, host: string | undefined): URL | undefined {
+  const { protocol, host: urlHost } = new URL(url);
   try {
-    return LOOPBACK_NAMES.has(new URL(origin).hostname);
+    return new URL(`${protocol}//${host ?? urlHost}`);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Origin が、要求が来た先と同じオリジンか。`null`（サンドボックスの iframe・file:）や読めない値は同じとしない
+ */
+// 「この端末の名前か」で比べない: 同じ端末の別のポート（Forge の画面・ほかの開発用の配り先）や https のページも、別のサイトのため。
+// 開発中は Vite が Host（localhost:5173）を変えずに中継し、ページの Origin も同じなので、同じオリジンとして通る
+function isSameOrigin(origin: string, own: URL): boolean {
+  try {
+    return new URL(origin).origin === own.origin;
   } catch {
     return false;
   }
@@ -24,7 +45,8 @@ export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps })
   // この端末の名前以外の Host は断る: DNS rebinding で別のサイトの名前を 127.0.0.1 へ向け直されると、そのサイトの画面が
   // 同じオリジンとして API を読み書きできる（LLM の設定の宛先を差し替えて、鍵をそこへ送らせる、など）ため
   app.use('*', async (c, next) => {
-    if (!LOOPBACK_NAMES.has(new URL(c.req.url).hostname)) {
+    const own = requestOrigin(c.req.url, c.req.header('host'));
+    if (own === undefined || !LOOPBACK_NAMES.has(own.hostname)) {
       return c.json(
         {
           error: {
@@ -39,10 +61,16 @@ export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps })
   });
   // 別のサイトのページから来た書き込みは断る: プリフライトの要らない単純な要求（text/plain の POST など）は、どのサイトの
   // ページからでも送れ、本文を JSON として読む口では、生成や LLM の呼び出しが始まってしまうため。
-  // Origin の無い要求（curl・台本）は通す。読むだけの要求は、CORS を許していないので別のサイトからは中身が読めない
+  // Origin の無い要求（curl・台本）は通す。ただしブラウザが別のサイトからと言う（Sec-Fetch-Site）ものは断る。
+  // 読むだけの要求は、CORS を許していないので別のサイトからは中身が読めない
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
-    if (!SAFE_METHODS.has(c.req.method) && origin !== undefined && !isLoopbackOrigin(origin)) {
+    const own = requestOrigin(c.req.url, c.req.header('host'));
+    const foreign =
+      origin === undefined
+        ? CROSS_SITE.has(c.req.header('sec-fetch-site') ?? '')
+        : own === undefined || !isSameOrigin(origin, own);
+    if (!SAFE_METHODS.has(c.req.method) && foreign) {
       return c.json(
         {
           error: {
@@ -58,7 +86,16 @@ export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps })
   app.route('/api', createApi(deps));
   // 未知の /api/* を index.html で返さない: API の誤りが 200 の HTML に化けて、呼び手から見えなくなるため
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
-  app.use('/*', serveStatic({ root: webRoot }));
+  // 配り先ができてから serveStatic を作る: 無いうちに作ると英語の警告（root path … is not found）が出るため（知らせは assemble が日本語で出す）。
+  // 起動の時点で決め打ちにしないのは、起動後に pnpm build したものを、起動し直さずに配るため
+  let serveWeb: MiddlewareHandler | undefined;
+  app.use('/*', async (c, next) => {
+    if (serveWeb === undefined) {
+      if (!existsSync(webRoot)) return next();
+      serveWeb = serveStatic({ root: webRoot });
+    }
+    return serveWeb(c, next);
+  });
   // SPA の経路（/jobs/123 など）はファイルが無いので、index.html を返して画面側の routing に任せる
   app.get('/*', async (c) => {
     const index = await readFile(join(webRoot, 'index.html'), 'utf8').catch(() => undefined);

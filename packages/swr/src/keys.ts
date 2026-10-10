@@ -29,4 +29,8 @@ export const keys = {
   conversation: (conversationId: string) => `/api/conversations/${conversationId}`,
   conversationEvents: (conversationId: string, after: number) =>
     `/api/conversations/${conversationId}/events?after=${after}`,
+  conversationLlmCalls: (conversationId: string) =>
+    `/api/conversations/${conversationId}/llm-calls`,
+  conversationLlmCall: (conversationId: string, callId: string) =>
+    `/api/conversations/${conversationId}/llm-calls/${callId}`,
 } as const;

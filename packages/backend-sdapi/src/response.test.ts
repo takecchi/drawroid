@@ -1,6 +1,7 @@
 import { BackendError } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
+import { MAX_IMAGE_BYTES } from './client.js';
 import { readGenerationResponse } from './response.js';
 
 /** PNG の印だけを持つ中身（中身は見ない試験なので、印だけで足りる） */
@@ -54,5 +55,36 @@ describe('readGenerationResponse', () => {
     expect(error.kind).toBe('bad_response');
     expect(error.message).toContain(product);
     expect(error.message).not.toContain(product === 'Forge' ? 'A1111' : 'Forge');
+  });
+
+  /** PNG の印で始まる、bytes バイトの画像の base64 */
+  const pngOf = (bytes: number) => {
+    const png = Buffer.alloc(bytes);
+    Buffer.from(PNG, 'base64').copy(png);
+    return png.toString('base64');
+  };
+
+  it('refuses an image over 64 MB, saying how large an image may be', () => {
+    const error = failureOf(() =>
+      readGenerationResponse({ images: [pngOf(MAX_IMAGE_BYTES + 1)], info }, 1, {
+        endpoint: 'txt2img',
+        product: 'Forge',
+      }),
+    );
+
+    expect(MAX_IMAGE_BYTES).toBe(64 * 1024 * 1024);
+    expect(error.kind).toBe('bad_response');
+    expect(error.message).toContain('txt2img の画像が大きすぎる（1枚 64 MB まで）');
+    expect(error.message).toContain('Forge');
+  });
+
+  // 上限は戻したあとの大きさで測る。base64 の長さ（約 4/3 倍）で測ると、上限より小さい画像まで断ってしまう
+  it('takes an image under 64 MB whose base64 is longer than 64 MB', () => {
+    const result = readGenerationResponse({ images: [pngOf(60 * 1024 * 1024)], info }, 1, {
+      endpoint: 'txt2img',
+      product: 'Forge',
+    });
+
+    expect(result.images[0]!.png.byteLength).toBe(60 * 1024 * 1024);
   });
 });

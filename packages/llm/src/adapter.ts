@@ -32,6 +32,7 @@ import {
   type LanguageModel,
   type LanguageModelUsage,
   type ModelMessage,
+  type TextStreamPart,
   type ToolSet,
   type UserContent,
 } from 'ai';
@@ -160,6 +161,31 @@ export function describeCallFailure(error: unknown): string {
     return `${LLM_CALL_FAILED_PREFIX}この使い方に、LLM の provider が対応していない。LLM の設定で、その役の構造化出力・ツールの呼び出し方・画像を読めるかを、モデルに合わせて変える${sdkSaid}`;
   }
   return `${LLM_CALL_FAILED_PREFIX}${message}`;
+}
+
+/**
+ * 流れの部品が、答えの中身を運んでいるか。黙っている時間の時計は、中身を運ぶ部品でだけ巻き直す
+ */
+// 始まりの印や空の断片で巻き直さない: 中身の無い部品を送り続けるサーバで、いつまでも打ち切れなくなるため
+function carriesContent(part: TextStreamPart<ToolSet>): boolean {
+  switch (part.type) {
+    case 'text-delta':
+    case 'reasoning-delta':
+      return part.text !== '';
+    case 'tool-input-delta':
+      return part.delta !== '';
+    case 'tool-call':
+    case 'tool-result':
+    case 'tool-error':
+    case 'file':
+    case 'source':
+    case 'finish-step':
+    case 'finish':
+    case 'error':
+      return true;
+    default:
+      return false;
+  }
 }
 
 function toUsage(usage: LanguageModelUsage | undefined): LlmUsage {
@@ -511,7 +537,7 @@ export class AiSdkLlm implements LlmPort {
       toolCalls: [],
     };
     for await (const part of result.fullStream) {
-      onPart();
+      if (carriesContent(part)) onPart();
       switch (part.type) {
         case 'text-delta':
           streamed.text += part.text;

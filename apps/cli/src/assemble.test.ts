@@ -2,7 +2,7 @@
 // 組み立ての順（話す役を立ててからジョブを再開する・落ちる前の止まりで話しかけ直さない）と、止める合図のつなぎは、
 // 部品の試験からは見えないため、組み立てそのものを呼ぶ
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -80,6 +80,24 @@ async function stoppedJobOf(conversationId: string) {
 
 const turnsStarted = async (conversations: FsConversationStore, conversationId: string) =>
   (await conversations.readEvents(conversationId)).events.filter((e) => e.type === 'turn.started');
+
+describe('assembleDrawroid, telling where the screen is', () => {
+  const MISSING_WEB_LINE =
+    'drawroid: web の build が無いので、画面は http://localhost:5173/（開発中）か、pnpm build のあとで配る\n';
+
+  it('says in Japanese where to open the screen when the web has not been built', async () => {
+    const written: string[] = [];
+    await start(undefined, undefined, (text) => written.push(text));
+    expect(written).toContain(MISSING_WEB_LINE);
+  });
+
+  it('says nothing about it when the web has been built', async () => {
+    await writeFile(join(webRoot, 'index.html'), '<!doctype html>');
+    const written: string[] = [];
+    await start(undefined, undefined, (text) => written.push(text));
+    expect(written.join('')).not.toContain('web の build が無い');
+  });
+});
 
 describe('assembleDrawroid after a restart', () => {
   // 落ちる前の止まりで話しかけ直さない: 途切れたターンをやり直さないのと同じく、話しかけるのは止まったその場だけ

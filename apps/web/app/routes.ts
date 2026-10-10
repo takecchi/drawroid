@@ -3,6 +3,7 @@ import { type RouteConfig, index, route } from '@react-router/dev/routes';
 export default [
   index('routes/conversations.tsx'),
   route('conversations/:conversationId', 'routes/conversation.tsx'),
+  route('conversations/:conversationId/llm-calls', 'routes/conversation-llm-calls.tsx'),
   route('generate', 'routes/generate.tsx'),
   route('settings', 'routes/settings.tsx'),
   route('memory', 'routes/memory.tsx'),
