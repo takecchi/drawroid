@@ -15,7 +15,7 @@ import {
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
 import { blocking } from '@drawroid/storage-fs/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { AutoJobQueue } from '../deps.js';
 import { createApi } from '../index.js';
@@ -124,7 +124,7 @@ describe('POST /jobs/:jobId/adopt', () => {
     const { store, llm, runner, judging, submit, adopt } = setup();
     const { jobId } = await submit();
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     const res = await adopt(jobId, { iteration: 1, index: 0 });
     await runner.idle();
@@ -146,7 +146,7 @@ describe('POST /jobs/:jobId/adopt', () => {
     const { store, runner, judging, submit, adopt } = setup();
     const { jobId } = await submit();
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     const res = await adopt(jobId, { iteration: 1, index: 3 });
 
@@ -162,7 +162,7 @@ describe('POST /jobs/:jobId/adopt', () => {
     const { store, runner, judging, submit, adopt } = setup();
     const { jobId } = await submit();
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await runner.stop(jobId);
     await runner.idle();
 
