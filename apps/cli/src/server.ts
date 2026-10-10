@@ -60,6 +60,22 @@ export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps })
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
   app.use('/*', serveStatic({ root: webRoot }));
   // SPA の経路（/jobs/123 など）はファイルが無いので、index.html を返して画面側の routing に任せる
-  app.get('/*', async (c) => c.html(await readFile(join(webRoot, 'index.html'), 'utf8')));
+  app.get('/*', async (c) => {
+    const index = await readFile(join(webRoot, 'index.html'), 'utf8').catch(() => undefined);
+    return index === undefined ? c.html(WEB_NOT_BUILT_PAGE, 503) : c.html(index);
+  });
   return app;
 }
+
+// pnpm dev では web を build せず Vite が配るので、ここへ来た人には開く先と build の仕方を示す（例外のまま 500 にしない）
+const WEB_NOT_BUILT_PAGE = `<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>drawroid: web の画面が build されていない</title>
+<h1>web の画面が build されていない</h1>
+<p>API は動いている。画面を開くには、次のどちらかにする。</p>
+<ul>
+<li>開発中（pnpm dev）なら、Vite が出した URL（既定は <a href="http://localhost:5173/">http://localhost:5173/</a>）を開く。</li>
+<li>drawroid だけで画面まで配るなら、pnpm build を打ってから起動し直す。</li>
+</ul>
+`;
