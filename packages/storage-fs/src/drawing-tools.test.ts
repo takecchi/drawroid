@@ -14,6 +14,7 @@ import {
   DEFAULT_BUDGETS,
   DEFAULT_TALK_LIMITS,
   JobRunner,
+  MAX_REFERENCE_NOTE_CHARS,
   mergePermissions,
   type DrawingToolDeps,
   type JobStore,
@@ -480,5 +481,25 @@ describe('revise_drawing and stop_drawing', () => {
     expect(startDrawing.description).toContain('呼ばない');
     expect(reviseDrawing.description).not.toBe('');
     expect(stopDrawing.description).not.toBe('');
+  });
+});
+
+// 用途の言葉の上限は core の値を使う: 発言の口・参照画像の口・画面と同じ長さまで添えられる
+describe('the note of an attached image', () => {
+  it.each([
+    ['start_drawing', startDrawing, { request: '海辺' }],
+    ['revise_drawing', reviseDrawing, {}],
+  ])('lets %s take a note of exactly the limit and not one character more', (_, tool, input) => {
+    const attached = (note: string) => ({
+      ...input,
+      attachments: [{ uploadId: '20261009-000000-up1', note }],
+    });
+
+    expect(
+      tool.inputSchema.safeParse(attached('あ'.repeat(MAX_REFERENCE_NOTE_CHARS))).success,
+    ).toBe(true);
+    expect(
+      tool.inputSchema.safeParse(attached('あ'.repeat(MAX_REFERENCE_NOTE_CHARS + 1))).success,
+    ).toBe(false);
   });
 });

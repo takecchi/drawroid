@@ -1,5 +1,6 @@
 import {
   MAX_REFERENCE_BYTES,
+  MAX_REFERENCE_NOTE_CHARS,
   MAX_REFERENCES_PER_REQUEST,
   REFERENCE_MEDIA_TYPES,
   type NewReference,
@@ -32,7 +33,7 @@ export const referenceUploadSchema = z
       .max(Math.ceil(MAX_REFERENCE_BYTES / 3) * 4)
       .regex(BASE64, { message: 'base64 ではない' }),
     /** 人間が添えた用途の言葉（「この構図で」など） */
-    note: z.string().trim().min(1).max(200).optional(),
+    note: z.string().trim().min(1).max(MAX_REFERENCE_NOTE_CHARS).optional(),
   })
   .transform((upload, ctx): NewReference => {
     const bytes = new Uint8Array(Buffer.from(upload.data, 'base64'));
