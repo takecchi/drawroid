@@ -20,6 +20,9 @@ const renderCheck = () =>
 const focusHolds = (element: Element) =>
   document.activeElement !== document.body && document.activeElement?.contains(element) === true;
 
+/** 形の合った節。返事の形の試験で、1つの欄だけを違えるための土台 */
+const okSection = { title: 'LLM', items: [{ ok: true, what: '考える役と1往復できた' }] };
+
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   runDoctor: vi.fn(),
@@ -184,6 +187,29 @@ describe('DoctorCheck', () => {
           report: { lacking: 0, sections: [{ title: 'LLM', items: [{}] }] },
         } as never),
     ],
+    // 欄を1つずつ欠く・型を違える: どの欄も描くのに使うので、1つでも違えば読めないとする。
+    // 通すと、lacking の無い返事が「すべてよい」に倒れたり、文字列の "false" が「よい」と出たりする
+    ...(
+      [
+        ['the report has no count of what is lacking', { sections: [okSection] }],
+        ['the count of what is lacking is not a number', { lacking: '0', sections: [okSection] }],
+        [
+          'an item says whether it is fine with a string',
+          { lacking: 0, sections: [{ ...okSection, items: [{ ok: 'false', what: 'LLM' }] }] },
+        ],
+        [
+          'an item does not say what was checked',
+          { lacking: 0, sections: [{ ...okSection, items: [{ ok: true }] }] },
+        ],
+        ['a section has no title', { lacking: 0, sections: [{ items: okSection.items }] }],
+      ] as const
+    ).map(
+      ([name, report]) =>
+        [
+          name,
+          () => vi.mocked(runDoctor).mockResolvedValue({ report } as never),
+        ] as const,
+    ),
   ])('says the result could not be read when %s', async (_, answer) => {
     answer();
     renderCheck();
@@ -191,7 +217,10 @@ describe('DoctorCheck', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
 
     const reason = await screen.findByRole('alert');
-    expect(reason.textContent).toContain('確かめの結果が読めなかった');
+    // API の失敗（「確かめられなかった: …」）とは別の文で、前置きを付けない
+    expect(reason.textContent).toBe(
+      '確かめの結果が読めなかった（drawroid の返事が想定の形ではない）',
+    );
     expect(focusHolds(reason)).toBe(true);
     expect(screen.queryByText(/確かめています/)).toBeNull();
     expect(screen.getByRole('button', { name: '確かめる' }).hasAttribute('disabled')).toBe(false);
