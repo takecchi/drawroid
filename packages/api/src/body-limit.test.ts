@@ -8,7 +8,7 @@ import {
   type GenerationResult,
   type StopConditionsDraft,
 } from '@drawroid/core';
-import { ScriptedLlm, StubBackend } from '@drawroid/core/testing';
+import { ScriptedLlm, STUB_PNG, StubBackend } from '@drawroid/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAutoJob, memoryConversations, request, setup } from './test-support.js';
@@ -17,9 +17,7 @@ const MIB = 1024 * 1024;
 const PLAIN_LIMIT = 1 * MIB;
 const IMAGE_LIMIT = 48 * MIB;
 
-const PNG_SIGNATURE_BASE64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString(
-  'base64',
-);
+const PNG_BASE64 = Buffer.from(STUB_PNG).toString('base64');
 
 const oneImage: GenerationResult = {
   images: [{ png: Uint8Array.of(137, 80, 78, 71, 0), seed: 0, metadata: {} }],
@@ -129,7 +127,7 @@ const IMAGE_ROUTES: ImageBodyRoute[] = [
     target: async () => '/jobs/auto',
     body: {
       request: '猫の絵',
-      references: [{ mediaType: 'image/png', data: PNG_SIGNATURE_BASE64 }],
+      references: [{ mediaType: 'image/png', data: PNG_BASE64 }],
     },
     ok: 202,
     stored: async (f) => (await f.store.listJobIds()).length,
@@ -138,7 +136,7 @@ const IMAGE_ROUTES: ImageBodyRoute[] = [
     name: 'POST /jobs/auto/:jobId/interventions (reference)',
     method: 'POST',
     target: async (f) => `/jobs/auto/${await f.job()}/interventions`,
-    body: { kind: 'reference', image: { mediaType: 'image/png', data: PNG_SIGNATURE_BASE64 } },
+    body: { kind: 'reference', image: { mediaType: 'image/png', data: PNG_BASE64 } },
     ok: 202,
     stored: storedInterventions,
   },
@@ -149,7 +147,7 @@ const IMAGE_ROUTES: ImageBodyRoute[] = [
     body: {
       kind: 'mask',
       image: { iteration: 2, index: 0 },
-      mask: { data: PNG_SIGNATURE_BASE64 },
+      mask: { data: PNG_BASE64 },
     },
     ok: 202,
     stored: storedInterventions,
@@ -158,7 +156,7 @@ const IMAGE_ROUTES: ImageBodyRoute[] = [
     name: 'POST /conversations/:conversationId/uploads',
     method: 'POST',
     target: async (f) => `/conversations/${await f.conversation()}/uploads`,
-    body: { mediaType: 'image/png', data: PNG_SIGNATURE_BASE64 },
+    body: { mediaType: 'image/png', data: PNG_BASE64 },
     ok: 201,
     stored: async (f) => f.addUpload.mock.calls.length,
   },

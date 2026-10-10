@@ -169,12 +169,10 @@ async function refusal(res: Response) {
 }
 
 describe.each(MOUTHS)('%s', (name) => {
-  const formatsOf = (mouth: Mouth) => mouth.formats;
-
   it('refuses an image that has only the right signature, saving nothing', async () => {
     const mouth = (await prepare())[name];
 
-    for (const format of formatsOf(mouth)) {
+    for (const format of mouth.formats) {
       const error = await refusal(await mouth.send(signatureOnly(format), format));
       expect(error.kind, format).toBe('invalid_request');
       expect(error.message, format).toContain('読めない');
@@ -186,7 +184,7 @@ describe.each(MOUTHS)('%s', (name) => {
   it('refuses an image wider than 8192 px, saving nothing', async () => {
     const mouth = (await prepare())[name];
 
-    for (const format of formatsOf(mouth)) {
+    for (const format of mouth.formats) {
       const error = await refusal(
         await mouth.send(await solidImage(format, MAX_EDGE + 1, 1), format),
       );
@@ -200,7 +198,7 @@ describe.each(MOUTHS)('%s', (name) => {
   it('refuses an image taller than 8192 px, saving nothing', async () => {
     const mouth = (await prepare())[name];
 
-    for (const format of formatsOf(mouth)) {
+    for (const format of mouth.formats) {
       const error = await refusal(
         await mouth.send(await solidImage(format, 1, MAX_EDGE + 1), format),
       );
@@ -214,23 +212,23 @@ describe.each(MOUTHS)('%s', (name) => {
   it('accepts an image of exactly 8192 x 8192 px', async () => {
     const mouth = (await prepare())[name];
 
-    for (const format of formatsOf(mouth)) {
+    for (const format of mouth.formats) {
       const res = await mouth.send(await largestOf(format), format);
       expect(res.status, format).toBe(mouth.acceptedStatus);
     }
 
-    expect(await mouth.saved()).toBe(formatsOf(mouth).length);
+    expect(await mouth.saved()).toBe(mouth.formats.length);
   }, 60_000);
 
   it('accepts a small valid image of each format it takes', async () => {
     const mouth = (await prepare())[name];
 
-    for (const format of formatsOf(mouth)) {
+    for (const format of mouth.formats) {
       const res = await mouth.send(await solidImage(format, 16, 8), format);
       expect(res.status, format).toBe(mouth.acceptedStatus);
     }
 
-    expect(await mouth.saved()).toBe(formatsOf(mouth).length);
+    expect(await mouth.saved()).toBe(mouth.formats.length);
   });
 });
 
