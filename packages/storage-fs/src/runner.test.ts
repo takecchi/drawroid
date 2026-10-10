@@ -71,14 +71,18 @@ function imageCount(call: LlmCall<unknown>): number {
 
 /** stopAt 回目（1始まり）で「止めてよい」と言う見る役。言わせないなら undefined */
 function judge(stopAt?: number): Script {
-  return (call, n) => ({
-    images: Array.from({ length: imageCount(call) }, (_, i) => ({
-      score: Math.min(0.9, 0.3 + n * 0.1 + i * 0.01),
-      issues: ['指が崩れている', '背景が暗い'],
-    })),
-    nextChange: 'もっと逆光にする',
-    canStop: stopAt !== undefined && n + 1 >= stopAt,
-  });
+  return (call, n) => {
+    const canStop = stopAt !== undefined && n + 1 >= stopAt;
+    return {
+      images: Array.from({ length: imageCount(call) }, (_, i) => ({
+        // 止めてよいと言う回は、意図どおりと言える点数にする（低いまま止めてよいとした出力は受け付けられない）
+        score: canStop ? 0.8 + i * 0.01 : Math.min(0.9, 0.3 + n * 0.1 + i * 0.01),
+        issues: ['指が崩れている', '背景が暗い'],
+      })),
+      nextChange: 'もっと逆光にする',
+      canStop,
+    };
+  };
 }
 
 function setup(options: {

@@ -8,7 +8,11 @@ import { toLlmCallRecord } from '../llm/record.js';
 import { adoptionCutting } from '../loop/adoption.js';
 import { buildJudgeInput } from '../loop/inputs.js';
 import { defaultCallId } from '../loop/runner.js';
-import { buildJudgeOutputSchema, type JudgeOutput } from '../loop/schemas.js';
+import {
+  buildJudgeOutputSchema,
+  buildJudgeRecordSchema,
+  type JudgeOutput,
+} from '../loop/schemas.js';
 import type { MemoryStore } from '../memory/store.js';
 import { activeJobOfConversation } from './drawing-tools.js';
 import {
@@ -239,7 +243,7 @@ async function earlierReview(
   }
   const sent = call.input.user.filter((part) => part.type === 'image');
   const position = sent.findIndex((part) => part.key === imageKey);
-  const parsed = buildJudgeOutputSchema(sent.length).safeParse(call.outcome.value);
+  const parsed = buildJudgeRecordSchema(sent.length).safeParse(call.outcome.value);
   const image = parsed.success ? parsed.data.images[position] : undefined;
   if (!parsed.success || image === undefined) {
     return [false, `${label}は呼び出し ${callId} で渡したが、記録の評価が読めない`];
