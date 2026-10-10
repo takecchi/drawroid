@@ -35,6 +35,19 @@ export const DEFAULT_BUDGET: Budget = {
   imagesPerJudge: 4,
 };
 
+/**
+ * 1回に描く枚数が、見る役の1回の呼び出しに載せる画像の枚数に収まらないときの理由。収まれば undefined。
+ * ジョブを作る前に照らす: 作ってからでは、1回目の生成を終えたあと、見る役の入力を組む段で初めて止まるため
+ */
+export function batchSizeProblem(
+  batchSize: number,
+  budget: Pick<Budget, 'imagesPerJudge'>,
+): string | undefined {
+  return batchSize <= budget.imagesPerJudge
+    ? undefined
+    : `1回に描く枚数 ${batchSize} 枚は、見る役に1回で渡せる ${budget.imagesPerJudge} 枚を超えている。${budget.imagesPerJudge} 枚以下にするか、予算の設定で見る役に渡す枚数を増やす`;
+}
+
 /** 呼び出す役のモデルの窓。役割の設定から来る */
 export type ModelWindow = {
   contextTokens: number;

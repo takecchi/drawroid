@@ -13,6 +13,7 @@ import {
   type StopConditions,
   type StopConditionsChange,
 } from '../job/types.js';
+import { batchSizeProblem } from '../loop/budget.js';
 import { createCarry } from '../loop/carry.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
@@ -250,6 +251,8 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (!attached.ok) return outcome(false, attached.reason);
       const references = attached.references;
       const budgets = await deps.budgets();
+      const tooMany = batchSizeProblem(input.batchSize ?? 1, budgets);
+      if (tooMany !== undefined) return outcome(false, tooMany);
       const spec = await deps.jobs.createJob(
         {
           kind: 'auto',

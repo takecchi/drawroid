@@ -211,6 +211,37 @@ describe('start_drawing', () => {
     await runner.idle();
   });
 
+  it('refuses more images at once than the judging role takes in one call, saying why, and makes no job', async () => {
+    const { jobs, context } = await setup();
+
+    const outcome = await run(
+      'start_drawing',
+      { request: '海辺', batchSize: DEFAULT_BUDGETS.imagesPerJudge + 1 },
+      context,
+    );
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.summary).toContain(`${DEFAULT_BUDGETS.imagesPerJudge} 枚`);
+    expect(await jobIds(jobs)).toEqual([]);
+  });
+
+  it('draws as many images at once as the judging role takes in one call', async () => {
+    const { jobs, runner, context } = await setup();
+
+    const outcome = await run(
+      'start_drawing',
+      { request: '海辺', batchSize: DEFAULT_BUDGETS.imagesPerJudge },
+      context,
+    );
+    await runner.idle();
+
+    expect(outcome.ok).toBe(true);
+    const [jobId] = await jobIds(jobs);
+    expect(await jobs.readJob(jobId!)).toMatchObject({ batchSize: DEFAULT_BUDGETS.imagesPerJudge });
+    const state = await jobs.readState(jobId!);
+    expect(state.status === 'stopped' && state.reason.kind).not.toBe('error');
+  });
+
   it('refuses stop conditions that would never stop', async () => {
     const { jobs, context } = await setup();
 
