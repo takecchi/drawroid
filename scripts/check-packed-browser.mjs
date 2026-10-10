@@ -134,7 +134,12 @@ try {
   const composer = page.getByLabel('発言');
   await composer.fill('こんにちは');
   await composer.press('Enter');
-  await log.getByText(/LLM が未設定/).waitFor();
+  // 見るのは、このターンが閉じた失敗の行（role="alert"）。ログの上の「はじめに要る設定」の案内にも「LLM が未設定」と出るので、
+  // 文言だけで探すと、返事の前は案内に当たって返事を見ずに進み、両方そろったあとでは 2 つに当たって落ちる
+  await log
+    .getByRole('alert')
+    .filter({ hasText: /^応答が失敗した: LLM が未設定/ })
+    .waitFor();
   await notice.getByRole('link', { name: 'LLM を設定する' }).click();
   await page.waitForURL(`${base}/settings#llm`);
   // 設定の画面は、初めての人に要るもの（バックエンドと LLM）が上にあり、予算は「詳しい設定」として畳んである。
