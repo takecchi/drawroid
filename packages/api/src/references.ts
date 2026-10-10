@@ -1,10 +1,14 @@
-import { REFERENCE_MEDIA_TYPES, type NewReference } from '@drawroid/core';
+import {
+  MAX_REFERENCES_PER_REQUEST,
+  REFERENCE_MEDIA_TYPES,
+  type NewReference,
+} from '@drawroid/core';
 import { z } from 'zod';
+
+export { MAX_REFERENCES_PER_REQUEST };
 
 /** 参照画像1枚の大きさの上限（base64 を戻したあとのバイト数）。クローンが決めた値 */
 export const MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
-/** 1回の要求で添えられる参照画像の枚数。クローンが決めた値 */
-export const MAX_REFERENCES_PER_REQUEST = 4;
 
 // 先頭のバイトで形式を確かめる: 宣言だけを信じると、画像でないものや別の形式のものを refs/ に置いて、縮小の段で落ちるため
 const SIGNATURES: Record<(typeof REFERENCE_MEDIA_TYPES)[number], (bytes: Uint8Array) => boolean> = {
