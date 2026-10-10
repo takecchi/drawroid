@@ -44,11 +44,12 @@ function start(
   signals = new EventEmitter(),
   exit = vi.fn(),
   write: (text: string) => void = () => undefined,
+  // 既定は繋がらないバックエンド: 生成を見る試験だけが偽の Forge を渡す
+  backendUrl = 'http://127.0.0.1:9',
 ) {
   return assembleDrawroid({
     root,
-    // 繋がらないバックエンド: この試験では生成しない
-    args: { port: 0, backend: undefined, backendUrl: 'http://127.0.0.1:9' },
+    args: { port: 0, backend: undefined, backendUrl },
     env: {},
     signals,
     exit,
@@ -245,6 +246,51 @@ async function turnEnded(conversations: FsConversationStore, conversationId: str
     { timeout: 5_000 },
   );
 }
+
+// 手動の生成を止めるとき、Forge が止めるのに失敗したら、その理由を端末に1行出す（#431。ログの行き先は組み立てがつなぐ）
+describe('assembleDrawroid, stopping a manual generation', () => {
+  it('tells the terminal in one line when Forge fails to stop the generation', async () => {
+    let generationStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => (generationStarted = resolve));
+    // 偽の Forge: txt2img は答えずに持っておき（生成が走っている間）、interrupt には 500 を返す
+    const forge = createServer((req, res) => {
+      req.resume();
+      if (req.url === '/sdapi/v1/txt2img') {
+        generationStarted();
+        return;
+      }
+      res.writeHead(req.url === '/sdapi/v1/interrupt' ? 500 : 404, {
+        'content-type': 'application/json',
+      });
+      res.end(JSON.stringify({ detail: '止められない' }));
+    });
+    await new Promise<void>((resolve) => forge.listen(0, '127.0.0.1', resolve));
+    const forgeUrl = `http://127.0.0.1:${(forge.address() as AddressInfo).port}`;
+    try {
+      const written: string[] = [];
+      const listening = await start(undefined, undefined, (text) => written.push(text), forgeUrl);
+      const api = `http://127.0.0.1:${listening.address.port}/api/jobs/manual`;
+      const created = await fetch(api, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: 'a cat', steps: 4, cfgScale: 7, width: 64, height: 64 }),
+      });
+      const { jobId } = (await created.json()) as { jobId: string };
+      await started;
+
+      expect((await fetch(`${api}/${jobId}/stop`, { method: 'POST' })).status).toBe(202);
+
+      expect(
+        written.filter((line) => line.startsWith(`drawroid: 手動のジョブ ${jobId} を止めるとき`)),
+      ).toEqual([expect.stringMatching(/バックエンドが止めるのに失敗した: [^\n]+\n$/)]);
+    } finally {
+      await new Promise((resolve) => {
+        forge.close(resolve);
+        forge.closeAllConnections();
+      });
+    }
+  });
+});
 
 describe('assembleDrawroid and the signals to stop', () => {
   it.each([
