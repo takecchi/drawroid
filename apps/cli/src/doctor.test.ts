@@ -230,6 +230,12 @@ describe('runDoctor', () => {
     );
   });
 
+  // 直すまで何が起きるかを書く: 読めない行は外れて既定に戻るので、書いた人は「効いていない」ことに気づく必要がある
+  it('says what happens to a broken permission until it is fixed', async () => {
+    const { text } = await setup({ permissions: { steps: { mode: 'sometimes' } } });
+    expect(text).toContain('→ 直すまで、この許可は既定に戻る。config.json の permissions を直す');
+  });
+
   it('shows only the name of the API key variable and whether it is set', async () => {
     const llm = {
       providers: {
