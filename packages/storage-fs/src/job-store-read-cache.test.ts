@@ -262,7 +262,9 @@ describe('FsJobStore reading finished iteration files', () => {
   it('lets go of the file read least recently, not the one read first', async () => {
     const { jobId, files } = await finishedJob();
     await new FsJobStore(root).writeStage(jobId, 3, 'think', { params: { prompt: 'girl' } });
-    const [a, b, c] = [1, 2, 3].map((n) => files.iteration(n).think);
+    const a = files.iteration(1).think;
+    const b = files.iteration(2).think;
+    const c = files.iteration(3).think;
     const small = new FsJobStore(root, { readCacheBytes: 2 * (await stat(a)).size });
     vi.mocked(fs.readFile).mockClear();
 
@@ -293,7 +295,8 @@ describe('FsJobStore reading finished iteration files', () => {
   // 書き直した分を二重に数えると、上限に余裕があるのに、ほかのファイルまで手放してしまう
   it('keeps both files within the limit after one of them is rewritten at the same size', async () => {
     const { jobId, files } = await finishedJob();
-    const [a, b] = [1, 2].map((n) => files.iteration(n).think);
+    const a = files.iteration(1).think;
+    const b = files.iteration(2).think;
     const writer = new FsJobStore(root);
     const small = new FsJobStore(root, { readCacheBytes: 2 * (await stat(a)).size });
     for (const n of [1, 2]) await small.readStage(jobId, n, 'think');
@@ -311,7 +314,8 @@ describe('FsJobStore reading finished iteration files', () => {
     await new FsJobStore(root).writeStage(jobId, 3, 'think', {
       params: { prompt: 'girl'.repeat(100) },
     });
-    const [small, big] = [1, 3].map((n) => files.iteration(n).think);
+    const small = files.iteration(1).think;
+    const big = files.iteration(3).think;
     const cache = new FsJobStore(root, { readCacheBytes: (await stat(small)).size });
     vi.mocked(fs.readFile).mockClear();
 
