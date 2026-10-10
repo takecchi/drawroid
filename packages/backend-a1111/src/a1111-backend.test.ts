@@ -127,6 +127,84 @@ describe('A1111Backend', () => {
     expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
   });
 
+  describe('Hires. fix and LoRA details on A1111', () => {
+    const hires = { upscaler: 'Latent', scale: 2, steps: 0, denoisingStrength: 0.5 };
+
+    it('maps the second-pass checkpoint, keeping the LoRAs in the second-pass prompt', async () => {
+      await generate({
+        loras: [{ name: 'detail-tweaker-xl', weight: 0.6 }],
+        hiresFix: { ...hires, checkpoint: 'real_juggernaut-xl', prompt: 'a cat, detailed fur' },
+      });
+
+      expect(sent('/sdapi/v1/txt2img')).toMatchObject({
+        hr_checkpoint_name: 'real/juggernaut-xl.safetensors',
+        hr_prompt: 'a cat, detailed fur <lora:detail-tweaker-xl:0.6>',
+      });
+    });
+
+    it('refuses a second-pass checkpoint that A1111 does not have, before asking it to generate', async () => {
+      await expect(
+        generate({ hiresFix: { ...hires, checkpoint: 'no-such-model' } }),
+      ).rejects.toThrow('チェックポイント no-such-model が A1111 に無い');
+      expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
+    });
+
+    it('leaves the second-pass checkpoint out when it should stay the same', async () => {
+      await generate({ checkpoint: 'real_juggernaut-xl', hiresFix: hires });
+
+      expect(sent('/sdapi/v1/txt2img')).not.toHaveProperty('hr_checkpoint_name');
+    });
+
+    it('writes LoRAs into the prompt with the A1111 syntax', async () => {
+      await generate({
+        loras: [
+          { name: 'watercolor_style_v2', weight: 0.6 },
+          { name: 'detail-tweaker-xl', weight: 1 },
+        ],
+      });
+
+      expect(sent('/sdapi/v1/txt2img').prompt).toBe(
+        'a cat <lora:watercolor_style_v2:0.6> <lora:detail-tweaker-xl:1>',
+      );
+    });
+
+    it('writes a separate UNet weight as the third value of the LoRA tag', async () => {
+      await generate({ loras: [{ name: 'detail-tweaker-xl', weight: 0.8, unetWeight: 0.5 }] });
+
+      expect(sent('/sdapi/v1/txt2img').prompt).toBe('a cat <lora:detail-tweaker-xl:0.8:0.5>');
+    });
+  });
+
+  describe('basic auth', () => {
+    const signal = () => new AbortController().signal;
+
+    it('sends basic auth only when configured', async () => {
+      const withAuth = new A1111Backend({
+        baseUrl: a1111.url,
+        auth: { username: 'u', password: 'p' },
+      });
+      await withAuth.progress(signal());
+      await backend.progress(signal());
+
+      expect(a1111.requests.map((r) => r.headers.authorization)).toEqual([
+        `Basic ${btoa('u:p')}`,
+        undefined,
+      ]);
+    });
+
+    it('does not put the password in error messages', async () => {
+      a1111.route('GET /sdapi/v1/progress', json(500, { detail: 'boom' }));
+      const withAuth = new A1111Backend({
+        baseUrl: a1111.url,
+        auth: { username: 'u', password: 'secret-pass' },
+      });
+      const error: unknown = await withAuth.progress(signal()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BackendError);
+      expect((error as BackendError).message).not.toContain('secret-pass');
+    });
+  });
+
   it('sends img2img to /sdapi/v1/img2img with the source image', async () => {
     const images: GenerationImages = new Map([
       ['iterations/0001/images/0.png', { data: STUB_PNG, mediaType: 'image/png' }],
