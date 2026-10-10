@@ -11,9 +11,11 @@ export type ReferenceLimits = {
   noteChars: number;
 };
 
-// 値は仮置き。設定（config.json の budgets）の既定値として、実測で見直す
+// 値は仮置き。設定（config.json の budgets）の既定値として、実測で見直す。
+// 件数は、1回の要求で添えてよい枚数（MAX_REFERENCES_PER_REQUEST）と同じにする: 少ないと、添えてよいと言った画像のうち
+// 最初のものが、考える役に一度も見えないため。定数を import しない: job/types が予算の設定を通してこのファイルを読み、循環するため
 export const DEFAULT_REFERENCE_LIMITS: ReferenceLimits = {
-  maxCount: 3,
+  maxCount: 4,
   gistChars: 200,
   noteChars: 100,
 };

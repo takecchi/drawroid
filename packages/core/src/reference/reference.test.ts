@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ReferenceRecord } from '../job/types.js';
+import { DEFAULT_BUDGETS } from '../budget/settings.js';
+import { MAX_REFERENCES_PER_REQUEST, type ReferenceRecord } from '../job/types.js';
 import { DEFAULT_BUDGET, DEFAULT_MODEL_WINDOW } from '../loop/budget.js';
 import { createCarry } from '../loop/carry.js';
 import { buildRefGistInput, buildThinkInput, ImageNotAllowedError } from '../loop/inputs.js';
@@ -33,6 +34,31 @@ describe('carriedReferences', () => {
       { refId: 'c', gist: '青い背景で' },
       { refId: 'd', gist: '逆光の海辺' },
     ]);
+  });
+
+  // 既定では、1回の要求で添えてよい枚数を全部持ち回す: 少ないと、添えてよいと言った画像のうち最初のものが、考える役に一度も見えない
+  const attached = (count: number) =>
+    Array.from({ length: count }, (_, i) => received(`r${i + 1}`, `要点${i + 1}`));
+
+  it('carries, by default, every image a single request may attach', () => {
+    const carried = carriedReferences(
+      attached(MAX_REFERENCES_PER_REQUEST),
+      DEFAULT_BUDGETS.references,
+    );
+
+    expect(carried.map((reference) => reference.refId)).toEqual(
+      attached(MAX_REFERENCES_PER_REQUEST).map((reference) => reference.refId),
+    );
+  });
+
+  it('carries, by default, no more than a single request may attach', () => {
+    const carried = carriedReferences(
+      attached(MAX_REFERENCES_PER_REQUEST + 1),
+      DEFAULT_BUDGETS.references,
+    );
+
+    expect(carried).toHaveLength(MAX_REFERENCES_PER_REQUEST);
+    expect(carried[0]?.refId).toBe('r2');
   });
 });
 
