@@ -102,6 +102,54 @@ describe('assembleDrawroid, telling where the screen is', () => {
   });
 });
 
+describe('assembleDrawroid, telling where the backend kind came from', () => {
+  const settingsOf = async (backend: 'forge' | 'a1111' | undefined) => {
+    running = await assembleDrawroid({
+      root,
+      args: { port: 0, backend, backendUrl: 'http://127.0.0.1:9' },
+      env: {},
+      signals: new EventEmitter(),
+      exit: vi.fn(),
+      write: () => undefined,
+      webRoot,
+    });
+    const url = `http://127.0.0.1:${running.address.port}/api/settings/backend`;
+    return { url, view: (await (await fetch(url)).json()) as Record<string, unknown> };
+  };
+
+  it('says the kind comes from the start-up argument when --backend is given', async () => {
+    await writeFile(join(root, 'config.json'), JSON.stringify({ backend: { kind: 'forge' } }));
+    expect((await settingsOf('a1111')).view).toMatchObject({ kind: 'a1111', kindSource: 'cli' });
+  });
+
+  it('says the kind comes from config.json when there is no --backend', async () => {
+    await writeFile(join(root, 'config.json'), JSON.stringify({ backend: { kind: 'a1111' } }));
+    expect((await settingsOf(undefined)).view).toMatchObject({
+      kind: 'a1111',
+      kindSource: 'config',
+    });
+  });
+
+  it('says the kind is the default when neither --backend nor config.json has one', async () => {
+    expect((await settingsOf(undefined)).view).toMatchObject({
+      kind: 'forge',
+      kindSource: 'default',
+    });
+  });
+
+  it('switches the kind in use when the screen saves one, and reports it as from config.json', async () => {
+    const { url } = await settingsOf('forge');
+    const saved = await fetch(url, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'http://127.0.0.1:9', kind: 'a1111' }),
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ kind: 'a1111', kindSource: 'config' });
+    expect(await (await fetch(url)).json()).toMatchObject({ kind: 'a1111', kindSource: 'config' });
+  });
+});
+
 describe('assembleDrawroid after a restart', () => {
   // 落ちる前の止まりで話しかけ直さない: 途切れたターンをやり直さないのと同じく、話しかけるのは止まったその場だけ
   it('does not speak about a job that stopped before the process went down, even if it had not spoken yet', async () => {

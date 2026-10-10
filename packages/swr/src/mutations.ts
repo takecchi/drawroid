@@ -56,9 +56,10 @@ export async function recheckBackendStatus(): Promise<void> {
   await mutate(keys.backend);
 }
 
-/** URL が不正なときは ApiError（kind: 'invalid_request'）を投げる */
+/** URL か種類が不正なときは ApiError（kind: 'invalid_request'）を投げる。kind を省けば、いまの種類のまま */
 export async function saveBackendSettings(input: {
   url: string;
+  kind?: BackendSettingsResponse['kind'];
 }): Promise<BackendSettingsResponse> {
   const saved = await unwrap<BackendSettingsResponse>(() =>
     client.settings.backend.$put({ json: input }),

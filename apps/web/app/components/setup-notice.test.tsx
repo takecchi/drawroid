@@ -135,7 +135,7 @@ describe('SetupNotice, reading the settings through the API', () => {
     await waitFor(() => expect(screen.queryByText(/LLM が未設定なので/)).toBeNull());
     expect(screen.getByText(/描き始めても止まる/)).toBeTruthy();
 
-    await saveBackendSettings({ url: 'http://127.0.0.1:7860/' });
+    await saveBackendSettings({ url: 'http://127.0.0.1:7860/', kind: 'forge' });
     await waitFor(() => expect(screen.queryByRole('note')).toBeNull());
   });
 });
