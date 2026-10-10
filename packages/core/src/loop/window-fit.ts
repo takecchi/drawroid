@@ -1,5 +1,5 @@
 import { CANDIDATE_KINDS, type CandidateKind } from '../backend.js';
-import type { Budgets } from '../budget/settings.js';
+import { budgetLeafMinimum, type Budgets } from '../budget/settings.js';
 import type { ShownCandidate } from '../candidates/select.js';
 import type { LlmRole } from '../llm/port.js';
 import { PARAM_KEYS } from '../params/param-key.js';
@@ -34,6 +34,11 @@ export type InputOverflow = {
   window: ModelWindow;
   /** 超えた量（トークン） */
   over: number;
+  /**
+   * 欄を1つだけいちばん小さい値（smallest）にしたとき、削れない部分がいちばん減る欄と、減る量（トークン）。
+   * どの欄を小さくしても減らなければ undefined
+   */
+  largestField?: { path: string; smallest: number; savedTokens: number };
 };
 
 // 欄の上限いっぱいに入れる文字: 見積もりで1文字1トークンに数える文字にして、多めに出すため（ASCII は3文字で1トークン）
@@ -54,11 +59,13 @@ export function findInputOverflows(
   windows: Partial<Record<LlmRole, ModelWindow>>,
 ): InputOverflow[] {
   const overflows: InputOverflow[] = [];
-  const check = (role: LlmRole, stage: InputStage, requiredTokens: number) => {
+  const check = (role: LlmRole, stage: InputStage) => {
     const window = windows[role];
     if (window === undefined) return;
+    const requiredTokens = REQUIRED_TOKENS[stage](budgets);
     const inputTokenLimit = window.contextTokens - window.maxOutputTokens;
     if (requiredTokens > inputTokenLimit) {
+      const largestField = largestFieldOf(budgets, stage, requiredTokens);
       overflows.push({
         role,
         stage,
@@ -66,24 +73,68 @@ export function findInputOverflows(
         inputTokenLimit,
         window,
         over: requiredTokens - inputTokenLimit,
+        ...(largestField !== undefined && { largestField }),
       });
     }
   };
-  if (windows.think !== undefined) {
-    check('think', 'think', thinkRequiredTokens(budgets));
-    check('think', 'ref-gist', refGistRequiredTokens(budgets));
-  }
-  if (windows.judge !== undefined) check('judge', 'judge', judgeRequiredTokens(budgets));
+  check('think', 'think');
+  check('think', 'ref-gist');
+  check('judge', 'judge');
   return overflows;
 }
 
 /** 保存を断る理由・起動時に知らせる1行に使う文 */
 export function describeInputOverflow(overflow: InputOverflow): string {
-  const { role, stage, requiredTokens, inputTokenLimit, window, over } = overflow;
+  const { role, stage, requiredTokens, inputTokenLimit, window, over, largestField } = overflow;
   return (
     `${ROLE_LABELS[role]}の${STAGE_LABELS[stage]}は、予算の欄ごとの上限を使い切ると、削れない部分だけで ${requiredTokens} トークンになり、` +
-    `${ROLE_LABELS[role]}の窓（文脈の上限 ${window.contextTokens} − 出力の分 ${window.maxOutputTokens} = 入力に使える ${inputTokenLimit} トークン）を ${over} トークン超える`
+    `${ROLE_LABELS[role]}の窓（文脈の上限 ${window.contextTokens} − 出力の分 ${window.maxOutputTokens} = 入力に使える ${inputTokenLimit} トークン）を ${over} トークン超える` +
+    (largestField === undefined
+      ? ''
+      : `。この段でいちばん大きく効いている欄は ${largestField.path}（${largestField.smallest} にすると ${largestField.savedTokens} トークン減る）`)
   );
+}
+
+/**
+ * 欄を1つずつ、保存できるいちばん小さい値にして段の削れない部分を数え直し、いちばん減る欄を返す。
+ */
+// 欄の値の大きさでは選ばない: 段が読まない欄（記憶・会話など）は、どれだけ大きくても、減らしても窓に入らないため。
+// 欄を名指しで並べず、予算の全部の欄を試す: 組み立てが読む欄が変わっても、ここだけが古いまま残らないため
+function largestFieldOf(
+  budgets: Budgets,
+  stage: InputStage,
+  requiredTokens: number,
+): InputOverflow['largestField'] {
+  let largest: InputOverflow['largestField'];
+  for (const path of leafPaths(budgets)) {
+    const smallest = budgetLeafMinimum(path);
+    const reduced = withLeaf(budgets, path, smallest);
+    if (reduced === undefined) continue;
+    const savedTokens = requiredTokens - REQUIRED_TOKENS[stage](reduced);
+    if (savedTokens > (largest?.savedTokens ?? 0)) largest = { path, smallest, savedTokens };
+  }
+  return largest;
+}
+
+/** 数の欄の道筋（例: text.intent）。入れ子は何段でも降りる */
+function leafPaths(node: object, prefix = ''): string[] {
+  return Object.entries(node).flatMap(([key, value]) => {
+    const path = prefix === '' ? key : `${prefix}.${key}`;
+    if (typeof value === 'number') return [path];
+    return value !== null && typeof value === 'object' ? leafPaths(value as object, path) : [];
+  });
+}
+
+/** 欄を1つだけ value にした予算。もうその値以下なら、減らせないので undefined */
+function withLeaf(budgets: Budgets, path: string, value: number): Budgets | undefined {
+  const copy = structuredClone(budgets);
+  const keys = path.split('.');
+  let node = copy as unknown as Record<string, unknown>;
+  for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
+  const last = keys.at(-1)!;
+  if ((node[last] as number) <= value) return undefined;
+  node[last] = value;
+  return copy;
 }
 
 // 必須の区画だけの入力を組む窓: 見積もりを読むためだけに組むので、上限で落ちないようにする
@@ -160,3 +211,9 @@ function refGistRequiredTokens(budgets: Budgets): number {
     window: UNBOUNDED,
   }).report.estimatedInputTokens;
 }
+
+const REQUIRED_TOKENS: Record<InputStage, (budgets: Budgets) => number> = {
+  think: thinkRequiredTokens,
+  judge: judgeRequiredTokens,
+  'ref-gist': refGistRequiredTokens,
+};

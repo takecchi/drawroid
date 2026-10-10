@@ -48,8 +48,14 @@ const count = (fallback: number) =>
     .min(1)
     .max(fallback * MAX_FACTOR);
 
-const imageLongEdge = z.number().int().min(128).max(1536);
+const IMAGE_LONG_EDGE_MIN = 128;
+const imageLongEdge = z.number().int().min(IMAGE_LONG_EDGE_MIN).max(1536);
 const imagesPerJudge = z.number().int().min(1).max(8);
+
+/** 欄（path は欄の道筋、例: text.intent）に保存できる、いちばん小さい値 */
+export function budgetLeafMinimum(path: string): number {
+  return path === 'imageLongEdge' ? IMAGE_LONG_EDGE_MIN : 1;
+}
 
 /** 既定値の形から、全欄必須の木と、深い partial の木の両方を作る。どちらも未知の鍵は拒む */
 function treeOf(
