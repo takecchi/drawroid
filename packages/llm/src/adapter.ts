@@ -14,6 +14,15 @@ import type {
 import { DEFAULT_MODEL_WINDOW, LLM_CALL_FAILED_PREFIX } from '@drawroid/core';
 import {
   APICallError,
+  EmptyResponseBodyError,
+  InvalidResponseDataError,
+  InvalidStreamPartError,
+  JSONParseError,
+  NoOutputGeneratedError,
+  RetryError,
+  StreamProviderError,
+  TypeValidationError,
+  UnsupportedFunctionalityError,
   jsonSchema,
   Output,
   parsePartialJson,
@@ -75,6 +84,19 @@ class CallTimedOut extends Error {
   }
 }
 
+/**
+ * 応答の形が読めなかった失敗の種類。利用者の次の手（provider の種類と接続先を確かめる・サーバのログを見る）が同じなので、
+ * 1つの言い方にまとめる
+ */
+const UNREADABLE_RESPONSES = [
+  InvalidResponseDataError,
+  JSONParseError,
+  TypeValidationError,
+  EmptyResponseBodyError,
+  InvalidStreamPartError,
+  NoOutputGeneratedError,
+];
+
 function clip(text: string, limit: number): string {
   const chars = [...text];
   return chars.length <= limit ? text : `${chars.slice(0, limit).join('')}…`;
@@ -104,6 +126,8 @@ const CONNECTION_CODES = new Set([
  * 聞き直す回数や止める所は変えない（言い方だけ）
  */
 export function describeCallFailure(error: unknown): string {
+  // 呼び直し（networkRetries）が尽きた失敗は、最後の失敗で言う: 包んだ文（Failed after 3 attempts…）は、何が起きたかを言わないため
+  if (RetryError.isInstance(error)) return describeCallFailure(error.lastError);
   if (error instanceof CallTimedOut) {
     return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に答えなかった（${error.seconds} 秒、何も返らなかった）。LLM のサーバが動いているかを確かめる。遅いモデルなら、LLM の設定の「応答を待つ上限（秒）」を延ばす`;
   }
@@ -119,12 +143,21 @@ export function describeCallFailure(error: unknown): string {
   if (status === 429) {
     return `${LLM_CALL_FAILED_PREFIX}呼び出しの上限に当たった（429）。少し待ってから、もう一度頼む${said}`;
   }
-  if (status !== undefined && status >= 500) {
-    return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（${status}）。少し待ってから、もう一度頼む${said}`;
+  // 応答の途中でサーバが失敗を返したのも、5xx と同じ手（待って頼み直す）なので、同じ言い方にする
+  if ((status !== undefined && status >= 500) || StreamProviderError.isInstance(error)) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（${status ?? '応答の途中'}）。少し待ってから、もう一度頼む${said}`;
   }
   const code = connectionCode(error);
   if (code !== undefined) {
     return `${LLM_CALL_FAILED_PREFIX}LLM に繋がらない（${code}）。LLM の設定の接続先（baseURL）と、LLM のサーバが起動しているかを確かめる`;
+  }
+  // AI SDK が出す文（英語）は、LLM の返した理由ではないので、別の名前で添える
+  const sdkSaid = message === '' ? '' : `（AI SDK の文: ${message}）`;
+  if (UNREADABLE_RESPONSES.some((kind) => kind.isInstance(error))) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM の応答の形が読めなかった。LLM の設定の provider の種類と接続先（baseURL）が、使っている LLM のサーバに合っているかを確かめる。合っていれば、LLM のサーバの画面やログで、応答の途中で落ちていないかを見る${sdkSaid}`;
+  }
+  if (UnsupportedFunctionalityError.isInstance(error)) {
+    return `${LLM_CALL_FAILED_PREFIX}この使い方に、LLM の provider が対応していない。LLM の設定で、その役の構造化出力・ツールの呼び出し方・画像を読めるかを、モデルに合わせて変える${sdkSaid}`;
   }
   return `${LLM_CALL_FAILED_PREFIX}${message}`;
 }
