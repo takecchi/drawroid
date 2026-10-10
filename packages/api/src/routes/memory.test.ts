@@ -120,6 +120,30 @@ describe('GET /memory', () => {
     expect(json.invalid[0]?.reason).not.toBe('');
   });
 
+  it('lists the item updated last first, whatever its id or when it was made', async () => {
+    // ID の順・作った順のどちらとも違う順になるように置く
+    await putFile(
+      'a-made-first-updated-last',
+      itemFile({ createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-10-09T00:00:00.000Z' }),
+    );
+    await putFile(
+      'b-made-last-updated-first',
+      itemFile({ createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z' }),
+    );
+    await putFile(
+      'c-made-between-updated-between',
+      itemFile({ createdAt: '2026-05-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' }),
+    );
+
+    const json = (await (await api.request('/memory')).json()) as { items: MemoryItem[] };
+
+    expect(json.items.map((i) => i.id)).toEqual([
+      'a-made-first-updated-last',
+      'c-made-between-updated-between',
+      'b-made-last-updated-first',
+    ]);
+  });
+
   it('shows a file edited directly on the next read', async () => {
     await putFile('no-broken-fingers', itemFile());
     await api.request('/memory');
