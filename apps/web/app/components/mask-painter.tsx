@@ -194,18 +194,19 @@ export function MaskTools({
   const { size, strokes, setStrokes, radius, setRadius, erase, setErase, sending } = painting;
   // 道具が出たら、最初の道具（筆の太さ）へフォーカスを移す: 押した「マスクを塗る」は消えるので、
   // 移さないとフォーカスが窓（またはページ）そのものに落ち、キーボードの人がどこにいるか分からなくなるため
-  const toolsRef = useRef<HTMLDivElement>(null);
+  const radiusField = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    toolsRef.current?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+    radiusField.current?.focus();
   }, []);
   return (
     <>
       <p className="text-xs text-muted-foreground">
         キーボードでは塗れない（マウス・タッチ・ペンで塗る）。
       </p>
-      <div ref={toolsRef} className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <Field label="筆の太さ（px）">
           <Input
+            ref={radiusField}
             type="number"
             min={1}
             max={512}

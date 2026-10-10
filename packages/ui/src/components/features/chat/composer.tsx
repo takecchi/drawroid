@@ -64,7 +64,7 @@ export function ChatComposer({
 }) {
   const canSend = !sending && value.trim() !== '';
   const picker = useRef<HTMLInputElement>(null);
-  const form = useRef<HTMLFormElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const attach = useRef<HTMLButtonElement>(null);
   // 外した添付の位置。外したあとの描き直しで、残りの添付か「画像を添える」へフォーカスを移すために覚える
   const removedAt = useRef<number | null>(null);
@@ -74,7 +74,7 @@ export function ChatComposer({
   // 押したボタン（送る・止める・外す）は消えるか押せなくなるので、フォーカスの行き先を決めて移す。
   // 移さないとページの外（body）に落ち、キーボードの人はページの先頭から辿り直すことになるため
   function focusField() {
-    form.current?.querySelector('textarea')?.focus();
+    field.current?.focus();
   }
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export function ChatComposer({
   }
 
   return (
-    <form ref={form} onSubmit={submit} className="space-y-2">
+    <form onSubmit={submit} className="space-y-2">
       {notice}
       {attachments.length > 0 && (
         <ul aria-label="添える画像" className="flex flex-wrap gap-2">
@@ -189,6 +189,7 @@ export function ChatComposer({
           </>
         )}
         <Textarea
+          ref={field}
           id={COMPOSER_FIELD_ID}
           aria-label="発言"
           value={value}
