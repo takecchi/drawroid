@@ -953,6 +953,7 @@ export function ConversationView({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | undefined>();
+  const [stopError, setStopError] = useState<string | undefined>();
   const [attached, setAttached] = useState<PendingAttachment[]>([]);
   const [refusals, setRefusals] = useState<string[]>([]);
   const nextAttachmentId = useRef(0);
@@ -1017,11 +1018,11 @@ export function ConversationView({
   }
 
   async function stop() {
-    setSendError(undefined);
+    setStopError(undefined);
     try {
       await actions.stop();
     } catch (caught) {
-      setSendError(caught instanceof Error ? caught.message : String(caught));
+      setStopError(caught instanceof Error ? caught.message : String(caught));
     }
   }
 
@@ -1121,12 +1122,15 @@ export function ConversationView({
             running={running}
             sending={sending}
             notice={
-              sendError === undefined && refusals.length === 0 ? undefined : (
+              sendError === undefined &&
+              stopError === undefined &&
+              refusals.length === 0 ? undefined : (
                 <>
                   {refusals.map((reason) => (
                     <ErrorNote key={reason}>添えられない: {reason}</ErrorNote>
                   ))}
                   {sendError !== undefined && <ErrorNote>送れない: {sendError}</ErrorNote>}
+                  {stopError !== undefined && <ErrorNote>止められない: {stopError}</ErrorNote>}
                 </>
               )
             }
