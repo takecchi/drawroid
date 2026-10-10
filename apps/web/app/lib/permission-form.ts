@@ -119,7 +119,7 @@ function parseFixed(key: ParamKey, text: string): FormResult<unknown> {
       }
       break;
   }
-  // 生成の要求と同じ検証を当てる: API は固定の値の形を見ないので、ここで通さないと生成のときに初めて落ちるため
+  // 生成の要求と同じ検証を画面でも当てる: API も保存のときに同じ検証で断るが、欄ごとの理由を保存する前にその行へ出すため
   const parsed = generationRequestSchema.shape[key].safeParse(raw);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

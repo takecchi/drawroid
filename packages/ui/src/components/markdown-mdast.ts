@@ -143,7 +143,7 @@ function listLoose(node: Parent): boolean {
 export type MdastOptions = {
   // 描く直前の文字の節に掛ける表示用の変換。原文に掛けた伏せ字は、エスケープや文字参照が解かれる前の文字列を見るため、解かれた後の文字で判定し直す
   display?: (text: string) => string;
-  // false のとき、外部の画像を `<img>` にせず「画像: 説明」のリンクへ落とす。描画しただけで読み込みが起き、閲覧の時刻や IP が外へ伝わるため。既定は描く
+  // false のとき、画像を（外部のものに限らず）`<img>` にせず「画像: 説明」のリンクへ落とす。描画しただけで読み込みが起き、閲覧の時刻や IP が外へ伝わるため。既定は描く
   remoteImages?: boolean;
 };
 

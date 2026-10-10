@@ -173,7 +173,7 @@ type ParamsPlan = {
   merged: Permissions;
   disabled: EffectivePermissions['disabled'];
   candidates: ShownCandidates;
-  /** 元画像に選べる画像（img2img を AI に任せる回だけ） */
+  /** 元画像に選べる画像（img2img か ControlNet を AI に任せる回だけ） */
   sources: { key: ImageSourceKey; ref: InputImageRef }[];
   /** inpaint に使えるマスク */
   mask: MaskIntervention | undefined;

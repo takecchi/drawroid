@@ -80,7 +80,7 @@ const valueSchemas: Record<ParamKey, (context: ParamsSchemaContext) => ValueSche
   // 元画像とマスクは人間が塗ったものに決まっているので、AI には描き直す強さだけを決めさせる（Issue #5 の H）。
   // マスクが無い回は、許可（effectivePermissions）の時点で「使わない」になり、ここまで来ない
   inpaint: () => z.object({ denoisingStrength: request.inpaint.unwrap().shape.denoisingStrength }),
-  // 選ばせるのは model・module・入力画像のキーだけで、1回に1ユニットまで（null は使わない）。
+  // 選ばせるのは model・module・入力画像のキーだけで、1回に1ユニットまで（使わない回は null）。
   // weight・guidanceStart・guidanceEnd・controlMode・resize・pixelPerfect は出させない: 出力が伸びるだけなので、
   // 生成の要求の既定（controlNetUnitSchema）で埋める。module を省けば前処理なしで、画像をそのまま制御に使う
   controlnet: (context) => {

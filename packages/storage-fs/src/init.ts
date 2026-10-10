@@ -8,7 +8,7 @@ export interface InitializedDataDir {
   sweptTempFiles: string[];
 }
 
-// 何度呼んでもよい。既にあるファイルには触れず、足りないディレクトリだけを作る
+// 何度呼んでもよい。足りないディレクトリだけを作り、既にあるファイルには、前回の書きかけの一時ファイルを片付けるほかは触れない
 export async function initDataDir(root: string): Promise<InitializedDataDir> {
   const paths = dataPaths(root);
   for (const dir of [paths.root, paths.memory, paths.llmCalls, paths.jobs]) {
