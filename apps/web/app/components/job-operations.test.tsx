@@ -123,6 +123,25 @@ describe('JobOperations', () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
+  // 手動の止める口が断ったら、その理由を出し、もう一度押せるように戻す。自動の止める口へは回さない
+  it('shows the reason when a manual job cannot be stopped, without trying the automatic stop', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(stopManualJob).mockRejectedValue(
+      await apiError('not_found', '手動のジョブ job-m は無い', 404),
+    );
+    render(<JobOperations job={manualJob()} />);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'ジョブを止める' }));
+
+    expect((await screen.findByText(/止められない/)).textContent).toContain(
+      '手動のジョブ job-m は無い',
+    );
+    expect(stop).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: 'ジョブを止める' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it('shows no operations for a manual job that has stopped', () => {
     const job = manualJob();
     render(<JobOperations job={{ ...job, state: stoppedAuto().state }} />);
