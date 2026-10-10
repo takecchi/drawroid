@@ -67,6 +67,14 @@ const rowOf = (label: string) => within(screen.getByRole('row', { name: new RegE
 const save = () => userEvent.click(screen.getByRole('button', { name: '許可を保存' }));
 
 describe('PermissionSettings', () => {
+  // 許可の画面の頭の見出しにする: この部品はその画面にだけ置かれ、ほかに h1 が無いため
+  it('heads the page with 許可', () => {
+    render(<PermissionSettings />);
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('許可');
+    expect(screen.getAllByRole('heading')).toHaveLength(1);
+  });
+
   it('shows the permission in effect for each parameter, and which ones were written', () => {
     render(<PermissionSettings />);
 

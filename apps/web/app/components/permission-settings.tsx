@@ -51,7 +51,8 @@ export function PermissionSettings() {
   }
 
   return (
-    <Section title="許可">
+    // 画面の頭の見出しにする（h1）: この部品は許可の画面にだけ置かれ、画面にほかの h1 が無いため
+    <Section title="許可" level={1}>
       <Muted>
         パラメータごとに、AI
         に任せるか・人間が固定するか・使わないかを決める。保存すると、走行中のジョブにも次の回から効く。
