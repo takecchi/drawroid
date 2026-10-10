@@ -40,6 +40,13 @@ describe('polling', () => {
   });
 
   // 別のタブで名前を変えたときにも追う。読むのは会話1つで、一覧（全会話の要約）ではない
+  it('polls one conversation as often as the job list', () => {
+    useJobs();
+    const jobsInterval = intervalFor(undefined);
+    useConversation('c1');
+    expect(intervalFor(undefined)).toBe(jobsInterval);
+  });
+
   it('keeps polling one conversation, not the list, for its title', () => {
     useConversation('c1');
     expect(calls.at(-1)?.key).toBe(keys.conversation('c1'));

@@ -338,6 +338,7 @@ describe('conversations', () => {
       expect.objectContaining({ conversationId: id, title: '海辺の少女を描いて' }),
     );
     expect(conversation).not.toHaveProperty('lastMessage');
+    expect(Object.keys(conversation).sort()).toEqual(['conversationId', 'createdAt', 'title']);
     expect((await app.request('/conversations/20260101-000000-ffffff')).status).toBe(404);
   });
 

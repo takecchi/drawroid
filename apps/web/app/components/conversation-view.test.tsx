@@ -18,6 +18,7 @@ import {
   recheckBackendStatus,
   recheckJobDistill,
   setSelection,
+  useConversations,
   useJob,
   useJobDistill,
   useSelections,
@@ -38,6 +39,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   recheckBackendStatus: vi.fn(),
   recheckJobDistill: vi.fn(),
   setSelection: vi.fn(),
+  useConversations: vi.fn(),
   useJob: vi.fn(),
   useJobDistill: vi.fn(),
   useSelections: vi.fn(),
@@ -668,6 +670,53 @@ describe('ConversationView', () => {
 
     expect(screen.getByText('空を抑える')).toBeTruthy();
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+  });
+
+  // 一覧は数十の会話の要約を読む重い取得: 1つの会話の画面は、その会話だけを読めばよい
+  it('does not read the conversation list', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    expect(vi.mocked(useConversations)).not.toHaveBeenCalled();
+  });
+
+  it('does not draw the image rows of one job again when an image of another job is chosen', async () => {
+    const otherJob = '20261009-160000-b4d2e7';
+    const drawnFor = (jobId: string) =>
+      vi.mocked(useSelections).mock.calls.filter(([id]) => id === jobId).length;
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: otherJob,
+        iteration: 1,
+        images: [{ index: 0, seed: 2 }],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /^この画像に決める: / })).toHaveLength(2),
+    );
+    const drawnA = drawnFor(JOB);
+    const drawnB = drawnFor(otherJob);
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: otherJob,
+        iteration: 1,
+        image: { iteration: 1, index: 0 },
+      }),
+    );
+    await waitFor(() => expect(screen.getByText('この画像に決めた')).toBeTruthy());
+
+    expect(drawnFor(otherJob)).toBeGreaterThan(drawnB);
+    expect(drawnFor(JOB)).toBe(drawnA);
   });
 
   it('draws an image row again once its image is chosen or its job stops, even though the row itself did not change', async () => {
