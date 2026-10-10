@@ -131,7 +131,11 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
       .get('/:conversationId', async (c) => {
         const id = c.req.param('conversationId');
         if (!(await store.hasConversation(id))) return notFound(c, missing(id));
-        return c.json({ conversation: await store.readConversation(id) }, 200);
+        const { running, lastActiveAt } = await summarize(store, await store.readConversation(id));
+        return c.json(
+          { conversation: { ...(await store.readConversation(id)), running, lastActiveAt } },
+          200,
+        );
       })
       .patch('/:conversationId', jsonBody(titleSchema), async (c) => {
         const id = c.req.param('conversationId');
