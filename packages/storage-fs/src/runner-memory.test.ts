@@ -208,17 +208,43 @@ describe('a stopped job leaves what it taught to the next job', () => {
   });
 
   it('distills once when a job stops, even with neither instructions nor selections', async () => {
-    const { runner, submit, callsOf } = setup({ distill: () => ({ operations: [] }) });
-    await submit('夕暮れの海辺の少女');
+    const { store, runner, submit, callsOf } = setup({ distill: () => ({ operations: [] }) });
+    const job = await submit('夕暮れの海辺の少女');
 
     runner.kick();
     await runner.idle();
 
     expect(callsOf('distill')).toHaveLength(1);
-    // 口出しも選択も無くても、依頼の要点と止まった理由から学ぶ
+    // 口出しも選択も無くても、依頼の要点と止まった理由（種類と中身）から学ぶ
     const input = textOf(callsOf('distill')[0]);
     expect(input).toContain('依頼の要点:\n夕暮れの海辺の少女');
-    expect(input).toContain('止まった理由: ai');
+    const stopped = await store.readState(job.jobId);
+    const detail = stopped.status === 'stopped' ? stopped.reason.detail : '';
+    expect(detail).not.toBe('');
+    expect(input).toContain(`止まった理由: ai ${detail}`);
+  });
+
+  it('distills a job only once when a human stops it while it runs', async () => {
+    let stopping: Promise<void> | undefined;
+    const { store, runner, submit, callsOf } = setup({
+      think: (call, n) => {
+        stopping ??= runner.stop(job.jobId);
+        return think(call, n);
+      },
+      judge: judgeScript(false),
+    });
+    const job = await submit('夕暮れの海辺の少女', 3);
+
+    runner.kick();
+    await runner.idle();
+    await stopping;
+
+    expect(stopping).toBeDefined();
+    expect(await store.readState(job.jobId)).toMatchObject({
+      status: 'stopped',
+      reason: { kind: 'human' },
+    });
+    expect(callsOf('distill')).toHaveLength(1);
   });
 
   it('distills a job only once, even when a human stops it again after it stopped', async () => {
