@@ -48,7 +48,7 @@ export const hiresFixSchema = z.object({
 });
 
 /**
- * データディレクトリの中の画像を指す参照。形は置き場所（storage）が決め、core もアダプタも中を読まない。
+ * データディレクトリの中の画像を指す参照。形（image:<回>-<画像>・ref:<refId>・mask:<maskId>）は core の loop/image-sources が決めて読み、アダプタは中を読まない。
  * 中身は generate の images で渡す。生成した画像だけでなく、人間が添えた参照画像・塗ったマスクも指すので、
  * job/store の ImageRef（生成した画像の位置）とは別の型にしてある。
  */

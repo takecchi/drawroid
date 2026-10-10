@@ -325,7 +325,7 @@ function candidateSections(w: SectionWriter, candidates: ShownCandidates | undef
 }
 
 /**
- * 考える役への入力。持ち回す状態だけから組み立てる。
+ * 考える役への入力。過去の回は、持ち回す状態（carry）を通してだけ載せる。
  */
 // 過去の回の決定・評価を引数に取らない: 渡せる形にした瞬間、回数に比例して入力が膨らむため
 export function buildThinkInput(args: {
@@ -339,7 +339,7 @@ export function buildThinkInput(args: {
   interventions?: InterventionPlan;
   /** 候補を持つパラメータごとに、予算で絞って見せる候補（selectCandidates の結果） */
   candidates?: ShownCandidates;
-  /** img2img を AI に任せる回だけ true。最良・直近・参照画像に、元画像として選ぶときのキーを添える */
+  /** img2img か ControlNet を AI に任せる回だけ true。最良・直近・参照画像に、元画像・入力画像として選ぶときのキーを添える */
   withImageSourceKeys?: boolean;
 }): BudgetedMessages {
   const { carry, progress, allowed, budget, window, memory, interventions, candidates } = args;

@@ -256,7 +256,7 @@ export function Markdown({
   children: string;
   idPrefix?: string;
   headingOffset?: number;
-  /** 外の画像をその場で読み込むか。既定は読み込まず「画像: 説明」の link にする（開いただけで閲覧の時刻や IP が外へ伝わるため） */
+  /** 画像をその場で読み込むか（外部のものに限らない）。既定は読み込まず「画像: 説明」の link にする（開いただけで閲覧の時刻や IP が外へ伝わるため） */
   remoteImages?: boolean;
 }) {
   const reactId = useId();

@@ -306,6 +306,15 @@ describe('a tool call written without its input (json)', () => {
     });
   });
 
+  // 空にするのは input が無いときだけ: 書いてあって形が崩れた引数は、引数の無いツールでも、空として呼ばない
+  it('does not call a tool with an input it wrote but broke, even one that takes no arguments', async () => {
+    const broken = () => textStream('{"kind":"tool","name":"describe_backend","input":"x"}');
+    const { events } = await talk('json', [broken(), broken(), broken()]);
+
+    expect(toolCalls(events)).toEqual([]);
+    expect(ended(events)).toMatchObject({ outcome: 'error' });
+  });
+
   it('does not read a bare name, without kind or input, as a call', async () => {
     const bare = () => textStream('{"name":"describe_backend"}');
     const { events } = await talk('json', [bare(), bare(), bare()]);
