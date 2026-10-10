@@ -74,6 +74,16 @@ async function waitingManual(): Promise<string> {
     .jobId;
 }
 
+// 手動のジョブを、置き場所に置くだけでなく、口から受け付けて走らせる
+async function startManual(api: ReturnType<typeof createApi>): Promise<string> {
+  const started = await api.request('/jobs/manual', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return ((await started.json()) as { jobId: string }).jobId;
+}
+
 async function autoJob(): Promise<string> {
   return (
     await store.createJob(
@@ -102,16 +112,31 @@ describe('POST /jobs/manual/:jobId/stop', () => {
     });
   });
 
+  // 走っている生成を止める: 生成の待ちを切り、バックエンドにも止めさせ、人間の停止として終える
+  it('stops the running manual job, cutting its generation and telling the backend to stop', async () => {
+    const backend = new HoldingBackend();
+    const api = apiWith(backend);
+    const jobId = await startManual(api);
+    const signal = await backend.generating;
+    expect((await store.readState(jobId)).status).toBe('running');
+
+    const res = await api.request(`/jobs/manual/${jobId}/stop`, { method: 'POST' });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ jobId });
+    expect(signal.aborted).toBe(true);
+    expect(backend.interruptCount).toBe(1);
+    await expect.poll(async () => (await store.readState(jobId)).status).toBe('stopped');
+    expect(await store.readState(jobId)).toMatchObject({ reason: { kind: 'human' } });
+    expect(await store.listGenerations(jobId)).toEqual([]);
+    expect(autoStops).toEqual([]);
+  });
+
   // バックエンドが止めるのに失敗しても、生成の待ちは切れているので、止める口は失敗を返さない
   it('answers 202 and ends the running job as a human stop, even when the backend fails to stop', async () => {
     const backend = new UnstoppableBackend();
     const api = apiWith(backend);
-    const started = await api.request('/jobs/manual', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(request),
-    });
-    const { jobId } = (await started.json()) as { jobId: string };
+    const jobId = await startManual(api);
     await backend.generating;
 
     const res = await api.request(`/jobs/manual/${jobId}/stop`, { method: 'POST' });
@@ -139,18 +164,23 @@ describe('POST /jobs/manual/:jobId/stop', () => {
   });
 });
 
-/** 生成は止められるまで返さず、止めるよう言われると失敗するバックエンド */
-class UnstoppableBackend extends StubBackend {
-  private began: () => void = () => undefined;
-  readonly generating = new Promise<void>((resolve) => (this.began = resolve));
+/** 生成は止められるまで返さないバックエンド */
+class HoldingBackend extends StubBackend {
+  private began: (signal: AbortSignal) => void = () => undefined;
+  /** 生成が始まると、その生成の signal で解ける */
+  readonly generating = new Promise<AbortSignal>((resolve) => (this.began = resolve));
   override async generate(...args: Parameters<StubBackend['generate']>) {
     const signal = args[1];
-    this.began();
+    this.began(signal);
     await new Promise<never>((_resolve, reject) =>
       signal.addEventListener('abort', () => reject(new Error('呼び手が止めた')), { once: true }),
     );
     return super.generate(...args);
   }
+}
+
+/** 加えて、止めるよう言われると失敗するバックエンド */
+class UnstoppableBackend extends HoldingBackend {
   override async interrupt(): Promise<void> {
     await super.interrupt();
     throw new Error('中断の口が 500 を返した');
