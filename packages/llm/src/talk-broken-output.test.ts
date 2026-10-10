@@ -71,6 +71,7 @@ const permissions = {
 async function talk(
   toolCalling: 'native' | 'json',
   replies: StreamResult[] | MockLanguageModelV4['doStream'],
+  reasoning?: 'native' | 'think-tag' | 'none',
 ): Promise<{ events: ConversationEvent[]; searches: number }> {
   const store = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store, now });
@@ -81,6 +82,7 @@ async function talk(
     model: 'qwen',
     toolCalling,
     structuredOutput: 'text',
+    ...(reasoning !== undefined && { reasoning }),
   });
   const llm = new AiSdkLlm(
     { think: config, judge: config, talk: config },
@@ -277,6 +279,40 @@ describe('arguments that are broken or do not fit', () => {
       });
     });
   }
+});
+
+// 実機の llama.cpp（Qwen2.5-VL-3B、toolCalling: json・structuredOutput: json）が、引数の無いツールで書いた形
+describe('a tool call written without its input (json)', () => {
+  it('calls a tool that takes no arguments with empty arguments', async () => {
+    const { events } = await talk('json', [
+      textStream('{"kind":"tool","name":"describe_backend"}'),
+      jsonReply(REPLY),
+    ]);
+
+    expect(toolCalls(events)).toEqual([{ name: 'describe_backend', input: {} }]);
+    expect(messages(events)).toEqual([REPLY]);
+    expect(ended(events)).toMatchObject({ outcome: 'done' });
+  });
+
+  it('does not call a tool that needs arguments, and names the missing field', async () => {
+    const missing = () => textStream('{"kind":"tool","name":"search_candidates"}');
+    const { events, searches } = await talk('json', [missing(), missing(), missing()]);
+
+    expect(searches).toBe(0);
+    expect(toolCalls(events)).toEqual([]);
+    expect(ended(events)).toMatchObject({
+      outcome: 'error',
+      reason: expect.stringMatching(/search_candidates の引数がスキーマに合わない: kind/),
+    });
+  });
+
+  it('does not read a bare name, without kind or input, as a call', async () => {
+    const bare = () => textStream('{"name":"describe_backend"}');
+    const { events } = await talk('json', [bare(), bare(), bare()]);
+
+    expect(toolCalls(events)).toEqual([]);
+    expect(ended(events)).toMatchObject({ outcome: 'error' });
+  });
 });
 
 describe('a tool it was not given', () => {
@@ -500,4 +536,20 @@ describe('thinking tags and empty text', () => {
     expect(messages(events)).toEqual([]);
     expect(ended(events)).toMatchObject({ outcome: 'error', reason: expect.stringMatching(/空/) });
   });
+
+  // reasoning: none は「思考を受け取らない（画面にも出さない）」。本文に書かれた思考も、返答にも思考にも出さない
+  it.each([
+    ['in tags', `<think>LoRA を探すべきか</think>${REPLY}`],
+    ['before a lone closing tag', `LoRA を探すべきか</think>\n${REPLY}`],
+  ])(
+    'keeps the thinking written %s out of both the reply and the reasoning, with reasoning: none (native)',
+    async (_, text) => {
+      const { events } = await talk('native', [textStream(text)], 'none');
+
+      expect(messages(events)).toEqual([REPLY]);
+      expect(events.filter((e) => e.type === 'assistant.reasoning')).toEqual([]);
+      expect(JSON.stringify(events)).not.toContain('LoRA を探すべきか');
+      expect(ended(events)).toMatchObject({ outcome: 'done' });
+    },
+  );
 });

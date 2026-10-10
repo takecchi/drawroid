@@ -4,7 +4,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { keys } from './keys.js';
-import { addInstruction, changeStopConditions } from './mutations.js';
+import {
+  addInstruction,
+  changeStopConditions,
+  postConversationMessage,
+  renameConversation,
+} from './mutations.js';
 
 const mutated: unknown[] = [];
 vi.mock('swr', () => ({
@@ -50,5 +55,24 @@ describe('refetching after an operation on a running job', () => {
     );
     await addInstruction('j1', 'もっと青く');
     expect(mutated).toContain(keys.interventions('j1'));
+  });
+});
+
+// 一覧（並びと要約）と会話1つ（タイトル）の両方を取り直す
+describe('refetching after an operation on a conversation', () => {
+  it('refetches the list and the conversation after renaming it', async () => {
+    fetchMock.mockResolvedValue(
+      json(200, { conversation: { conversationId: 'c1', createdAt: '', title: '海' } }),
+    );
+    await renameConversation('c1', '海');
+    expect(mutated).toContain(keys.conversations);
+    expect(mutated).toContain(keys.conversation('c1'));
+  });
+
+  it('refetches the list and the conversation after posting a message', async () => {
+    fetchMock.mockResolvedValue(json(202, { seq: 3 }));
+    await postConversationMessage('c1', '描いて', 'm-1');
+    expect(mutated).toContain(keys.conversations);
+    expect(mutated).toContain(keys.conversation('c1'));
   });
 });

@@ -43,9 +43,10 @@ export default function ConversationRoute() {
       actions={actions}
       title={
         <>
+          {/* 押せる範囲だけを ::after で広げる: 見出しの文字の高さ（20px）では、指で押すには小さいため */}
           <Link
             to="/"
-            className="shrink-0 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground"
+            className="relative shrink-0 text-sm whitespace-nowrap text-muted-foreground after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-foreground"
           >
             会話
           </Link>

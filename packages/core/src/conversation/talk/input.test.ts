@@ -193,6 +193,40 @@ describe('buildTalkInput', () => {
     expect(text).not.toContain('ツールは使わず');
   });
 
+  describe('the line that tells the model a job of the conversation stopped', () => {
+    const LINE = '会話のジョブが止まった。その結果を、人間に短く伝える。';
+    const build = (extra: { jobStopped?: boolean; final?: boolean }) => {
+      seq = 0;
+      return textOf(
+        buildTalkInput({
+          events: [user('こんにちは')],
+          messageSeqs: [1],
+          steps: [],
+          final: extra.final ?? false,
+          ...(extra.jobStopped === undefined ? {} : { jobStopped: extra.jobStopped }),
+          limits: DEFAULT_TALK_LIMITS,
+          window: DEFAULT_MODEL_WINDOW,
+        }),
+      );
+    };
+
+    it('ends the input with the line when jobStopped is true', () => {
+      expect(build({ jobStopped: true }).trimEnd().endsWith(LINE)).toBe(true);
+    });
+
+    it('leaves the line out when jobStopped is false or not given', () => {
+      expect(build({ jobStopped: false })).not.toContain(LINE);
+      expect(build({})).not.toContain(LINE);
+    });
+
+    it('puts the line before the final-step line', () => {
+      const text = build({ jobStopped: true, final: true });
+      expect(text).toContain(LINE);
+      expect(text).toContain('ツールは使わず');
+      expect(text.indexOf(LINE)).toBeLessThan(text.indexOf('ツールは使わず'));
+    });
+  });
+
   it('passes exactly the recent messages and no older ones', () => {
     seq = 0;
     const events = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].map((t) => user(t));

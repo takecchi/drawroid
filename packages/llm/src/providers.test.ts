@@ -172,6 +172,33 @@ describe('OpenAI-compatible provider (Ollama, LM Studio, ...)', () => {
     expect(Buffer.from(image!.data).equals(before)).toBe(true);
   });
 
+  // JPEG は透明を持てないので、透明な所は白で埋める（黒く潰すと、透明な背景の参照画像が真っ黒に見える）
+  it('fills the transparent part of a webp with white when it sends it as a JPEG', async () => {
+    const transparent = new Uint8Array(
+      await sharp({
+        create: { width: 64, height: 64, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+      })
+        .webp()
+        .toBuffer(),
+    );
+    const messages = buildJudgeInput({
+      carry: createCarry('夕暮れの海辺の少女', DEFAULT_BUDGET).carry,
+      images: [{ ...previewPart, data: transparent, mediaType: 'image/webp' }],
+      budget: DEFAULT_BUDGET,
+      window: DEFAULT_MODEL_WINDOW,
+    });
+    const { fetch, calls } = fakeFetch(() => chatCompletion('{"canStop":false}'));
+    await createLlm(config('native'), { env: { LOCAL_KEY: SECRET }, fetch }).generateStructured({
+      ...judgeCall,
+      messages,
+    });
+
+    const [image] = sentImages(calls[0]?.body);
+    expect(image?.mediaType).toBe('image/jpeg');
+    const { data } = await sharp(image!.data).raw().toBuffer({ resolveWithObject: true });
+    expect(Math.min(...data)).toBeGreaterThan(240);
+  });
+
   it('sends a PNG or JPEG image as it is', async () => {
     const png = new Uint8Array(await sharp(preview).png().toBuffer());
     const messages = buildJudgeInput({

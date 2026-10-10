@@ -838,6 +838,8 @@ try {
   const crashJobId = String(crashFrames.find((f) => f.event === 'job.started')?.data?.jobId);
   const crashEventsDir = join(dataDir, 'conversations', crashConv.id, 'events');
 
+  // 落とす前の、ツールを渡さない話す役の呼び出し（止まりを伝えるだけのターン）の数。起動し直したあと、再開したジョブが止まった分だけ増える
+  const toollessBeforeRestart = llm.stats.toollessTalkCalls;
   const exited = new Promise((resolve) => child?.once('exit', (code, signal) => resolve(signal)));
   child?.kill('SIGKILL');
   assert((await exited) === 'SIGKILL', 'restart: 固めた drawroid が SIGKILL で落ちた');
@@ -994,6 +996,19 @@ try {
       afterRestart.frames.some((f) => f.event === 'job.images'),
     'restart: 再開したジョブが、job.images を出して、自分の判断で job.stopped まで進む',
     JSON.stringify(afterRestart.frames.map((f) => f.event)),
+  );
+  // 再開したジョブが止まったら、話す役から1度だけ話しかける。固めた drawroid で見る: 止まりを話す役へつなぐのと、
+  // 落ちる前のジョブを再開するのを話す役を作ったあとに回すのは index.ts の main で、単体の試験からは届かないため
+  await waitFor(
+    () =>
+      afterRestart.frames.some((f) => f.event === 'turn.started' && f.data?.jobId === crashJobId) &&
+      afterRestart.frames.some((f) => f.event === 'turn.ended' && f.data?.turn === 4),
+    'restart: 再開したジョブが止まったあとの、話しかけるターン',
+  );
+  assert(
+    llm.stats.toollessTalkCalls === toollessBeforeRestart + 1,
+    'restart: 再開したジョブが止まると、話す役がツールを渡されずに1度だけ話しかける',
+    `落とす前 ${toollessBeforeRestart} → ${llm.stats.toollessTalkCalls}`,
   );
 
   // 止める合図。生成の途中に SIGINT を送ると、Forge に中断を送ってから 130 で終わる。

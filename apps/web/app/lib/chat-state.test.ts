@@ -248,6 +248,54 @@ describe('long conversations', () => {
     expect(after[1]).toBe(before[1]);
   });
 
+  it('keeps every kind of earlier row as the same object when one more event is confirmed', () => {
+    const earlier = confirmAll([
+      { type: 'user.message', text: '描いて', attachments: [] },
+      { type: 'turn.started', turn: 1, messageSeqs: [1] },
+      { type: 'assistant.reasoning', turn: 1, partId: 'r1', text: '指示なので描く' },
+      { type: 'tool.call', turn: 1, callId: 'c1', name: 'start_drawing', input: { request: '海' } },
+      { type: 'tool.result', turn: 1, callId: 'c1', ok: true, summary: 'ジョブを作った' },
+      { type: 'assistant.message', turn: 1, partId: 'm1', text: '描きます', interrupted: false },
+      { type: 'turn.ended', turn: 1, outcome: 'done' },
+      {
+        type: 'job.started',
+        jobId: JOB,
+        request: '海',
+        stopConditions: { aiJudgement: true, maxIterations: 3 },
+      },
+      {
+        type: 'job.think',
+        jobId: JOB,
+        iteration: 1,
+        rationale: '夕焼けに',
+        params: {},
+        excluded: [],
+      },
+      { type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] },
+      {
+        type: 'job.judge',
+        jobId: JOB,
+        iteration: 1,
+        images: [{ index: 0, score: 0.8, issues: [] }],
+        nextChange: '',
+        canStop: true,
+      },
+      { type: 'job.images', jobId: JOB, iteration: 2, images: [{ index: 0, seed: 5 }] },
+      { type: 'job.adopted', jobId: JOB, iteration: 2, image: { iteration: 2, index: 0 } },
+    ]);
+    const before = chatItems(earlier);
+    expect(new Set(before.map((item) => item.kind)).size).toBeGreaterThanOrEqual(8);
+
+    const after = chatItems(
+      confirmAll([{ type: 'user.message', text: 'もう一枚', attachments: [] }], earlier),
+    );
+
+    expect(after).toHaveLength(before.length + 1);
+    before.forEach((item, index) => {
+      expect(after[index]).toBe(item);
+    });
+  });
+
   // 使い回すのは中身が同じ行だけ: 評価は前の画像の行に重なるので、その行は新しくして描き直す
   it('gives a new object to an earlier row that a later event changes, and keeps the others', () => {
     const earlier = confirmAll([

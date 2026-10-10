@@ -18,6 +18,7 @@ import {
   recheckBackendStatus,
   recheckJobDistill,
   setSelection,
+  useConversations,
   useJob,
   useJobDistill,
   useSelections,
@@ -38,6 +39,7 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   recheckBackendStatus: vi.fn(),
   recheckJobDistill: vi.fn(),
   setSelection: vi.fn(),
+  useConversations: vi.fn(),
   useJob: vi.fn(),
   useJobDistill: vi.fn(),
   useSelections: vi.fn(),
@@ -191,6 +193,44 @@ describe('the stop card', () => {
     expect(adoptImage).not.toHaveBeenCalled();
     // 選び直しの蒸留で増える記録を、開き直さずに読み直させる
     await waitFor(() => expect(recheckJobDistill).toHaveBeenCalledWith(JOB));
+  });
+
+  // 狭い画面では、画像の行のボタンも指で押せる 44px の高さにする（広い画面では詰める）。実際の大きさは、ブラウザで測る
+  it('makes the buttons of an image row 44px tall on a narrow screen', async () => {
+    vi.mocked(useJob).mockReturnValue(stoppedJob(BEST));
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 2,
+        images: [
+          { index: 0, seed: 8 },
+          { index: 1, seed: 9 },
+        ],
+      }),
+    );
+    // 走っている間の行（お気に入り・却下・採る）
+    const running = [
+      'お気に入り: 2 回目の画像 1 番',
+      '却下: 2 回目の画像 1 番',
+      'この画像に決める: 2 回目の画像 1 番',
+    ];
+    for (const name of running) {
+      expect(screen.getByRole('button', { name }).className.split(' ')).toEqual(
+        expect.arrayContaining(['h-11', 'md:h-7']),
+      );
+    }
+    // 止まったあとの行（お気に入りで決める）
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: AI_STOP }));
+    const rows = await screen.findAllByRole('button', { name: CHOOSE });
+    for (const button of rows) {
+      expect(button.className.split(' ')).toEqual(
+        expect.arrayContaining(['min-h-11', 'md:min-h-7']),
+      );
+    }
   });
 
   it('makes only the card button stand out, while the rows offer the same choice quietly', async () => {
@@ -668,6 +708,53 @@ describe('ConversationView', () => {
 
     expect(screen.getByText('空を抑える')).toBeTruthy();
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+  });
+
+  // 一覧は数十の会話の要約を読む重い取得: 1つの会話の画面は、その会話だけを読めばよい
+  it('does not read the conversation list', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+
+    expect(vi.mocked(useConversations)).not.toHaveBeenCalled();
+  });
+
+  it('does not draw the image rows of one job again when an image of another job is chosen', async () => {
+    const otherJob = '20261009-160000-b4d2e7';
+    const drawnFor = (jobId: string) =>
+      vi.mocked(useSelections).mock.calls.filter(([id]) => id === jobId).length;
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: otherJob,
+        iteration: 1,
+        images: [{ index: 0, seed: 2 }],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /^この画像に決める: / })).toHaveLength(2),
+    );
+    const drawnA = drawnFor(JOB);
+    const drawnB = drawnFor(otherJob);
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: otherJob,
+        iteration: 1,
+        image: { iteration: 1, index: 0 },
+      }),
+    );
+    await waitFor(() => expect(screen.getByText('この画像に決めた')).toBeTruthy());
+
+    expect(drawnFor(otherJob)).toBeGreaterThan(drawnB);
+    expect(drawnFor(JOB)).toBe(drawnA);
   });
 
   it('draws an image row again once its image is chosen or its job stops, even though the row itself did not change', async () => {

@@ -34,7 +34,6 @@ export function AdoptButton({
   onDecided?: () => void;
 }) {
   const [state, setState] = useState<State>({ step: 'idle' });
-  const small = 'h-7 px-2 text-xs';
   // 押したボタンは次の形（確かめ・印）に替わって消える。人が押して形が替わったときだけ、次の形の先頭へフォーカスを移す
   // （移さないとページの外に落ちる。押していないのに替わったとき、たとえば会話で別に決まったときは移さない）
   const pressed = useRef(false);
@@ -77,7 +76,7 @@ export function AdoptButton({
         </p>
         <div className="flex flex-wrap gap-1">
           <Button
-            className={small}
+            size="sm"
             variant="primary"
             disabled={state.step === 'sending'}
             aria-label={`決める: ${imageLabel}`}
@@ -86,7 +85,7 @@ export function AdoptButton({
             決める
           </Button>
           <Button
-            className={small}
+            size="sm"
             disabled={state.step === 'sending'}
             onClick={() => press({ step: 'idle' })}
           >
@@ -99,7 +98,7 @@ export function AdoptButton({
   return (
     <div ref={root} className="space-y-1">
       <Button
-        className={small}
+        size="sm"
         aria-label={`この画像に決める: ${imageLabel}`}
         onClick={() => press({ step: 'confirming' })}
       >
