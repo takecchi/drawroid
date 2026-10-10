@@ -112,6 +112,13 @@ function connectionCode(error: unknown): string | undefined {
   }
   return undefined;
 }
+/**
+ * サーバの返した理由が「この使い方に対応していない」と言っているか。llama.cpp は画像を読めないモデルに画像を渡すと、
+ * 500 で「image input is not supported」と返す
+ */
+// 言い当てられないときは待つよう促す今の文に残す: 一時の失敗（落ちた・混んでいる）を、設定の誤りと取り違えないため
+const SAYS_UNSUPPORTED = /\b(?:not supported|unsupported|does not support|doesn't support)\b/i;
+
 const CONNECTION_CODES = new Set([
   'ECONNREFUSED',
   'ENOTFOUND',
@@ -146,6 +153,9 @@ export function describeCallFailure(error: unknown): string {
   }
   // 応答の途中でサーバが失敗を返したのも、5xx と同じ手（待って頼み直す）なので、同じ言い方にする
   if ((status !== undefined && status >= 500) || StreamProviderError.isInstance(error)) {
+    if (SAYS_UNSUPPORTED.test(message)) {
+      return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが、この使い方に対応していないと返した（${status ?? '応答の途中'}）。待っても直らない。LLM の設定で、その役のモデルと、構造化出力・ツールの呼び出し方・画像を読めるかを、モデルに合わせて見直す${said}`;
+    }
     return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（${status ?? '応答の途中'}）。少し待ってから、もう一度頼む${said}`;
   }
   const code = connectionCode(error);
