@@ -235,9 +235,11 @@ describe('stopping a manual generation left running by a process that died', () 
 
       await runner.stop(jobId);
 
-      const state = await store.readState(jobId);
-      expect(reasonOf(state)).toBe('human');
-      expect(state.imagesGenerated).toBe(images);
+      expect(await store.readState(jobId)).toMatchObject({
+        status: 'stopped',
+        reason: { kind: 'human' },
+        imagesGenerated: images,
+      });
       // 誰も走らせていないので、バックエンドには止めさせない（ほかのジョブの生成を切らないため）
       expect(backend.interruptCount).toBe(0);
     },
@@ -271,9 +273,11 @@ describe('stopping a manual generation left running by a process that died', () 
 
     await runner.stop(jobId);
 
-    const state = await store.readState(jobId);
-    expect(reasonOf(state)).toBe('human');
-    expect(state.imagesGenerated).toBe(1);
+    expect(await store.readState(jobId)).toMatchObject({
+      status: 'stopped',
+      reason: { kind: 'human' },
+      imagesGenerated: 1,
+    });
     expect(backend.interruptCount).toBe(0);
   });
 
