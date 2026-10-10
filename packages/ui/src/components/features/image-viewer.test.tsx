@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,10 @@ import { ImageCard } from './record';
 import { ImageViewer, type ViewerImage } from './image-viewer';
 
 afterEach(cleanup);
+
+// 閉じたすぐあとに確かめない: Radix は閉じた窓の片づけの中から、タイマーで焦点を戻すため
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 // 2 回ぶん（1回目に2枚、2回目に1枚）
 const IMAGES: ViewerImage[] = [
@@ -94,9 +98,7 @@ describe('ImageViewer', () => {
     await user.keyboard('{Escape}');
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: '大きく見る: 2 回目の画像 1 番' }),
-    );
+    await expectFocusMovesTo(screen.getByRole('button', { name: '大きく見る: 2 回目の画像 1 番' }));
   });
 
   it('closes with the close button, which has a Japanese name', async () => {
@@ -107,9 +109,7 @@ describe('ImageViewer', () => {
     await user.click(screen.getByRole('button', { name: '閉じる' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番' }),
-    );
+    await expectFocusMovesTo(screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番' }));
   });
 
   // 印だけの「閉じる」も幅 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
