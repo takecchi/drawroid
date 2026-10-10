@@ -107,6 +107,8 @@ export function LlmCallList({
   );
 }
 
+const TOTAL_COLUMNS = ['呼び出し', '入力トークン', '出力トークン', '時間'] as const;
+
 export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total' | 'byIteration'>) {
   return (
     <Section title="LLM の合計">
@@ -114,26 +116,40 @@ export function LlmTotals({ total, byIteration }: Pick<LlmCallsResponse, 'total'
         {total.calls} 回 / 入力 {tokens(total.inputTokens)} トークン / 出力{' '}
         {tokens(total.outputTokens)} トークン / {formatDuration(total.durationMs)}
       </p>
-      <Table>
-        <TableHeader>
+      {/* 狭い画面では、行ごとに「見出し 値」を並べて折り返す: 表のままだと、長いジョブの桁で枠より広くなり、
+          右の列が枠の中で横に送らないと見えず、送れることも見た目から分からないため */}
+      <Table className="max-sm:block">
+        <TableHeader className="max-sm:sr-only">
           <TableRow>
             <TableHead>回</TableHead>
-            <TableHead>呼び出し</TableHead>
-            <TableHead>入力トークン</TableHead>
-            <TableHead>出力トークン</TableHead>
-            <TableHead>時間</TableHead>
+            {TOTAL_COLUMNS.map((column) => (
+              <TableHead key={column}>{column}</TableHead>
+            ))}
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="max-sm:block">
           {byIteration.map((row) => (
-            <TableRow key={row.iteration ?? 'job'}>
-              <TableCell>
+            <TableRow
+              key={row.iteration ?? 'job'}
+              className="max-sm:flex max-sm:flex-wrap max-sm:gap-x-3 max-sm:gap-y-0.5 max-sm:py-1.5"
+            >
+              <TableCell className="max-sm:w-full max-sm:p-0 max-sm:font-medium">
                 {row.iteration === null ? 'ジョブ単位' : `${row.iteration} 回目`}
               </TableCell>
-              <TableCell>{row.calls}</TableCell>
-              <TableCell>{tokens(row.inputTokens)}</TableCell>
-              <TableCell>{tokens(row.outputTokens)}</TableCell>
-              <TableCell>{formatDuration(row.durationMs)}</TableCell>
+              {[
+                String(row.calls),
+                tokens(row.inputTokens),
+                tokens(row.outputTokens),
+                formatDuration(row.durationMs),
+              ].map((value, i) => (
+                <TableCell
+                  key={TOTAL_COLUMNS[i]}
+                  data-label={TOTAL_COLUMNS[i]}
+                  className="max-sm:p-0 max-sm:before:mr-1 max-sm:before:text-muted-foreground max-sm:before:content-[attr(data-label)]"
+                >
+                  {value}
+                </TableCell>
+              ))}
             </TableRow>
           ))}
         </TableBody>

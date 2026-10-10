@@ -7,7 +7,7 @@
 // 5. 思考が流れている間に入力欄から次の発言を送ると、前のターンが打ち切られ、新しい発言を読んだターンが始まる。返答は二重に残らない
 // 6. 見る役が済む前に「この画像でいい」と言うと、会話に「選んだ」が出て（job.adopted）、待たせていたジョブはその画像で止まる
 // 7. 狭い画面（390×844）でも、流れる・止めるが同じように動き、入力欄が画面の外へ押し出されない
-// 8. 画像の行の「この画像で決める」で選ぶと、会話に「選んだ」が出て（job.adopted）、ジョブはその画像で止まる（adopt_image と同じ口）
+// 8. 画像の行の「この画像に決める」で選ぶと、会話に「選んだ」が出て（job.adopted）、ジョブはその画像で止まる（adopt_image と同じ口）
 // 8a. 人が「止める」で止めたあとも、止まりのカードに最良の画像と「この画像に決める（お気に入りにする）」が出る。決めるボタンの文は、
 //     広い画面でも狭い画面でも、言葉の途中で折れない
 // 9. 偽の Forge が止まっているときに描くよう頼むと、描き始めずに、繋がらないことと次にすることが出る
@@ -468,7 +468,7 @@ try {
     '待たせていた見る役は呼ばれ直さず、ジョブはその画像をお気に入りにして止まる',
   );
 
-  // 8. 画面の「この画像で決める」: 見る役が済む前に、画像の行のボタンで選ぶ。確かめてから決めると、会話に「選んだ」が出て
+  // 8. 画面の「この画像に決める」:見る役が済む前に、画像の行のボタンで選ぶ。確かめてから決めると、会話に「選んだ」が出て
   // （job.adopted）、見ていた見る役は切られて呼ばれ直さず、ジョブは「人が画像を選んだ」で止まる。会話の adopt_image と同じ口を通る
   const adoptedBefore = await log
     .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
@@ -476,16 +476,16 @@ try {
   const stoppedBefore = await log.getByText('人が画像を選んだ').count();
   const cutBefore = relay.stats.judgeCut;
   // 6. で選んだジョブの行にも「選んだ」が出ているので、数で見る（文言だけで1つに絞ると、6. の行と取り違える）
-  const chosenBefore = await page.getByText('この画像で決めた（選んだ）').count();
+  const chosenBefore = await page.getByText('この画像に決めた', { exact: true }).count();
   relay.holdJudge();
   await say('夕焼けの犬を描いて');
   await until(() => relay?.stats.judgeHeld === 2, '見る役の返事を止める');
   const adoptButton = page
-    .getByRole('button', { name: /^この画像で決める: .*1 回目の画像 1 番$/ })
+    .getByRole('button', { name: /^この画像に決める: .*1 回目の画像 1 番$/ })
     .last();
   await adoptButton.click();
   await page.getByRole('button', { name: /^決める: .*1 回目の画像 1 番$/ }).click();
-  await page.getByText('この画像で決めた（選んだ）').nth(chosenBefore).waitFor();
+  await page.getByText('この画像に決めた', { exact: true }).nth(chosenBefore).waitFor();
   await log
     .getByText(/人間が選んだ画像（1 回目の画像 1 番）で決まり/)
     .nth(adoptedBefore)
@@ -494,12 +494,12 @@ try {
   await stopButton.waitFor({ state: 'hidden' });
   expect(
     relay.stats.judgeCut === cutBefore + 1,
-    '画面の「この画像で決める」で選ぶと、会話に「選んだ」が出て、見ていた見る役は切られ、ジョブはその画像で止まる',
+    '画面の「この画像に決める」で選ぶと、会話に「選んだ」が出て、見ていた見る役は切られ、ジョブはその画像で止まる',
   );
-  // 止まったジョブの画像には、採る口（「この画像で決める」）も押せない理由も出ず、「この画像に決める（お気に入りにする）」になる
+  // 止まったジョブの画像には、採る口（「この画像に決める」）も押せない理由も出ず、「この画像に決める（お気に入りにする）」になる
   // （止まったジョブは採る口を受けない。決めるのはお気に入りの口）
   expect(
-    (await page.getByRole('button', { name: /^この画像で決める: / }).count()) === 0 &&
+    (await page.getByRole('button', { name: /^この画像に決める: / }).count()) === 0 &&
       (await page.getByText(/決められない/).count()) === 0 &&
       (await page
         .getByRole('button', { name: /^この画像に決める（お気に入りにする）: / })
@@ -714,10 +714,10 @@ try {
   };
   narrow.on('request', onRequest);
   await chooseBest.click();
-  await bestCard.getByText('お気に入り', { exact: true }).waitFor();
+  await bestCard.getByText('この画像に決めた（お気に入り）', { exact: true }).waitFor();
   expect(
     (await chooseBest.count()) === 0 && (await favorites()) === favoritesBefore + 1,
-    '「この画像に決める（お気に入りにする）」で、止まったジョブの最良の画像がお気に入りになり、ボタンの代わりに「お気に入り」と出る',
+    '「この画像に決める（お気に入りにする）」で、止まったジョブの最良の画像がお気に入りになり、ボタンの代わりに「この画像に決めた（お気に入り）」と出る',
   );
   // 7b. 同じ止まりに「このジョブから覚えたこと」が出て、蒸留の記録が読めたら、整理中から確定した中身（覚えた・直した・無い・できなかった）に変わる
   const learnedCard = narrow.getByRole('region', { name: 'このジョブから覚えたこと' }).first();

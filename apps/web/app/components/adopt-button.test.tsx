@@ -30,25 +30,25 @@ describe('AdoptButton', () => {
     vi.mocked(adoptImage).mockResolvedValue({ adopted: { iteration: 2, index: 0 } });
     const user = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'この画像で決める: 2 回目の画像 1 番' }));
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
     expect(adoptImage).not.toHaveBeenCalled();
-    expect(screen.getByText(/2 回目の画像 1 番で決める？/)).toBeTruthy();
+    expect(screen.getByText(/2 回目の画像 1 番に決める？/)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
 
     expect(adoptImage).toHaveBeenCalledExactlyOnceWith(JOB, { iteration: 2, index: 0 });
-    expect(await screen.findByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(await screen.findByText('この画像に決めた')).toBeTruthy();
   });
 
   it('takes nothing when the person changes their mind', async () => {
     const user = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'この画像で決める: 2 回目の画像 1 番' }));
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
     await user.click(screen.getByRole('button', { name: 'やめる' }));
 
     expect(adoptImage).not.toHaveBeenCalled();
     expect(
-      screen.getByRole('button', { name: 'この画像で決める: 2 回目の画像 1 番' }),
+      screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
     ).toBeTruthy();
   });
 
@@ -62,7 +62,7 @@ describe('AdoptButton', () => {
       />,
     );
 
-    expect(screen.getByText('この画像で決めた（選んだ）')).toBeTruthy();
+    expect(screen.getByText('この画像に決めた')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -72,14 +72,14 @@ describe('AdoptButton', () => {
     );
     const user = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'この画像で決める: 2 回目の画像 1 番' }));
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
     await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
 
     expect(
       await screen.findByText('決められない: 絵がもう止まっていて、画像 2-0 を採れなかった'),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'この画像で決める: 2 回目の画像 1 番' }),
+      screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
     ).toBeTruthy();
   });
 });
