@@ -90,7 +90,7 @@ describe('holding the LLM stages of a running job', () => {
     const { store, runner, llm } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 1 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     const release = runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
@@ -115,7 +115,7 @@ describe('holding the LLM stages of a running job', () => {
     const { store, runner, llm } = setup({ think: thinking.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 1 });
     runner.kick();
-    await vi.waitFor(() => expect(thinking.signals).toHaveLength(1));
+    await thinking.reached(1);
 
     const release = runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(thinking.signals[0]!.aborted).toBe(true));
@@ -162,7 +162,7 @@ describe('holding the LLM stages of a running job', () => {
     const { store, runner, heldEvents } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 3 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
     await tick();
@@ -182,7 +182,7 @@ describe('holding the LLM stages of a running job', () => {
     const { store, runner, heldEvents } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 1 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     const first = runner.holdLlmStages(jobId);
     const second = runner.holdLlmStages(jobId);
@@ -209,7 +209,7 @@ describe('holding the LLM stages of a running job', () => {
     const { store, runner, heldEvents } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 1 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     const release = runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
@@ -243,7 +243,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner, llm } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 2 }, 2);
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     const release = runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
@@ -275,7 +275,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner, llm } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 2 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     const release = runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
     await runner.adopt(jobId, { iteration: 1, index: 0 });
@@ -292,7 +292,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner, llm } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     const release = runner.holdLlmStages(jobId);
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
     await runner.adopt(jobId, { iteration: 1, index: 0 });
@@ -315,7 +315,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await runner.adopt(jobId, { iteration: 1, index: 1 });
     judging.answer(1);
@@ -336,7 +336,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
     expect((await store.readState(jobId)).carry?.best).toMatchObject({
       iteration: 1,
       imageIndex: 0,
@@ -361,10 +361,10 @@ describe('adopting an image the human chose', () => {
     const { store, runner } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await runner.addInstruction(jobId, 'もっと夕焼けを赤く');
     await runner.adopt(jobId, { iteration: 1, index: 0 });
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await runner.adopt(jobId, { iteration: 1, index: 1 });
     judging.answer(1);
@@ -384,11 +384,11 @@ describe('adopting an image the human chose', () => {
     const first = setup({ judge: judging.script });
     const jobId = await submit(first.store, { aiJudgement: false, maxIterations: 4 }, 2);
     first.runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
     await first.runner.adopt(jobId, { iteration: 1, index: 1 });
     await first.runner.addInstruction(jobId, 'もっと夕焼けを赤く');
     judging.answer(1);
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(3));
+    await judging.reached(3);
     // 選択を取り込んで3回目へ進み、3回目の見る役の最中に落ちた跡を作る（走っている状態のまま、新しい実行器で再開する）
     const running = await first.store.readState(jobId);
     await first.runner.stop(jobId);
@@ -409,10 +409,10 @@ describe('adopting an image the human chose', () => {
     const first = setup({ think: thinking.script, judge: judging.script });
     const jobId = await submit(first.store, { aiJudgement: false, maxIterations: 3 }, 2);
     first.runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await first.runner.addInstruction(jobId, 'もっと夕焼けを赤く');
     const chosen = await first.runner.adopt(jobId, { iteration: 1, index: 1 });
-    await vi.waitFor(() => expect(thinking.signals).toHaveLength(3));
+    await thinking.reached(3);
     // 2回目のあとの境目を越え、3回目を考えている最中に落ちた跡を、選択に取り込みの印を付けなかった前の版のものとして作る
     const running = await first.store.readState(jobId);
     await first.runner.stop(jobId);
@@ -436,7 +436,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner, llm, heldEvents } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await runner.adopt(jobId, { iteration: 1, index: 0 });
     await runner.idle();
@@ -452,7 +452,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner, llm } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 5 }, 2);
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await runner.adopt(jobId, { iteration: 1, index: 1 });
     judging.answer(1);
@@ -467,10 +467,10 @@ describe('adopting an image the human chose', () => {
     const { store, runner, llm } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 2 }, 2);
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await runner.addInstruction(jobId, 'もっと夕焼けを赤く');
     await runner.adopt(jobId, { iteration: 1, index: 0 });
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await runner.adopt(jobId, { iteration: 1, index: 1 });
     judging.answer(1);
@@ -485,7 +485,7 @@ describe('adopting an image the human chose', () => {
     const { store, runner } = setup({ judge: judging.script });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 1 });
     runner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await expect(runner.adopt(jobId, { iteration: 1, index: 3 })).rejects.toThrow();
     await expect(runner.adopt(jobId, { iteration: 2, index: 0 })).rejects.toThrow();

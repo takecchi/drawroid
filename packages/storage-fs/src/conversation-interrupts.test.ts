@@ -260,7 +260,7 @@ describe('a human message while the job of the conversation is running', () => {
       });
     const jobId = await submit({ aiJudgement: false, maxIterations: 2 }, 2);
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await say('これでいいから、次は夕焼けにして');
     await within(talk.idle(conversationId));
@@ -317,7 +317,7 @@ describe('a human message while the job of the conversation is running', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 5 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await say('これでいい');
     await within(talk.idle(conversationId));
@@ -359,7 +359,7 @@ describe('a human message while the job of the conversation is running', () => {
     // 絵はあるが、その画像が無い会話
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await say('5枚目でいい');
     await within(talk.idle(conversationId));
     const results = (await events()).filter((e) => e.type === 'tool.result');
@@ -407,7 +407,7 @@ describe('a human message while the job of the conversation is running', () => {
     });
     await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await say('待って');
     const heldFlags = () =>
@@ -441,7 +441,7 @@ describe('a human message while the job of the conversation is running', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await say('これでいい');
     await within(talk.idle(conversationId));
@@ -466,7 +466,7 @@ describe('a human message while the job of the conversation is running', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await say('これでいい');
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
@@ -520,7 +520,7 @@ describe('a human message while the job of the conversation is running', () => {
     // ターンが始まった後に、会話のジョブが走り出す（ターンの始めには、待たせるジョブが無かった）
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     expect(heldFlags()).toEqual([]);
 
     // ツールの実行中なのでターンはまだ終わらないが、発言が来た時点でジョブの LLM の段を待たせる
@@ -641,7 +641,7 @@ describe('interrupting from the human', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 3 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await say('待って');
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
 
@@ -683,7 +683,7 @@ describe('interrupting from the human', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 1 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
     await say('待って');
     await vi.waitFor(() => expect(judging.signals[0]!.aborted).toBe(true));
 
@@ -773,7 +773,7 @@ describe('interrupting and adopting, in more detail', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 3 }, 3);
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await say('一番いいのでいい');
     await within(talk.idle(conversationId));
@@ -833,7 +833,7 @@ describe('interrupting and adopting, in more detail', () => {
     const jobId = await submit({ aiJudgement: false, maxIterations: 5 });
     await jobRunner.addInstruction(jobId, '逆光にして');
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await say('これでいい');
     await within(talk.idle(conversationId));
@@ -852,7 +852,7 @@ describe('interrupting and adopting, in more detail', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 5 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(2));
+    await judging.reached(2);
 
     await say('これでいい');
     await within(talk.idle(conversationId));
@@ -879,7 +879,7 @@ describe('interrupting and adopting, in more detail', () => {
     });
     const jobId = await submit({ aiJudgement: false, maxIterations: 3 });
     jobRunner.kick();
-    await vi.waitFor(() => expect(judging.signals).toHaveLength(1));
+    await judging.reached(1);
 
     await say('これでいい');
     await within(talk.idle(conversationId));
