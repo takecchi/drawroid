@@ -135,7 +135,7 @@ export class ManualGenerationRunner {
     try {
       await this.generateOnce(jobId, request);
     } finally {
-      this.accepted.delete(jobId);
+      void jobId;
     }
   }
 
