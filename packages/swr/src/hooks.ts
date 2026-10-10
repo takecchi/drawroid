@@ -14,6 +14,8 @@ import type {
   CandidateNotesResponse,
   CandidatesResponse,
   ConversationEventsResponse,
+  ConversationLlmCallDetail,
+  ConversationLlmCallsResponse,
   ConversationDetailResponse,
   ConversationsResponse,
   InterventionsResponse,
@@ -310,5 +312,37 @@ export function useStopConditions(jobId: string | undefined, { live }: { live: b
         client.jobs.auto[':jobId']['stop-conditions'].$get({ param: { jobId: jobId ?? '' } }),
       ),
     { refreshInterval: live ? JOB_FILES_POLL_MS : 0 },
+  );
+}
+
+/** 会話の LLM 呼び出しの一覧。話している間は増えるので、開いている間は取り直す */
+export function useConversationLlmCalls(conversationId: string | undefined) {
+  return useSWR<ConversationLlmCallsResponse, ApiError>(
+    conversationId === undefined ? null : keys.conversationLlmCalls(conversationId),
+    () =>
+      unwrap<ConversationLlmCallsResponse>(() =>
+        client.conversations[':conversationId']['llm-calls'].$get({
+          param: { conversationId: conversationId ?? '' },
+        }),
+      ),
+    { refreshInterval: JOB_FILES_POLL_MS },
+  );
+}
+
+// ポーリングしない: 記録は書かれたら変わらず、開いたときに1度取れば足りるため
+export function useConversationLlmCall(
+  conversationId: string | undefined,
+  callId: string | undefined,
+) {
+  const key =
+    conversationId === undefined || callId === undefined
+      ? null
+      : keys.conversationLlmCall(conversationId, callId);
+  return useSWR<ConversationLlmCallDetail, ApiError>(key, () =>
+    unwrap<ConversationLlmCallDetail>(() =>
+      client.conversations[':conversationId']['llm-calls'][':callId'].$get({
+        param: { conversationId: conversationId ?? '', callId: callId ?? '' },
+      }),
+    ),
   );
 }

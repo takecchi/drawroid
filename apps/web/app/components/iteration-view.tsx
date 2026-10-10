@@ -250,7 +250,7 @@ export function IterationView({
           <CodeBlock>{JSON.stringify(iteration.request, null, 2)}</CodeBlock>
         </Disclosure>
       )}
-      {calls.length > 0 && <LlmCallList jobId={jobId} calls={calls} />}
+      {calls.length > 0 && <LlmCallList source={{ kind: 'job', jobId }} calls={calls} />}
     </article>
   );
 }

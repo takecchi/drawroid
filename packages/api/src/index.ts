@@ -18,7 +18,11 @@ import { iterationsRoutes } from './routes/iterations.js';
 import { interventionsRoutes } from './routes/interventions.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { llmSettingsRoutes } from './routes/llm-settings.js';
-import { llmCallsRoutes, unattachedLlmCallsRoutes } from './routes/llm-calls.js';
+import {
+  conversationLlmCallsRoutes,
+  llmCallsRoutes,
+  unattachedLlmCallsRoutes,
+} from './routes/llm-calls.js';
 import { manualJobsRoutes } from './routes/manual-jobs.js';
 import { memoryRoutes } from './routes/memory.js';
 import { permissionSettingsRoutes } from './routes/permission-settings.js';
@@ -84,6 +88,7 @@ export function createApi(deps: ApiDeps) {
     .route('/settings/generation-progress', generationProgressSettingsRoutes(deps))
     .route('/jobs', progressPreviewRoutes(deps))
     .route('/conversations', conversationsRoutes(deps))
+    .route('/conversations/:conversationId/llm-calls', conversationLlmCallsRoutes(deps))
     .route('/doctor', doctorRoutes(deps))
     .onError(handleUncaught);
 }
