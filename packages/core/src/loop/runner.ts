@@ -251,7 +251,12 @@ export class JobRunner {
     }
     const state = await this.deps.store.readState(jobId);
     if (state.status === 'stopped') return;
-    const stopped = this.stopped(state, HUMAN_STOP);
+    // 落ちて running のまま残り、まだ拾っていないジョブにも、置かれた画像がありうる（拾ったあとに止めたときと同じに数える）
+    const stopped = this.stopped(
+      state,
+      HUMAN_STOP,
+      await this.imagesOfUnjudgedIteration(jobId, state),
+    );
     await this.deps.store.writeState(jobId, stopped);
     // 書いたあとにもう一度見る: 読んでから書くまでの間にランナーがこのジョブを拾っていたら、拾った側は「待っている」と
     // 読んで走り出しており、ここで書いた「止まった」を次の書き込みで上書きして回り続けるため。拾った側は最初の await

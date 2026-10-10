@@ -504,6 +504,40 @@ describe('a broken structured output stops the job with the reason (:73)', () =>
     expect(human.imagesGenerated).toBe(0);
   });
 
+  // 落ちて running のまま残ったジョブを、ランナーが拾う前に人が止めても、置かれた画像は数える（拾ったあとに止めたときと同じ）
+  it('counts the images placed before a crash when a person stops the job before it is resumed', async () => {
+    const { store, runner, backend } = setup({ scripts: { think, judge: judge() } });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2);
+    await store.writeState(spec.jobId, {
+      status: 'running',
+      carry: { intent: spec.request, completedIterations: 0 },
+      startedAt: '2026-10-09T00:00:20Z',
+      imagesGenerated: 0,
+    });
+    const request = generationRequestSchema.parse({
+      prompt: 'girl, beach, sunset',
+      negativePrompt: '',
+      loras: [],
+      steps: 28,
+      cfgScale: 7,
+      width: 1024,
+      height: 768,
+      batchSize: 2,
+    });
+    await store.writeGeneration(
+      spec.jobId,
+      1,
+      request,
+      await backend.generate(request, new AbortController().signal),
+    );
+
+    await runner.stop(spec.jobId);
+
+    const state = await stoppedState(store, spec.jobId);
+    expect(state.reason.kind).toBe('human');
+    expect(state.imagesGenerated).toBe(2);
+  });
+
   it('stops before thinking when the backend is down at the start of the job', async () => {
     const backend = new BigImageBackend();
     backend.setUnreachable(true);
@@ -548,6 +582,8 @@ describe('a job resumes where it stopped (:74)', () => {
     expect(second.llm.calls.map((c) => c.purpose)).toEqual(['judge', 'think', 'judge']);
     expect(second.backend.requests).toHaveLength(1);
     expect(first.backend.requests).toHaveLength(2);
+    // 落ちる前に置いた2回目の画像は、見る役を済ませた境目で1度だけ数える（再開のときにも足すと二重になる）
+    expect(state.imagesGenerated).toBe(6);
   });
 });
 
@@ -581,6 +617,8 @@ describe('a job resumes after a crash between the judge output and state.json (:
     expect(state.reason.kind).toBe('limit:iterations');
     expect(state.carry?.completedIterations).toBe(2);
     expect(second.llm.calls.map((c) => c.purpose)).toEqual(['think', 'judge']);
+    // 見る役まで済んで数える前に落ちた1回目は、再開して境目を越えるときに1度だけ数える
+    expect(state.imagesGenerated).toBe(4);
     const sent = await readdir(dataPaths(root).jobFiles(spec.jobId).iteration(1).images);
     expect(sent.filter((name) => name.endsWith('.sent.json'))).toHaveLength(2);
   });
