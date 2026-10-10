@@ -164,8 +164,8 @@ async function readAttachments(
   conversationId: string,
   attachments: readonly { uploadId: string; note?: string | undefined }[],
 ): Promise<{ ok: true; references: NewReference[] } | { ok: false; reason: string }> {
-  // スキーマの max にしない: スキーマに合わない呼び出しは、理由を返さずに出力ごと出し直させるため、
-  // 話す役が「何枚までか」を知って人間に伝えられない
+  // スキーマの max にしない: スキーマに合わない呼び出しは、誤りの要約を添えて出し直させるが、出し直しが尽きると
+  // ターンが失敗で終わり、話す役が「何枚までか」を人間に伝えられないため。道具の結果として返せば、話す役が人間に伝えられる
   if (attachments.length > MAX_REFERENCES_PER_REQUEST) {
     return {
       ok: false,
