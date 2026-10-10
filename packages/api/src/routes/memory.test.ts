@@ -382,6 +382,27 @@ describe('an id too long to be the name of a memory file', () => {
     expect((await put(id, edit)).status).toBe(200);
     expect((await api.request(`/memory/${id}`, { method: 'DELETE' })).status).toBe(204);
   });
+
+  // 開けない項目を一覧に並べない: 一覧の items はループと蒸留が LLM へ渡す記憶を選ぶもとで、
+  // 開けない ID の項目を直そうとすると失敗するため。手で置いた壊れた項目と同じく、理由を付けて invalid に出す
+  it('lists a file whose name cannot be an id as unreadable with a reason, and keeps the longest ids as items', async () => {
+    const unusable = [
+      'a'.repeat(LONGEST_ID_BYTES + 1),
+      'あ'.repeat(Math.floor(LONGEST_ID_BYTES / 3) + 1),
+      'a\\b',
+    ];
+    const longest = ['a'.repeat(LONGEST_ID_BYTES), 'あ'.repeat(LONGEST_ID_BYTES / 3)];
+    for (const id of [...unusable, ...longest]) await putFile(id, itemFile());
+
+    const json = (await (await api.request('/memory')).json()) as {
+      items: MemoryItem[];
+      invalid: { id: string; reason: string }[];
+    };
+
+    expect(json.items.map((i) => i.id).sort()).toEqual([...longest].sort());
+    expect(json.invalid.map((i) => i.id).sort()).toEqual([...unusable].sort());
+    for (const { reason } of json.invalid) expect(reason).not.toBe('');
+  });
 });
 
 async function notUsed(): Promise<never> {
