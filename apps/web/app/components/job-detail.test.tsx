@@ -156,6 +156,36 @@ describe('JobDetail', () => {
     expect(screen.queryByText(/結果の保存など/)).toBeNull();
   });
 
+  // 考えたあと生成で止まった回を、考える段で止まったと書かない。LLM の段の失敗では、今までどおり考える段と書く
+  it.each([
+    [backendFailed, '画像を作る途中でバックエンドが失敗してジョブが止まり'],
+    [{ kind: 'error', detail: '見る段: 形が合わない' }, '考える段まで進んだところでジョブが止まり'],
+  ] satisfies [StopReason, string][])(
+    'tells where the imageless iteration stopped from the stop reason (%o)',
+    (reason, said) => {
+      serve(stopped(reason));
+      vi.mocked(useIterations).mockReturnValue({
+        data: {
+          iterations: [
+            {
+              iteration: 1,
+              think: {},
+              images: [],
+              request: null,
+              judge: null,
+              adopted: null,
+              excluded: null,
+            },
+          ],
+          invalid: [],
+        },
+      } as never);
+      renderDetail();
+
+      expect(screen.getByText(new RegExp(`^${said}`))).toBeTruthy();
+    },
+  );
+
   // 見出しは依頼の文: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す
   it('puts the request as the heading, and keeps the ID below it', () => {
     serve(stopped({ kind: 'ai', detail: '意図どおり' }));

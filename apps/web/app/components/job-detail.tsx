@@ -206,6 +206,11 @@ export function JobDetail({ jobId }: { jobId: string }) {
             interventions={interventions.data?.interventions ?? []}
             canPaintMask={data.spec.kind === 'auto' && live}
             stopped={!live}
+            stoppedInGeneration={
+              data.state.status === 'stopped' &&
+              data.state.reason.kind === 'error' &&
+              data.state.reason.backendErrorKind !== undefined
+            }
             {...(data.spec.kind === 'auto' && {
               adopt: { stopped: !live },
             })}
