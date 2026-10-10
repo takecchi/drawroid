@@ -224,6 +224,44 @@ describe('IterationList and the large view of an image', () => {
   });
 });
 
+describe('IterationList and the names of the selection buttons', () => {
+  const two = {
+    ...iteration,
+    images: [
+      { index: 0, seed: 7, url: '/a.png', previewUrl: '/a.webp' },
+      { index: 1, seed: 8, url: '/b.png', previewUrl: '/b.webp' },
+    ],
+  } as unknown as Iteration;
+  const NAMES = ['お気に入り: 1 回目の画像 1 番', 'お気に入り: 1 回目の画像 2 番'];
+
+  it('names the buttons of each image cell after its image, so that two images differ', () => {
+    renderList(false, two);
+
+    expect(
+      screen
+        .getAllByRole('button', { name: /^お気に入り/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(NAMES);
+    expect(screen.getByRole('button', { name: '却下: 1 回目の画像 2 番' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '外す: 1 回目の画像 1 番' })).toBeTruthy();
+  });
+
+  it('names the buttons in the large view after the image shown, too', async () => {
+    const user = userEvent.setup();
+    renderList(false, two);
+
+    await user.click(
+      screen.getByRole('button', { name: '大きく見る: 1 回目の画像 2 番（seed 8）' }),
+    );
+    const dialog = within(screen.getByRole('dialog', { name: /1 回目の画像 2 番/ }));
+
+    expect(dialog.getByRole('button', { name: NAMES[1]! })).toBeTruthy();
+    expect(dialog.queryByRole('button', { name: NAMES[0]! })).toBeNull();
+    expect(dialog.getByRole('button', { name: '却下: 1 回目の画像 2 番' })).toBeTruthy();
+    expect(dialog.getByRole('button', { name: '外す: 1 回目の画像 2 番' })).toBeTruthy();
+  });
+});
+
 // 止まったジョブの画像の枡（窓の外）も、窓と同じく「この画像に決める（お気に入りにする）」にする。人が選んだ画像は、枡でも窓でも「選んだ」のまま
 describe('IterationList and the image cells of a stopped job', () => {
   const twoImages = [

@@ -82,4 +82,72 @@ describe('AdoptButton', () => {
       screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
     ).toBeTruthy();
   });
+
+  // 押したボタンは次の形に替わって消える。フォーカスは、替わった先の最初のボタン・決めた印へ移る
+  it('moves the focus along as the person decides: to deciding, back to choosing, then to the mark', async () => {
+    vi.mocked(adoptImage).mockResolvedValue({ adopted: { iteration: 2, index: 0 } });
+    const user = renderButton();
+    const choose = () =>
+      screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' });
+
+    choose().focus();
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }),
+    );
+
+    screen.getByRole('button', { name: 'やめる' }).focus();
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(choose());
+
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    const mark = await screen.findByText('この画像に決めた');
+    expect(document.activeElement).toBe(mark);
+  });
+
+  it('moves the focus back to choosing when the image could not be taken', async () => {
+    vi.mocked(adoptImage).mockRejectedValue(new ApiError('conflict', '採れなかった', 409));
+    const user = renderButton();
+
+    screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }).focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+
+    await screen.findByText('決められない: 採れなかった');
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
+    );
+  });
+
+  // 押していないのに決まった（開き直した・会話で決まった）ときは、印へフォーカスを移さない
+  it('leaves the focus alone when the image was chosen without being pressed here', () => {
+    const props = {
+      jobId: JOB,
+      image: { iteration: 2, index: 0 },
+      imageLabel: '2 回目の画像 1 番',
+    };
+    const { rerender } = render(<AdoptButton {...props} />);
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    rerender(<AdoptButton {...props} chosen />);
+
+    expect(screen.getByText('この画像に決めた')).toBeTruthy();
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+
+  // 画像の行が新しく出ただけ（描いている途中に画像が増えた）では、フォーカスを奪わない
+  it('does not take the focus when it appears', () => {
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    renderButton();
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
 });

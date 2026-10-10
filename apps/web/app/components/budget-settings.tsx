@@ -1,5 +1,5 @@
 import { isApiError, saveBudgetSettings, useBudgetSettings } from '@drawroid/swr';
-import { Input, WarnNote } from '@drawroid/ui';
+import { Input, OkNote, WarnNote } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import {
@@ -51,6 +51,8 @@ export function BudgetSettings() {
   const [edited, setEdited] = useState<BudgetFormValues | undefined>();
   const [problems, setProblems] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  // 保存できたことを知らせる: 保存しても欄の見た目は変わらないので、押した人が通ったかを分からないため
+  const [saved, setSaved] = useState(false);
 
   const values = edited ?? (data === undefined ? undefined : toBudgetFormValues(data.overrides));
 
@@ -63,10 +65,12 @@ export function BudgetSettings() {
       return;
     }
     setSaving(true);
+    setSaved(false);
     setProblems([]);
     try {
       await saveBudgetSettings(built.overrides);
       setEdited(undefined);
+      setSaved(true);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setProblems([caught.message]);
@@ -100,7 +104,10 @@ export function BudgetSettings() {
                         type="text"
                         inputMode="numeric"
                         value={values[path] ?? ''}
-                        onChange={(event) => setEdited({ ...values, [path]: event.target.value })}
+                        onChange={(event) => {
+                          setSaved(false);
+                          setEdited({ ...values, [path]: event.target.value });
+                        }}
                         aria-label={`${label}（${path}）`}
                         placeholder={String(defaultValue)}
                         size={8}
@@ -127,6 +134,9 @@ export function BudgetSettings() {
             予算を保存
           </button>
         </form>
+      )}
+      {saved && (
+        <OkNote focus>保存した。次に投入するジョブから効く。走っているジョブは変わらない。</OkNote>
       )}
     </section>
   );

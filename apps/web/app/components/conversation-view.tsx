@@ -957,11 +957,14 @@ export function ConversationView({
   source,
   actions,
   title,
+  focusComposer = false,
 }: {
   conversationId: string;
   source: ConversationSource;
   actions: ConversationActions;
   title?: ReactNode;
+  /** 話しかける欄へフォーカスを移して始める（新しい会話を始めたとき） */
+  focusComposer?: boolean;
 }) {
   const { chat, loaded, error, disconnected } = useConversationStream(conversationId, source);
   const [draft, setDraft] = useState('');
@@ -1147,6 +1150,7 @@ export function ConversationView({
         }
         composer={
           <ChatComposer
+            focusOnMount={focusComposer}
             value={draft}
             onChange={setDraft}
             onSend={() => void send(draft)}

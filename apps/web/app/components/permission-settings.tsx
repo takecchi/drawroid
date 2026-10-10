@@ -78,7 +78,7 @@ export function PermissionSettings() {
           </Button>
         </form>
       )}
-      {saved && <OkNote>保存した。走行中のジョブにも次の回から効く。</OkNote>}
+      {saved && <OkNote focus>保存した。走行中のジョブにも次の回から効く。</OkNote>}
       {problem !== undefined && <ErrorNote>保存できない: {problem}</ErrorNote>}
     </Section>
   );

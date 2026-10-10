@@ -155,7 +155,7 @@ export async function renameConversation(conversationId: string, title: string):
   await unwrap<unknown>(() =>
     client.conversations[':conversationId'].$patch({ param: { conversationId }, json: { title } }),
   );
-  await mutate(keys.conversations);
+  await Promise.all([mutate(keys.conversations), mutate(keys.conversation(conversationId))]);
 }
 
 /**
@@ -200,7 +200,8 @@ export async function postConversationMessage(
       },
     }),
   );
-  await mutate(keys.conversations);
+  // 会話1つも取り直す: 最初の発言でタイトルが決まるため
+  await Promise.all([mutate(keys.conversations), mutate(keys.conversation(conversationId))]);
   return posted;
 }
 

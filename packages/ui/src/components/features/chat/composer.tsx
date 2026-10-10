@@ -1,5 +1,6 @@
 import { ImagePlus, Send, Square, X } from 'lucide-react';
 import {
+  useEffect,
   useRef,
   type ChangeEvent,
   type FormEvent,
@@ -34,6 +35,7 @@ export function ChatComposer({
   onAttach,
   onRemoveAttachment,
   accept = 'image/png,image/jpeg,image/webp',
+  focusOnMount = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -52,9 +54,37 @@ export function ChatComposer({
   onAttach?: (files: File[]) => void;
   onRemoveAttachment?: (id: string) => void;
   accept?: string;
+  /** 出たときに発言欄へフォーカスを移す。新しい会話を始めたときだけ渡す（開き直しただけでは移さない） */
+  focusOnMount?: boolean;
 }) {
   const canSend = !sending && value.trim() !== '';
   const picker = useRef<HTMLInputElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  // 外した添付の位置。外したあとの描き直しで、残りの添付か「画像を添える」へフォーカスを移すために覚える
+  const removedAt = useRef<number | null>(null);
+
+  // 押したボタン（送る・止める・外す）は消えるか押せなくなるので、フォーカスの行き先を決めて移す。
+  // 移さないとページの外（body）に落ち、キーボードの人はページの先頭から辿り直すことになるため
+  function focusField() {
+    form.current?.querySelector('textarea')?.focus();
+  }
+
+  useEffect(() => {
+    if (focusOnMount) focusField();
+    // 出たときの一度だけ: 描き直すたびに移すと、ほかの所を触っている人からフォーカスを奪うため
+  }, []);
+
+  useEffect(() => {
+    const at = removedAt.current;
+    if (at === null) return;
+    removedAt.current = null;
+    const removes =
+      form.current?.querySelectorAll<HTMLButtonElement>('ul[aria-label="添える画像"] button') ?? [];
+    const next = removes[Math.min(at, removes.length - 1)];
+    (
+      next ?? form.current?.querySelector<HTMLButtonElement>('button[aria-label="画像を添える"]')
+    )?.focus();
+  }, [attachments]);
 
   function pick(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -65,7 +95,9 @@ export function ChatComposer({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (canSend) onSend();
+    if (!canSend) return;
+    onSend();
+    focusField();
   }
 
   function keyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -77,11 +109,11 @@ export function ChatComposer({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
+    <form ref={form} onSubmit={submit} className="space-y-2">
       {notice}
       {attachments.length > 0 && (
         <ul aria-label="添える画像" className="flex flex-wrap gap-2">
-          {attachments.map((attachment) => (
+          {attachments.map((attachment, index) => (
             <li key={attachment.id} className="relative">
               <img
                 src={attachment.url}
@@ -93,7 +125,10 @@ export function ChatComposer({
                   type="button"
                   aria-label={`${attachment.name} を外す`}
                   disabled={sending}
-                  onClick={() => onRemoveAttachment(attachment.id)}
+                  onClick={() => {
+                    removedAt.current = index;
+                    onRemoveAttachment(attachment.id);
+                  }}
                   className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground disabled:opacity-50"
                 >
                   <X className="size-3.5" aria-hidden />
@@ -143,7 +178,10 @@ export function ChatComposer({
         {running && onStop !== undefined && (
           <Button
             variant="danger"
-            onClick={onStop}
+            onClick={() => {
+              onStop();
+              focusField();
+            }}
             aria-label="止める"
             title="止める"
             className="min-h-11 px-3 md:min-h-9"

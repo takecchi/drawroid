@@ -74,7 +74,7 @@ export function BackendUrlSettings() {
           保存
         </Button>
       </form>
-      {saved !== undefined && <OkNote>保存した。{saved} に繋ぐ。</OkNote>}
+      {saved !== undefined && <OkNote focus>保存した。{saved} に繋ぐ。</OkNote>}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
     </Section>
   );

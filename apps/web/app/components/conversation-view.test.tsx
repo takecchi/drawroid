@@ -508,6 +508,26 @@ describe('telling the jobs of one conversation apart', () => {
 });
 
 describe('ConversationView', () => {
+  // 新しい会話を始めたときだけ、話しかける欄から始める（開き直しただけの会話では移さない）
+  it.each([
+    [true, true],
+    [false, false],
+  ])('starts with the focus on the message field: %s', (focusComposer, focused) => {
+    const { source } = fakeSource([]);
+    render(
+      <MemoryRouter>
+        <ConversationView
+          conversationId="c1"
+          source={source}
+          actions={actions()}
+          focusComposer={focusComposer}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(document.activeElement === screen.getByLabelText('発言')).toBe(focused);
+  });
+
   it('draws the restored log once, after every page has been read', async () => {
     let releaseSecond: (page: EventPage) => void = () => {};
     const first = [confirmed({ type: 'user.message', text: '一つ目のページ', attachments: [] })];
@@ -1475,6 +1495,46 @@ describe('ConversationView', () => {
       expect(screen.getByText(/できあがったら、画像の行/)).toBeTruthy();
       // 打った文は残す: 送れなかったものを、つながり直したら送り直せるように
       expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('描いて');
+    });
+
+    it('does not draw the confirmed rows again when the stream is cut or open again, while the progress row is', async () => {
+      const { source, stream } = fakeSource([]);
+      renderView(source);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+      stream.emit(
+        confirmed({
+          type: 'job.images',
+          jobId: JOB,
+          iteration: 1,
+          images: [{ index: 0, seed: 1 }],
+        }),
+      );
+      generating(stream);
+      const drawn = vi.mocked(useSelections).mock.calls.length;
+
+      stream.connection('error');
+      expect(screen.getByText(STALLED)).toBeTruthy();
+      stream.connection('open');
+      expect(screen.queryByText(STALLED)).toBeNull();
+
+      expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+    });
+
+    it('keeps the refusal of a file that cannot be attached when the stream is cut and open again', async () => {
+      const { source, stream } = fakeSource([]);
+      const given = { ...actions(), upload: vi.fn().mockResolvedValue('u-1') };
+      renderView(source, given);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+      stream.connection('open');
+      fireEvent.change(screen.getByLabelText('添える画像を選ぶ'), {
+        target: { files: [new File(['x'], 'note.txt', { type: 'text/plain' })] },
+      });
+      expect(screen.getByText(/添えられない: note.txt/)).toBeTruthy();
+
+      stream.connection('error');
+      stream.connection('open');
+
+      expect(screen.getByText(/添えられない: note.txt/)).toBeTruthy();
     });
 
     it('does not say it is not connected while the stream stays open, and keeps a failure that came without a cut', async () => {

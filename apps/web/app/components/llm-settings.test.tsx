@@ -80,6 +80,24 @@ describe('LlmSettings', () => {
     expect(input('見る役は画像を読める').checked).toBe(true);
   });
 
+  it('names the image field of the talk role too, once it stops sharing the think role model', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+    expect(screen.queryByLabelText('話す役は画像を読める')).toBeNull();
+
+    await user.click(screen.getByLabelText('話す役（会話）も考える役と同じモデルを使う'));
+
+    expect(input('話す役は画像を読める')).toBeTruthy();
+  });
+
+  // 名前は役ごとに変えても、見える文字は変えない: 欄の中では、どの役のものかは周りの見出しで分かる
+  it('keeps the visible text of the image field as it is, whatever its name says', () => {
+    render(<LlmSettings />);
+
+    expect(input('見る役は画像を読める').labels?.[0]?.textContent).toBe('画像を読める');
+    expect(input('考える役は画像を読める').labels?.[0]?.textContent).toBe('画像を読める');
+  });
+
   it('lets each role choose its provider only from the providers defined above', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);
@@ -671,6 +689,18 @@ describe('LlmSettings', () => {
 
     await user.type(input('考える役のモデル'), '-next');
     expect(screen.queryByText('保存した。次に話しかけたときから、この設定を使う。')).toBeNull();
+  });
+
+  // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る（読み上げは移った先を読む）
+  it('moves the focus to the note that it saved', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    screen.getByRole('button', { name: 'LLM の設定を保存' }).focus();
+    await user.keyboard('{Enter}');
+
+    const note = await screen.findByText('保存した。次に話しかけたときから、この設定を使う。');
+    expect(document.activeElement).toBe(note);
   });
 
   it('does not say it saved when saving fails', async () => {
