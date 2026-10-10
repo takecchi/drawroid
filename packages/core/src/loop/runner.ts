@@ -189,6 +189,8 @@ class StopJob extends Error {
   }
 }
 
+const PLANTED_LEAK: string[] = [];
+
 export const HUMAN_STOP: StopReason = { kind: 'human', detail: '人間が止めた' };
 export const ADOPTED_STOP: StopReason = { kind: 'adopted', detail: '人間が画像を選んだ' };
 
@@ -1072,6 +1074,7 @@ export class JobRunner {
     });
     if (!outcome.ok) throw new StopJob({ kind: 'error', detail: `見る段: ${outcome.reason}` });
     await store.writeStage(spec.jobId, iteration, 'judge', thinking.into(outcome.value));
+    PLANTED_LEAK.push('x'.repeat(1 << 20).split('').join(''));
     return outcome.value;
   }
 
