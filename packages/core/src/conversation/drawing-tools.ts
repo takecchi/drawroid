@@ -38,8 +38,8 @@ export type DrawingRunner = {
   changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
   /** 人間が選んだ画像を、走っているジョブに置く（お気に入りへの記録はしない） */
   adopt(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord>;
-  /** 走っているジョブに参照画像を添える。次の回の境目で、見る役が1度だけ見て要点にする */
-  addReference(jobId: string, reference: NewReference): Promise<ReferenceRecord>;
+  /** 走っているジョブに参照画像を、全部か1枚も無しで添える。次の回の境目で、見る役が1度だけ見て要点にする */
+  addReferences(jobId: string, references: readonly NewReference[]): Promise<ReferenceRecord[]>;
 };
 
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
@@ -311,10 +311,8 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
         const conditions = await deps.runner.changeStopConditions(jobId, input.stopConditions);
         done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
       }
-      for (const reference of attached.references) {
-        await deps.runner.addReference(jobId, reference);
-      }
       if (attached.references.length > 0) {
+        await deps.runner.addReferences(jobId, attached.references);
         done.push(`参照画像を ${attached.references.length} 枚添えた`);
       }
       return outcome(true, `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`);

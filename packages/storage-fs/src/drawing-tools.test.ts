@@ -54,17 +54,20 @@ const judge: Script = (call) => ({
   canStop: false,
 });
 
+// 要点の台本を置く: 無いと、参照画像を添えたジョブが次の回の境目で自分で止まり、試験が時刻の運に左右されるため
+const refGist: Script = () => ({ gist: '逆光の海辺' });
+
 const human = mergePermissions(basicPermissions({ width: 512, height: 512 }), {
   checkpoint: { mode: 'auto', choices: ['anime.safetensors'] },
 });
 
-async function setup() {
+async function setup(store: FsJobStore = new FsJobStore(root)) {
   const conversations = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store: conversations });
-  const jobs: JobStore = bridgeJobEvents(new FsJobStore(root), { hubs });
+  const jobs: JobStore = bridgeJobEvents(store, { hubs });
   const runner = new JobRunner({
     store: jobs,
-    llm: new ScriptedLlm({ think, judge }),
+    llm: new ScriptedLlm({ think, judge, 'ref-gist': refGist }),
     backend: new StubBackend(),
     budget: DEFAULT_BUDGET,
     permissions: human,
@@ -320,6 +323,19 @@ describe('start_drawing', () => {
   });
 });
 
+/** 参照画像を1枚置いた直後に afterFirst を1度だけ呼ぶ置き場所。添えている途中でジョブが止まる形を、時刻に頼らずに作る */
+class StopsAfterFirstReference extends FsJobStore {
+  afterFirst: (() => Promise<void>) | undefined;
+
+  override async addReference(...args: Parameters<FsJobStore['addReference']>) {
+    const added = await super.addReference(...args);
+    const afterFirst = this.afterFirst;
+    this.afterFirst = undefined;
+    await afterFirst?.();
+    return added;
+  }
+}
+
 /** 会話に画像を count 枚添え、描くツールに渡す形で返す */
 async function uploads(
   conversations: MemoryConversationStore,
@@ -428,6 +444,24 @@ describe('revise_drawing and stop_drawing', () => {
     await untilRunning(jobs, jobId!);
     await runner.stop(jobId!);
     await runner.idle();
+  });
+
+  it('adds every attached image, even when the job stops while they are being added', async () => {
+    const store = new StopsAfterFirstReference(root);
+    const { jobs, context, runner, conversations, conversationId } = await setup(store);
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const attachments = await uploads(conversations, conversationId, 4);
+    store.afterFirst = async () => {
+      await runner.stop(jobId!);
+      await runner.idle();
+    };
+
+    const revised = await run('revise_drawing', { attachments }, context);
+
+    expect(revised.ok).toBe(true);
+    expect(await jobs.listReferences(jobId!)).toHaveLength(4);
+    expect((await jobs.readState(jobId!)).status).toBe('stopped');
   });
 
   it('changes nothing when more images are attached than a request takes, saying why', async () => {

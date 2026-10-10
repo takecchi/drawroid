@@ -341,6 +341,20 @@ export class JobRunner {
     return this.deps.store.addReference(jobId, reference, this.now());
   }
 
+  /** 1度の口出しで添えた参照画像を、全部置くか1枚も置かないかにする */
+  // 1枚ずつ addReference で置かない: 置く間にジョブが止まると、残りだけ断られて途中までの口出しになるため
+  async addReferences(
+    jobId: string,
+    references: readonly NewReference[],
+  ): Promise<ReferenceRecord[]> {
+    await this.acceptingJob(jobId);
+    const added: ReferenceRecord[] = [];
+    for (const reference of references) {
+      added.push(await this.deps.store.addReference(jobId, reference, this.now()));
+    }
+    return added;
+  }
+
   /**
    * 走行中・待ち行列のジョブに inpaint のマスクを置く。次の回の境目から、inpaint が AI の選択肢に入る。
    * 塗った画像があるかは呼び手が確かめる。
