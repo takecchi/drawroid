@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import {
   MAX_REFERENCE_BYTES as SERVER_MAX_REFERENCE_BYTES,
+  MAX_REFERENCE_NOTE_CHARS as SERVER_MAX_REFERENCE_NOTE_CHARS,
   MAX_REFERENCES_PER_REQUEST as SERVER_MAX_REFERENCES,
+  REFERENCE_MEDIA_TYPES as SERVER_REFERENCE_MEDIA_TYPES,
 } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
@@ -9,8 +11,10 @@ import {
   buildReferenceUpload,
   buildReferenceUploads,
   MAX_REFERENCE_BYTES,
+  MAX_REFERENCE_NOTE_LENGTH,
   MAX_REFERENCES_PER_REQUEST,
   normalizeReferenceNote,
+  REFERENCE_MEDIA_TYPES,
   referenceFileProblem,
 } from './reference-upload';
 
@@ -32,6 +36,14 @@ describe('the limits of reference images', () => {
 
   it('lets an image be as large as the server takes', () => {
     expect(MAX_REFERENCE_BYTES).toBe(SERVER_MAX_REFERENCE_BYTES);
+  });
+
+  it('lets a note be as long as the server takes', () => {
+    expect(MAX_REFERENCE_NOTE_LENGTH).toBe(SERVER_MAX_REFERENCE_NOTE_CHARS);
+  });
+
+  it('takes the same image formats as the server, in the same order', () => {
+    expect([...REFERENCE_MEDIA_TYPES]).toEqual([...SERVER_REFERENCE_MEDIA_TYPES]);
   });
 });
 

@@ -5,6 +5,7 @@ import { isBackendError } from '../backend-error.js';
 import type { Budgets } from '../budget/settings.js';
 import type { JobStore } from '../job/store.js';
 import {
+  MAX_REFERENCE_NOTE_CHARS,
   MAX_REFERENCES_PER_REQUEST,
   stopConditionsChangeSchema,
   stopConditionsSchema,
@@ -107,7 +108,7 @@ const attachmentsSchema = z
         .string()
         .trim()
         .min(1)
-        .max(200)
+        .max(MAX_REFERENCE_NOTE_CHARS)
         .optional()
         .describe('用途の言葉（「この構図で」など）'),
     }),
