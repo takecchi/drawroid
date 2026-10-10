@@ -106,7 +106,13 @@ export class ManualGenerationRunner {
     try {
       await this.store.writeState(jobId, { status: 'running', startedAt, imagesGenerated });
       running.generating = true;
-      const result = await this.backend.generate(request, controller.signal);
+      let result;
+      try {
+        result = await this.backend.generate(request, controller.signal);
+      } finally {
+        // 返ったら頼んでいない: このあと画像を書いている間に止められても、バックエンドの今の生成は次のジョブのものだから
+        running.generating = false;
+      }
       await this.store.writeGeneration(jobId, 1, request, result);
       imagesGenerated = result.images.length;
       reason = { kind: 'limit:iterations', detail: '手動の生成は1回で止まる' };

@@ -154,7 +154,9 @@ describe('ReplaceableBackend', () => {
           signal.addEventListener(
             'abort',
             () => {
-              this.releases.splice(this.releases.indexOf(resolve), 1);
+              // もう返らせた生成なら並びに無い: -1 のまま splice すると、後ろの別の生成を外してしまうため
+              const index = this.releases.indexOf(resolve);
+              if (index !== -1) this.releases.splice(index, 1);
               reject(Object.assign(new Error('呼び手が止めた'), { name: 'AbortError' }));
             },
             { once: true },
@@ -483,6 +485,39 @@ describe('ReplaceableBackend', () => {
         releaseWrite();
         await manual.idle();
         expect(await reasonOf(store, jobId)).toBe('human');
+        inner.release();
+        await runner.idle();
+        expect(await reasonOf(store, auto.jobId)).toBe('limit:iterations');
+      });
+
+      // 生成が返ったあと（画像を書いている間）に止めても、もう次の生成（ほかのジョブのもの）が走っているので止めさせない
+      it('does not cut the next generation when a manual generation is stopped while its images are written', async () => {
+        const inner = new HeldBackend();
+        const { store, runner, submitAuto, backend } = setup(inner);
+        let releaseWrite!: () => void;
+        let writing!: () => void;
+        const writeReached = new Promise<void>((resolve) => (writing = resolve));
+        const held = Object.create(store) as FsJobStore;
+        held.writeGeneration = async (...args) => {
+          writing();
+          await new Promise<void>((resolve) => (releaseWrite = resolve));
+          return store.writeGeneration(...args);
+        };
+        const manual = new ManualGenerationRunner({ backend, store: held });
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await inner.reached(1);
+        const auto = await submitAuto();
+        runner.kick();
+        inner.release();
+        await writeReached;
+        await inner.reached(2);
+
+        await manual.stop(jobId);
+        expect(inner.interruptCount).toBe(0);
+
+        releaseWrite();
+        await manual.idle();
+        expect(await reasonOf(store, jobId)).toBe('limit:iterations');
         inner.release();
         await runner.idle();
         expect(await reasonOf(store, auto.jobId)).toBe('limit:iterations');
