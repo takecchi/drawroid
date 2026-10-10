@@ -39,6 +39,8 @@ async function setup(
   const hubs = new ConversationHubs({ store, now });
   const { conversationId } = await store.createConversation(now());
   const llm = new ScriptedLlm({}, { talk });
+  /** 端末に出した行 */
+  const logged: string[] = [];
   const backend = new StubBackend({
     candidates: {
       lora: options.loras ?? [
@@ -68,6 +70,7 @@ async function setup(
     ...(options.jobSummaryError !== undefined && {
       jobSummary: () => Promise.reject(options.jobSummaryError),
     }),
+    log: (line) => logged.push(line),
     now,
   });
   const say = async (text: string) => {
@@ -77,7 +80,7 @@ async function setup(
   };
   const events = async () => (await store.readEvents(conversationId)).events;
   const types = async () => (await events()).map((e) => e.type);
-  return { store, hubs, llm, runner, conversationId, say, events, types };
+  return { store, hubs, llm, runner, conversationId, say, events, types, logged };
 }
 
 const textOf = (call: TalkStepCall | undefined) =>
@@ -337,6 +340,25 @@ describe('TalkRunner', () => {
     });
   });
 
+  // 画面を見ていなくても気づけるように、失敗で閉じたターンは端末に1行出す。言葉は画面の失敗の行にそろえる
+  it('logs one line, in the words of the screen, when a turn ends as an error', async () => {
+    const { say, logged, conversationId } = await setup(() => ({ text: '描けます。' }), {
+      limitsError: new Error('設定が読めない'),
+    });
+    await say('描いて');
+
+    expect(logged).toEqual([
+      `drawroid: 応答が失敗した（会話 ${conversationId}）: ターンが失敗した: 設定が読めない`,
+    ]);
+  });
+
+  it('logs nothing when a turn ends well', async () => {
+    const { say, logged } = await setup(() => ({ text: '描けます。' }));
+    await say('描いて');
+
+    expect(logged).toEqual([]);
+  });
+
   it('closes the turn as an error, with the reason, when a tool call fails the schema', async () => {
     const { say, events } = await setup(() => ({
       toolCalls: [{ name: 'search_candidates', input: { kind: 'nope' } }],
@@ -384,7 +406,7 @@ describe('TalkRunner', () => {
   it('interrupts the turn for the messages that arrived during it, and reads them together in the next turn', async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => (release = resolve));
-    const { runner, hubs, conversationId, events, llm } = await setup(async (_call, n) => {
+    const { runner, hubs, conversationId, events, llm, logged } = await setup(async (_call, n) => {
       if (n === 0) await gate;
       return { text: `返答 ${n}` };
     });
@@ -413,6 +435,8 @@ describe('TalkRunner', () => {
         .filter((e) => e.type === 'turn.ended')
         .map((e) => (e.type === 'turn.ended' ? e.outcome : '')),
     ).toEqual(['interrupted', 'done']);
+    // 打ち切りは失敗ではないので、端末には出さない
+    expect(logged).toEqual([]);
     // 1つ目のターンは、LLM を呼ぶ前に打ち切られた。呼ばれたのは2つ目のターンの1回だけ
     expect(llm.steps).toHaveLength(1);
   });
