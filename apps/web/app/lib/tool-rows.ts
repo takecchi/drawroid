@@ -38,7 +38,22 @@ function withoutJobIds(text: string): string {
 function firstSentence(text: string): string {
   const end = text.indexOf('。');
   const sentence = end < 0 ? text : text.slice(0, end + 1);
-  return sentence.length <= SUMMARY_MAX ? sentence : `${sentence.slice(0, SUMMARY_MAX)}…`;
+  return sentence.length <= SUMMARY_MAX
+    ? sentence
+    : `${outsideOpenBrackets(sentence.slice(0, SUMMARY_MAX))}…`;
+}
+
+/**
+ * 切った文から、閉じていない括弧（）の中を落とす。括弧の中は URL や失敗の符号などの詳しいことで、
+ * 途中で切ると「（ECONNREF…」のような読めない切れ端になるため（全文は「詳しく」に残す）
+ */
+function outsideOpenBrackets(clipped: string): string {
+  const opens: number[] = [];
+  for (let i = 0; i < clipped.length; i++) {
+    if (clipped[i] === '（') opens.push(i);
+    else if (clipped[i] === '）') opens.pop();
+  }
+  return opens.length === 0 ? clipped : clipped.slice(0, opens[0]);
 }
 
 /**
