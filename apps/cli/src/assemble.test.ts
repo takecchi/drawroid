@@ -3,6 +3,8 @@
 // 部品の試験からは見えないため、組み立てそのものを呼ぶ
 import { EventEmitter } from 'node:events';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -256,6 +258,40 @@ describe('assembleDrawroid and the signals to stop', () => {
     signals.emit(signal);
 
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(code));
+  });
+});
+
+// LLM から読んだ窓は、端末に1行ずつ出す。名前の合わないモデルから読んだときは、どの id から読んだかを添える（#432）
+describe('assembleDrawroid, telling the window it read from the LLM', () => {
+  it('names the model it read the window from when the server lists only that one under another name', async () => {
+    const llm = createServer((req, res) => {
+      if (req.url === '/v1/models') {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ data: [{ id: '/models/a.gguf', meta: { n_ctx: 8192 } }] }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) => llm.listen(0, '127.0.0.1', resolve));
+    const { port } = llm.address() as AddressInfo;
+    try {
+      await writeLlmSettings(join(root, 'config.json'), {
+        providers: {
+          local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${port}/v1` },
+        },
+        roles: { think: { provider: 'local', model: 'qwen' } },
+      });
+      const written: string[] = [];
+
+      await start(undefined, undefined, (text) => written.push(text));
+
+      expect(written).toContain(
+        'drawroid: think の役の文脈の上限を LLM から読んだ: 8192（/v1/models に1つだけあるモデル /models/a.gguf の窓。設定のモデル名とは一致しない）\n',
+      );
+    } finally {
+      await new Promise((resolve) => llm.close(resolve));
+    }
   });
 });
 
