@@ -341,6 +341,45 @@ describe('assembleDrawroid, telling the window it read from the LLM', () => {
   });
 });
 
+// LLM の設定の保存では、contextTokens を書かない役の窓を LLM から読んで予算と比べる。読んだ行は保存のときには出さない（#502）
+describe('assembleDrawroid, saving LLM settings that leave the window out', () => {
+  it('refuses settings whose window read from the LLM is too small for the budgets, without telling it read the window', async () => {
+    const llm = createServer((req, res) => {
+      if (req.url === '/v1/models') {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ data: [{ id: 'qwen', meta: { n_ctx: 1500 } }] }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) => llm.listen(0, '127.0.0.1', resolve));
+    const { port } = llm.address() as AddressInfo;
+    try {
+      const written: string[] = [];
+      const listening = await start(undefined, undefined, (text) => written.push(text));
+      const startup = written.length;
+
+      const response = await fetch(`http://127.0.0.1:${listening.address.port}/api/settings/llm`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          providers: {
+            local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${port}/v1` },
+          },
+          roles: { think: { provider: 'local', model: 'qwen' } },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain('1500');
+      expect(written.slice(startup).filter((text) => text.includes('LLM から読んだ'))).toEqual([]);
+    } finally {
+      await new Promise((resolve) => llm.close(resolve));
+    }
+  });
+});
+
 // 予算の欄ごとの上限の和が窓を超えていても、起動は止めない。端末に1行だけ知らせる
 describe('assembleDrawroid with budgets that do not fit the window', () => {
   const llmWith = (contextTokens: number) => ({
