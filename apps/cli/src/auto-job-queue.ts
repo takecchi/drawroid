@@ -136,6 +136,10 @@ export class AutoJobQueue implements AutoJobQueuePort {
     return this.runner.addReference(jobId, reference);
   }
 
+  addReferences(jobId: string, references: readonly NewReference[]): Promise<ReferenceRecord[]> {
+    return this.runner.addReferences(jobId, references);
+  }
+
   addMask(jobId: string, mask: NewMask): Promise<MaskIntervention> {
     return this.runner.addMask(jobId, mask);
   }

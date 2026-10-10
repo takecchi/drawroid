@@ -803,7 +803,14 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     await expect(runner.addInstruction(spec.jobId, '逆光にして')).rejects.toThrow(
       InterventionRejectedError,
     );
+    await expect(
+      runner.addReferences(spec.jobId, [
+        { data: new Uint8Array([1]), mediaType: 'image/png' },
+        { data: new Uint8Array([2]), mediaType: 'image/png' },
+      ]),
+    ).rejects.toThrow(InterventionRejectedError);
     expect(await store.listInterventions(spec.jobId)).toEqual([]);
+    expect(await store.listReferences(spec.jobId)).toEqual([]);
   });
 
   it('refuses every kind of intervention on a manual job, with the reason manual', async () => {
@@ -834,7 +841,11 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
     await expect(
       runner.addReference(manual.jobId, { data: new Uint8Array([1]), mediaType: 'image/png' }),
     ).rejects.toMatchObject(rejected);
+    await expect(
+      runner.addReferences(manual.jobId, [{ data: new Uint8Array([1]), mediaType: 'image/png' }]),
+    ).rejects.toMatchObject(rejected);
     expect(await store.listInterventions(manual.jobId)).toEqual([]);
+    expect(await store.listReferences(manual.jobId)).toEqual([]);
   });
 
   it('refuses a change that would leave the job with no way to stop, and writes nothing', async () => {
