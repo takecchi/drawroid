@@ -412,7 +412,7 @@ describe('assembleDrawroid with budgets that do not fit the window', () => {
 });
 
 // 窓を書かずに LLM の設定を保存したとき: 窓は /v1/models から読む。読めなかったら比べられなかったことを応答で返し、読みは1回で済ませる
-describe('assembleDrawroid, saving LLM settings that leave the window out', () => {
+describe('assembleDrawroid, telling what it compared and reading the window once when saving LLM settings', () => {
   type ModelsHandler = (res: import('node:http').ServerResponse) => void;
 
   /** /v1/models の問い合わせの数を数える偽の LLM を立てて、window を書かない設定を PUT する */
