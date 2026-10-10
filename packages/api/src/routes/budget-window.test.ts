@@ -203,6 +203,29 @@ describe('saving budgets and LLM settings at the same time', () => {
     expect(findInputOverflows(saved, currentWindows)).toEqual([]);
   });
 
+  // 予算を書くのにも時間がかかる（本物は config.json を書く）。比べてから書き終えるまで列を空けないと、
+  // 後から来た LLM の設定の保存が、まだ書かれていない古い予算と比べて通る
+  it('takes only one of them when writing the budgets takes a while, too', async () => {
+    currentWindows = { think: WIDE, judge: WIDE };
+    const { app, budgetSettings } = makeApp();
+    const write = budgetSettings.write;
+    budgetSettings.write = async (overrides) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return write(overrides);
+    };
+
+    const statuses = (
+      await Promise.all([
+        put(app, '/settings/budgets', heavyCandidates),
+        put(app, '/settings/llm', llmWith(ROOMY.contextTokens)),
+      ])
+    ).map((res) => res.status);
+
+    expect(statuses.toSorted()).toEqual([200, 400]);
+    const saved = (await budgetSettings.read()).effective;
+    expect(findInputOverflows(saved, currentWindows)).toEqual([]);
+  });
+
   // 列に並べても、書くのに失敗した保存で、後ろの保存まで止めない
   it('still saves after a save that failed to write', async () => {
     const { app, budgetSettings } = makeApp();
