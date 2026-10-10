@@ -415,10 +415,12 @@ describe('assembleDrawroid, saving LLM settings that leave the window out', () =
     }
   }
 
-  const answersWith = (nCtx: number): ModelsHandler => (res) => {
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ data: [{ id: 'm', meta: { n_ctx: nCtx } }] }));
-  };
+  const answersWith =
+    (nCtx: number): ModelsHandler =>
+    (res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ data: [{ id: 'm', meta: { n_ctx: nCtx } }] }));
+    };
 
   it('saves and says in the response that it did not compare with the window when /v1/models fails', async () => {
     const saved = await saveWith((res) => {

@@ -26,7 +26,7 @@ import type {
   ChangeStopConditionsResponse,
   CreateAutoJobResponse,
   LlmSettingsInput,
-  LlmSettingsResponse,
+  SavedLlmSettings,
   PermissionOverridesInput,
   PermissionSettingsResponse,
   ReferenceUpload,
@@ -91,10 +91,11 @@ export async function deleteMemoryItem(id: string): Promise<void> {
  * LLM の設定を保存する。形が違うとき・組み立てられないとき（provider が無い、API キーの環境変数が入っていない、など）は
  * ApiError（kind: 'invalid_request'）を投げ、message に理由が入る
  */
-export async function saveLlmSettings(config: LlmSettingsInput): Promise<LlmSettingsResponse> {
-  const saved = await unwrap<LlmSettingsResponse>(() => client.settings.llm.$put({ json: config }));
-  // 保存の応答は読む口と同じ形なので、取り直さずにそのまま置く
-  await mutate(keys.llmSettings, saved, { revalidate: false });
+export async function saveLlmSettings(config: LlmSettingsInput): Promise<SavedLlmSettings> {
+  const saved = await unwrap<SavedLlmSettings>(() => client.settings.llm.$put({ json: config }));
+  // 読む口と同じ形の分（config と apiKeyEnv）だけを、取り直さずに置く: 比べなかった知らせは、その保存だけのものなので読む口の値に混ぜない
+  const { config: savedConfig, apiKeyEnv } = saved;
+  await mutate(keys.llmSettings, { config: savedConfig, apiKeyEnv }, { revalidate: false });
   return saved;
 }
 

@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
 import { describeIssues, invalidConfig, invalidRequest } from '../errors.js';
-import { inWindowCheckLine, windowProblem } from '../input-windows.js';
+import { checkWindows, inWindowCheckLine } from '../input-windows.js';
 import { jsonBody } from '../validate.js';
 
 /** 値ではなく、名前と「入っているか」だけを返す */
@@ -42,17 +42,21 @@ export function llmSettingsRoutes(deps: ApiDeps) {
           return invalidRequest(c, reason);
         }
         // 窓が今の予算に足りない設定は保存しない: 保存すると、ジョブが入力を組む段で必ず止まるため（architecture の予算）
-        const problem = await inWindowCheckLine(deps, async () => {
-          const found = await windowProblem(
+        const { problem, notCompared } = await inWindowCheckLine(deps, async () => {
+          const found = await checkWindows(
             deps,
             (await deps.budgetSettings.read()).effective,
             config,
           );
-          if (found === undefined) await deps.llmSettings.write(config);
+          if (found.problem === undefined) await deps.llmSettings.write(config);
           return found;
         });
         if (problem !== undefined) return invalidRequest(c, problem);
-        return c.json(view(config), 200);
+        // 比べられなかった保存も断らない。比べなかったことだけ、応答に足して知らせる
+        return c.json(
+          { ...view(config), ...(notCompared !== undefined && { windowNotCompared: notCompared }) },
+          200,
+        );
       })
   );
 }
