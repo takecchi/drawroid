@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 
+import { requestBodyLimit } from './body-limit.js';
 import type { ApiDeps } from './deps.js';
 import { handleUncaught } from './errors.js';
 import { autoJobsRoutes } from './routes/auto-jobs.js';
@@ -61,9 +62,11 @@ export type {
 export type { ApiErrorBody } from './errors.js';
 export { describeStorageFailure } from './errors.js';
 
-// 機能ごとのルートは routes/ に1ファイルずつ置き、ここには1行ずつ足す
+// 機能ごとのルートは routes/ に1ファイルずつ置き、ここには1行ずつ足す。
+// 本文の上限はルートごとに付けず、ここで全体にかける: ルートを足したときに付け忘れないため
 export function createApi(deps: ApiDeps) {
   return new Hono()
+    .use('*', requestBodyLimit)
     .route('/health', healthRoutes)
     .route('/backend', backendRoutes(deps))
     .route('/settings/backend', backendSettingsRoutes(deps))

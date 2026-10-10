@@ -113,6 +113,40 @@ describe('createApp, when the Web UI has not been built', () => {
   });
 });
 
+describe('createApp, sent a body larger than the API takes', () => {
+  const manualRequest = { prompt: 'a cat', steps: 4, cfgScale: 7, width: 64, height: 64 };
+  const padded = (body: unknown, bytes: number) => {
+    const json = JSON.stringify(body);
+    return json + ' '.repeat(bytes - Buffer.byteLength(json));
+  };
+
+  it('refuses a body over 1 MiB under /api with 413', async () => {
+    const text = padded(manualRequest, 1024 * 1024 + 1);
+    const res = await app.request('/api/jobs/manual', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': String(text.length) },
+      body: text,
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: { kind: 'payload_too_large' } });
+  });
+
+  it('still takes a body over 1 MiB under /api on a route that carries images', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'drawroid-server-'));
+    try {
+      const text = padded({ request: '猫の絵' }, 2 * 1024 * 1024);
+      const res = await createApp({ webRoot, deps: stubDeps(root) }).request('/api/jobs/auto', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': String(text.length) },
+        body: text,
+      });
+      expect(res.status).toBe(202);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('createApp, asked under a name other than this machine', () => {
   // DNS rebinding: 別のサイトの名前を 127.0.0.1 へ向け直すと、ブラウザはそのサイトの名前（Host）のまま、ここへ要求を送る
   it.each([
