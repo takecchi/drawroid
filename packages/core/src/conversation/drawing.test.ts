@@ -171,6 +171,78 @@ describe('narrowPermissions', () => {
     });
   });
 
+  // 話す役が固定する値の、安全のための上限。人間が AI に任せたものでも、これを超えて固定させない
+  describe('a fixed value past the safety limit', () => {
+    const humanLeavesAll = mergePermissions(human, {
+      width: { mode: 'auto' },
+      height: { mode: 'auto' },
+      steps: { mode: 'auto' },
+      prompt: { mode: 'auto' },
+      negativePrompt: { mode: 'auto' },
+      hiresFix: { mode: 'auto' },
+    });
+    const listsWithUpscaler = { ...lists, upscaler: ['R-ESRGAN 4x+'] };
+    const hires = (extra: Record<string, unknown>) => ({
+      mode: 'fixed',
+      value: { upscaler: 'R-ESRGAN 4x+', scale: 2, steps: 0, denoisingStrength: 0.4, ...extra },
+    });
+    const long = (length: number) => 'あ'.repeat(length);
+
+    it.each([
+      ['steps over 150', { steps: { mode: 'fixed', value: 151 } }, 'steps'],
+      ['a width over 4096', { width: { mode: 'fixed', value: 4097 } }, '幅'],
+      ['a height over 4096', { height: { mode: 'fixed', value: 4097 } }, '高さ'],
+      ['a Hires. fix scale over 4', { hiresFix: hires({ scale: 4.01 }) }, 'Hires. fix'],
+      [
+        'a prompt over 4000 characters',
+        { prompt: { mode: 'fixed', value: long(4001) } },
+        'プロンプト',
+      ],
+      [
+        'a negative prompt over 4000 characters',
+        { negativePrompt: { mode: 'fixed', value: long(4001) } },
+        'ネガティブプロンプト',
+      ],
+      [
+        'a second-pass prompt over 4000 characters',
+        { hiresFix: hires({ prompt: long(4001) }) },
+        'プロンプト',
+      ],
+    ] as const)('refuses %s, naming the parameter', (_, requested, label) => {
+      const result = narrowPermissions(humanLeavesAll, requested, listsWithUpscaler);
+
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reason).toContain(label);
+      expect(!result.ok && result.reason).toContain('上限');
+    });
+
+    it('takes values right at the limits', () => {
+      expect(
+        narrowPermissions(
+          humanLeavesAll,
+          {
+            steps: { mode: 'fixed', value: 150 },
+            width: { mode: 'fixed', value: 4096 },
+            height: { mode: 'fixed', value: 4096 },
+            hiresFix: hires({ scale: 4, prompt: long(4000) }),
+            prompt: { mode: 'fixed', value: long(4000) },
+            negativePrompt: { mode: 'fixed', value: long(4000) },
+          },
+          listsWithUpscaler,
+        ),
+      ).toMatchObject({ ok: true });
+    });
+
+    // 上限は話す役の求めにだけ掛ける。人間が固定した値は、人間の決めたこととしてそのまま通す
+    it('leaves a value the human fixed past the limit as it is', () => {
+      const humanFixedLarge = mergePermissions(human, { steps: { mode: 'fixed', value: 200 } });
+
+      expect(
+        narrowPermissions(humanFixedLarge, { steps: { mode: 'fixed', value: 200 } }, lists),
+      ).toMatchObject({ ok: true });
+    });
+  });
+
   it('refuses a fixed value of the wrong shape', () => {
     expect(narrowPermissions(human, { steps: { mode: 'fixed', value: 'many' } }, lists).ok).toBe(
       false,
