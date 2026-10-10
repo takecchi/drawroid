@@ -17,7 +17,7 @@ import {
 import type { ZodType } from 'zod';
 
 import { createFileExclusive, createJsonExclusive, writeJsonAtomic } from './atomic.js';
-import { formatJobId, isJobId, StoredFileError } from './job-store.js';
+import { assertCallId, formatJobId, isJobId, StoredFileError } from './job-store.js';
 import {
   dataPaths,
   EVENT_SEQ_DIGITS,
@@ -176,6 +176,7 @@ export class FsConversationStore implements ConversationStore {
   }
 
   async writeLlmCall(conversationId: string, record: LlmCallRecord): Promise<void> {
+    assertCallId(record.callId);
     const files = this.files(conversationId);
     await mkdir(files.llmCalls, { recursive: true });
     await writeJsonAtomic(files.llmCall(record.callId), record);

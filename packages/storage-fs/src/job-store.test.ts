@@ -560,6 +560,32 @@ describe('FsJobStore LLM call records', () => {
     const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
     expect(await jobs.listLlmCalls(a.jobId)).toEqual([]);
   });
+
+  // callId もパスになる。jobId と同じく、置き場所の入口で形を確かめる
+  it.each(['20261009-063000-abc123/../../x', '../x', '..', '.', '', 'a/b', 'a\\b', 'x.json'])(
+    'refuses the call ID %j that is not a plain name, and writes nothing',
+    async (callId) => {
+      const jobs = store();
+      const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
+
+      await expect(jobs.writeLlmCall(record(callId, a.jobId))).rejects.toThrow('callId');
+      await expect(jobs.writeLlmCall(record(callId, null))).rejects.toThrow('callId');
+      expect(await readdir(root)).not.toContain('x.json');
+      expect(await jobs.listLlmCalls(a.jobId)).toEqual([]);
+    },
+  );
+
+  it('takes the call IDs the runners make', async () => {
+    const jobs = store();
+    const a = await jobs.createJob(autoSpec, queuedAuto, new Date('2026-10-09T06:30:00Z'));
+    await jobs.writeLlmCall(record('20261009T063012000Z-0a1b2c', a.jobId));
+    await jobs.writeLlmCall(record('scripted-0-0', null));
+
+    expect((await jobs.listLlmCalls(a.jobId)).map((r) => r.callId)).toEqual([
+      '20261009T063012000Z-0a1b2c',
+    ]);
+    expect((await jobs.listLlmCalls(null)).map((r) => r.callId)).toEqual(['scripted-0-0']);
+  });
 });
 
 describe('FsJobStore selections', () => {
