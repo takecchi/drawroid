@@ -128,7 +128,7 @@ export function BudgetSettings() {
           </Button>
         </form>
       )}
-      {problems.length === 1 && <ErrorNote>保存できない: {problems[0]}</ErrorNote>}
+      {problems.length >= 1 && <ErrorNote>保存できない: {problems[0]}</ErrorNote>}
       {problems.length > 1 && (
         <ErrorNote>
           保存できない:
