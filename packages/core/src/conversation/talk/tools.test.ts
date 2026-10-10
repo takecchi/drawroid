@@ -245,58 +245,93 @@ describe('describe_backend', () => {
 });
 
 describe('drawing_status', () => {
-  const started = (jobId: string, seq: number): ConversationEvent => ({
-    type: 'job.started',
-    jobId,
-    request: '夕焼け',
-    stopConditions: { aiJudgement: false },
-    seq,
-    at,
+  type Stored = { conversationId: string; kind?: string; state: Record<string, unknown> };
+  /** 置き場所にあるジョブ。ID の並び順は問わない（ツールが時刻順に引く） */
+  const storeOf = (stored: Record<string, Stored>) => {
+    const read: string[] = [];
+    const jobs = {
+      listJobIds: async () => Object.keys(stored),
+      readJob: async (jobId: string) => ({
+        jobId,
+        kind: stored[jobId]?.kind ?? 'auto',
+        conversationId: stored[jobId]?.conversationId,
+      }),
+      readState: async (jobId: string) => {
+        read.push(jobId);
+        return stored[jobId]?.state;
+      },
+    } as unknown as JobStore;
+    return { jobs, read };
+  };
+  const queued = (conversationId = 'c1'): Stored => ({
+    conversationId,
+    state: { status: 'queued' },
   });
 
   it('reads the state of the latest job of the conversation', async () => {
-    const read: string[] = [];
-    const jobs = {
-      readState: async (jobId: string) => {
-        read.push(jobId);
-        return { status: 'queued' };
-      },
-    } as unknown as JobStore;
+    const { jobs, read } = storeOf({
+      '20261010-100000-aaaaaa': queued(),
+      '20261010-120000-cccccc': queued(),
+      '20261010-110000-bbbbbb': queued(),
+    });
     const { run } = setup({ jobs });
 
-    const outcome = await run(
-      'drawing_status',
-      {},
-      { events: [started('job-old', 1), started('job-new', 2)] },
-    );
+    const outcome = await run('drawing_status', {});
 
-    expect(read).toEqual(['job-new']);
-    expect(outcome.result).toContain('job-new');
-    expect(outcome.result).not.toContain('job-old');
+    expect(read).toEqual(['20261010-120000-cccccc']);
+    expect(outcome.result).toContain('20261010-120000-cccccc');
+  });
+
+  it('says there is no job when the conversation has none', async () => {
+    const { jobs, read } = storeOf({
+      '20261010-100000-aaaaaa': queued('c2'),
+      '20261010-110000-bbbbbb': { ...queued(), kind: 'manual' },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.summary).toBe('ジョブは無い');
+    expect(read).toEqual([]);
+  });
+
+  it('skips the jobs of other conversations', async () => {
+    const { jobs, read } = storeOf({
+      '20261010-100000-aaaaaa': queued(),
+      '20261010-110000-bbbbbb': queued('c2'),
+    });
+    const { run } = setup({ jobs });
+
+    await run('drawing_status', {});
+
+    expect(read).toEqual(['20261010-100000-aaaaaa']);
   });
 
   it('names which image of which iteration is the best', async () => {
-    const jobs = {
-      readState: async () => ({
-        status: 'stopped',
-        reason: { kind: 'adopted', detail: '人間が画像を選んだ' },
-        carry: {
-          intent: '夕焼け',
-          completedIterations: 2,
-          best: {
-            iteration: 2,
-            imageIndex: 1,
-            score: 1,
-            params: {},
-            issues: [],
-            nextChange: '',
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: {
+          status: 'stopped',
+          reason: { kind: 'adopted', detail: '人間が画像を選んだ' },
+          carry: {
+            intent: '夕焼け',
+            completedIterations: 2,
+            best: {
+              iteration: 2,
+              imageIndex: 1,
+              score: 1,
+              params: {},
+              issues: [],
+              nextChange: '',
+            },
           },
         },
-      }),
-    } as unknown as JobStore;
+      },
+    });
     const { run } = setup({ jobs });
 
-    const outcome = await run('drawing_status', {}, { events: [started('job-1', 1)] });
+    const outcome = await run('drawing_status', {});
 
     expect(outcome.result).toContain('最良は 2 回目の 2枚目（1.00）');
     expect(outcome.result).toContain('止まった理由: 人間が画像を選んだ');

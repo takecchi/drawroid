@@ -15,6 +15,7 @@ import type { MemoryStore } from '../../memory/store.js';
 import type { ParamKey } from '../../params/param-key.js';
 import type { Permissions } from '../../permissions/permission.js';
 import { candidateNamesOf, talkImageLabel } from '../drawing.js';
+import { latestJobOfConversation } from '../drawing-tools.js';
 import type { ConversationEvent } from '../events.js';
 import type { TalkLimits } from './limits.js';
 
@@ -194,14 +195,14 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
     description:
       'この会話で描いているジョブの今の状態（回・最良候補の点数）を調べる。人間に「今どう？」と聞かれたときに使う。',
     inputSchema: noInput,
-    async run(_input, { events }) {
-      const started = events.filter((e) => e.type === 'job.started').at(-1);
-      if (started === undefined || started.type !== 'job.started') {
+    async run(_input, { conversationId }) {
+      const jobId = await latestJobOfConversation(deps.jobs, conversationId);
+      if (jobId === undefined) {
         return { ok: true, result: 'この会話で描いているジョブは無い', summary: 'ジョブは無い' };
       }
-      const state = await deps.jobs.readState(started.jobId);
+      const state = await deps.jobs.readState(jobId);
       const carry = state.carry;
-      const parts = [`ジョブ ${started.jobId}: ${state.status}`];
+      const parts = [`ジョブ ${jobId}: ${state.status}`];
       if (carry !== undefined) {
         parts.push(`${carry.completedIterations} 回済み`);
         if (carry.best !== undefined)

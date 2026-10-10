@@ -42,6 +42,21 @@ export type DrawingRunner = {
   addReferences(jobId: string, references: readonly NewReference[]): Promise<ReferenceRecord[]>;
 };
 
+/**
+ * 会話の最新のジョブ（止まったものも含む）。ジョブ ID は時刻順に並ぶので、新しい方から探す。
+ * 会話のイベントからは引かない: 実行器がターンの始めに読んだイベントには、そのターンで始めたジョブが載らないため
+ */
+export async function latestJobOfConversation(
+  jobs: Pick<JobStore, 'listJobIds' | 'readJob'>,
+  conversationId: string,
+): Promise<string | undefined> {
+  for (const jobId of (await jobs.listJobIds()).sort().reverse()) {
+    const spec = await jobs.readJob(jobId);
+    if (spec.kind === 'auto' && spec.conversationId === conversationId) return jobId;
+  }
+  return undefined;
+}
+
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
 export async function activeJobOfConversation(
   jobs: Pick<JobStore, 'listJobIds' | 'readJob' | 'readState'>,

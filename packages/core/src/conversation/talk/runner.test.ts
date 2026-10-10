@@ -33,6 +33,8 @@ async function setup(
     limitsError?: Error;
     /** 会話のジョブの要約を、この誤りで失敗させる */
     jobSummaryError?: Error;
+    /** ジョブの置き場所。省けば何も読めない */
+    jobs?: JobStore;
   } = {},
 ) {
   const store = new MemoryConversationStore();
@@ -60,7 +62,11 @@ async function setup(
     hubs,
     llm: () => (options.llm === false ? undefined : (options.wrap?.(llm) ?? llm)),
     tools: [
-      ...createReadOnlyTools({ backend, permissions: async () => permissions, jobs: noJobs }),
+      ...createReadOnlyTools({
+        backend,
+        permissions: async () => permissions,
+        jobs: options.jobs ?? noJobs,
+      }),
       ...(options.extraTools ?? []),
     ],
     limits: async () => {
@@ -566,6 +572,50 @@ describe('TalkRunner', () => {
     expect(next).toContain('ツール describe_backend');
     expect(next).toContain('ツール drawing_status');
     expect(next.split('まず調べます。')).toHaveLength(2);
+  });
+
+  it('reports the drawing started earlier in the same turn', async () => {
+    const stored = new Map<string, { conversationId: string; status: string }>();
+    const jobs = {
+      listJobIds: async () => [...stored.keys()].sort(),
+      readJob: async (jobId: string) => ({
+        kind: 'auto',
+        jobId,
+        conversationId: stored.get(jobId)?.conversationId,
+      }),
+      readState: async (jobId: string) => ({ status: stored.get(jobId)?.status }),
+    } as unknown as JobStore;
+    const ref: { hubs?: ConversationHubs } = {};
+    // 描くツールと同じ順で、置き場所にジョブを作ってから job.started を確定する
+    const startDrawing: TalkTool = {
+      name: 'start_drawing',
+      description: '試験用。描き始める',
+      inputSchema: z.object({}),
+      run: async (_input, { conversationId }) => {
+        stored.set('20261010-200902-44264c', { conversationId, status: 'running' });
+        await ref.hubs?.get(conversationId).confirm({
+          type: 'job.started',
+          jobId: '20261010-200902-44264c',
+          request: '夕焼け',
+          stopConditions: { aiJudgement: false },
+        });
+        return { ok: true, result: '描き始めた', summary: '描き始めた' };
+      },
+    };
+    const { say, events, hubs } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'start_drawing', input: {} }] }
+          : n === 1
+            ? { toolCalls: [{ name: 'drawing_status', input: {} }] }
+            : { text: '描いています' },
+      { extraTools: [startDrawing], jobs },
+    );
+    ref.hubs = hubs;
+    await say('夕焼けを描いて');
+
+    const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e] : []));
+    expect(results.map((r) => r.summary)).toEqual(['描き始めた', 'running']);
   });
 
   it('closes the turn as an error when no LLM is set up', async () => {
