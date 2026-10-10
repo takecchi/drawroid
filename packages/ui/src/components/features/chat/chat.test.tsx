@@ -117,6 +117,16 @@ describe('GenerationProgress', () => {
     );
   });
 
+  it('stops the spinning mark while stalled, and spins it otherwise', () => {
+    const { container, rerender } = render(<GenerationProgress iteration={2} progress={0.35} />);
+    expect(container.querySelector('svg')?.classList.contains('animate-spin')).toBe(true);
+
+    rerender(<GenerationProgress iteration={2} progress={0.35} stalled />);
+
+    expect(container.querySelector('svg')).toBeTruthy();
+    expect(container.querySelector('svg')?.classList.contains('animate-spin')).toBe(false);
+  });
+
   it('says only that it is generating when the backend reports no progress', () => {
     render(<GenerationProgress />);
 

@@ -119,6 +119,15 @@ describe('SelectionControls', () => {
     }
   });
 
+  // 名前は画像ごとに変えても、見える文字は変えない: 枡の中では、どの画像かは位置で分かる
+  it('keeps the visible text of the favorite button as it is, whatever its name says', () => {
+    renderControls(null);
+
+    expect(screen.getByRole('button', { name: 'お気に入り: 1 回目の画像 1 番' }).textContent).toBe(
+      'お気に入り',
+    );
+  });
+
   it('shows the reason when the selection cannot be saved', async () => {
     const { ApiError } = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
     select.mockRejectedValue(new ApiError('not_found', '画像が無い', 404));
