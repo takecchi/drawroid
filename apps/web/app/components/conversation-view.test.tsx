@@ -766,6 +766,47 @@ describe('ConversationView', () => {
     expect(screen.queryAllByRole('button', { name: /^この画像に決める: / })).toHaveLength(0);
   });
 
+  // 決めるとジョブは止まり、止まった知らせが決めた知らせより先に届くことがある。その間も、決めた行は決めた印のまま、フォーカスも印に残る
+  it('keeps the mark and the focus where the person decided, when the job stops before the choice is recorded', async () => {
+    vi.mocked(adoptImage).mockResolvedValue({ adopted: { iteration: 1, index: 0 } } as never);
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({
+        type: 'job.images',
+        jobId: JOB,
+        iteration: 1,
+        images: [
+          { index: 0, seed: 1 },
+          { index: 1, seed: 2 },
+        ],
+      }),
+    );
+    screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }).focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+    const mark = await screen.findByText('この画像に決めた');
+    expect(document.activeElement).toBe(mark);
+
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: ADOPTED_STOP }));
+    // 決めていない行は、止まったのでお気に入りの口に変わる。決めた行は印のまま
+    await screen.findByRole('button', {
+      name: 'この画像に決める（お気に入りにする）: 1 回目の画像 2 番',
+    });
+    expect(document.activeElement).toBe(screen.getByText('この画像に決めた'));
+
+    stream.emit(
+      confirmed({
+        type: 'job.adopted',
+        jobId: JOB,
+        iteration: 1,
+        image: { iteration: 1, index: 0 },
+      }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText('この画像に決めた')));
+  });
+
   it('reads the backend again once when a job stops because the backend failed', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);

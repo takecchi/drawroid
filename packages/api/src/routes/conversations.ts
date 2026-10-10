@@ -108,6 +108,27 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
   const heartbeat = conversations.heartbeat ?? defaultHeartbeat;
   const intake = createMessageIntake(conversations);
   const missing = (id: string) => `会話 ${id} は無い`;
+  // 一覧の要約を、会話ごとに最後のイベントの seq と組で覚える（メモリの中だけ。索引のファイルは作らない）。
+  // 一覧の画面は数秒ごとに読み直すので、変わっていない会話の末尾まで毎回読むと、会話が溜まるほど重くなるため
+  const summaries = new Map<
+    string,
+    { seq: number; summary: Awaited<ReturnType<typeof summarize>> }
+  >();
+
+  /**
+   * 会話の要約。最後のイベントを1件だけ読み、その seq が覚えたものと同じなら覚えた要約を使う。違えば末尾から読み直す。
+   * 毎回ファイルの最後の seq と比べるので、別のプロセスが足したイベントや、起動し直したあとも古い要約を返さない
+   */
+  // seq で比べ、時刻やファイルの更新時刻では比べない: 確定したイベントは足されるだけで書き換えられないので、最後の seq が同じなら中身も同じため
+  async function summaryOf(conversation: { conversationId: string; createdAt: string }) {
+    const [last] = await store.readEventsBefore(conversation.conversationId, { limit: 1 });
+    const seq = last?.seq ?? 0;
+    const known = summaries.get(conversation.conversationId);
+    if (known !== undefined && known.seq === seq) return known.summary;
+    const summary = await summarize(store, conversation);
+    summaries.set(conversation.conversationId, { seq, summary });
+    return summary;
+  }
 
   return (
     new Hono()
@@ -115,8 +136,14 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         const ids = (await store.listConversationIds()).sort().reverse();
         const list = [];
         for (const conversationId of ids) {
+          // タイトルは覚えない: 名前の変更（PATCH）はイベントを足さないので、seq では変わったことが分からないため
           const conversation = await store.readConversation(conversationId);
-          list.push({ ...conversation, ...(await summarize(store, conversation)) });
+          list.push({ ...conversation, ...(await summaryOf(conversation)) });
+        }
+        // 消えた会話の要約は手放す
+        const listed = new Set(ids);
+        for (const conversationId of summaries.keys()) {
+          if (!listed.has(conversationId)) summaries.delete(conversationId);
         }
         // 最後に何かが起きた順（新しい順）に並べる: 作った順だと、前に作って今も続けている会話が下に埋もれるため。
         // 同じ時刻は作った順（ID の降順）のまま

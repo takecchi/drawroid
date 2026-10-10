@@ -289,7 +289,10 @@ function ImageDecision({
     iteration.adopted.image.iteration === iteration.iteration &&
     iteration.adopted.image.index === index;
   const imageLabel = imageTitle(iteration.iteration, index);
-  if (stopped && !chosen) {
+  // ここで決めたら、記録（adopted）が追いつく前にジョブが止まっても、採るボタン（決めた印）のままにする:
+  // お気に入りのボタンへ差し替えると、決めた印が作り直され、印へ移したフォーカスが落ちるため
+  const [decidedHere, setDecidedHere] = useState(false);
+  if (stopped && !chosen && !decidedHere) {
     return (
       <ChooseAsFavorite
         jobId={jobId}
@@ -305,6 +308,7 @@ function ImageDecision({
       image={{ iteration: iteration.iteration, index }}
       imageLabel={imageLabel}
       chosen={chosen}
+      onDecided={() => setDecidedHere(true)}
     />
   );
 }
