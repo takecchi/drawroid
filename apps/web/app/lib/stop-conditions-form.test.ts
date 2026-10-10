@@ -107,12 +107,18 @@ describe('neverStops', () => {
 });
 
 describe('buildStopConditionsChange', () => {
-  it('sends every field and clears empty limits with null', () => {
-    const built = buildStopConditionsChange({
-      ...empty,
-      aiJudgement: true,
-      maxIterations: '5',
-    });
+  const edited = {
+    aiJudgement: true,
+    maxIterations: true,
+    maxImages: true,
+    maxDurationMinutes: true,
+  } as const;
+
+  it('sends every edited field and clears an emptied limit with null', () => {
+    const built = buildStopConditionsChange(
+      { ...empty, aiJudgement: true, maxIterations: '5' },
+      edited,
+    );
     expect(built).toEqual({
       ok: true,
       value: { aiJudgement: true, maxIterations: 5, maxImages: null, maxDurationMs: null },
@@ -120,8 +126,16 @@ describe('buildStopConditionsChange', () => {
     if (built.ok) expect(stopConditionsChangeSchema.safeParse(built.value).success).toBe(true);
   });
 
+  it('sends only the edited fields, leaving the others out', () => {
+    const built = buildStopConditionsChange(
+      { aiJudgement: true, maxIterations: '10', maxImages: '', maxDurationMinutes: '5' },
+      { maxImages: true, maxDurationMinutes: true },
+    );
+    expect(built).toEqual({ ok: true, value: { maxImages: null, maxDurationMs: 300_000 } });
+  });
+
   it('rejects an unreadable limit', () => {
-    expect(buildStopConditionsChange({ ...empty, maxImages: 'many' }).ok).toBe(false);
+    expect(buildStopConditionsChange({ ...empty, maxImages: 'many' }, edited).ok).toBe(false);
   });
 });
 
