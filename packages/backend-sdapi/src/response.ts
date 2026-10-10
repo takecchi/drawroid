@@ -1,7 +1,25 @@
 import { BackendError, type GenerationResult } from '@drawroid/core';
 import { z } from 'zod';
 
+import { MAX_IMAGE_BYTES } from './client.js';
+
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** base64 を戻したときのバイト数。戻す前に大きさを確かめるために使う */
+export function decodedLength(base64: string): number {
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/** 画像1枚の大きさが上限の内か。超えていれば、何の画像かを言って投げる */
+export function assertImageWithinLimit(base64: string, what: string, product: string): void {
+  if (decodedLength(base64) > MAX_IMAGE_BYTES) {
+    throw new BackendError(
+      'bad_response',
+      `${what}が大きすぎる（1枚 ${MAX_IMAGE_BYTES / (1024 * 1024)} MB まで）。${product} の設定で、画像の大きさを確かめる`,
+    );
+  }
+}
 
 // info は JSON の文字列で返る。使う欄だけを見る
 const generationInfoSchema = z.looseObject({
@@ -46,6 +64,8 @@ export function readGenerationResponse(
     );
   }
   const images = encoded.map((b64, i) => {
+    // 戻す前に確かめる: 戻してから測ると、大きすぎる画像の分のメモリを先に使ってしまうため
+    assertImageWithinLimit(b64, `${endpoint} の画像`, product);
     const png = Uint8Array.from(Buffer.from(b64, 'base64'));
     if (!PNG_SIGNATURE.every((byte, j) => png[j] === byte)) {
       throw new BackendError(

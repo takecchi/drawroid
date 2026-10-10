@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { BackendError } from '@drawroid/core';
@@ -136,5 +136,131 @@ describe('SdapiClient', () => {
       expect(error.message).toContain(product);
       expect(error.message).not.toContain(other);
     });
+  });
+});
+
+/** 決めた応答を返し、受けた要求を数える偽のサーバ */
+async function serverAnswering(
+  answer: (req: IncomingMessage, res: ServerResponse) => void,
+): Promise<{
+  url: string;
+  requests: { method: string; path: string; body: string }[];
+  close: () => Promise<void>;
+}> {
+  const requests: { method: string; path: string; body: string }[] = [];
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      requests.push({ method: req.method ?? '', path: req.url ?? '', body });
+      answer(req, res);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+async function failureOf(call: Promise<unknown>): Promise<BackendError> {
+  const error: unknown = await call.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(BackendError);
+  return error as BackendError;
+}
+
+describe('SdapiClient, sent elsewhere by a redirect', () => {
+  // 悪意のある・壊れたバックエンドが、別のオリジン（手元の別のサービスなど）へ飛ばしても、追わずに止める
+  it.each([
+    ['GET', 302],
+    ['POST', 307],
+  ] as const)('does not follow a %s redirect to another origin', async (method, status) => {
+    const elsewhere = await serverAnswering((_req, res) => res.end('{"secret":"x"}'));
+    const backend = await serverAnswering((_req, res) => {
+      res.writeHead(status, { location: `${elsewhere.url}/internal` });
+      res.end();
+    });
+    try {
+      const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+      const call =
+        method === 'GET'
+          ? client.getJson('/sdapi/v1/options', z.unknown())
+          : client.postJson('/sdapi/v1/txt2img', { prompt: 'a cat' }, z.unknown());
+
+      const error = await failureOf(call);
+
+      expect(error.kind).toBe('bad_response');
+      expect(error.message).toContain('Forge');
+      expect(error.message).toContain('別の場所');
+      expect(elsewhere.requests).toEqual([]);
+    } finally {
+      await backend.close();
+      await elsewhere.close();
+    }
+  });
+
+  // 同じオリジンの中で移る（末尾の / を足すなど）のは、今までどおり追う
+  it('follows a redirect within the same origin', async () => {
+    const backend = await serverAnswering((req, res) => {
+      if (req.url === '/sdapi/v1/options') {
+        res.writeHead(307, { location: '/sdapi/v1/options/' });
+        res.end();
+        return;
+      }
+      res.end('{"ok":true}');
+    });
+    try {
+      const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+
+      expect(await client.getJson('/sdapi/v1/options', z.unknown())).toEqual({ ok: true });
+      expect(backend.requests.map((r) => r.path)).toEqual([
+        '/sdapi/v1/options',
+        '/sdapi/v1/options/',
+      ]);
+    } finally {
+      await backend.close();
+    }
+  });
+});
+
+describe('SdapiClient, answered with too much', () => {
+  it('stops reading an answer past the size it allows, saying so', async () => {
+    const backend = await serverAnswering((_req, res) =>
+      res.end(JSON.stringify({ text: 'x'.repeat(5000) })),
+    );
+    try {
+      const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+
+      const error = await failureOf(
+        client.getJson('/sdapi/v1/options', z.unknown(), { maxBytes: 1000 }),
+      );
+
+      expect(error.kind).toBe('bad_response');
+      expect(error.message).toContain('Forge の応答が大きすぎる');
+    } finally {
+      await backend.close();
+    }
+  });
+
+  it('reads an answer within the size it allows', async () => {
+    const backend = await serverAnswering((_req, res) =>
+      res.end(JSON.stringify({ text: 'x'.repeat(900) })),
+    );
+    try {
+      const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+
+      expect(
+        await client.getJson('/sdapi/v1/options', z.object({ text: z.string() }), {
+          maxBytes: 1000,
+        }),
+      ).toEqual({ text: 'x'.repeat(900) });
+    } finally {
+      await backend.close();
+    }
   });
 });
