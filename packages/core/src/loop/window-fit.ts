@@ -91,7 +91,7 @@ export function describeInputOverflow(overflow: InputOverflow): string {
     `${ROLE_LABELS[role]}の窓（文脈の上限 ${window.contextTokens} − 出力の分 ${window.maxOutputTokens} = 入力に使える ${inputTokenLimit} トークン）を ${over} トークン超える` +
     (largestField === undefined
       ? ''
-      : `。この段でいちばん大きく効いている欄は ${largestField.path}（${largestField.smallest} にすると ${largestField.savedTokens} トークン減る）`)
+      : `。この段でいちばん大きく効いている欄は ${largestField.path}。${largestField.smallest} にすると ${largestField.savedTokens} トークン減る`)
   );
 }
 

@@ -63,6 +63,19 @@ export function budgetLabel(path: string): string | undefined {
   return LABELS[path];
 }
 
+/** 欄の呼び名。日本語の説明があれば添え、内部名（config.json の鍵）も残す。知らない欄は内部名のまま */
+export function budgetFieldName(path: string): string {
+  const label = budgetLabel(path);
+  return label === undefined ? path : `${label}（${path}）`;
+}
+
+/** 文の中の欄の内部名を、欄の呼び名に置き換える。知らない英字（HTTP など）や知らない欄は触らない */
+export function nameBudgetFields(text: string): string {
+  return text.replace(/[A-Za-z]+(?:\.[A-Za-z]+)*/g, (word) =>
+    budgetLabel(word) === undefined ? word : budgetFieldName(word),
+  );
+}
+
 /** 欄のまとまり。内部名の頭で分ける */
 export const BUDGET_GROUPS = [
   {
