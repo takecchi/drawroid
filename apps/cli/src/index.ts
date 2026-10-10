@@ -3,6 +3,7 @@ import { dataPaths, resolveDataDir } from '@drawroid/storage-fs';
 
 import { parseCliArgs } from './args.js';
 import { assembleDrawroid } from './assemble.js';
+import { listeningLine } from './dev-mode.js';
 import { formatDoctorReport, runDoctor } from './doctor.js';
 import { describeStartupFailure } from './startup-failure.js';
 import { resolveWebRoot } from './web-root.js';
@@ -34,7 +35,7 @@ async function main() {
     exit: (code) => process.exit(code),
     write: (text) => process.stdout.write(text),
   });
-  process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
+  process.stdout.write(`${listeningLine(address, process.env)}\n`);
 }
 
 main().catch((error: unknown) => {
