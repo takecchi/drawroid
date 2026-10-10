@@ -508,6 +508,26 @@ describe('telling the jobs of one conversation apart', () => {
 });
 
 describe('ConversationView', () => {
+  // 新しい会話を始めたときだけ、話しかける欄から始める（開き直しただけの会話では移さない）
+  it.each([
+    [true, true],
+    [false, false],
+  ])('starts with the focus on the message field: %s', (focusComposer, focused) => {
+    const { source } = fakeSource([]);
+    render(
+      <MemoryRouter>
+        <ConversationView
+          conversationId="c1"
+          source={source}
+          actions={actions()}
+          focusComposer={focusComposer}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(document.activeElement === screen.getByLabelText('発言')).toBe(focused);
+  });
+
   it('draws the restored log once, after every page has been read', async () => {
     let releaseSecond: (page: EventPage) => void = () => {};
     const first = [confirmed({ type: 'user.message', text: '一つ目のページ', attachments: [] })];

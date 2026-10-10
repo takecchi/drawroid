@@ -399,7 +399,7 @@ export function LlmSettings() {
         </form>
       )}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
-      {saved && <OkNote>保存した。次に話しかけたときから、この設定を使う。</OkNote>}
+      {saved && <OkNote focus>保存した。次に話しかけたときから、この設定を使う。</OkNote>}
     </Section>
   );
 }

@@ -119,6 +119,24 @@ describe('OkNote', () => {
 
     expect(screen.getByRole('status').textContent).toBe('保存した。');
   });
+
+  // 押して保存したときは、知らせへフォーカスを移す（出たときの一度だけ）。渡さなければ移さない
+  it('takes the focus when it appears, only when asked and only once', () => {
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+    const { unmount } = render(<OkNote>送った。</OkNote>);
+    expect(document.activeElement).toBe(elsewhere);
+    unmount();
+
+    const { rerender } = render(<OkNote focus>保存した。</OkNote>);
+    expect(document.activeElement).toBe(screen.getByRole('status'));
+
+    elsewhere.focus();
+    rerender(<OkNote focus>保存した。次から効く。</OkNote>);
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
 });
 
 describe('Field', () => {
