@@ -9,8 +9,10 @@ import type {
   ImageBackend,
   InterventionRecord,
   JobStore,
+  LlmRole,
   ManualGenerationRunner,
   MemoryStore,
+  ModelWindow,
   MaskIntervention,
   NewMask,
   NewReference,
@@ -131,5 +133,10 @@ export type ApiDeps = {
   distillLog?: Pick<DistillLog, 'read'>;
   /** 設定の画面の「確かめる」。省けば、画面からは確かめられない（409） */
   doctor?: DoctorPort;
+  /**
+   * 予算と比べる、役ごとの窓。llm を渡せばその設定の、省けばいま効いている設定の、分かっている窓だけを返す
+   * （分からない役は返さない。知らせるのは返す側）。省けば、保存のときに予算と窓を比べない
+   */
+  inputWindows?: (llm?: LlmConfig) => Promise<Partial<Record<LlmRole, ModelWindow>>>;
   now?: () => Date;
 };
