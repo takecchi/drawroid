@@ -21,6 +21,7 @@ import {
   generationProgressSettingsSchema,
   type BackendCapabilities,
   type ImagePart,
+  type LlmPort,
   type LlmRole,
   type TextPart,
   type ImageBackend,
@@ -634,18 +635,19 @@ function rolesLabel(group: readonly LlmRole[]): string {
   return group.map((role) => ROLE_NAMES[role]).join('・');
 }
 
-async function toolRoundTrip(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem> {
-  const role = resolveRoles(config).talk;
-  const who = `${ROLE_NAMES.talk}（${role.provider} の ${role.model}、toolCalling: ${role.toolCalling}、reasoning: ${role.reasoning}）`;
-  const timeoutMs = options.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
-  const started = Date.now();
-  let called = false;
-  let text = '';
-  let thought = false;
-  let failure: string | undefined;
+/**
+ * 話す役にツールを呼ばせる回数。全部の回で呼べたときだけ「よい」にし、崩れた回で止める
+ */
+// 1回で決めない: 小さいモデルは同じ頼み方でも、呼んだり文で返したりする。話す役は会話の1ターンで何度もツールを呼ぶので、
+// 1回通っただけで「よい」と出すと、会話で崩れるモデルを通してしまうため。
+// 崩れた回で止める: 結果はもう「足りない」と決まるので、崩れるモデルで待ち時間を延ばさないため
+const TALK_PING_ROUNDS = 3;
+
+type ToolPing = { called: boolean; text: string; thought: boolean; failure?: string };
+
+async function toolPingOnce(llm: LlmPort, timeoutMs: number): Promise<ToolPing> {
+  const ping: ToolPing = { called: false, text: '', thought: false };
   try {
-    const llm = createLlm(config, { env: options.env });
-    const signal = AbortSignal.timeout(timeoutMs);
     for await (const part of llm.streamStep({
       role: 'talk',
       messages: sealMessages(PING_SYSTEM, [{ type: 'text', text: PING_USER }], {
@@ -654,48 +656,76 @@ async function toolRoundTrip(options: DoctorOptions, config: LlmConfig): Promise
         notes: [],
       }),
       tools: [PING_TOOL],
-      signal,
+      signal: AbortSignal.timeout(timeoutMs),
     })) {
-      if (part.type === 'tool-call' && part.name === PING_TOOL.name) called = true;
-      else if (part.type === 'text-delta') text += part.text;
-      else if (part.type === 'reasoning-delta') thought = true;
-      else if (part.type === 'finish') failure = part.failure;
+      if (part.type === 'tool-call' && part.name === PING_TOOL.name) ping.called = true;
+      else if (part.type === 'text-delta') ping.text += part.text;
+      else if (part.type === 'reasoning-delta') ping.thought = true;
+      else if (part.type === 'finish' && part.failure !== undefined) ping.failure = part.failure;
     }
   } catch (error) {
-    failure =
+    ping.failure =
       error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
         ? `${Math.round(timeoutMs / 1000)} 秒待っても返事が終わらなかった`
         : messageOf(error);
   }
-  const seconds = ((Date.now() - started) / 1000).toFixed(1);
-  if (failure !== undefined) {
+  return ping;
+}
+
+async function toolRoundTrip(options: DoctorOptions, config: LlmConfig): Promise<DoctorItem> {
+  const role = resolveRoles(config).talk;
+  const who = `${ROLE_NAMES.talk}（${role.provider} の ${role.model}、toolCalling: ${role.toolCalling}、reasoning: ${role.reasoning}）`;
+  const timeoutMs = options.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const started = Date.now();
+  let thought = false;
+  let llm: LlmPort;
+  try {
+    llm = createLlm(config, { env: options.env });
+  } catch (error) {
+    const failure = messageOf(error);
     return {
       ok: false,
       what: `${who}と1往復できない: ${failure}`,
       todo: llmTodo(failure, role.toolCalling === 'native' ? TOOL_CALLING_HINT : ''),
     };
   }
-  if (!called) {
-    const said = text.trim();
-    return {
-      ok: false,
-      what:
-        said === ''
-          ? `${who}が、ツールを呼ばず、文も返さなかった（空の応答）`
-          : `${who}が、ツールを呼ばずに文で返した: 「${clip(said, REPLY_EXCERPT)}」`,
-      todo: notCalledTodo(role),
-    };
+  for (let round = 1; round <= TALK_PING_ROUNDS; round += 1) {
+    const { called, text, failure, ...ping } = await toolPingOnce(llm, timeoutMs);
+    thought ||= ping.thought;
+    const at = `${TALK_PING_ROUNDS}回のうち${round}回目`;
+    if (failure !== undefined) {
+      return {
+        ok: false,
+        what: `${who}と1往復できない（${at}）: ${failure}`,
+        todo: llmTodo(failure, role.toolCalling === 'native' ? TOOL_CALLING_HINT : ''),
+      };
+    }
+    if (!called) {
+      const said = text.trim();
+      return {
+        ok: false,
+        what:
+          said === ''
+            ? `${who}が、${at}で、ツールを呼ばず、文も返さなかった（空の応答）`
+            : `${who}が、${at}で、ツールを呼ばずに文で返した: 「${clip(said, REPLY_EXCERPT)}」`,
+        todo: notCalledTodo(role),
+      };
+    }
+    if (role.reasoning === 'none' && text.includes('<think>')) {
+      return {
+        ok: false,
+        what: `${who}と1往復できたが、本文に <think> が混ざっている`,
+        todo: 'LLM の設定で、話す役（無ければ考える役）の reasoning を think-tag にする',
+      };
+    }
   }
-  if (role.reasoning === 'none' && text.includes('<think>')) {
-    return {
-      ok: false,
-      what: `${who}と1往復できたが、本文に <think> が混ざっている`,
-      todo: 'LLM の設定で、話す役（無ければ考える役）の reasoning を think-tag にする',
-    };
-  }
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
   const thinking =
     role.reasoning === 'none' ? '' : thought ? '。思考を受け取った' : '。思考は流れてこなかった';
-  return { ok: true, what: `${who}と1往復できた（${seconds} 秒${thinking}）` };
+  return {
+    ok: true,
+    what: `${who}と、${TALK_PING_ROUNDS}回続けて1往復できた（計 ${seconds} 秒${thinking}）`,
+  };
 }
 
 // json でも structuredOutput が native なら、先に json を勧める: llama.cpp などは、native の構造化出力のスキーマを
