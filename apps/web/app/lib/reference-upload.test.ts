@@ -109,6 +109,13 @@ describe('referenceFileProblem', () => {
     expect(problem(file, MAX_REFERENCES_PER_REQUEST - 1)).toBeUndefined();
     expect(problem(file, MAX_REFERENCES_PER_REQUEST)).toContain(`${MAX_REFERENCES_PER_REQUEST} 枚`);
   });
+
+  // 上限だけを言わない: 断られた人が、どうすればこの画像を添えられるかを読み取れるように
+  it('says to take off another image to attach this one, once the maximum count is attached', () => {
+    const file = { name: 'x.png', type: 'image/png', size: 10 };
+
+    expect(problem(file, MAX_REFERENCES_PER_REQUEST)).toContain('ほかの画像を外してから');
+  });
 });
 
 describe('buildReferenceUploads', () => {
