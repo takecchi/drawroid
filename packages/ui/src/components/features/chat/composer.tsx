@@ -68,6 +68,7 @@ export function ChatComposer({
   const attach = useRef<HTMLButtonElement>(null);
   // 外した添付の位置。外したあとの描き直しで、残りの添付か「画像を添える」へフォーカスを移すために覚える
   const removedAt = useRef<number | null>(null);
+  const removeButtons = useRef(new Map<string, HTMLButtonElement>());
   const attachReasonId = useId();
 
   // 押したボタン（送る・止める・外す）は消えるか押せなくなるので、フォーカスの行き先を決めて移す。
@@ -85,10 +86,8 @@ export function ChatComposer({
     const at = removedAt.current;
     if (at === null) return;
     removedAt.current = null;
-    const removes =
-      form.current?.querySelectorAll<HTMLButtonElement>('ul[aria-label="添える画像"] button') ?? [];
-    const next = removes[Math.min(at, removes.length - 1)];
-    (next ?? attach.current)?.focus();
+    const next = attachments[Math.min(at, attachments.length - 1)];
+    ((next && removeButtons.current.get(next.id)) ?? attach.current)?.focus();
   }, [attachments]);
 
   // 選ぶ口から戻るとフォーカスは「画像を添える」にある。そのまま押せなくなると body に落ちるので、発言欄へ移す。
@@ -134,6 +133,13 @@ export function ChatComposer({
               {/* 見た目は小さな丸のまま、押せる範囲だけを ::after で 44px に広げる: 縮小版の角に置くので、丸を大きくすると画像を隠すため */}
               {onRemoveAttachment !== undefined && (
                 <button
+                  ref={(button) => {
+                    if (button === null) return;
+                    removeButtons.current.set(attachment.id, button);
+                    return () => {
+                      removeButtons.current.delete(attachment.id);
+                    };
+                  }}
                   type="button"
                   aria-label={`${attachment.name} を外す`}
                   disabled={sending}

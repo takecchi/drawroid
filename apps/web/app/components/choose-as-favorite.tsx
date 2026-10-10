@@ -34,9 +34,9 @@ export function ChooseAsFavorite({
   interrupted?: boolean;
 }) {
   const [pending, setPending] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (interrupted) root.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    if (interrupted) button.current?.focus();
   }, [interrupted]);
   const [error, setError] = useState<string | undefined>();
   // このボタンで決めたか。決めた印へフォーカスを移すのは、押したこのボタンの所だけ（同じ画像の印は、カード・行・窓に並ぶ）
@@ -62,13 +62,14 @@ export function ChooseAsFavorite({
   // 押した直後の手元の状態でなく保存された選び方から出す: 開き直しても、別の場所で押しても同じに出すため
   if (verdict === 'favorite') return <DecidedMark favorite focus={chose} />;
   return (
-    <div ref={root} className="space-y-1">
+    <div className="space-y-1">
       {interrupted && (
         <p className="text-xs">確かめている間に描くのが止まった。決めるなら、もう一度押す</p>
       )}
       {/* 折り返すのは言葉のかたまりの境目だけ: ボタンの中でそのまま折り返すと、日本語はどの字の間でも折れ、
           「決め / る」のように言葉の途中で切れるため。画像の枡は狭いので短い文にし、お気に入りになることは名前と title に残す */}
       <Button
+        ref={button}
         className="h-auto min-h-11 max-w-full px-2 py-1 text-left text-xs whitespace-normal md:pointer-fine:min-h-7"
         variant={prominent ? 'primary' : 'default'}
         disabled={pending}
