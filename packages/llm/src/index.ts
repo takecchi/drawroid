@@ -38,6 +38,7 @@ export function createLlm(
     {
       validationRetries: config.validationRetries,
       networkRetries: config.networkRetries,
+      callTimeoutSeconds: config.callTimeoutSeconds,
       configKeys: {
         think: 'think',
         judge: config.roles.judge === undefined ? 'think' : 'judge',

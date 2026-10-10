@@ -60,6 +60,9 @@ export const roleConfigSchema = z.object({
 });
 export type RoleConfig = z.infer<typeof roleConfigSchema>;
 
+// 長めにする: ローカルの CPU で動く小さなモデルは、長い入力を読み終えて最初の1語を返すまでに数分かかることがあるため
+export const DEFAULT_CALL_TIMEOUT_SECONDS = 300;
+
 export const llmConfigSchema = z
   .object({
     providers: z.record(z.string(), providerConfigSchema),
@@ -74,6 +77,8 @@ export const llmConfigSchema = z
     validationRetries: z.number().int().min(0).default(2),
     /** 繋がらない・429 などのときに AI SDK が呼び直す回数 */
     networkRetries: z.number().int().min(0).default(2),
+    /** LLM が何も返さないまま待つ上限（秒）。流れが続いている間は打ち切らない */
+    callTimeoutSeconds: z.number().int().positive().default(DEFAULT_CALL_TIMEOUT_SECONDS),
   })
   .superRefine((config, ctx) => {
     const defined = Object.keys(config.providers);

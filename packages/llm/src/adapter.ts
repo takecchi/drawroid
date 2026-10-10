@@ -28,7 +28,12 @@ import {
 } from 'ai';
 import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
-import { ROLE_LABELS, type ResolvedRoles, type RoleConfig } from './config.js';
+import {
+  DEFAULT_CALL_TIMEOUT_SECONDS,
+  ROLE_LABELS,
+  type ResolvedRoles,
+  type RoleConfig,
+} from './config.js';
 
 const ERROR_SUMMARY_LIMIT = 300;
 
@@ -37,6 +42,8 @@ export type RoleModels = Record<LlmRole, { providerName: string; model: Language
 export type AdapterOptions = {
   validationRetries: number;
   networkRetries: number;
+  /** LLM が何も返さないまま待つ上限（秒）。省けば DEFAULT_CALL_TIMEOUT_SECONDS */
+  callTimeoutSeconds?: number;
   /**
    * 役ごとの設定が、config.json の llm.roles のどの鍵にあるか。見る役を省いた設定では、見る役も think を使う。
    * 出力が上限で切れたときに、上げるべき設定の場所を名指すために使う。省けば役の名前と同じ鍵
@@ -58,6 +65,13 @@ class OutputCutAtLimit extends Error {
     readonly detail?: string,
   ) {
     super('出力が上限で切れた');
+  }
+}
+
+/** LLM が、決めた時間のあいだ何も返さなかった（応答の始まりも、流れの続きも） */
+class CallTimedOut extends Error {
+  constructor(readonly seconds: number) {
+    super(`LLM が ${seconds} 秒のあいだ何も返さなかった`);
   }
 }
 
@@ -90,6 +104,9 @@ const CONNECTION_CODES = new Set([
  * 聞き直す回数や止める所は変えない（言い方だけ）
  */
 export function describeCallFailure(error: unknown): string {
+  if (error instanceof CallTimedOut) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に答えなかった（${error.seconds} 秒、何も返らなかった）。LLM のサーバが動いているかを確かめる。遅いモデルなら、LLM の設定の「応答を待つ上限（秒）」を延ばす`;
+  }
   const message = clip(error instanceof Error ? error.message : String(error), ERROR_SUMMARY_LIMIT);
   const said = message === '' ? '' : `（LLM の返した理由: ${message}）`;
   const status = APICallError.isInstance(error) ? error.statusCode : undefined;
@@ -417,13 +434,38 @@ export class AiSdkLlm implements LlmPort {
       onEvent?: (event: StreamEvent) => void;
     },
   ): Promise<Streamed> {
+    // 何も返らない時間で打ち切る（呼び出しの全体の時間ではない）: 遅いモデルでも、流れ続けている間は切らないため
+    const seconds = this.options.callTimeoutSeconds ?? DEFAULT_CALL_TIMEOUT_SECONDS;
+    const silence = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const rearm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => silence.abort(new CallTimedOut(seconds)), seconds * 1000);
+    };
+    rearm();
+    try {
+      // 黙っていたので切ったときは、中断の理由（CallTimedOut）が投げられる。呼び手が止めたときは、呼び手の理由
+      const signal = AbortSignal.any([request.signal, silence.signal]);
+      return await this.streamParts(role, config, request, signal, rearm);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async streamParts(
+    role: LlmRole,
+    config: RoleConfig,
+    request: Parameters<AiSdkLlm['streamOnce']>[2],
+    signal: AbortSignal,
+    onPart: () => void,
+  ): Promise<Streamed> {
     const result = streamText({
       model: this.models[role].model,
       instructions: request.instructions,
       messages: [{ role: 'user', content: request.content }] as ModelMessage[],
       ...(config.maxOutputTokens === undefined ? {} : { maxOutputTokens: config.maxOutputTokens }),
       maxRetries: this.options.networkRetries,
-      abortSignal: request.signal,
+      abortSignal: signal,
       ...(request.output === undefined ? {} : { output: request.output }),
       ...(request.tools === undefined ? {} : { tools: request.tools }),
       // 流れの中の error の部品で受けて投げる。既定の console への出力はさせない
@@ -436,6 +478,7 @@ export class AiSdkLlm implements LlmPort {
       toolCalls: [],
     };
     for await (const part of result.fullStream) {
+      onPart();
       switch (part.type) {
         case 'text-delta':
           streamed.text += part.text;
@@ -465,7 +508,7 @@ export class AiSdkLlm implements LlmPort {
           break;
       }
     }
-    if (request.signal.aborted) throw abortError(request.signal);
+    if (signal.aborted) throw abortError(signal);
     return streamed;
   }
 
