@@ -292,6 +292,53 @@ describe('assembleDrawroid, stopping a manual generation', () => {
   });
 });
 
+// 中断（all）が止めるジョブは、組み立てがつなぐ。描く・止めるツールと同じく、走っているものの新しい方を止め、止まったものは止めない
+describe('assembleDrawroid, interrupting everything in a conversation', () => {
+  it('stops the latest of the jobs going on, and no job that has already stopped', async () => {
+    const listening = await start();
+    const { conversationId } = await new FsConversationStore(root).createConversation(new Date());
+    await stoppedJobOf(conversationId);
+    const interruptAll = async () => {
+      const response = await fetch(
+        `http://127.0.0.1:${listening.address.port}/api/conversations/${conversationId}/interrupt`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ scope: 'all' }),
+        },
+      );
+      expect(response.status).toBe(202);
+      return ((await response.json()) as { stoppedJob: string | null }).stoppedJob;
+    };
+
+    expect(await interruptAll()).toBeNull();
+
+    const suffixes = ['aaaaaa', 'bbbbbb'];
+    const store = new FsJobStore(root, { randomSuffix: () => suffixes.shift() ?? 'cccccc' });
+    const queued = async () =>
+      (
+        await store.createJob(
+          {
+            kind: 'auto',
+            request: '夕暮れの海辺に立つ少女',
+            stopConditions: { aiJudgement: true, maxIterations: 5 },
+            batchSize: 1,
+            conversationId,
+            turn: 1,
+          },
+          { status: 'queued', carry: { intent: '夕暮れの海辺に立つ少女', completedIterations: 0 } },
+          new Date('2026-10-09T06:30:12.000Z'),
+        )
+      ).jobId;
+    const older = await queued();
+    const newer = await queued();
+
+    expect(await interruptAll()).toBe(newer);
+    expect((await store.readState(newer)).status).toBe('stopped');
+    expect((await store.readState(older)).status).toBe('queued');
+  });
+});
+
 describe('assembleDrawroid and the signals to stop', () => {
   it.each([
     ['SIGINT', 130],
