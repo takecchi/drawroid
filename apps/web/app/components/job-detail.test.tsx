@@ -223,6 +223,17 @@ describe('JobDetail', () => {
     expect(screen.getByRole('alert').textContent).toContain('見る段: 形が合わない');
   });
 
+  // 状態は1か所でだけ知らせる: 同じ文の知らせの場所が2つあると、変わるたびに二度読まれるため
+  it('tells the state of the job in one place only', () => {
+    serve(stopped({ kind: 'ai', detail: '意図どおり' }));
+    renderDetail();
+
+    const states = screen
+      .getAllByRole('status')
+      .filter((element) => element.textContent?.startsWith('ジョブの状態'));
+    expect(states).toHaveLength(1);
+  });
+
   // 見出しは依頼の文: ID では、何を頼んだジョブかが見出しから分からないため。ID は下の並びに残す
   it('puts the request as the heading, and keeps the ID below it', () => {
     serve(stopped({ kind: 'ai', detail: '意図どおり' }));
