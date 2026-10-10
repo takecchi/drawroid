@@ -21,6 +21,7 @@ import {
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 
+import { KIND_LABELS } from '../lib/job-labels';
 import {
   buildSaveInput,
   memoryToFormValues,
@@ -144,7 +145,7 @@ function MemoryItemBody({
                   '消えたジョブ'
                 ) : (
                   <>
-                    {source.job.kind} {formatTime(source.job.createdAt)}{' '}
+                    {KIND_LABELS[source.job.kind]} {formatTime(source.job.createdAt)}{' '}
                     {source.job.request.slice(0, 60)}
                   </>
                 )}
