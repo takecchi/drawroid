@@ -148,6 +148,40 @@ describe('assembleDrawroid, telling where the backend kind came from', () => {
     expect(await saved.json()).toMatchObject({ kind: 'a1111', kindSource: 'config' });
     expect(await (await fetch(url)).json()).toMatchObject({ kind: 'a1111', kindSource: 'config' });
   });
+
+  // 見かけの種類だけでなく、実際に使われるアダプタが替わることを、偽のサーバーへ出す要求の道で見る。
+  // VAE の一覧は、A1111 は /sdapi/v1/sd-vae、Forge は /sdapi/v1/sd-modules を叩く
+  it('uses the adapter of the kind the screen saved, which asks the A1111 route for the VAE list', async () => {
+    const paths: string[] = [];
+    const sdapi = createServer((req, res) => {
+      paths.push(req.url ?? '');
+      req.resume();
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ detail: 'not found' }));
+    });
+    await new Promise<void>((resolve) => sdapi.listen(0, '127.0.0.1', resolve));
+    const sdapiUrl = `http://127.0.0.1:${(sdapi.address() as AddressInfo).port}`;
+    try {
+      const { url } = await settingsOf('forge');
+      const saved = await fetch(url, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: sdapiUrl, kind: 'a1111' }),
+      });
+      expect(saved.status).toBe(200);
+      paths.length = 0;
+
+      await fetch(url.replace('/settings/backend', '/backend/candidates/vae'));
+
+      expect(paths).toContain('/sdapi/v1/sd-vae');
+      expect(paths).not.toContain('/sdapi/v1/sd-modules');
+    } finally {
+      await new Promise((resolve) => {
+        sdapi.close(resolve);
+        sdapi.closeAllConnections();
+      });
+    }
+  });
 });
 
 describe('assembleDrawroid after a restart', () => {
