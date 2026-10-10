@@ -161,6 +161,17 @@ describe('findInputOverflows', () => {
       expect(line).toContain('candidates.maxSize');
       expect(line).toContain(`${think!.largestField!.savedTokens} トークン減る`);
     });
+
+    // 欄の名前に括弧を続けない: 画面が名前を「見出し（内部名）」に置き換えても、括弧が二重に続かないため
+    it('does not put a parenthesis right after the name of the field', () => {
+      const [think] = findInputOverflows(resolveBudgets({ candidates: { maxSize: 12000 } }), {
+        think: tiny,
+      });
+
+      const line = describeInputOverflow(think!);
+      expect(line).toContain(`欄は ${think!.largestField!.path}。`);
+      expect(line).not.toContain(`${think!.largestField!.path}（`);
+    });
   });
 
   // 窓の分からない役は比べない: 分かっている値でだけ比べ、分からない役は呼び手が知らせる

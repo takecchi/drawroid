@@ -8,13 +8,16 @@ import {
   toBudgetFormValues,
   type BudgetFormValues,
 } from '../lib/budget-form';
-import { budgetLabel, groupBudgetLeaves } from '../lib/budget-labels';
+import {
+  budgetFieldName,
+  budgetLabel,
+  groupBudgetLeaves,
+  nameBudgetFields,
+} from '../lib/budget-labels';
 
 /** 読めなかった欄の名前。日本語の説明があれば添え、内部名（config.json の鍵）も残す */
 function invalidBudgetName(path: string): string {
-  if (path === '*') return '予算の全体';
-  const label = budgetLabel(path);
-  return label === undefined ? path : `${label}（${path}）`;
+  return path === '*' ? '予算の全体' : budgetFieldName(path);
 }
 
 /**
@@ -61,7 +64,7 @@ export function BudgetSettings() {
     if (values === undefined) return;
     const built = buildBudgetOverrides(values);
     if (!built.ok) {
-      setProblems(built.errors.map((e) => `${e.path}: ${e.reason}`));
+      setProblems(built.errors.map((e) => `${budgetFieldName(e.path)}: ${e.reason}`));
       return;
     }
     setSaving(true);
@@ -73,7 +76,7 @@ export function BudgetSettings() {
       setSaved(true);
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
-      setProblems([caught.message]);
+      setProblems([nameBudgetFields(caught.message)]);
     } finally {
       setSaving(false);
     }
@@ -108,7 +111,7 @@ export function BudgetSettings() {
                           setSaved(false);
                           setEdited({ ...values, [path]: event.target.value });
                         }}
-                        aria-label={`${label}（${path}）`}
+                        aria-label={budgetFieldName(path)}
                         placeholder={String(defaultValue)}
                         size={8}
                       />
