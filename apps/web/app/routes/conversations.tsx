@@ -17,7 +17,10 @@ export default function Conversations() {
     setCreateError(undefined);
     try {
       const conversation = await createConversation();
-      await navigate(`/conversations/${conversation.conversationId}`);
+      // 始めたばかりの会話では、話しかける欄へフォーカスを移す（開き直しただけの会話では移さない）
+      await navigate(`/conversations/${conversation.conversationId}`, {
+        state: { focusComposer: true },
+      });
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setCreateError(caught.message);

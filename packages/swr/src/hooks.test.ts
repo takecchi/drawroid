@@ -1,7 +1,7 @@
 // ポーリングの設定を見る試験（#68 の J9・J10・J11）。useSWR を差し替え、各フックが渡すキーと refreshInterval を確かめる
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useIterations, useJob, useJobs } from './hooks.js';
+import { useConversation, useIterations, useJob, useJobs } from './hooks.js';
 import { keys } from './keys.js';
 
 type Options = { refreshInterval?: number | ((data: unknown) => number) };
@@ -37,6 +37,13 @@ describe('polling', () => {
     expect(intervalFor({ state: { status: 'running' } })).toBeGreaterThan(0);
     expect(intervalFor({ state: { status: 'queued' } })).toBeGreaterThan(0);
     expect(intervalFor({ state: { status: 'stopped' } })).toBe(0);
+  });
+
+  // 別のタブで名前を変えたときにも追う。読むのは会話1つで、一覧（全会話の要約）ではない
+  it('keeps polling one conversation, not the list, for its title', () => {
+    useConversation('c1');
+    expect(calls.at(-1)?.key).toBe(keys.conversation('c1'));
+    expect(intervalFor(undefined)).toBeGreaterThan(0);
   });
 
   it('polls the iterations only while the job is live', () => {

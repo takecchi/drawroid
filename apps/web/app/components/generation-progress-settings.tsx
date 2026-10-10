@@ -54,7 +54,7 @@ export function GenerationProgressSettings() {
         />
       )}
       {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
-      {saved && <OkNote>保存した。次に始まる生成から効く。</OkNote>}
+      {saved && <OkNote focus>保存した。次に始まる生成から効く。</OkNote>}
     </Section>
   );
 }

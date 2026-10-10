@@ -326,6 +326,21 @@ describe('conversations', () => {
     ]);
   });
 
+  it('reads one conversation with the title made from its first message, without the list summary', async () => {
+    const id = await newConversation();
+    await say(id, '海辺の少女を描いて\n夕暮れで');
+
+    const res = await app.request(`/conversations/${id}`);
+
+    expect(res.status).toBe(200);
+    const { conversation } = (await res.json()) as { conversation: Record<string, unknown> };
+    expect(conversation).toEqual(
+      expect.objectContaining({ conversationId: id, title: '海辺の少女を描いて' }),
+    );
+    expect(conversation).not.toHaveProperty('lastMessage');
+    expect((await app.request('/conversations/20260101-000000-ffffff')).status).toBe(404);
+  });
+
   it('shows the reply as the last message once the talk role has answered', async () => {
     const id = await newConversation();
     await say(id, '何ができますか？');

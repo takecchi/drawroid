@@ -1,20 +1,32 @@
-import { useConversations } from '@drawroid/swr';
-import { useMemo } from 'react';
-import { Link, useParams } from 'react-router';
+import { useConversation } from '@drawroid/swr';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
 import { ConversationView } from '../components/conversation-view';
 import { apiConversationActions, apiConversationSource } from '../lib/conversation-api';
 
 export default function ConversationRoute() {
   const { conversationId = '' } = useParams();
-  const { data } = useConversations();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // 「新しい会話」から来たときだけ、話しかける欄へフォーカスを移す。印は最初に読んだら手放す:
+  // history に残すと、再読み込みや戻る・進むで開き直しただけでも欄へ移り、ほかの所を触っている人からフォーカスを奪うため
+  const [focusComposer] = useState(
+    () => (location.state as { focusComposer?: boolean } | null)?.focusComposer === true,
+  );
+  useEffect(() => {
+    if (focusComposer) void navigate(location.pathname, { replace: true, state: null });
+    // 最初の一度だけ
+  }, []);
+  const { data } = useConversation(conversationId);
   const actions = useMemo(() => apiConversationActions(conversationId), [conversationId]);
-  const title = data?.conversations.find((c) => c.conversationId === conversationId)?.title;
+  const title = data?.conversation.title;
   return (
     <ConversationView
       // 会話を移ったら画面ごと作り直す: 前の会話の下書きや送れなかった理由を、次の会話に持ち越さないため
       key={conversationId}
       conversationId={conversationId}
+      focusComposer={focusComposer}
       source={apiConversationSource}
       actions={actions}
       title={
