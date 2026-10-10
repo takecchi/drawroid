@@ -41,12 +41,15 @@ export function budgetSettingsRoutes(deps: ApiDeps) {
       // 書く本文は厳しく検証するので、書いた直後に読めない欄は無い
       const overrides: BudgetOverrides = c.req.valid('json');
       // 窓に入らない予算は保存しない: 保存すると、次に投入するジョブが入力を組む段で必ず止まるため（architecture の予算）
-      const saved = await inWindowCheckLine(deps, async () => {
-        const problem = await windowProblem(deps, resolveBudgets(overrides));
-        if (problem !== undefined) return { problem };
-        return { effective: await budgetSettings.write(overrides) };
-      });
-      if ('problem' in saved) return invalidRequest(c, saved.problem);
+      const saved = await inWindowCheckLine(
+        deps,
+        async (): Promise<{ problem: string } | { problem: undefined; effective: Budgets }> => {
+          const problem = await windowProblem(deps, resolveBudgets(overrides));
+          if (problem !== undefined) return { problem };
+          return { problem: undefined, effective: await budgetSettings.write(overrides) };
+        },
+      );
+      if (saved.problem !== undefined) return invalidRequest(c, saved.problem);
       return c.json(view(overrides, saved.effective, []), 200);
     });
 }
