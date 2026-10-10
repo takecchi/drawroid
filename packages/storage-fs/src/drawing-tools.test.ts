@@ -323,16 +323,28 @@ describe('start_drawing', () => {
   });
 });
 
-/** 参照画像を1枚置いた直後に afterFirst を1度だけ呼ぶ置き場所。添えている途中でジョブが止まる形を、時刻に頼らずに作る */
-class StopsAfterFirstReference extends FsJobStore {
+/**
+ * 口出しか参照画像を1件置いた直後に afterFirst を1度だけ呼ぶ置き場所。置いている途中でジョブが止まる形を、時刻に頼らずに作る
+ */
+class StopsAfterFirstWrite extends FsJobStore {
   afterFirst: (() => Promise<void>) | undefined;
+
+  override async addIntervention(...args: Parameters<FsJobStore['addIntervention']>) {
+    const added = await super.addIntervention(...args);
+    await this.wroteOne();
+    return added;
+  }
 
   override async addReference(...args: Parameters<FsJobStore['addReference']>) {
     const added = await super.addReference(...args);
+    await this.wroteOne();
+    return added;
+  }
+
+  private async wroteOne(): Promise<void> {
     const afterFirst = this.afterFirst;
     this.afterFirst = undefined;
     await afterFirst?.();
-    return added;
   }
 }
 
@@ -447,7 +459,7 @@ describe('revise_drawing and stop_drawing', () => {
   });
 
   it('adds every attached image, even when the job stops while they are being added', async () => {
-    const store = new StopsAfterFirstReference(root);
+    const store = new StopsAfterFirstWrite(root);
     const { jobs, context, runner, conversations, conversationId } = await setup(store);
     await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
     const [jobId] = await jobIds(jobs);
@@ -462,6 +474,52 @@ describe('revise_drawing and stop_drawing', () => {
     expect(revised.ok).toBe(true);
     expect(await jobs.listReferences(jobId!)).toHaveLength(4);
     expect((await jobs.readState(jobId!)).status).toBe('stopped');
+  });
+
+  it('puts the instruction, the change of stop conditions and every attached image, even when the job stops while they are being put', async () => {
+    const store = new StopsAfterFirstWrite(root);
+    const { jobs, context, runner, conversations, conversationId } = await setup(store);
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const attachments = await uploads(conversations, conversationId, 2);
+    store.afterFirst = async () => {
+      await runner.stop(jobId!);
+      await runner.idle();
+    };
+
+    const revised = await run(
+      'revise_drawing',
+      { instruction: '逆光にして', stopConditions: { maxIterations: 5 }, attachments },
+      context,
+    );
+
+    expect(revised.ok).toBe(true);
+    const interventions = await jobs.listInterventions(jobId!);
+    expect(interventions.map((i) => i.kind).sort()).toEqual(['instruction', 'stopConditions']);
+    expect(await jobs.listReferences(jobId!)).toHaveLength(2);
+    expect((await jobs.readState(jobId!)).status).toBe('stopped');
+  });
+
+  it('changes nothing when the change of stop conditions would leave the drawing with no way to stop', async () => {
+    const { jobs, context, runner, conversations, conversationId } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    const attachments = await uploads(conversations, conversationId, 1);
+
+    // 断りは投げて伝わる（会話の実行器が、投げた理由を失敗の結果にして話す役へ返す）
+    await expect(
+      run(
+        'revise_drawing',
+        { instruction: '逆光にして', stopConditions: { maxIterations: null }, attachments },
+        context,
+      ),
+    ).rejects.toThrow(/止まらなくなる/);
+
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    expect(await jobs.listReferences(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
   });
 
   it('changes nothing when more images are attached than a request takes, saying why', async () => {

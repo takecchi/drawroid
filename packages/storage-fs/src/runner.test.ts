@@ -804,10 +804,14 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
       InterventionRejectedError,
     );
     await expect(
-      runner.addReferences(spec.jobId, [
-        { data: new Uint8Array([1]), mediaType: 'image/png' },
-        { data: new Uint8Array([2]), mediaType: 'image/png' },
-      ]),
+      runner.revise(spec.jobId, {
+        instruction: '逆光にして',
+        stopConditions: { maxIterations: 3 },
+        references: [
+          { data: new Uint8Array([1]), mediaType: 'image/png' },
+          { data: new Uint8Array([2]), mediaType: 'image/png' },
+        ],
+      }),
     ).rejects.toThrow(InterventionRejectedError);
     expect(await store.listInterventions(spec.jobId)).toEqual([]);
     expect(await store.listReferences(spec.jobId)).toEqual([]);
@@ -842,7 +846,10 @@ describe('the stop conditions can be changed while the job runs (M3:101)', () =>
       runner.addReference(manual.jobId, { data: new Uint8Array([1]), mediaType: 'image/png' }),
     ).rejects.toMatchObject(rejected);
     await expect(
-      runner.addReferences(manual.jobId, [{ data: new Uint8Array([1]), mediaType: 'image/png' }]),
+      runner.revise(manual.jobId, {
+        instruction: '逆光にして',
+        references: [{ data: new Uint8Array([1]), mediaType: 'image/png' }],
+      }),
     ).rejects.toMatchObject(rejected);
     expect(await store.listInterventions(manual.jobId)).toEqual([]);
     expect(await store.listReferences(manual.jobId)).toEqual([]);

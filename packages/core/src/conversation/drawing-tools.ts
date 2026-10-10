@@ -11,13 +11,12 @@ import {
   stopConditionsSchema,
   type InterventionRecord,
   type NewReference,
-  type ReferenceRecord,
   type StopConditions,
-  type StopConditionsChange,
 } from '../job/types.js';
 import { batchSizeProblem } from '../loop/budget.js';
 import { createCarry } from '../loop/carry.js';
 import { CANDIDATE_PARAMS } from '../loop/iteration-permissions.js';
+import type { Revised, Revision } from '../loop/runner.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
 import { adoptImage as adoptChosenImage } from '../selection/adopt.js';
@@ -34,12 +33,10 @@ import type { TalkTool, TalkToolContext, TalkToolOutcome } from './talk/tools.js
 export type DrawingRunner = {
   kick(): void;
   stop(jobId: string): Promise<void>;
-  addInstruction(jobId: string, text: string): Promise<InterventionRecord>;
-  changeStopConditions(jobId: string, change: StopConditionsChange): Promise<StopConditions>;
   /** 人間が選んだ画像を、走っているジョブに置く（お気に入りへの記録はしない） */
   adopt(jobId: string, image: { iteration: number; index: number }): Promise<InterventionRecord>;
-  /** 走っているジョブに参照画像を、全部か1枚も無しで添える。次の回の境目で、見る役が1度だけ見て要点にする */
-  addReferences(jobId: string, references: readonly NewReference[]): Promise<ReferenceRecord[]>;
+  /** 走っているジョブに、指示・止める条件の変更・参照画像を、全部か何も無しで置く。次の回の境目から効く */
+  revise(jobId: string, revision: Revision): Promise<Revised>;
 };
 
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
@@ -302,18 +299,18 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
         input.attachments ?? [],
       );
       if (!attached.ok) return outcome(false, attached.reason);
+      const revised = await deps.runner.revise(jobId, {
+        ...(input.instruction !== undefined && { instruction: input.instruction }),
+        ...(input.stopConditions !== undefined && { stopConditions: input.stopConditions }),
+        references: attached.references,
+      });
       const done: string[] = [];
-      if (input.instruction !== undefined) {
-        await deps.runner.addInstruction(jobId, input.instruction);
-        done.push('指示を伝えた');
+      if (revised.instruction !== undefined) done.push('指示を伝えた');
+      if (revised.stopConditions !== undefined) {
+        done.push(`止める条件を ${describeStopConditions(revised.stopConditions)} にした`);
       }
-      if (input.stopConditions !== undefined) {
-        const conditions = await deps.runner.changeStopConditions(jobId, input.stopConditions);
-        done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
-      }
-      if (attached.references.length > 0) {
-        await deps.runner.addReferences(jobId, attached.references);
-        done.push(`参照画像を ${attached.references.length} 枚添えた`);
+      if (revised.references.length > 0) {
+        done.push(`参照画像を ${revised.references.length} 枚添えた`);
       }
       return outcome(true, `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`);
     },

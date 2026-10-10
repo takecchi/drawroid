@@ -211,6 +211,20 @@ export class InterventionRejectedError extends Error {
   }
 }
 
+/** 1度の口出しでまとめて置くもの（会話の revise_drawing） */
+export type Revision = {
+  instruction?: string;
+  stopConditions?: StopConditionsChange;
+  references?: readonly NewReference[];
+};
+
+/** 置いた口出し。stopConditions は変更を重ねたあとの、実際の止める条件 */
+export type Revised = {
+  instruction?: InterventionRecord;
+  stopConditions?: StopConditions;
+  references: ReferenceRecord[];
+};
+
 export function defaultCallId(now: Date): string {
   return `${now.toISOString().replaceAll(/[-:.]/g, '')}-${crypto.randomUUID().slice(0, 6)}`;
 }
@@ -341,18 +355,48 @@ export class JobRunner {
     return this.deps.store.addReference(jobId, reference, this.now());
   }
 
-  /** 1度の口出しで添えた参照画像を、全部置くか1枚も置かないかにする */
-  // 1枚ずつ addReference で置かない: 置く間にジョブが止まると、残りだけ断られて途中までの口出しになるため
-  async addReferences(
-    jobId: string,
-    references: readonly NewReference[],
-  ): Promise<ReferenceRecord[]> {
-    await this.acceptingJob(jobId);
-    const added: ReferenceRecord[] = [];
-    for (const reference of references) {
-      added.push(await this.deps.store.addReference(jobId, reference, this.now()));
+  /** 1度の口出し（指示・止める条件の変更・参照画像）を、全部置くか何も置かないかにする */
+  // addInstruction・changeStopConditions・addReference を順に呼ばない: それぞれが受けられるかを確かめ直すので、
+  // 置く間にジョブが止まると、先に置いた分だけが残って途中までの口出しになるため。
+  // 止まらなくなる変更かも、何かを置く前に確かめる
+  async revise(jobId: string, revision: Revision): Promise<Revised> {
+    const change =
+      revision.stopConditions === undefined
+        ? undefined
+        : stopConditionsChangeSchema.parse(revision.stopConditions);
+    const spec = await this.acceptingJob(jobId);
+    const stopConditions =
+      change === undefined
+        ? undefined
+        : effectiveStopConditions(await this.stopConditions(spec), [change]);
+    if (stopConditions !== undefined && !hasAnyStopCondition(stopConditions)) {
+      throw new InterventionRejectedError(jobId, 'unstoppable');
     }
-    return added;
+    const { store } = this.deps;
+    const instruction =
+      revision.instruction === undefined
+        ? undefined
+        : await store.addIntervention(
+            jobId,
+            { kind: 'instruction', text: revision.instruction },
+            this.now(),
+          );
+    if (change !== undefined) {
+      await store.addIntervention(
+        jobId,
+        { kind: 'stopConditions', stopConditions: change },
+        this.now(),
+      );
+    }
+    const references: ReferenceRecord[] = [];
+    for (const reference of revision.references ?? []) {
+      references.push(await store.addReference(jobId, reference, this.now()));
+    }
+    return {
+      ...(instruction !== undefined && { instruction }),
+      ...(stopConditions !== undefined && { stopConditions }),
+      references,
+    };
   }
 
   /**

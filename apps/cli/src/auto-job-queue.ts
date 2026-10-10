@@ -23,6 +23,8 @@ import {
   type NewReference,
   type Permissions,
   type ReferenceRecord,
+  type Revised,
+  type Revision,
   type StopConditions,
   type StopConditionsChange,
 } from '@drawroid/core';
@@ -136,8 +138,8 @@ export class AutoJobQueue implements AutoJobQueuePort {
     return this.runner.addReference(jobId, reference);
   }
 
-  addReferences(jobId: string, references: readonly NewReference[]): Promise<ReferenceRecord[]> {
-    return this.runner.addReferences(jobId, references);
+  revise(jobId: string, revision: Revision): Promise<Revised> {
+    return this.runner.revise(jobId, revision);
   }
 
   addMask(jobId: string, mask: NewMask): Promise<MaskIntervention> {
