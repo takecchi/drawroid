@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -30,6 +31,14 @@ describe('Button', () => {
 
     expect(screen.getByRole('button', { name: '送る' }).getAttribute('type')).toBe('button');
     expect(screen.getByRole('button', { name: '投入する' }).getAttribute('type')).toBe('submit');
+  });
+
+  // 呼び手がフォーカスを移す先として掴めるように、ref は DOM の button に届ける
+  it('hands its ref to the button element', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>送る</Button>);
+
+    expect(ref.current).toBe(screen.getByRole('button', { name: '送る' }));
   });
 
   it('cannot be pressed while loading, and keeps its label as its name', async () => {
