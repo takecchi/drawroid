@@ -112,6 +112,17 @@ describe('ImageViewer', () => {
     );
   });
 
+  // 印だけの「閉じる」も幅 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the close button 44px wide on a narrow screen', async () => {
+    const user = userEvent.setup();
+    render(<Gallery />);
+    await user.click(screen.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番' }));
+
+    expect(screen.getByRole('button', { name: '閉じる' }).className.split(' ')).toEqual(
+      expect.arrayContaining(['min-w-11', 'md:pointer-fine:min-w-0']),
+    );
+  });
+
   it('keeps moving with the arrow keys after a button in the view was pressed and took the focus away', async () => {
     const user = userEvent.setup();
     function WithDetails() {

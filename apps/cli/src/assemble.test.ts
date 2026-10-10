@@ -34,7 +34,8 @@ beforeEach(async () => {
 afterEach(async () => {
   await new Promise((resolve) => (running ? running.server.close(resolve) : resolve(undefined)));
   running = undefined;
-  await rm(join(root, '..'), { recursive: true, force: true });
+  // 繰り返す: 組み立ては止める口を持たず、止まったジョブの蒸留などが片付けの最中にも書き込んで、rmdir が ENOTEMPTY で落ちることがあるため
+  await rm(join(root, '..'), { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
 function start(signals = new EventEmitter(), exit = vi.fn()) {
@@ -175,6 +176,14 @@ describe('assembleDrawroid after a restart', () => {
         expect(await turnsStarted(conversations, conversationId)).toEqual([
           expect.objectContaining({ jobId: spec.jobId }),
         ]),
+      { timeout: 5_000 },
+    );
+    // ターンが閉じるまで待つ: 閉じる前に片付けると、ターンの書き込みと片付けが重なるため
+    await vi.waitFor(
+      async () =>
+        expect((await conversations.readEvents(conversationId)).events).toContainEqual(
+          expect.objectContaining({ type: 'turn.ended' }),
+        ),
       { timeout: 5_000 },
     );
   });

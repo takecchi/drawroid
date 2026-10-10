@@ -268,6 +268,35 @@ describe('ChatComposer', () => {
 
     expect(screen.queryByRole('button', { name: '止める' })).toBeNull();
   });
+
+  // 印だけの狭い画面でも、添える・止める・送るは幅 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the icon buttons 44px wide on a narrow screen', () => {
+    render(
+      <ChatComposer
+        value=""
+        onChange={() => undefined}
+        onSend={() => undefined}
+        onStop={() => undefined}
+        running
+        onAttach={() => undefined}
+      />,
+    );
+
+    for (const name of [/画像を添える/, /止める/, /送る/]) {
+      expect(screen.getByRole('button', { name }).className.split(' ')).toEqual(
+        expect.arrayContaining(['min-w-11', 'md:pointer-fine:min-w-0']),
+      );
+    }
+  });
+
+  // 添えた画像の「外す」は見た目の丸のまま、押せる範囲だけを ::after で 44px に広げる。実際の大きさは、ブラウザで測る
+  it('widens the area that can be pressed on the button that removes an attached image', () => {
+    render(<ComposerWithAttachments names={['a.png']} />);
+
+    expect(screen.getByRole('button', { name: 'a.png を外す' }).className.split(' ')).toEqual(
+      expect.arrayContaining(['size-6', 'after:absolute', 'after:-inset-2.5']),
+    );
+  });
 });
 
 /** 添えた画像を持ち、外せる入力欄（呼び手と同じく、外したら並びから除く） */

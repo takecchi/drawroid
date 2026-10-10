@@ -128,6 +128,17 @@ describe('SelectionControls', () => {
     );
   });
 
+  // 指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the buttons 44px tall on a narrow screen', () => {
+    renderControls('favorite');
+
+    for (const name of ['お気に入り', '却下', '外す']) {
+      expect(
+        screen.getByRole('button', { name: `${name}: 1 回目の画像 1 番` }).className.split(' '),
+      ).toEqual(expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']));
+    }
+  });
+
   it('shows the reason when the selection cannot be saved', async () => {
     const { ApiError } = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
     select.mockRejectedValue(new ApiError('not_found', '画像が無い', 404));

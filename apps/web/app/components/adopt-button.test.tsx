@@ -139,6 +139,18 @@ describe('AdoptButton', () => {
     elsewhere.remove();
   });
 
+  // 確かめの段のボタンも指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
+  it('makes the buttons of the asking step 44px tall on a narrow screen', async () => {
+    const user = renderButton();
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
+
+    for (const name of ['決める: 2 回目の画像 1 番', 'やめる']) {
+      expect(screen.getByRole('button', { name }).className.split(' ')).toEqual(
+        expect.arrayContaining(['h-11', 'md:pointer-fine:h-7']),
+      );
+    }
+  });
+
   // 画像の行が新しく出ただけ（描いている途中に画像が増えた）では、フォーカスを奪わない
   it('does not take the focus when it appears', () => {
     const elsewhere = document.createElement('button');
