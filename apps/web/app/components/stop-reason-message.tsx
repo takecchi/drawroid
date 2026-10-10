@@ -13,11 +13,12 @@ export function StopReasonMessage({ reason }: { reason: StopReason }) {
     return <p>止まった理由: {summarizeStopReason(reason, backendKind)}</p>;
   const llm = llmStageFailure(reason);
   if (llm !== undefined) {
+    // 要約で次の手を言い当てない: 止まった理由のデータに待てば直るかの印は無く、detail の文を画面で読み直すと、
+    // 言い方が変わるたびにずれるため。次の手は、失敗の種類ごとに言い分けた detail に任せる
     return (
       <ErrorNote className="space-y-1">
         <p>
-          <strong>{llm}。</strong>LLM
-          の設定（鍵・接続先・モデル）を確かめるか、少し待ってから描き直す。{' '}
+          <strong>{llm}。</strong>何をすればよいかは、すぐ下の詳しい理由にある。{' '}
           <Link to="/settings#llm" className="text-primary underline-offset-4 hover:underline">
             LLM の設定へ
           </Link>
