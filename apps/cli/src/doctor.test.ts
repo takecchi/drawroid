@@ -104,7 +104,20 @@ const SDAPI_BASE = {
   'GET /sdapi/v1/samplers': [],
 };
 
+/**
+ * 繋がらない所として、いま何も待ち受けていないポートを渡す。既定の 7860 は使わない: 手元で Forge が 7860 にいると繋がってしまうため。
+ * :9 も使わない: fetch が繋ぐ前に断るポート（bad port）で、本番の「繋がらない」と文が違う
+ */
+async function closedUrl() {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise((resolve) => server.close(resolve));
+  return { url: `http://127.0.0.1:${port}`, port };
+}
+
 async function setup(config: unknown, overrides: Partial<DoctorOptions> = {}) {
+  const { url } = await closedUrl();
   const dir = await mkdtemp(join(tmpdir(), 'drawroid-doctor-'));
   const configPath = join(dir, 'config.json');
   if (config !== undefined) {
@@ -116,7 +129,7 @@ async function setup(config: unknown, overrides: Partial<DoctorOptions> = {}) {
   const report = await runDoctor({
     configPath,
     backendKind: undefined,
-    backendUrl: 'http://127.0.0.1:9',
+    backendUrl: url,
     caller: 'cli',
     env: {},
     webRoot: () => webRoot,
@@ -124,7 +137,7 @@ async function setup(config: unknown, overrides: Partial<DoctorOptions> = {}) {
     llmTimeoutMs: 2_000,
     ...overrides,
   });
-  return { report, text: formatDoctorReport(report) };
+  return { report, text: formatDoctorReport(report), url };
 }
 
 describe('runDoctor', () => {
@@ -188,9 +201,10 @@ describe('runDoctor', () => {
   });
 
   it('checks each distinct assignment once: roles sharing a provider and model are checked together', async () => {
+    const { url } = await closedUrl();
     const providers = {
-      a: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' },
-      b: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' },
+      a: { type: 'openai-compatible', baseURL: `${url}/v1` },
+      b: { type: 'openai-compatible', baseURL: `${url}/v1` },
     };
     // 考える役と見る役が同じ割り当てで、話す役だけが別
     const shared = await setup({
@@ -229,9 +243,10 @@ describe('runDoctor', () => {
   });
 
   it('flags a judge model that is set not to read images, without calling it', async () => {
+    const { url } = await closedUrl();
     const { text } = await setup({
       llm: {
-        providers: { a: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:9/v1' } },
+        providers: { a: { type: 'openai-compatible', baseURL: `${url}/v1` } },
         roles: {
           think: { provider: 'a', model: 'm1' },
           judge: { provider: 'a', model: 'm2', imageInput: false },
@@ -372,35 +387,29 @@ describe('runDoctor', () => {
   it('tells to give doctor the same --backend-url only when it could not reach the default URL', async () => {
     const hint = 'drawroid doctor にも同じ --backend-url を付ける';
     // 何も指定しない doctor は既定の URL を見る。起動にだけ付けた --backend-url は見えない
-    // 既定の 7860 の代わりに、何も待ち受けない :9 を既定として渡す: 手元で Forge が 7860 にいると繋がってしまうため
+    // 既定の 7860 の代わりに、何も待ち受けていないポートを既定として渡す（closedUrl）
     const byDefault = await setup(undefined, { backendUrlSource: 'default' });
-    expect(byDefault.text).toMatch(/足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（既定）/);
+    expect(byDefault.text).toContain(`足りない  繋がらない: ${byDefault.url}（既定）`);
     expect(byDefault.text).toContain(hint);
 
     // URL を指定したうえで繋がらないなら、その URL を直す話で、doctor の引数の話ではない
     const byFlag = await setup(undefined, { backendUrlSource: 'cli' });
-    expect(byFlag.text).toMatch(
-      /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（--backend-url で指定）/,
-    );
+    expect(byFlag.text).toContain(`足りない  繋がらない: ${byFlag.url}（--backend-url で指定）`);
     expect(byFlag.text).not.toContain(hint);
   });
 
   it('does not tell to give doctor --backend-url when the URL came from config.json or from doctor own --backend-url', async () => {
     const hint = 'drawroid doctor にも同じ --backend-url を付ける';
     // drawroid doctor の入り方: 引数に URL が無ければ undefined を渡し、config.json の backend.url から決める
-    const byConfig = await setup(
-      { backend: { url: 'http://127.0.0.1:9' } },
-      { backendUrl: undefined },
-    );
-    expect(byConfig.text).toMatch(
-      /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（config\.json の backend\.url）/,
-    );
+    const { url } = await closedUrl();
+    const byConfig = await setup({ backend: { url } }, { backendUrl: undefined });
+    expect(byConfig.text).toContain(`足りない  繋がらない: ${url}（config.json の backend.url）`);
     expect(byConfig.text).not.toContain(hint);
 
     // doctor に --backend-url を付けたときは、backendUrlSource を渡さずに URL だけを渡す
     const byOwnFlag = await setup(undefined);
-    expect(byOwnFlag.text).toMatch(
-      /足りない {2}繋がらない: http:\/\/127\.0\.0\.1:9（--backend-url で指定）/,
+    expect(byOwnFlag.text).toContain(
+      `足りない  繋がらない: ${byOwnFlag.url}（--backend-url で指定）`,
     );
     expect(byOwnFlag.text).not.toContain(hint);
   });
@@ -431,18 +440,6 @@ describe('the check from the settings screen', () => {
     const res = await app.request('/api/doctor', { method: 'POST' });
     expect(res.status).toBe(200);
     return { body: (await res.json()) as { report: DoctorReport }, dir };
-  }
-
-  /**
-   * 既定の 7860 の代わりに、いま何も待ち受けていないポートを既定として渡す: 手元で Forge が 7860 にいると繋がってしまうため。
-   * :9 は使わない: fetch が繋ぐ前に断るポート（bad port）で、本番の「繋がらない」と文が違う
-   */
-  async function closedUrl() {
-    const server = createServer();
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const { port } = server.address() as AddressInfo;
-    await new Promise((resolve) => server.close(resolve));
-    return { url: `http://127.0.0.1:${port}`, port };
   }
 
   it('does not tell the screen to give doctor --backend-url, even when it could not reach the default URL', async () => {
