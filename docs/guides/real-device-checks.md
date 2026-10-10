@@ -35,6 +35,7 @@
 `pnpm drawroid doctor` を、起動と同じ指定を付けて打つ（例: `pnpm drawroid doctor --backend a1111 --backend-url http://127.0.0.1:7860`）。設定ファイル・画像のバックエンド・LLM・web の配り先の4つを確かめ、何も書き換えずに終わる。「足りない」の行の「→」に、何を直すかが出る。全部の行が「よい」になるまで直す。
 
 - 画面では、「設定」の「まとめて確かめる」の「確かめる」が同じことをする（走っている drawroid が使っている URL で確かめる）。全部よければ「すべてよい。会話から描き始められる。」と出る
+  - 端末の `drawroid doctor` は、締めの文が画面と違う。全部よければ「すべてよい。drawroid を起動して試せる」、足りなければ「足りないものが N つある。「→」の行を上から順に直して、もう一度 drawroid doctor で確かめる」と出る（画面では「→」の代わりに「すること:」）。足りないものがあれば、終了コードは 1
 - doctor は、走っている drawroid には聞かず、自分の指定と `config.json` から URL を決める。drawroid を `--backend-url` 付きで起動したなら、doctor にも同じ `--backend-url` を付ける
 - LLM の項は、役ごとに短い呼び出しを送る。話す役はツールを3回続けて呼べるかを確かめる（「…と、3回続けて1往復できた」）。考える役は構造化出力で1往復する。見る役には、ジョブが見る役に渡すのと同じ形式の小さな画像を1枚渡す（「…と、画像を1枚渡して1往復できた」）
 
@@ -393,9 +394,16 @@ M2 の「失敗したときに見るファイル」に加えて、データデ�
 1. A1111 を `--api` 付きで起動する
 2. `pnpm drawroid doctor --backend a1111 --data-dir /tmp/drawroid-check-a1111` を打ち、画像のバックエンドの項（見出しが「画像のバックエンド（A1111）」）が全部「よい」になることを確かめる
    - 製品と版の行が「よい」であること（Forge が動いている所に A1111 として繋いだときや、版が 1.9 より古いときは「足りない」になる）
-3. `pnpm drawroid --backend a1111 --data-dir /tmp/drawroid-check-a1111` で起動し、端末の2行目が「drawroid: A1111 http://127.0.0.1:7860」であることを確かめる
+     - 製品は `/sdapi/v1/sd-modules` の応答で見分ける（200 なら Forge、404 なら A1111）。それ以外の応答なら「製品を見分けられなかった（…）。設定どおり A1111 として扱う」と出て、「よい」のままになる
+     - 版は `/internal/sysinfo` の `Version` から読む。この欄の形は実機では確かめておらず、ソースからの推測である。取れなければ「版は分からない」と出て、これも「よい」のままになる。そのときは、A1111 の画面の下の端に出る版を目で見て 1.9 以上であることを確かめ、doctor の行と一緒に #61 に返す
+   - 新しいデータディレクトリでは LLM がまだ無いので、LLM の項は「足りない」になる。ここで見るのは、画像のバックエンドの項だけでよい
+3. `pnpm drawroid --backend a1111 --data-dir /tmp/drawroid-check-a1111` で起動し、端末の2行目が「drawroid: A1111 http://127.0.0.1:7860」であることを確かめる（前回の書きかけの一時ファイルを片付けた行が出たときは、3行目になる）
+   - 画面の「設定」の「バックエンドの URL」に、「種類: A1111（起動時の --backend か config.json の backend.kind で変える）」と出ること
 4. `curl http://127.0.0.1:7878/api/backend` で `capabilities` を見る。拡張を入れていれば `limits.controlnetUnits` が A1111 の ControlNet の設定のユニットの数と一致すること。入れていなければ、`unavailable` に理由付きで ControlNet が出ること
-5. M2 の手順 2〜8 をたどる（M6:157）。手順 4 の doctor は、`pnpm drawroid doctor --backend a1111 --data-dir /tmp/drawroid-check-a1111` にする（`--backend a1111` を付けないと Forge として確かめる）
+   - 拡張は入っていても、`GET /controlnet/settings` の無い古い拡張では、`limits` が付かず、`unavailable` に「A1111 の ControlNet の拡張に /controlnet/settings が無く、載せられるユニットの数が分からない。拡張を新しくする」が出る
+5. M2 の手順 2〜8 をたどる（M6:157）。M2 の手順 1 の起動は、上の手順 3 で済んでいる
+   - 手順 4 の doctor は、`pnpm drawroid doctor --backend a1111 --data-dir /tmp/drawroid-check-a1111` にする（`--backend a1111` を付けないと Forge として確かめる）
+   - M2 の手順に出てくる `/tmp/drawroid-check` は、`/tmp/drawroid-check-a1111` に読み替える（手順 6 の `llm-calls/*.json` など）
 6. （任意）M1 の手順 2〜5 と、M4 の節を同じようにたどる
 
 見るべき結果:
@@ -405,8 +413,14 @@ M2 の「失敗したときに見るファイル」に加えて、データデ�
 
 A1111 だけの注意:
 
-- 二段目の CFG を一段目と分けた Hires. fix と、img2img・inpaint と Hires. fix の同時指定は、A1111 に投げずに理由付きで断る
-- `packages/backend-a1111/README.md` の「実機で要確認」の各項（ControlNet の拡張の実機の応答など）の結果も返してもらえれば、雛形（`packages/backend-a1111/src/test-support/fixtures/`。取り直す手順はその README）を差し替える
+- 二段目の CFG を一段目と分けた Hires. fix と、img2img・inpaint と Hires. fix の同時指定は、A1111 に投げずに理由付きで断る。断りの文は、それぞれ「A1111 は Hires. fix の二段目の CFG を一段目と分けられない（二段目も一段目の CFG で描く）」「A1111 の img2img・inpaint は Hires. fix と同時に使えない」
+  - M4 の節を A1111 でたどるときは、AI が inpaint と Hires. fix を同じ回に選ぶと、この断りで止まりうる
+- `packages/backend-a1111/README.md` の「実機で要確認」の5項の結果も返してもらえれば、雛形（`packages/backend-a1111/src/test-support/fixtures/`。取り直す手順はその README）を差し替える
+  - 知らない欄（Forge だけの `hr_additional_modules` など）を送っても 422 にならないか（drawroid は送らないので、確かめるなら `curl` で直接 POST する）
+  - 同じ名前の LoRA のファイルが別の階層にあるときの振る舞い
+  - VAE のフォルダが空のとき、`/sdapi/v1/sd-vae` が空の一覧を返すか
+  - サンプラとスケジューラの知らない名前の扱い（版で違う。Issue #41）
+  - ControlNet の拡張の実機の応答（`/controlnet/settings` の値が設定の画面のユニットの数と合うか、ハッシュの取れないモデルの名前が `名前 [NOFILE]` になるときの引き当て）
 
 ## マイルストーンの外 — 実機で見ておく振る舞い
 
