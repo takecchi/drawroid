@@ -174,6 +174,49 @@ describe('detectContextTokens', () => {
 
     expect(filled.roles.think.contextTokens).toBeUndefined();
   });
+
+  // 鍵の要る LLM のサーバでも窓を読む: 鍵を付けないと 401 で断られ、窓だけが黙って読めなくなるため
+  it.each([
+    ['sends the API key of the provider', { LOCAL_KEY: 'sk-local' }, 'Bearer sk-local'],
+    ['sends no authorization when the key is not set', {}, null],
+  ])('%s when it asks the server for the window', async (_, env, authorization) => {
+    const sent: (string | null)[] = [];
+    const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      sent.push(new Headers(init?.headers).get('authorization'));
+      return new Response(JSON.stringify({ data: [{ id: 'qwen', meta: { n_ctx: 32768 } }] }));
+    }) as typeof globalThis.fetch;
+    const withKey = llmConfigSchema.parse({
+      providers: {
+        local: {
+          type: 'openai-compatible',
+          baseURL: 'http://127.0.0.1:8080/v1/',
+          apiKeyEnv: 'LOCAL_KEY',
+        },
+      },
+      roles: { think: { provider: 'local', model: 'qwen' } },
+    });
+
+    await detectContextTokens(withKey, { env, fetch });
+
+    expect(sent).toEqual([authorization]);
+  });
+
+  // 答えないサーバを待ち続けない: 起動と設定の保存が、窓の読み取りで止まったままになるため
+  it(
+    'gives up on a server that does not answer, and leaves it unset',
+    { timeout: 15_000 },
+    async () => {
+      const fetch = ((_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        })) as typeof globalThis.fetch;
+
+      const { config: filled, detected } = await detectContextTokens(config(), { env: {}, fetch });
+
+      expect(filled.roles.think.contextTokens).toBeUndefined();
+      expect(detected).toEqual([]);
+    },
+  );
 });
 
 describe('describeDetectedContext', () => {
