@@ -14,10 +14,12 @@ import {
   createReadOnlyTools,
   DEFAULT_BUDGETS,
   DEFAULT_TALK_LIMITS,
+  generationRequestSchema,
   JobRunner,
   MAX_REFERENCE_NOTE_CHARS,
   mergePermissions,
   type DrawingToolDeps,
+  type InterventionRecord,
   type JobStore,
   type ReadOnlyToolDeps,
   type TalkTool,
@@ -685,6 +687,77 @@ describe('revise_drawing and stop_drawing', () => {
     expect(revisedJobs).toEqual([newer]);
     expect(stopped.summary).toContain(`ジョブ ${newer}`);
     expect(stoppedJobs).toEqual([newer]);
+  });
+
+  it('adopts from, and names when refusing a new drawing, the latest of the jobs going on', async () => {
+    const suffixes = ['aaaaaa', 'bbbbbb'];
+    const store = new FsJobStore(root, { randomSuffix: () => suffixes.shift() ?? 'cccccc' });
+    // 実行器はジョブを回さず、採るよう言われたジョブを覚えるだけ
+    const adoptedJobs: string[] = [];
+    const drawingRunner: DrawingToolDeps['runner'] = {
+      kick: () => undefined,
+      stop: async () => undefined,
+      adopt: async (jobId) => {
+        adoptedJobs.push(jobId);
+        return {} as InterventionRecord;
+      },
+      revise: async () => ({ references: [] }),
+    };
+    const { jobs, context } = await setup(store, drawingRunner);
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const older = '20261009-063012-aaaaaa';
+    const spec = await jobs.readJob(older);
+    if (spec.kind !== 'auto') throw new Error(`${older} は自動ジョブのはず`);
+    await jobs.createJob(
+      { ...spec, request: '夕焼け' },
+      await jobs.readState(older),
+      new Date('2026-10-09T06:30:12.000Z'),
+    );
+    const newer = '20261009-063012-bbbbbb';
+    // 画像は新しい方にだけ置く: 古い方を選べば、採る画像が無くて断る
+    await jobs.writeGeneration(
+      newer,
+      1,
+      generationRequestSchema.parse({
+        prompt: 'girl, beach',
+        steps: 20,
+        cfgScale: 6,
+        width: 512,
+        height: 512,
+      }),
+      { images: [{ png: STUB_PNG, seed: 7, metadata: {} }], metadata: {} },
+    );
+
+    const adopted = await run('adopt_image', { iteration: 1, number: 1 }, context);
+    const refused = await run('start_drawing', { request: '猫', stopConditions: LONG }, context);
+
+    expect(adopted.ok).toBe(true);
+    expect(adoptedJobs).toEqual([newer]);
+    expect(refused.ok).toBe(false);
+    expect(refused.summary).toContain(`ジョブ ${newer} がまだ描いている`);
+  });
+
+  it('says there is no drawing to revise, stop or adopt once the drawing of the conversation has stopped', async () => {
+    const { jobs, context, runner } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+    await untilRunning(jobs, jobId!);
+    await run('stop_drawing', {}, context);
+    await runner.idle();
+
+    expect(await run('revise_drawing', { instruction: '逆光にして' }, context)).toMatchObject({
+      ok: false,
+      summary: '描いている絵が無い',
+    });
+    expect(await run('stop_drawing', {}, context)).toMatchObject({
+      ok: false,
+      summary: '描いている絵が無い',
+    });
+    expect(await run('adopt_image', {}, context)).toMatchObject({
+      ok: false,
+      summary: '描いている絵が無い',
+    });
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
   });
 
   it('describes when to call each tool in its definition, not in a system prompt', () => {
