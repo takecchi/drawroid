@@ -99,13 +99,12 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
         return res.end(JSON.stringify({ error: { message: 'image input is not supported' } }));
       }
       const role = String(request.model).replace('-model', '');
-      // ツールを渡さない話す役の呼び出し（ジョブが止まったことを伝えるだけのターン）。json では、返答だけのスキーマで来る
-      const requestSchema =
-        request.response_format?.json_schema?.schema ?? request.response_format?.schema;
+      // ジョブが止まったことを伝えるだけのターン（ツールを渡さない）。入力に入る止まりの一文で見分ける:
+      // 「ツールが無い talk-model の呼び出し」で見分けると、doctor が talk-model で確かめる見る役の構造化出力まで拾うため
       const toolless =
         role === 'talk' &&
         !(Array.isArray(request.tools) && request.tools.length > 0) &&
-        !JSON.stringify(requestSchema ?? {}).includes('"tool"');
+        JSON.stringify(request.messages).includes('会話のジョブが止まった');
       // holdTalk は、ツールを渡す呼び出し（人間の発言を読むターン）だけを止める: ジョブの止まりで起きたターンに、
       // 確かめが止めたい呼び出しの待ちを横取りさせないため
       if (role === 'talk' && holdNext && !toolless) {
