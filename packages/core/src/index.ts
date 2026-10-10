@@ -59,7 +59,7 @@ export type {
   TextPart,
   ToolSpec,
 } from './llm/port.js';
-export { sealMessages } from './llm/port.js';
+export { LLM_CALL_FAILED_PREFIX, sealMessages } from './llm/port.js';
 export * from './llm/record.js';
 export * from './loop/budget.js';
 export * from './loop/carry.js';

@@ -11,8 +11,9 @@ import type {
   TalkStepPart,
   ToolSpec,
 } from '@drawroid/core';
-import { DEFAULT_MODEL_WINDOW } from '@drawroid/core';
+import { DEFAULT_MODEL_WINDOW, LLM_CALL_FAILED_PREFIX } from '@drawroid/core';
 import {
+  APICallError,
   jsonSchema,
   Output,
   parsePartialJson,
@@ -63,6 +64,52 @@ class OutputCutAtLimit extends Error {
 function clip(text: string, limit: number): string {
   const chars = [...text];
   return chars.length <= limit ? text : `${chars.slice(0, limit).join('')}…`;
+}
+
+/** 原因をたどって、繋がらないことを表す符号（ECONNREFUSED など）を探す */
+function connectionCode(error: unknown): string | undefined {
+  for (let current = error, depth = 0; current instanceof Object && depth < 5; depth += 1) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === 'string' && CONNECTION_CODES.has(code)) return code;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+const CONNECTION_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+/**
+ * LLM の呼び出しの失敗を、何が起きたか・次に何をするかの言葉にする。LLM の返した理由（英語のことが多い）は後ろに添えて残す。
+ * 聞き直す回数や止める所は変えない（言い方だけ）
+ */
+export function describeCallFailure(error: unknown): string {
+  const message = clip(error instanceof Error ? error.message : String(error), ERROR_SUMMARY_LIMIT);
+  const said = message === '' ? '' : `（LLM の返した理由: ${message}）`;
+  const status = APICallError.isInstance(error) ? error.statusCode : undefined;
+  if (status === 401 || status === 403) {
+    return `${LLM_CALL_FAILED_PREFIX}鍵が通らない（${status}）。LLM の設定の API キーの環境変数と、その値を確かめる${said}`;
+  }
+  if (status === 404) {
+    return `${LLM_CALL_FAILED_PREFIX}接続先かモデルが見つからない（404）。LLM の設定の接続先（baseURL）とモデルの名前を確かめる${said}`;
+  }
+  if (status === 429) {
+    return `${LLM_CALL_FAILED_PREFIX}呼び出しの上限に当たった（429）。少し待ってから、もう一度頼む${said}`;
+  }
+  if (status !== undefined && status >= 500) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（${status}）。少し待ってから、もう一度頼む${said}`;
+  }
+  const code = connectionCode(error);
+  if (code !== undefined) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM に繋がらない（${code}）。LLM の設定の接続先（baseURL）と、LLM のサーバが起動しているかを確かめる`;
+  }
+  return `${LLM_CALL_FAILED_PREFIX}${message}`;
 }
 
 function toUsage(usage: LanguageModelUsage | undefined): LlmUsage {
@@ -282,7 +329,7 @@ export class AiSdkLlm implements LlmPort {
         });
         return {
           ok: false,
-          reason: `LLM の呼び出しに失敗した: ${clip(message, ERROR_SUMMARY_LIMIT)}`,
+          reason: describeCallFailure(error),
           attempts,
         };
       }
@@ -490,7 +537,7 @@ export class AiSdkLlm implements LlmPort {
     const message = error instanceof Error ? error.message : String(error);
     return LENGTH_IN_MESSAGE.test(message)
       ? this.cutAtLimitReason(call.role, message)
-      : `LLM の呼び出しに失敗した: ${clip(message, ERROR_SUMMARY_LIMIT)}`;
+      : describeCallFailure(error);
   }
 
   /** モデルのツール呼び出し（OpenAI 互換の tools / tool_calls など）で1ステップを回す */

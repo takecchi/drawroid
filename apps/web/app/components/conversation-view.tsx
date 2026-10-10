@@ -1,4 +1,9 @@
-import { formatImageKey, LLM_NOT_CONFIGURED_REASON, type SelectionVerdict } from '@drawroid/core';
+import {
+  formatImageKey,
+  LLM_CALL_FAILED_PREFIX,
+  LLM_NOT_CONFIGURED_REASON,
+  type SelectionVerdict,
+} from '@drawroid/core';
 import {
   conversationUploadUrl,
   isApiError,
@@ -56,7 +61,7 @@ import { useConversationStream, type ConversationSource } from '../lib/conversat
 import { formatScore } from '../lib/format';
 import { stoppedByBackend, useRecheckBackendOnFailure } from '../lib/recheck-backend';
 import { describeStopConditions } from '../lib/stop-conditions-form';
-import { summarizeStopReason } from '../lib/stop-reason';
+import { llmStageFailure, summarizeStopReason } from '../lib/stop-reason';
 import { summarizeToolRow, toolTitle } from '../lib/tool-rows';
 import { buildReferenceUpload, referenceFileProblem } from '../lib/reference-upload';
 import { AdoptButton } from './adopt-button';
@@ -504,6 +509,8 @@ function JobStoppedItem({ item }: { item: Extract<ChatItem, { kind: 'job-stopped
         }
         action={
           <>
+            {/* LLM の役が失敗して止まったジョブには、LLM の設定の欄への道を添える */}
+            {llmStageFailure(item.reason) !== undefined && <SettingsLink to="llm" />}
             {/* バックエンドに繋がらずに止まったジョブには、設定の欄への道を添える */}
             {item.reason.kind === 'error' &&
               item.reason.backendErrorKind !== undefined &&
@@ -875,8 +882,13 @@ function renderItem(
         <StopNotice
           key={item.key}
           tone="error"
-          // LLM が未設定で閉じたターンには、設定の欄への道を添える
-          action={item.reason === LLM_NOT_CONFIGURED_REASON ? <SettingsLink to="llm" /> : undefined}
+          // LLM が未設定のとき・LLM の呼び出しが失敗したときに閉じたターンには、設定の欄への道を添える
+          action={
+            item.reason === LLM_NOT_CONFIGURED_REASON ||
+            item.reason?.startsWith(LLM_CALL_FAILED_PREFIX) === true ? (
+              <SettingsLink to="llm" />
+            ) : undefined
+          }
         >
           応答が失敗した{item.reason === undefined ? '' : `: ${item.reason}`}
         </StopNotice>
