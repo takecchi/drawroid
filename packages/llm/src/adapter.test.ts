@@ -1,5 +1,6 @@
 import {
   buildJudgeInput,
+  buildJudgeOutputSchema,
   buildThinkInput,
   buildThinkOutputSchema,
   createCarry,
@@ -787,5 +788,58 @@ describe('AiSdkLlm.streamStep with toolCalling: json', () => {
     expect(parts.flatMap((p) => (p.type === 'text-delta' ? [p.text] : []))).toEqual([
       '描けると思います',
     ]);
+  });
+});
+
+// 見る役が点数の低いまま「止めてよい」と返したら、出力の誤りとして、ほかの検証エラーと同じ回数だけ聞き直す
+describe('AiSdkLlm.generateStructured with the judge schema', () => {
+  const judgeCall = () => ({
+    role: 'judge' as const,
+    purpose: 'judge' as const,
+    schema: buildJudgeOutputSchema(1),
+    messages: buildJudgeInput({
+      carry: createCarry('夕暮れの海辺の少女', DEFAULT_BUDGET).carry,
+      images: [{ key: 'j/0001/0', data: new Uint8Array([1]), mediaType: 'image/png', longEdge: 1 }],
+      budget: DEFAULT_BUDGET,
+      window: DEFAULT_MODEL_WINDOW,
+    }),
+    signal: new AbortController().signal,
+  });
+  /** 2026-10-09 の実機（llama.cpp・Qwen2.5-VL-3B）で見る役が返した形 */
+  const judged = (score: number, canStop: boolean) =>
+    reply(
+      JSON.stringify({
+        images: [{ score, issues: ['海辺も少女も描かれていない'] }],
+        nextChange: '海辺に立つ少女を描く',
+        canStop,
+      }),
+    );
+
+  it('asks again, naming canStop, when the judge says it can stop with a score of 0.49', async () => {
+    const model = new MockLanguageModelV4({ doStream: [judged(0.49, true), judged(0.49, false)] });
+    const outcome = await adapter(model).generateStructured(judgeCall());
+
+    expect(outcome).toMatchObject({ ok: true, value: { canStop: false } });
+    expect(outcome.attempts).toHaveLength(2);
+    expect(userTexts(model, 1).some((t) => t.includes('canStop'))).toBe(true);
+  });
+
+  it('takes "can stop" at a score of 0.5 without asking again', async () => {
+    const model = new MockLanguageModelV4({ doStream: [judged(0.5, true)] });
+    const outcome = await adapter(model).generateStructured(judgeCall());
+
+    expect(outcome).toMatchObject({ ok: true, value: { canStop: true } });
+    expect(outcome.attempts).toHaveLength(1);
+  });
+
+  it('gives up after the same number of retries as any other schema error', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [judged(0, true), judged(0, true), judged(0, true), judged(0, false)],
+    });
+    const outcome = await adapter(model, role(), 2).generateStructured(judgeCall());
+
+    expect(outcome.ok).toBe(false);
+    expect(model.doStreamCalls).toHaveLength(3);
+    if (!outcome.ok) expect(outcome.reason).toMatch(/3 回続けてスキーマに合わなかった.*canStop/);
   });
 });

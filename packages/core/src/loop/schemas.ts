@@ -42,8 +42,28 @@ export type ThinkOutput = {
   intent?: string;
 };
 
-/** 見る役の出力スキーマ。画像の枚数ぶんの評価をちょうど返させる */
+/** これより低い最高点で「止めてよい」とした評価は、点数と止めてよいかが食い違っている */
+const LOWEST_SCORE_TO_STOP = 0.5;
+
+/**
+ * 見る役の出力スキーマ。画像の枚数ぶんの評価をちょうど返させ、最高点が低いまま止めてよいとした出力は受け付けない。
+ */
+// 食い違いをループの止める判定で捨てない: 出力の誤りとして検証で落とせば、ほかの検証エラーと同じ回数だけ聞き直し、尽きればジョブを理由付きで止められるため
 export function buildJudgeOutputSchema(imageCount: number) {
+  return buildJudgeRecordSchema(imageCount).superRefine((output, context) => {
+    const best = Math.max(...output.images.map((image) => image.score));
+    if (output.canStop && best < LOWEST_SCORE_TO_STOP) {
+      context.addIssue({
+        code: 'custom',
+        path: ['canStop'],
+        message: `最高点 ${best} は ${LOWEST_SCORE_TO_STOP} 未満で意図どおりではないので、canStop は false にする`,
+      });
+    }
+  });
+}
+
+/** 記録した見る役の出力を読むスキーマ。食い違いを検査する前に受け付けた記録も読めるよう、形だけを見る */
+export function buildJudgeRecordSchema(imageCount: number) {
   return z.object({
     images: z
       .array(

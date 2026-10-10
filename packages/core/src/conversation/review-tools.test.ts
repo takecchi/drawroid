@@ -203,6 +203,28 @@ describe('review_image', () => {
     expect(second).toEqual(first);
   });
 
+  // 点数の低いまま「止めてよい」とした評価を聞き直すようにする前の記録も、渡し済みの評価として読める
+  it('returns an earlier review recorded with "can stop" at a score of 0', async () => {
+    const { review, calls } = setup({ 'job-1': job(stoppedState()) });
+    await review({ iteration: 2, number: 1 });
+    calls[0] = {
+      ...calls[0]!,
+      outcome: {
+        ok: true,
+        value: {
+          images: [{ score: 0, issues: ['海辺が無い'] }],
+          nextChange: '海辺を描く',
+          canStop: true,
+        },
+      },
+    };
+
+    const result = await review({ iteration: 2, number: 1 });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(result.result).toContain('1枚目は 0.00（海辺が無い）');
+  });
+
   it('says, in the counting of the talking role, when the record of an earlier review cannot be read', async () => {
     const { review, calls } = setup({ 'job-1': job(stoppedState()) });
     await review({ iteration: 2, number: 1 });
