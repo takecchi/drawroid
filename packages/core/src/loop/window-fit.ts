@@ -71,7 +71,6 @@ export function findInputOverflows(
   };
   if (windows.think !== undefined) {
     check('think', 'think', thinkRequiredTokens(budgets));
-    check('think', 'ref-gist', refGistRequiredTokens(budgets));
   }
   if (windows.judge !== undefined) check('judge', 'judge', judgeRequiredTokens(budgets));
   return overflows;
