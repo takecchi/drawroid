@@ -298,6 +298,7 @@ function ImageDecision({
   // ここで決めたら、記録（adopted）が追いつく前にジョブが止まっても、採るボタン（決めた印）のままにする:
   // お気に入りのボタンへ差し替えると、決めた印が作り直され、印へ移したフォーカスが落ちるため
   const [decidedHere, setDecidedHere] = useState(false);
+  const [confirmingHere, setConfirmingHere] = useState(false);
   if (stopped && !chosen && !decidedHere) {
     return (
       <ChooseAsFavorite
@@ -305,6 +306,7 @@ function ImageDecision({
         imageKey={formatImageKey({ iteration: iteration.iteration, index })}
         imageLabel={imageLabel}
         verdict={verdict}
+        interrupted={confirmingHere}
       />
     );
   }
@@ -315,6 +317,7 @@ function ImageDecision({
       imageLabel={imageLabel}
       chosen={chosen}
       onDecided={() => setDecidedHere(true)}
+      onConfirmingChange={setConfirmingHere}
     />
   );
 }

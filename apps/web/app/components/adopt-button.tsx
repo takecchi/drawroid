@@ -23,6 +23,7 @@ export function AdoptButton({
   imageLabel,
   chosen = false,
   onDecided,
+  onConfirmingChange,
 }: {
   jobId: string;
   image: { iteration: number; index: number };
@@ -32,8 +33,14 @@ export function AdoptButton({
   chosen?: boolean;
   /** このボタンで決めたとき。呼び手は、記録（chosen）が追いつく前にジョブが止まっても、このボタンを出し続ける */
   onDecided?: () => void;
+  /** 確かめを出している間か。呼び手は、確かめている間にジョブが止まったら、お気に入りの口でその訳を出す */
+  onConfirmingChange?: (confirming: boolean) => void;
 }) {
   const [state, setState] = useState<State>({ step: 'idle' });
+  const confirming = state.step === 'confirming' || state.step === 'sending';
+  useEffect(() => {
+    onConfirmingChange?.(confirming);
+  }, [confirming, onConfirmingChange]);
   // 押したボタンは次の形（確かめ・印）に替わって消える。人が押して形が替わったときだけ、次の形の先頭へフォーカスを移す
   // （移さないとページの外に落ちる。押していないのに替わったとき、たとえば会話で別に決まったときは移さない）
   const pressed = useRef(false);
