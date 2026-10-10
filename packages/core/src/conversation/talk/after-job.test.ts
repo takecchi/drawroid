@@ -164,6 +164,67 @@ describe('TalkRunner after a job of the conversation stops', () => {
     expect(input).toContain('0.92');
   });
 
+  it('puts the job-stopped line in the input of a report-only turn, and not in a turn for a person', async () => {
+    const LINE = '会話のジョブが止まった。その結果を、人間に短く伝える。';
+    const inputOf = (step: { messages: { user: { type: string; text?: string }[] } }) =>
+      step.messages.user.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
+    const report = await setup(() => reportStep);
+    await report.startJob();
+    await report.stopJob(AI_STOP);
+    await report.turnEnded(1);
+    expect(inputOf(report.llm.steps[0]!)).toContain(LINE);
+
+    const human = await setup(() => ({ text: 'はい。' }));
+    await human.startJob();
+    await human.say('いまどんな感じ？');
+    await human.turnEnded(1);
+    expect(human.llm.steps).toHaveLength(1);
+    expect(inputOf(human.llm.steps[0]!)).not.toContain(LINE);
+  });
+
+  describe('when many events follow the stop', () => {
+    // 発言と返事が 50 件を超えて続いても（遡りの1ページを超えても）、job.stopped まで遡る
+    const fill = async (hub: { confirm: (e: never) => Promise<unknown> }, count: number) => {
+      for (let i = 0; i < count; i += 1) {
+        await hub.confirm({
+          type: 'assistant.message',
+          turn: 1,
+          partId: `p${i}`,
+          text: `返事 ${i}`,
+          interrupted: false,
+        } as never);
+      }
+    };
+
+    it('still speaks when more than 50 events follow the stop', async () => {
+      const { startJob, hub, runner, conversationId, jobTurns, turnEnded } = await setup(
+        () => reportStep,
+      );
+      await startJob();
+      await hub.confirm({ type: 'job.stopped', jobId: JOB, reason: AI_STOP });
+      await fill(hub, 120);
+      runner.reportJobStopped({ conversationId, jobId: JOB, reason: AI_STOP });
+
+      await turnEnded(1);
+      expect(await jobTurns()).toHaveLength(1);
+    });
+
+    it('stays silent when a different job started more than 50 events back', async () => {
+      const { startJob, hub, runner, conversationId, events, llm, quiet } = await setup(
+        () => reportStep,
+      );
+      await startJob();
+      await hub.confirm({ type: 'job.stopped', jobId: JOB, reason: AI_STOP });
+      await startJob('20261010-030500-cd34');
+      await fill(hub, 120);
+      runner.reportJobStopped({ conversationId, jobId: JOB, reason: AI_STOP });
+
+      await quiet();
+      expect((await events()).some((e) => e.type === 'turn.started')).toBe(false);
+      expect(llm.steps).toHaveLength(0);
+    });
+  });
+
   it('speaks only once when the same stop is reported twice before the turn starts', async () => {
     const { startJob, stopJob, runner, conversationId, jobTurns, turnEnded, quiet } = await setup(
       () => reportStep,
