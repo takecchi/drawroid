@@ -234,6 +234,17 @@ describe('IterationList and the names of the selection buttons', () => {
   } as unknown as Iteration;
   const NAMES = ['お気に入り: 1 回目の画像 1 番', 'お気に入り: 1 回目の画像 2 番'];
 
+  // 遅れて読むのは会話の画像の行だけ（記録に大きさがあるとき）。ジョブの詳細は、今までどおりすぐ読む
+  it('loads the previews of the job detail at once, not as they come near', () => {
+    renderList(false, two);
+
+    const previews = [
+      screen.getByAltText(/1 回目の画像 1 番/),
+      screen.getByAltText(/1 回目の画像 2 番/),
+    ];
+    expect(previews.map((img) => img.getAttribute('loading'))).toEqual([null, null]);
+  });
+
   it('names the buttons of each image cell after its image, so that two images differ', () => {
     renderList(false, two);
 

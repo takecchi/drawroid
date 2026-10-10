@@ -352,6 +352,28 @@ describe('ChatComposer focus', () => {
     expect(document.activeElement).toBe(field());
   });
 
+  // 外したことは1度だけ使う: 覚えたままだと、あとで送ったあとに呼び手が添付を空にしたとき、外したことにして奪うため
+  it('does not move the focus again on a later change of the attachments, once a removal has been followed', () => {
+    const props = {
+      value: '',
+      onChange: () => undefined,
+      onSend: () => undefined,
+      onAttach: () => undefined,
+      onRemoveAttachment: () => undefined,
+    };
+    const a = { id: 'a', name: 'a.png', url: 'blob:a' };
+    const b = { id: 'b', name: 'b.png', url: 'blob:b' };
+    const { rerender } = render(<ChatComposer {...props} attachments={[a, b]} />);
+    screen.getByRole('button', { name: 'a.png を外す' }).click();
+    rerender(<ChatComposer {...props} attachments={[b]} />);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'b.png を外す' }));
+    field().focus();
+
+    rerender(<ChatComposer {...props} attachments={[]} />);
+
+    expect(document.activeElement).toBe(field());
+  });
+
   it('moves the focus to the message field when it starts with the focus, and only then', () => {
     const props = { value: '', onChange: () => undefined, onSend: () => undefined };
     const { unmount } = render(<ChatComposer {...props} focusOnMount />);

@@ -61,6 +61,22 @@ describe('BudgetSettings', () => {
     expect(screen.queryByText(SAVED)).toBeNull();
   });
 
+  it('moves the focus to the note again on a second save without editing', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+    const SAVED = '保存した。次に投入するジョブから効く。走っているジョブは変わらない。';
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(await screen.findByText(SAVED));
+
+    saveButton().focus();
+    expect(document.activeElement).toBe(saveButton());
+    await user.keyboard('{Enter}');
+
+    expect(document.activeElement).toBe(await screen.findByText(SAVED));
+  });
+
   it('shows an empty field for every number of the defaults, with the default as the placeholder', () => {
     render(<BudgetSettings />);
 

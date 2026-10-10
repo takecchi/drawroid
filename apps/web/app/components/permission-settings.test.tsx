@@ -130,6 +130,24 @@ describe('PermissionSettings', () => {
     expect(screen.getByRole('alert').textContent).toContain('steps: 数を入れる');
   });
 
+  // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る。欄を触らない2回目の保存でも移る
+  it('moves the focus to the note that it saved, also on a second save', async () => {
+    render(<PermissionSettings />);
+    const SAVED = '保存した。走行中のジョブにも次の回から効く。';
+
+    await save();
+    const first = await screen.findByText(SAVED);
+    expect(first.getAttribute('role')).toBe('status');
+    expect(document.activeElement).toBe(first);
+
+    screen.getByRole('button', { name: '許可を保存' }).focus();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '許可を保存' }));
+    await save();
+
+    const second = await screen.findByText(SAVED);
+    expect(document.activeElement).toBe(second);
+  });
+
   it('shows why the API refused the permissions', async () => {
     mocks.savePermissionSettings.mockRejectedValue(
       new ApiError('invalid_request', 'vae: 形が違う', 400),

@@ -18,13 +18,18 @@ export default function ConversationRoute() {
   const navigate = useNavigate();
   // 「新しい会話」から来たときだけ、話しかける欄へフォーカスを移す。印は最初に読んだら手放す:
   // history に残すと、再読み込みや戻る・進むで開き直しただけでも欄へ移り、ほかの所を触っている人からフォーカスを奪うため
-  const [focusComposer] = useState(
-    () => (location.state as { focusComposer?: boolean } | null)?.focusComposer === true,
-  );
+  const marked = (location.state as { focusComposer?: boolean } | null)?.focusComposer === true;
+  // 会話ごとに1度だけ読む: 一覧から別の会話へ移っても、この画面は作り直されないので、最初に読んだ値を持ち越さないため。
+  // 読んだ値は会話の間は覚えておく（印を手放したあとに欄が出ても移せるように）
+  const [read, setRead] = useState({ conversationId, focusComposer: marked });
+  const current =
+    read.conversationId === conversationId ? read : { conversationId, focusComposer: marked };
+  if (current !== read) setRead(current);
+  const { focusComposer } = current;
   useEffect(() => {
     if (focusComposer) void navigate(location.pathname, { replace: true, state: null });
-    // 最初の一度だけ
-  }, []);
+    // 会話ごとに最初の一度だけ
+  }, [conversationId]);
   const { data } = useConversation(conversationId);
   const actions = useMemo(() => apiConversationActions(conversationId), [conversationId]);
   const title = data?.conversation.title;

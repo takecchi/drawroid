@@ -135,6 +135,25 @@ describe('BackendUrlSettings', () => {
     expect(saveButton()).toHaveProperty('disabled', false);
   });
 
+  // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る（読み上げは移った先を読む）
+  it('moves the focus to the note that it saved, also on a second save without editing', async () => {
+    const user = userEvent.setup();
+    render(<BackendUrlSettings />);
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    const first = await screen.findByText(savedNotice);
+    expect(first.getAttribute('role')).toBe('status');
+    expect(document.activeElement).toBe(first);
+
+    saveButton().focus();
+    expect(document.activeElement).toBe(saveButton());
+    await user.keyboard('{Enter}');
+
+    const second = await screen.findByText(savedNotice);
+    expect(document.activeElement).toBe(second);
+  });
+
   describe('when the save fails', () => {
     const busy = '生成が走っているあいだは繋ぎ直せない。生成が終わるか、止めてからやり直す';
     const failSave = () =>
