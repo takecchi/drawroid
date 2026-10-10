@@ -214,6 +214,89 @@ describe('LlmSettings', () => {
     expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('local');
   });
 
+  it('drops the spaces typed around a provider name, both where roles choose it and where it is saved', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+
+    await user.type(input('provider 1番目 の名前'), ' local ');
+    await user.type(input('provider local の接続先（baseURL）'), 'http://127.0.0.1:11434/v1');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+
+    const think = screen.getByRole<HTMLSelectElement>('combobox', { name: '考える役の provider' });
+    expect(think.value).toBe('local');
+    expect(
+      within(think)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['local']);
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    const saved = mocks.saveLlmSettings.mock.calls[0]?.[0];
+    expect(Object.keys(saved.providers)).toEqual(['local']);
+    expect(saved.roles.think.provider).toBe('local');
+  });
+
+  it('reads a role that points at a provider name with spaces around it as that provider', async () => {
+    const user = userEvent.setup();
+    // config.json を手で書いたときにだけ起きる（画面から保存した名前は空白を落としてある）
+    mocks.useLlmSettings.mockReturnValue({
+      data: {
+        config: {
+          ...stored.config!,
+          providers: { ' local ': stored.config!.providers.local! },
+          roles: { think: { ...stored.config!.roles.think, provider: ' local ' } },
+        },
+      },
+      error: undefined,
+    });
+    render(<LlmSettings />);
+
+    const think = screen.getByRole<HTMLSelectElement>('combobox', { name: '考える役の provider' });
+    expect(think.value).toBe('local');
+    expect(
+      within(think)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['local']);
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    const saved = mocks.saveLlmSettings.mock.calls[0]?.[0];
+    expect(Object.keys(saved.providers)).toEqual(['local']);
+    expect(saved.roles.think.provider).toBe('local');
+  });
+
+  it('refuses to save two providers of the same name, spaces around it aside, and keeps what was typed', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.clear(input('provider cloud の名前'));
+    await user.type(input('provider 2番目 の名前'), ' local');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'provider の名前「local」が2つある',
+    );
+    expect(mocks.saveLlmSettings).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getAllByLabelText<HTMLInputElement>('provider local の名前')
+        .map((field) => field.value),
+    ).toEqual(['local', ' local']);
+  });
+
+  it('does not take rows without a name, or names that only look alike, as the same provider', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.clear(input('provider cloud の名前'));
+    await user.type(input('provider 2番目 の名前'), 'local2');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(mocks.saveLlmSettings).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('shows only the name of the variable that holds a key and whether it is set', () => {
     render(<LlmSettings />);
 

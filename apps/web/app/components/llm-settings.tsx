@@ -18,6 +18,7 @@ import { useState, type FormEvent } from 'react';
 import {
   buildLlmSettings,
   definedProviderNames,
+  duplicatedProviderName,
   PROVIDER_TYPES,
   REASONING_MODES,
   roleProviderOf,
@@ -210,8 +211,13 @@ export function LlmSettings() {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (values === undefined) return;
-    setSaving(true);
     setSaved(false);
+    const duplicated = duplicatedProviderName(values.providers);
+    if (duplicated !== undefined) {
+      setSaveError(`provider の名前「${duplicated}」が2つある。どちらかの名前を変える`);
+      return;
+    }
+    setSaving(true);
     setSaveError(undefined);
     try {
       await saveLlmSettings(buildLlmSettings(values));
