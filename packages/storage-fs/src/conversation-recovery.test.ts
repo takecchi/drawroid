@@ -1,6 +1,6 @@
 // 再起動からの復帰（途切れたターンを閉じる・書き漏らしたジョブのイベントを補う）と、会話からの記憶
 // （remember・蒸留の材料への会話の発言）を見る試験（会話 K、#118）。置き場所は本物のファイル、LLM は台本どおりに返すスタブ
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,6 +19,7 @@ import {
   RESTART_REASON,
   type ConversationEvent,
   type JobStore,
+  type NewConversationEvent,
   type TalkToolContext,
 } from '@drawroid/core';
 import { ScriptedLlm, StubBackend, type Script } from '@drawroid/core/testing';
@@ -110,22 +111,34 @@ describe('closing the turns a restart cut off', () => {
 
   it('finds the open turn at the end of a long conversation without reading it from the start', async () => {
     const store = new FsConversationStore(root);
-    const hubs = new ConversationHubs({ store });
     const { conversationId } = await store.createConversation(new Date());
-    const hub = hubs.get(conversationId);
-    // 本物のファイルに書くので、件数は試験の時間に収まる程度にする（頭から読めば 262 件。下の 200 件の上限より多く、
-    // 末尾から読む分（50 件ずつ 2 回）より十分に多い）。CI が混んだときに 5 秒を超えないよう、書く数を絞っている
+    // 落ちる前のプロセスが残したイベントのファイルを、まとめて並べて置く（頭から読めば 262 件。下の 200 件の上限より多く、
+    // 末尾から読む分（50 件ずつ 2 回）より十分に多い）。1件ずつ書き足さない: 書き足すたびに番号を確かめて置くので、
+    // 262 件を順に書くだけで、CI が混んだときに試験の時間（5 秒）を超えるため
+    const events: NewConversationEvent[] = [];
     for (let turn = 1; turn <= 60; turn++) {
-      const { seq } = await hub.confirm({ type: 'user.message', text: `${turn}` });
-      await hub.confirm({ type: 'turn.started', turn, messageSeqs: [seq] });
-      await hub.confirm({ type: 'turn.ended', turn, outcome: 'done' });
+      events.push(
+        { type: 'user.message', text: `${turn}` },
+        { type: 'turn.started', turn, messageSeqs: [events.length + 1] },
+        { type: 'turn.ended', turn, outcome: 'done' },
+      );
     }
-    const { seq } = await hub.confirm({ type: 'user.message', text: '描いて' });
-    await hub.confirm({ type: 'turn.started', turn: 61, messageSeqs: [seq] });
+    events.push(
+      { type: 'user.message', text: '描いて' },
+      { type: 'turn.started', turn: 61, messageSeqs: [events.length + 1] },
+    );
     // 開いたターンのあとに、ターンの記録でないイベントが1回ぶんの読みより多く続いても見つける
     for (let i = 0; i < 80; i++) {
-      await hub.confirm({ type: 'tool.call', turn: 61, callId: `c${i}`, name: 'x', input: {} });
+      events.push({ type: 'tool.call', turn: 61, callId: `c${i}`, name: 'x', input: {} });
     }
+    const files = dataPaths(root).conversationFiles(conversationId);
+    await mkdir(files.events, { recursive: true });
+    const at = new Date().toISOString();
+    await Promise.all(
+      events.map((event, index) =>
+        writeFile(files.event(index + 1), JSON.stringify({ ...event, seq: index + 1, at })),
+      ),
+    );
     let fromStart = 0;
     let readFromTail = 0;
     const counting = Object.assign(Object.create(store) as FsConversationStore, {
