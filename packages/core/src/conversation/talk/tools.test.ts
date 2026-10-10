@@ -417,7 +417,16 @@ describe('drawing_status', () => {
     const outcome = await run('drawing_status', {});
 
     expect(outcome.result).toContain('最良は 2 回目の 2枚目（1.00）');
-    expect(outcome.result).toContain('止まった理由: 人間が画像を選んだ');
+    expect(outcome.result).toContain('人間が画像を選んだ');
+  });
+
+  it('says why a stopped job stopped once, not again after the status', async () => {
+    const { jobs } = storeOf({ '20261010-100000-aaaaaa': stopped() });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result.split('人間が止めた')).toHaveLength(2);
   });
 
   it('tells the status of the job in Japanese, in the result and in the summary', async () => {

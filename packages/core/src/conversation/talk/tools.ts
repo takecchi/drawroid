@@ -216,9 +216,8 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
             `最良は ${talkImageLabel({ iteration: carry.best.iteration, index: carry.best.imageIndex })}（${carry.best.score.toFixed(2)}）`,
           );
       }
-      if (state.status === 'stopped') {
-        parts.push(`止まった理由: ${state.reason.detail}`);
-      } else {
+      // 止まった理由は describeJobStatus の状態が持つので、もう一度は書かない: 同じ文を2回送ると話す役の入力が無駄に膨らむため
+      if (state.status !== 'stopped') {
         const spec = await deps.jobs.readJob(jobId);
         if (spec.kind === 'auto') {
           const iteration = (carry?.completedIterations ?? 0) + 1;
