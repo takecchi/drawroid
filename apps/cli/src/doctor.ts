@@ -711,13 +711,6 @@ async function toolRoundTrip(options: DoctorOptions, config: LlmConfig): Promise
         todo: notCalledTodo(role),
       };
     }
-    if (role.reasoning === 'none' && text.includes('<think>')) {
-      return {
-        ok: false,
-        what: `${who}と1往復できたが、本文に <think> が混ざっている`,
-        todo: 'LLM の設定で、話す役（無ければ考える役）の reasoning を think-tag にする',
-      };
-    }
   }
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   const thinking =
