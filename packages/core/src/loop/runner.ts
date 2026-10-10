@@ -436,7 +436,11 @@ export class JobRunner {
         : error instanceof StopJob
           ? error.reason
           : { kind: 'error' as const, detail: `予期しない失敗: ${messageOf(error)}` };
-      const stopped = this.stopped(current, reason);
+      const stopped = this.stopped(
+        current,
+        reason,
+        await this.imagesOfUnjudgedIteration(jobId, current),
+      );
       await store.writeState(jobId, stopped);
       justStopped = { state: stopped, reason };
     } finally {
@@ -1221,15 +1225,29 @@ export class JobRunner {
     return outcome;
   }
 
-  private stopped(state: JobState, reason: StopReason): JobState {
+  private stopped(state: JobState, reason: StopReason, unjudgedImages = 0): JobState {
     return {
       status: 'stopped',
       ...(state.carry === undefined ? {} : { carry: state.carry }),
       ...(state.status === 'running' ? { startedAt: state.startedAt } : {}),
       stoppedAt: this.now().toISOString(),
-      imagesGenerated: state.status === 'queued' ? 0 : state.imagesGenerated,
+      imagesGenerated: state.status === 'queued' ? 0 : state.imagesGenerated + unjudgedImages,
       reason,
     };
+  }
+
+  /**
+   * 見る役まで済まないうちに止まった回の、置かれた画像の枚数。生成が済んでいなければ 0。
+   */
+  // 回の途中で state.json に数を書き足さない: 段の進み具合の写しになり、落ちて再開したときに同じ回を二重に数えるため。
+  // 止まるときだけ、置かれたファイル（段の出力が正）から足す
+  private async imagesOfUnjudgedIteration(jobId: string, state: JobState): Promise<number> {
+    if (state.status !== 'running' || state.carry === undefined) return 0;
+    const generation = await this.deps.store.readGeneration(
+      jobId,
+      state.carry.completedIterations + 1,
+    );
+    return generation?.images.length ?? 0;
   }
 }
 

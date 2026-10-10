@@ -463,6 +463,47 @@ describe('a broken structured output stops the job with the reason (:73)', () =>
     expect((await stoppedState(store, spec.jobId)).reason.backendErrorKind).toBe('unreachable');
   });
 
+  // 生成した枚数は、見る役まで済んだかを問わず、生成した画像の数（止める条件の「生成枚数」と同じ意味）。
+  // 見る役が失敗した回の画像も置かれていて、画面に並び、選ぶこともできるため
+  it('counts the images of the iteration whose judge failed as generated', async () => {
+    const judgeFailsSecond: Script = (call, n) =>
+      n === 0 ? judge()(call, n) : { images: 'broken', canStop: 'no' };
+    const { store, runner } = setup({ scripts: { think, judge: judgeFailsSecond } });
+    const spec = await submit(store, { aiJudgement: true, maxIterations: 5 }, 2);
+    runner.kick();
+    await runner.idle();
+
+    const state = await stoppedState(store, spec.jobId);
+    expect(state.reason.detail).toMatch(/^見る段: /);
+    expect(state.carry?.completedIterations).toBe(1);
+    expect(state.imagesGenerated).toBe(4);
+  });
+
+  it('does not count images that were never placed', async () => {
+    const thinkFails = setup({
+      scripts: { think: () => ({ params: { steps: 9999 }, rationale: '' }), judge: judge() },
+    });
+    const notThought = await submit(thinkFails.store, { aiJudgement: true, maxIterations: 5 }, 2);
+    thinkFails.runner.kick();
+    await thinkFails.runner.idle();
+    expect((await stoppedState(thinkFails.store, notThought.jobId)).imagesGenerated).toBe(0);
+
+    const backend = new BigImageBackend({ generateDelayMs: 5_000 });
+    const stoppedMidGeneration = setup({ scripts: { think, judge: judge() }, backend });
+    const interrupted = await submit(
+      stoppedMidGeneration.store,
+      { aiJudgement: true, maxIterations: 5 },
+      2,
+    );
+    stoppedMidGeneration.runner.kick();
+    while (backend.requests.length === 0) await new Promise((r) => setTimeout(r, 5));
+    await stoppedMidGeneration.runner.stop(interrupted.jobId);
+    await stoppedMidGeneration.runner.idle();
+    const human = await stoppedState(stoppedMidGeneration.store, interrupted.jobId);
+    expect(human.reason.kind).toBe('human');
+    expect(human.imagesGenerated).toBe(0);
+  });
+
   it('stops before thinking when the backend is down at the start of the job', async () => {
     const backend = new BigImageBackend();
     backend.setUnreachable(true);
