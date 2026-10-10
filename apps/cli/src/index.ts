@@ -45,7 +45,7 @@ import { createBudgetSettings } from './budget-settings.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKind, resolveBackendUrlWithSource } from './config.js';
 import { listen } from './listen.js';
-import { formatDoctorReport, runDoctor } from './doctor.js';
+import { formatDoctorReport, runDoctor, screenDoctor } from './doctor.js';
 import { createLlmSettings } from './llm-settings.js';
 import { createPermissionReader } from './permission-reader.js';
 import { wireGenerationProgress } from './progress-wiring.js';
@@ -301,21 +301,12 @@ async function main() {
       env: process.env,
       // 止まりのカードの「このジョブから覚えたこと」。読むだけ（書くのは自動ジョブと選び直しの蒸留）
       distillLog: createFsDistillLog(root),
-      // 設定の画面の「確かめる」。バックエンドは、いま使っている種類と URL（画面で繋ぎ直した値を含む）で確かめる
-      doctor: {
-        run: async () => {
-          const inUse = await backendSettings.read();
-          return runDoctor({
-            configPath,
-            backendKind: inUse.kind,
-            backendUrl: inUse.url,
-            backendUrlSource: inUse.urlSource,
-            caller: 'screen',
-            env: process.env,
-            webRoot: resolveWebRoot,
-          });
-        },
-      },
+      doctor: screenDoctor({
+        configPath,
+        backendSettings,
+        env: process.env,
+        webRoot: resolveWebRoot,
+      }),
     },
   });
   process.stdout.write(`drawroid: http://${address.address}:${address.port}/\n`);
