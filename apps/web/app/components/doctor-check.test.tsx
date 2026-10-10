@@ -160,4 +160,40 @@ describe('DoctorCheck', () => {
       '確かめられなかった: この起動では、画面から確かめられない',
     );
   });
+
+  // 200 でも返事が読めないとき（壊れた JSON・report の無い体）に、待つ印を出したままにも、画面を白くもしない
+  it.each([
+    [
+      'the answer is not JSON',
+      () =>
+        vi
+          .mocked(runDoctor)
+          .mockRejectedValue(
+            new SyntaxError("Expected property name or '}' in JSON at position 1"),
+          ),
+    ],
+    ['the answer has no report', () => vi.mocked(runDoctor).mockResolvedValue({} as never)],
+    [
+      'the report has no sections',
+      () => vi.mocked(runDoctor).mockResolvedValue({ report: { lacking: 1 } } as never),
+    ],
+    [
+      'an item of the report is not in shape',
+      () =>
+        vi.mocked(runDoctor).mockResolvedValue({
+          report: { lacking: 0, sections: [{ title: 'LLM', items: [{}] }] },
+        } as never),
+    ],
+  ])('says the result could not be read when %s', async (_, answer) => {
+    answer();
+    renderCheck();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
+
+    const reason = await screen.findByRole('alert');
+    expect(reason.textContent).toContain('確かめの結果が読めなかった');
+    expect(focusHolds(reason)).toBe(true);
+    expect(screen.queryByText(/確かめています/)).toBeNull();
+    expect(screen.getByRole('button', { name: '確かめる' }).hasAttribute('disabled')).toBe(false);
+  });
 });

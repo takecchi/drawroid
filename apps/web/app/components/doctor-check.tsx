@@ -1,12 +1,31 @@
-import { isApiError, runDoctor, type DoctorResponse } from '@drawroid/swr';
+import { isApiError, runDoctor } from '@drawroid/swr';
 import { Badge, Button, ErrorNote, Muted, OkNote, Section, Spinner, WarnNote } from '@drawroid/ui';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import { z } from 'zod';
+
+// 返事を、結果を描く前に確かめる: 200 でも体が壊れていると（report が無いなど）、描く途中で落ちて画面ごと消えるため
+const answerSchema = z.object({
+  report: z.object({
+    lacking: z.number(),
+    sections: z.array(
+      z.object({
+        title: z.string(),
+        items: z.array(
+          z.object({ ok: z.boolean(), what: z.string(), todo: z.string().optional() }),
+        ),
+      }),
+    ),
+  }),
+});
+type Report = z.infer<typeof answerSchema>['report'];
+
+const UNREADABLE = '確かめの結果が読めなかった（drawroid の返事が想定の形ではない）';
 
 type State =
   | { step: 'idle' }
   | { step: 'running' }
-  | { step: 'done'; report: DoctorResponse['report'] }
+  | { step: 'done'; report: Report }
   | { step: 'failed'; message: string };
 
 /**
@@ -32,13 +51,23 @@ export function DoctorCheck() {
 
   async function check() {
     setState({ step: 'running' });
+    let answer: unknown;
     try {
-      const { report } = await runDoctor();
-      setState({ step: 'done', report });
+      answer = await runDoctor();
     } catch (caught) {
-      if (!isApiError(caught)) throw caught;
-      setState({ step: 'failed', message: caught.message });
+      // API の失敗でないもの（200 の体が JSON でない、など）も、待つ印を出したままにせず、読めなかったと出す
+      setState({
+        step: 'failed',
+        message: isApiError(caught) ? `確かめられなかった: ${caught.message}` : UNREADABLE,
+      });
+      return;
     }
+    const parsed = answerSchema.safeParse(answer);
+    setState(
+      parsed.success
+        ? { step: 'done', report: parsed.data.report }
+        : { step: 'failed', message: UNREADABLE },
+    );
   }
 
   return (
@@ -58,14 +87,14 @@ export function DoctorCheck() {
         <Spinner label="確かめています…（LLM の返事を待つので、時間がかかることがある）" />
       )}
       <div ref={outcomeRef} tabIndex={-1} className="outline-none">
-        {state.step === 'failed' && <ErrorNote>確かめられなかった: {state.message}</ErrorNote>}
+        {state.step === 'failed' && <ErrorNote>{state.message}</ErrorNote>}
         {state.step === 'done' && <DoctorResult report={state.report} />}
       </div>
     </Section>
   );
 }
 
-function DoctorResult({ report }: { report: DoctorResponse['report'] }) {
+function DoctorResult({ report }: { report: Report }) {
   return (
     <div className="space-y-3">
       {report.lacking === 0 ? (
