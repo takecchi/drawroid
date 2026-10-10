@@ -177,7 +177,8 @@
   --accent-foreground: oklch(0.95 0.02 285);
   --destructive: oklch(0.71 0.17 20);
   --border: oklch(0.8 0.05 280 / 13%);
-  --input: oklch(0.8 0.05 280 / 18%);
+  /* 入力欄の枠は、隣の面（背景・カード・窓）と 3:1 以上にする（WCAG 2.2 の UI の部品の見分け）: 18% では 1.4:1 で、欄の形が見えなかった */
+  --input: oklch(0.8 0.05 280 / 50%);
   --ring: oklch(0.8 0.12 285);
   --chart-1: oklch(0.6 0.17 290);
   --chart-2: oklch(0.65 0.15 120);
