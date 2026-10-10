@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 818a600f59d95c03fcc34882dea99934c042f525..0e54a4de096d15e271449c6e9024ca6800d85a03 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -776,7 +776,7 @@ function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromi
+ 		try {
+ 			if (done) writable.end();
+ 			else if (!writable.write(value)) writable.once("drain", onDrain);
+-			else return reader.read().then(flow, handleStreamError);
++			else reader.read().then(flow, handleStreamError);
+ 		} catch (e) {
+ 			handleStreamError(e);
+ 		}
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 31e395440db742f5e00210520dbeb6f9e8974a8d..1f30eb00990284820f6d85fd503921bcbbc67caf 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -775,7 +775,7 @@ function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromi
+ 		try {
+ 			if (done) writable.end();
+ 			else if (!writable.write(value)) writable.once("drain", onDrain);
+-			else return reader.read().then(flow, handleStreamError);
++			else reader.read().then(flow, handleStreamError);
+ 		} catch (e) {
+ 			handleStreamError(e);
+ 		}
