@@ -40,5 +40,15 @@ export function jobsRoutes({ store }: ApiDeps) {
         judge: summarizeJudge(judge) ?? summarizeAdopted(adopted, iteration, images.length),
       }));
       return c.json({ spec, state, iterations, invalid: read.invalid }, 200);
+    })
+    // 回を読まない口を分けて置く: 画面は走っている間これを毎秒読み、回の一覧は /iterations から取るので、
+    // 全回を載せた詳細を毎秒運ぶと、回数に比例して重くなるため。詳細の形は壊さない（会話の道具や script が読む）
+    .get('/:jobId/overview', async (c) => {
+      const jobId = c.req.param('jobId');
+      if (!(await store.listJobIds()).includes(jobId)) {
+        return notFound(c, `ジョブ ${jobId} は無い`);
+      }
+      const [spec, state] = await Promise.all([store.readJob(jobId), store.readState(jobId)]);
+      return c.json({ spec, state }, 200);
     });
 }

@@ -12,6 +12,7 @@ export const keys = {
   generationProgressSettings: '/api/settings/generation-progress',
   jobs: '/api/jobs',
   job: (jobId: string) => `/api/jobs/${jobId}`,
+  jobOverview: (jobId: string) => `/api/jobs/${jobId}/overview`,
   jobDistill: (jobId: string) => `/api/jobs/${jobId}/distill`,
   /** 選び直したあと、覚えたことの記録が増えるのを待つ印（取りに行かない、画面の中だけのキー） */
   jobDistillWait: (jobId: string) => `local:job-distill-wait/${jobId}`,

@@ -21,6 +21,7 @@ import type {
   InterventionsResponse,
   IterationsResponse,
   JobDetail,
+  JobOverview,
   JobsResponse,
   LlmCallDetail,
   LlmCallsResponse,
@@ -88,7 +89,22 @@ export function useJob(jobId: string | undefined) {
   );
 }
 
-// live を呼び手から受ける: 止まったかどうかは useJob の状態で決まり、このフックは詳細の取得を知らないため
+/** ジョブの依頼と状態だけ（回を載せない）。回の一覧は useIterations から取る */
+// 止まったら取り直さない: useJob と同じ
+export function useJobOverview(jobId: string | undefined) {
+  return useSWR<JobOverview, ApiError>(
+    jobId === undefined ? null : keys.jobOverview(jobId),
+    () =>
+      unwrap<JobOverview>(() =>
+        client.jobs[':jobId'].overview.$get({ param: { jobId: jobId ?? '' } }),
+      ),
+    {
+      refreshInterval: (job) => (job?.state.status === 'stopped' ? 0 : RUNNING_JOB_POLL_MS),
+    },
+  );
+}
+
+// live を呼び手から受ける: 止まったかどうかは useJobOverview の状態で決まり、このフックは詳細の取得を知らないため
 export function useIterations(jobId: string | undefined, { live }: { live: boolean }) {
   return useSWR<IterationsResponse, ApiError>(
     jobId === undefined ? null : keys.iterations(jobId),
