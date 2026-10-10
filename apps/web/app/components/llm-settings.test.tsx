@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { describeInputOverflow, findInputOverflows, resolveBudgets } from '@drawroid/core';
 import { ApiError, type LlmSettingsInput, type LlmSettingsResponse } from '@drawroid/swr';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -877,6 +878,37 @@ describe('LlmSettings', () => {
       'provider「cloud」の API キーの環境変数が入っていない',
     );
     expect(input('見る役のモデル').value).toBe('claude-sonnet-5-5');
+  });
+
+  // 窓が予算に足りないと断る文は、予算の欄を内部名で指す。予算の欄は「詳しい設定」に日本語の見出しで並ぶので、見出しでも名指しする
+  it('names the budget field by its label too when the API says the window is too small for the budgets', async () => {
+    const user = userEvent.setup();
+    const [overflow] = findInputOverflows(resolveBudgets({ candidates: { maxSize: 12000 } }), {
+      think: { contextTokens: 100, maxOutputTokens: 0 },
+    });
+    expect(overflow?.largestField?.path).toBe('candidates.maxSize');
+    mocks.saveLlmSettings.mockRejectedValue(
+      new ApiError('invalid_request', describeInputOverflow(overflow!), 400),
+    );
+    render(<LlmSettings />);
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    const alert = (await screen.findByRole('alert')).textContent ?? '';
+    expect(alert).toContain('欄は 考える役に見せる候補の量（candidates.maxSize）。');
+  });
+
+  // 予算の欄でない英字は書き換えない: 設定の欄の道筋・環境変数・モデルの名前は、設定に書いた綴りのまま読めないと直せないため
+  it('leaves the paths, variables and models in the reason of the API as they are', async () => {
+    const user = userEvent.setup();
+    const reason =
+      'providers.local.baseURL: URL ではない; 環境変数 ANTHROPIC_API_KEY に API キーが入っていない（モデル qwen2.5）';
+    mocks.saveLlmSettings.mockRejectedValue(new ApiError('invalid_request', reason, 400));
+    render(<LlmSettings />);
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(`保存できない: ${reason}`);
   });
 
   it('starts an empty form for the first setup when nothing is set', () => {
