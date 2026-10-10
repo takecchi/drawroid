@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -10,7 +11,6 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
-  type TextareaHTMLAttributes,
 } from 'react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -268,7 +268,7 @@ export function FieldRow({ className, children }: { className?: string; children
   return <div className={cn('flex flex-wrap items-start gap-3', className)}>{children}</div>;
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <ShadcnInput className={className} {...props} />;
 }
 
@@ -284,9 +284,19 @@ export function Textarea({
   className,
   style,
   maxHeight,
+  ref: outerRef,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & { maxHeight?: string }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+}: ComponentProps<'textarea'> & { maxHeight?: string }) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  // 外の ref は内側の ref と並べて持つ: `{...props}` に乗せると内側の ref を上書きし、高さの自動調整が黙って止まるため
+  const hold = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      ref.current = el;
+      if (typeof outerRef === 'function') return outerRef(el);
+      if (outerRef) outerRef.current = el;
+    },
+    [outerRef],
+  );
   const grows = maxHeight !== undefined;
   const value = props.value;
   useLayoutEffect(() => {
@@ -314,7 +324,7 @@ export function Textarea({
   }, [grows, value]);
   return (
     <ShadcnTextarea
-      ref={ref}
+      ref={hold}
       className={cn(grows && 'field-sizing-fixed resize-none overflow-y-auto', className)}
       style={grows ? { ...style, maxHeight } : style}
       {...props}
