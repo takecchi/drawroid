@@ -52,15 +52,41 @@ const judge: Script = (call: LlmCall<unknown>) => ({
 const GIST = '白いワンピースの裾が風になびく構図';
 const refGist: Script = () => ({ gist: GIST });
 
+/**
+ * 2回目の生成を、試験が release するまで返さないバックエンド。ジョブが走っている間に口出しを挟むのを、
+ * 時間（生成にかかる時間と回の数）ではなく、試験が止めている間に行うため
+ */
+class HoldSecondGeneration extends StubBackend {
+  private calls = 0;
+  private open: () => void = () => undefined;
+  private readonly gate = new Promise<void>((resolve) => (this.open = resolve));
+  private enter: () => void = () => undefined;
+  /** 2回目の生成に入ったら解ける */
+  readonly secondEntered = new Promise<void>((resolve) => (this.enter = resolve));
+
+  release(): void {
+    this.open();
+  }
+
+  override async generate(...args: Parameters<StubBackend['generate']>) {
+    this.calls += 1;
+    if (this.calls === 2) {
+      this.enter();
+      await this.gate;
+    }
+    return super.generate(...args);
+  }
+}
+
 let root: string;
 let runner: JobRunner;
 let app: ReturnType<typeof createApi>;
+let backend: HoldSecondGeneration;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'drawroid-m3-over-http-'));
   const store = new FsJobStore(root);
-  // 生成に少し時間を掛ける: 回の途中に口出しを挟めるように
-  const backend = new StubBackend({ generateDelayMs: 30 });
+  backend = new HoldSecondGeneration();
   runner = new JobRunner({
     store,
     llm: new ScriptedLlm({ think, judge, 'ref-gist': refGist }),
@@ -89,6 +115,8 @@ beforeEach(async () => {
   });
 });
 afterEach(async () => {
+  // 解かずに終わった試験でも、止めた生成を残さない
+  backend.release();
   await runner.idle();
   await rm(root, { recursive: true, force: true });
 });
@@ -151,6 +179,8 @@ describe('every M3 operation goes over HTTP (M3:98)', () => {
       (d) => d.state.status === 'running' && d.iterations[0]?.judge != null,
     );
     expect(running.iterations[0].images).toHaveLength(2);
+    // 2回目の生成で止めてある: ここから口出しを入れ終えるまで、ジョブは走ったまま先へ進まない
+    await backend.secondEntered;
 
     // 3. 人間の指示を入れる
     const instructed = await call('POST', `/jobs/auto/${jobId}/interventions`, {
@@ -177,6 +207,8 @@ describe('every M3 operation goes over HTTP (M3:98)', () => {
       submitted: { aiJudgement: false, maxIterations: 50 },
       current: { aiJudgement: false, maxIterations: 1000 },
     });
+    // 口出しを入れ終えたので、止めていた生成を解いて、ジョブを先へ進める
+    backend.release();
 
     // 指示を取り込んだ回を、口出しの読み取りの API で見る。どの回になるかは生成の進み具合で変わる
     const taken = await pollUntil(
