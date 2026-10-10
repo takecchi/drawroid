@@ -336,6 +336,22 @@ describe('PUT /memory/:id', () => {
     expect(tooManyTags).toBe('tags: タグは 4 個まで');
     expect(emptyTag).toBe('tags.0: 空のタグがある');
   });
+
+  it('names the limits of the settings at the time of the request in the reason', async () => {
+    await putFile('no-broken-fingers', itemFile());
+    await budgetSettings.write({ distill: { output: { body: 5, tags: 1, tag: 3 } } });
+    const reason = async (body: unknown) =>
+      ((await (await put('no-broken-fingers', body)).json()) as { error: { message: string } })
+        .error.message;
+
+    expect(await reason({ ...edit, tags: ['手'], body: 'あ'.repeat(6) })).toBe(
+      'body: 本文は 5 文字まで',
+    );
+    expect(await reason({ ...edit, body: '手', tags: ['手', '指'] })).toBe('tags: タグは 1 個まで');
+    expect(await reason({ ...edit, body: '手', tags: ['てのひら'] })).toBe(
+      'tags.0: タグは1つ 3 文字まで',
+    );
+  });
 });
 
 describe('DELETE /memory/:id', () => {
