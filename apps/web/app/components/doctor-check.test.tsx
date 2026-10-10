@@ -164,6 +164,36 @@ describe('DoctorCheck', () => {
     );
   });
 
+  // サーバの中で落ちたとき（api の errors.ts が返す形の 500）も、「読めなかった」に丸めず、サーバが言った本体の文を出す
+  it('shows what the server said when it answers 500 in the shape of the API', async () => {
+    const actual = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
+    vi.mocked(runDoctor).mockImplementation(actual.runDoctor);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { kind: 'internal_error', message: 'サーバの中で想定外の失敗があった' },
+            }),
+            { status: 500, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    try {
+      renderCheck();
+
+      await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
+
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        '確かめられなかった: サーバの中で想定外の失敗があった',
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   // 200 でも返事が読めないとき（壊れた JSON・report の無い体）に、待つ印を出したままにも、画面を白くもしない
   it.each([
     [
