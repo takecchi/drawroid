@@ -868,6 +868,30 @@ describe('ConversationView', () => {
     });
   });
 
+  // 確かめている間に AI の判断で止まると、確かめが黙って消え、何も決まらないまま終わったように見えていた
+  it('tells why the confirmation went away when the job stops while the person is confirming, and does not decide on its own', async () => {
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    screen.getByRole('button', { name: 'この画像に決める: 1 回目の画像 1 番' }).focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: '決める: 1 回目の画像 1 番' })).toBeTruthy();
+
+    stream.emit(confirmed({ type: 'job.stopped', jobId: JOB, reason: AI_STOP }));
+    const favorite = await screen.findByRole('button', {
+      name: 'この画像に決める（お気に入りにする）: 1 回目の画像 1 番',
+    });
+    expect(
+      screen.getByText('確かめている間に描くのが止まった。決めるなら、もう一度押す'),
+    ).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(favorite));
+    expect(adoptImage).not.toHaveBeenCalled();
+    expect(setSelection).not.toHaveBeenCalled();
+  });
+
   it('reads the backend again once when a job stops because the backend failed', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);

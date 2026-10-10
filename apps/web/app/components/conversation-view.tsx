@@ -242,6 +242,7 @@ function ImageChoices({
   // この行で決めたか。決めるとジョブは止まり、止まった知らせが決めた知らせ（chosen）より先に届くことがある。
   // その間に「止まった・決めていない」の形（お気に入りのボタン）へ差し替えると、決めた印が作り直され、印へ移したフォーカスが落ちるため
   const [decidedHere, setDecidedHere] = useState(false);
+  const [confirmingHere, setConfirmingHere] = useState(false);
   return (
     <div className="space-y-1">
       <VerdictButtons jobId={jobId} imageKey={imageKey} imageLabel={imageLabel} verdict={verdict} />
@@ -253,6 +254,7 @@ function ImageChoices({
           imageKey={imageKey}
           imageLabel={imageLabel}
           verdict={verdict}
+          interrupted={confirmingHere}
         />
       ) : (
         <AdoptButton
@@ -261,6 +263,7 @@ function ImageChoices({
           imageLabel={imageLabel}
           chosen={chosen}
           onDecided={() => setDecidedHere(true)}
+          onConfirmingChange={setConfirmingHere}
         />
       )}
     </div>

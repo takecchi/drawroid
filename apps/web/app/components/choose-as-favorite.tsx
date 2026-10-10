@@ -1,7 +1,7 @@
 import type { SelectionVerdict } from '@drawroid/core';
 import { isApiError, recheckJobDistill, setSelection } from '@drawroid/swr';
 import { Button } from '@drawroid/ui';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { DecidedMark } from './decided-mark';
 
@@ -16,6 +16,7 @@ export function ChooseAsFavorite({
   imageLabel,
   verdict,
   prominent = false,
+  interrupted = false,
 }: {
   jobId: string;
   imageKey: string;
@@ -26,8 +27,17 @@ export function ChooseAsFavorite({
    * どれも紫だと、どれを押せばよいかが分からなくなるため。行と窓は控えめな形（枠だけ）で、名前は同じ
    */
   prominent?: boolean;
+  /**
+   * 採るボタンで確かめている間にジョブが止まって、このボタンに替わった。訳を出し、このボタンへフォーカスを移す。
+   * 確かめで決めようとしていた画像でも、ここで勝手に決めない: 止まったあとの決め方（お気に入り）は、採るのとは別の決め方のため
+   */
+  interrupted?: boolean;
 }) {
   const [pending, setPending] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (interrupted) root.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [interrupted]);
   const [error, setError] = useState<string | undefined>();
   // このボタンで決めたか。決めた印へフォーカスを移すのは、押したこのボタンの所だけ（同じ画像の印は、カード・行・窓に並ぶ）
   const [chose, setChose] = useState(false);
@@ -52,7 +62,10 @@ export function ChooseAsFavorite({
   // 押した直後の手元の状態でなく保存された選び方から出す: 開き直しても、別の場所で押しても同じに出すため
   if (verdict === 'favorite') return <DecidedMark favorite focus={chose} />;
   return (
-    <div className="space-y-1">
+    <div ref={root} className="space-y-1">
+      {interrupted && (
+        <p className="text-xs">確かめている間に描くのが止まった。決めるなら、もう一度押す</p>
+      )}
       {/* 折り返すのは言葉のかたまりの境目だけ: ボタンの中でそのまま折り返すと、日本語はどの字の間でも折れ、
           「決め / る」のように言葉の途中で切れるため。画像の枡は狭いので短い文にし、お気に入りになることは名前と title に残す */}
       <Button
