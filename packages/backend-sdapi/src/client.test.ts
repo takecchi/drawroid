@@ -226,6 +226,77 @@ describe('SdapiClient, sent elsewhere by a redirect', () => {
       await backend.close();
     }
   });
+
+  /** path へ来た要求だけ、status で末尾に / を足した先へ移るよう返すバックエンド */
+  const movingBackend = (path: string, status: number) =>
+    serverAnswering((req, res) => {
+      if (req.url === path) {
+        res.writeHead(status, { location: `${path}/` });
+        res.end();
+        return;
+      }
+      res.end('{"ok":true}');
+    });
+
+  // POST を 301・302・303 で移されたら追わない: 追うと GET に変えて本文なしで送り直すことになり、生成の要求として意味を成さないため
+  it.each([301, 302, 303])(
+    'does not follow a %s redirect of a POST, even within the same origin',
+    async (status) => {
+      const backend = await movingBackend('/sdapi/v1/txt2img', status);
+      try {
+        const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+
+        const error = await failureOf(
+          client.postJson('/sdapi/v1/txt2img', { prompt: 'a cat' }, z.unknown()),
+        );
+
+        expect(error.kind).toBe('bad_response');
+        expect(error.message).toContain('Forge');
+        expect(error.message).toContain(String(status));
+        expect(error.message).toContain('GET');
+        expect(backend.requests.map((r) => r.path)).toEqual(['/sdapi/v1/txt2img']);
+      } finally {
+        await backend.close();
+      }
+    },
+  );
+
+  // 307・308 は、POST のまま同じ本文で送り直すので、同じオリジンの中なら追う
+  it.each([307, 308])('follows a %s redirect of a POST within the same origin', async (status) => {
+    const backend = await movingBackend('/sdapi/v1/txt2img', status);
+    try {
+      const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+
+      expect(await client.postJson('/sdapi/v1/txt2img', { prompt: 'a cat' }, z.unknown())).toEqual({
+        ok: true,
+      });
+      expect(backend.requests).toEqual([
+        { method: 'POST', path: '/sdapi/v1/txt2img', body: '{"prompt":"a cat"}' },
+        { method: 'POST', path: '/sdapi/v1/txt2img/', body: '{"prompt":"a cat"}' },
+      ]);
+    } finally {
+      await backend.close();
+    }
+  });
+
+  // GET は、どの移り方でも今までどおり追う
+  it.each([301, 302, 303])(
+    'follows a %s redirect of a GET within the same origin',
+    async (status) => {
+      const backend = await movingBackend('/sdapi/v1/options', status);
+      try {
+        const client = new SdapiClient({ product: 'Forge', baseUrl: backend.url, timeoutMs: 5000 });
+
+        expect(await client.getJson('/sdapi/v1/options', z.unknown())).toEqual({ ok: true });
+        expect(backend.requests.map((r) => r.path)).toEqual([
+          '/sdapi/v1/options',
+          '/sdapi/v1/options/',
+        ]);
+      } finally {
+        await backend.close();
+      }
+    },
+  );
 });
 
 describe('SdapiClient, answered with too much', () => {

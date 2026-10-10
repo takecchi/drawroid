@@ -36,6 +36,8 @@ const RESPONSE_SLACK_BYTES = MEGABYTE;
 export const DEFAULT_MAX_RESPONSE_BYTES = MAX_IMAGE_BASE64_BYTES + RESPONSE_SLACK_BYTES;
 /** 同じオリジンの中で追うリダイレクトの回数の上限 */
 const MAX_REDIRECTS = 5;
+/** 要求の方法と本文を変えずに送り直させるリダイレクト */
+const REPLAYING_REDIRECTS = new Set([307, 308]);
 
 /** 画像を images 枚まで返す応答の、本文の大きさの上限 */
 export function responseLimitForImages(images: number): number {
@@ -167,6 +169,14 @@ export class SdapiClient {
         throw new BackendError(
           'bad_response',
           `${where}: ${this.product} が別の場所（${next.origin}）へ移るよう返したので、追わずに止めた。${this.product} の URL（${this.baseUrl.href}）が合っているかを確かめる`,
+        );
+      }
+      // POST の 301・302・303 は追わない: 追うと GET に変えて本文なしで送り直すことになり、生成の要求として意味を成さないため。
+      // 307・308 は POST のまま同じ本文で送り直すので追う
+      if (init.method === 'POST' && !REPLAYING_REDIRECTS.has(res.status)) {
+        throw new BackendError(
+          'bad_response',
+          `${where}: ${this.product} が ${res.status} で別の URL（${next.pathname}）へ移るよう返した。追うと GET に変えて送り直すことになり、生成の要求にならないので、追わずに止めた。${this.product} の URL（${this.baseUrl.href}）が合っているかを確かめる`,
         );
       }
       if (hops >= MAX_REDIRECTS) {
