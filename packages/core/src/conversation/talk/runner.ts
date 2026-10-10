@@ -240,15 +240,6 @@ export class TalkRunner {
     }
   }
 
-  /** どの会話のターンも走り終えるまで待つ（試験のため。組み立てた drawroid を片付ける前に、書き込みが止むのを待つ） */
-  async idleAll(): Promise<void> {
-    for (;;) {
-      const pending = [...this.chains.entries()];
-      await Promise.all(pending.map(([, chain]) => chain));
-      if (pending.every(([id, chain]) => this.chains.get(id) === chain)) return;
-    }
-  }
-
   private async drain(conversationId: string): Promise<void> {
     this.running.add(conversationId);
     try {
