@@ -41,6 +41,16 @@ const noteOf = (name: string) => screen.getByLabelText<HTMLInputElement>(`${name
 const save = () => userEvent.click(screen.getByRole('button', { name: '説明を保存' }));
 
 describe('CandidateNotes', () => {
+  // 候補の説明の画面の頭の見出しにする: この部品はその画面にだけ置かれ、ほかに h1 が無いため。種類ごとの小見出しは h2 で、段が飛ばない
+  it('heads the page with 候補の説明, and nests the kinds right under it', () => {
+    render(<CandidateNotes />);
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('候補の説明');
+    expect(screen.getByRole('heading', { name: 'LoRA' }).tagName).toBe('H2');
+    expect(screen.getByRole('heading', { name: '今の候補に無い説明' }).tagName).toBe('H2');
+    expect(screen.queryAllByRole('heading', { level: 3 })).toEqual([]);
+  });
+
   it('shows the candidates of each kind with the note written for them', () => {
     render(<CandidateNotes />);
 

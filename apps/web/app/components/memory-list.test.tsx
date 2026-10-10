@@ -59,7 +59,8 @@ describe('MemoryList', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('まだ無い。')).toBeTruthy();
-    expect(screen.getByText('読めない項目')).toBeTruthy();
+    // 画面の頭（h1）のすぐ下の段: h3 にすると、見出しを渡り歩くときに段が飛ぶため
+    expect(screen.getByRole('heading', { level: 2, name: '読めない項目' })).toBeTruthy();
     expect(screen.getByText('broken')).toBeTruthy();
     expect(screen.getByText(/front matter が無い/)).toBeTruthy();
   });

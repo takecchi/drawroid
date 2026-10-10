@@ -2,7 +2,7 @@ import { DEFAULT_BUDGETS } from '@drawroid/core';
 import { describe, expect, it } from 'vitest';
 
 import { budgetLeaves } from './budget-form';
-import { budgetLabel, groupBudgetLeaves } from './budget-labels';
+import { budgetFieldName, budgetLabel, groupBudgetLeaves, nameBudgetFields } from './budget-labels';
 
 describe('the labels of the budget fields', () => {
   it('describes every field of the default budget in Japanese', () => {
@@ -28,6 +28,24 @@ describe('the labels of the budget fields', () => {
 
     expect(groups.at(-1)).toEqual({ title: 'そのほか', leaves: [{ path: 'future.newField' }] });
     expect(budgetLabel('future.newField')).toBeUndefined();
+  });
+
+  it('names a field by its label and its internal name, or by the internal name alone when unknown', () => {
+    expect(budgetFieldName('candidates.maxSize')).toBe(
+      '考える役に見せる候補の量（candidates.maxSize）',
+    );
+    expect(budgetFieldName('future.newField')).toBe('future.newField');
+  });
+
+  it('replaces only the known internal names in a sentence, leaving other letters as they are', () => {
+    expect(
+      nameBudgetFields(
+        '欄は candidates.maxSize。HTTP の candidates.noSuchField と imageLongEdge は text.intent.',
+      ),
+    ).toBe(
+      '欄は 考える役に見せる候補の量（candidates.maxSize）。HTTP の candidates.noSuchField と ' +
+        'LLM に見せる縮小画像の長辺（px）（imageLongEdge） は 依頼の要点の文字数（text.intent）.',
+    );
   });
 
   // 添えられる枚数と読み違えないように: この欄は、ジョブに添えた参照画像のうち、新しいものから何件の要点を役に渡すか

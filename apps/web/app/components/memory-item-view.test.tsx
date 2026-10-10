@@ -60,6 +60,26 @@ function renderView() {
   );
 }
 
+describe('MemoryItemView headings', () => {
+  // 画面の頭の見出し: この部品は記憶の1項目の画面にだけ置かれ、ほかに h1 が無いため。読み込み前・失敗のときも頭は在る。
+  // 小見出しは h2: h1 の直下に置き、段を飛ばさない
+  it('heads the page with 記憶の項目, and nests the sub headings right under it', () => {
+    renderView();
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('記憶の項目');
+    expect(screen.getByRole('heading', { name: '学んだ元' }).tagName).toBe('H2');
+    expect(screen.getByRole('heading', { name: '直す' }).tagName).toBe('H2');
+    expect(screen.queryAllByRole('heading', { level: 3 })).toEqual([]);
+  });
+
+  it('keeps the heading of the page while the item is not read yet', () => {
+    mocks.useMemoryItem.mockReturnValue({ data: undefined, error: undefined, mutate: reload });
+    renderView();
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('記憶の項目');
+  });
+});
+
 describe('MemoryItemView editing', () => {
   it('saves the edited body, tags and scope with the updatedAt it opened', async () => {
     mocks.saveMemoryItem.mockResolvedValue({

@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ConversationSource, EventPage, StreamLike } from '../lib/conversation-stream';
 import { encodeMaskPng } from '../lib/mask-png';
+import { MAX_REFERENCES_PER_REQUEST } from '../lib/reference-upload';
 import { ConversationView, jobNameOf, type ConversationActions } from './conversation-view';
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
@@ -46,7 +47,10 @@ vi.mock('@drawroid/swr', async (importOriginal) => ({
   useSelections: vi.fn(),
 }));
 // jsdom には canvas の描画が無い: マスクを PNG にする所は差し替える
-vi.mock('../lib/mask-png', () => ({ encodeMaskPng: vi.fn() }));
+vi.mock('../lib/mask-png', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/mask-png')>()),
+  encodeMaskPng: vi.fn(),
+}));
 
 const JOB = '20261009-153112-a3f9c1';
 const AT = '2026-10-09T15:30:00+09:00';
@@ -1531,6 +1535,52 @@ describe('ConversationView', () => {
       expect(screen.getByText(/添えられない: note.txt/)).toBeTruthy();
       expect(given.upload).toHaveBeenCalledTimes(1);
       expect(given.send).toHaveBeenCalledWith('描いて', expect.any(String), [{ uploadId: 'u-1' }]);
+    });
+
+    describe('at the limit of images per message', () => {
+      const attachButton = () => screen.getByRole('button', { name: '画像を添える' });
+      const reasonOf = (button: HTMLElement) =>
+        button
+          .getAttribute('aria-describedby')
+          ?.split(' ')
+          .map((id) => document.getElementById(id)?.textContent)
+          .join(' ');
+      const files = (count: number) => Array.from({ length: count }, (_, n) => png(`p${n}.png`));
+      const openView = async () => {
+        const { source, stream } = fakeSource([]);
+        const view = renderView(source, { ...actions(), upload: vi.fn().mockResolvedValue('u') });
+        await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+        return view;
+      };
+
+      it('disables adding an image, saying the limit, and enables it again after one is taken off', async () => {
+        const { user } = await openView();
+
+        await user.upload(
+          screen.getByLabelText('添える画像を選ぶ'),
+          files(MAX_REFERENCES_PER_REQUEST),
+        );
+
+        expect((attachButton() as HTMLButtonElement).disabled).toBe(true);
+        expect(reasonOf(attachButton())).toContain(`${MAX_REFERENCES_PER_REQUEST} 枚まで`);
+
+        await user.click(screen.getByRole('button', { name: 'p0.png を外す' }));
+
+        expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
+        expect(attachButton().getAttribute('aria-describedby')).toBeNull();
+      });
+
+      it('keeps adding an image available one short of the limit', async () => {
+        const { user } = await openView();
+
+        await user.upload(
+          screen.getByLabelText('添える画像を選ぶ'),
+          files(MAX_REFERENCES_PER_REQUEST - 1),
+        );
+
+        expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
+        expect(attachButton().getAttribute('aria-describedby')).toBeNull();
+      });
     });
 
     it('shows no way to attach when the actions cannot upload', async () => {
