@@ -65,6 +65,7 @@ export function ChatComposer({
   const canSend = !sending && value.trim() !== '';
   const picker = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
+  const attach = useRef<HTMLButtonElement>(null);
   // 外した添付の位置。外したあとの描き直しで、残りの添付か「画像を添える」へフォーカスを移すために覚える
   const removedAt = useRef<number | null>(null);
   const attachReasonId = useId();
@@ -87,16 +88,13 @@ export function ChatComposer({
     const removes =
       form.current?.querySelectorAll<HTMLButtonElement>('ul[aria-label="添える画像"] button') ?? [];
     const next = removes[Math.min(at, removes.length - 1)];
-    (
-      next ?? form.current?.querySelector<HTMLButtonElement>('button[aria-label="画像を添える"]')
-    )?.focus();
+    (next ?? attach.current)?.focus();
   }, [attachments]);
 
   // 選ぶ口から戻るとフォーカスは「画像を添える」にある。そのまま押せなくなると body に落ちるので、発言欄へ移す。
   // 別の所にフォーカスがあるときは奪わない
   useEffect(() => {
-    const attach = form.current?.querySelector('button[aria-label="画像を添える"]');
-    if (attachUnavailable !== undefined && document.activeElement === attach) focusField();
+    if (attachUnavailable !== undefined && document.activeElement === attach.current) focusField();
   }, [attachUnavailable]);
 
   function pick(event: ChangeEvent<HTMLInputElement>) {
@@ -167,6 +165,7 @@ export function ChatComposer({
               aria-label="添える画像を選ぶ"
             />
             <Button
+              ref={attach}
               aria-label="画像を添える"
               title={attachUnavailable ?? '画像を添える'}
               aria-describedby={attachUnavailable === undefined ? undefined : attachReasonId}
