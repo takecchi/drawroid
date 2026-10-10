@@ -180,6 +180,21 @@ describe('backend settings', () => {
       expect(await settings.read()).toEqual(view);
     });
 
+    // 種類を指定した保存は、いま使っている種類と同じでも config.json に書く。
+    // 書かないと、--backend で起動しているときに今の種類を次の起動へ残す手段が無くなる
+    it('writes the kind to config.json and reads it back with source config when the kind given is the one in use', async () => {
+      const { settings } = await setup(
+        { backend: { kind: 'forge', url: 'http://old:7860' } },
+        { kindSource: 'cli' },
+      );
+      const view = await settings.write({ url: 'http://old:7860', kind: 'a1111' });
+      expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
+        backend: { kind: 'a1111', url: 'http://old:7860' },
+      });
+      expect(view).toMatchObject({ kind: 'a1111', kindSource: 'config' });
+      expect((await settings.read()).kindSource).toBe('config');
+    });
+
     it('refuses while a generation runs, changing neither config.json nor the kind', async () => {
       const original = { backend: { kind: 'a1111', url: 'http://old:7860' } };
       const { settings, backend, first, created } = await setup(original);

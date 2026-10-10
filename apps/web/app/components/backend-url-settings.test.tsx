@@ -311,6 +311,53 @@ describe('BackendUrlSettings', () => {
       ).toBeTruthy();
     });
 
+    it('sends only the URL on a second save, once the chosen kind has been saved', async () => {
+      const user = userEvent.setup();
+      render(<BackendUrlSettings />);
+      await user.selectOptions(kindField(), 'a1111');
+      await user.click(saveButton());
+      await screen.findByText(savedNotice);
+
+      await user.click(saveButton());
+
+      expect(saveBackendSettings).toHaveBeenCalledTimes(2);
+      expect(saveBackendSettings).toHaveBeenNthCalledWith(1, {
+        url: 'http://127.0.0.1:7860',
+        kind: 'a1111',
+      });
+      expect(saveBackendSettings).toHaveBeenNthCalledWith(2, { url: 'http://127.0.0.1:7860' });
+    });
+
+    it('says where the kind came from, apart from where the URL came from', () => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', 'config', 'a1111', 'cli'),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(screen.getByText('種類: A1111（起動の引数）')).toBeTruthy();
+      expect(screen.getByText(/^いまの URL:/).textContent).toContain('（config.json）');
+    });
+
+    // 起動の引数と同じ URL を保存できる試験と同じく、同じ種類を送れないと config.json へ書く手段が無くなる
+    it('sends the kind in use when it is chosen again, after another kind was picked in between', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://127.0.0.1:7860', 'config', 'a1111', 'cli'),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      await user.selectOptions(kindField(), 'forge');
+      await user.selectOptions(kindField(), 'a1111');
+      await user.click(saveButton());
+
+      expect(saveBackendSettings).toHaveBeenCalledWith({
+        url: 'http://127.0.0.1:7860',
+        kind: 'a1111',
+      });
+    });
+
     it('keeps the chosen kind when the settings are read again', async () => {
       const user = userEvent.setup();
       const { rerender } = render(<BackendUrlSettings />);

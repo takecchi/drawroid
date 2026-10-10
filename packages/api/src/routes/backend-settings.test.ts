@@ -160,6 +160,7 @@ describe('PUT /settings/backend', () => {
   it.each([
     ['an unknown kind', { kind: 'comfyui', url: 'http://gpu:7860' }],
     ['a kind that is not a string', { kind: 1, url: 'http://gpu:7860' }],
+    ['a null kind', { kind: null, url: 'http://gpu:7860' }],
     ['a kind without a url', { kind: 'forge' }],
   ])('refuses %s with invalid_request and saves nothing', async (_name, body) => {
     const { put, written } = setup(initial);
