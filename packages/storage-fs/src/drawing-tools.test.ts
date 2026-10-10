@@ -11,6 +11,7 @@ import {
   ConversationHubs,
   DEFAULT_BUDGET,
   createDrawingTools,
+  createReadOnlyTools,
   DEFAULT_BUDGETS,
   DEFAULT_TALK_LIMITS,
   JobRunner,
@@ -18,6 +19,7 @@ import {
   mergePermissions,
   type DrawingToolDeps,
   type JobStore,
+  type ReadOnlyToolDeps,
   type TalkTool,
   type TalkToolContext,
 } from '@drawroid/core';
@@ -598,6 +600,35 @@ describe('revise_drawing and stop_drawing', () => {
       ok: false,
     });
     expect(await run('stop_drawing', {}, context)).toMatchObject({ ok: false });
+  });
+
+  // ジョブ ID は秒までの時刻と乱数なので、同じ秒に作った2つは乱数の順に並ぶ。
+  // 描き直した新しいジョブが ID の順で前に来ても、止めた古いジョブを答えないことを見る
+  it('reports the drawing started again, not the one stopped earlier in the same second', async () => {
+    const suffixes = ['ffffff', '000000'];
+    const store = new FsJobStore(root, { randomSuffix: () => suffixes.shift() ?? 'aaaaaa' });
+    const { jobs, context, runner } = await setup(store);
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    await untilRunning(jobs, '20261009-063012-ffffff');
+    await run('stop_drawing', {}, context);
+    await runner.idle();
+    const restarted = await run('start_drawing', { request: '夕焼け', stopConditions: LONG }, context);
+    try {
+      expect(restarted.ok).toBe(true);
+
+      const status = toolIn(
+        createReadOnlyTools({ jobs } as unknown as ReadOnlyToolDeps),
+        'drawing_status',
+      );
+      const outcome = await status.run({}, context.talk);
+
+      expect(outcome.result).toContain('ジョブ 20261009-063012-000000');
+      expect(outcome.result).not.toContain('ffffff');
+    } finally {
+      // 描き直したジョブを止めてから片付ける: 走ったまま置き場所を消すと、ランナーが消えたファイルを読みに行くため
+      await run('stop_drawing', {}, context);
+      await runner.idle();
+    }
   });
 
   it('describes when to call each tool in its definition, not in a system prompt', () => {
