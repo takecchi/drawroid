@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { stubDeps } from './test-support.js';
 
@@ -75,6 +75,41 @@ describe('createApp, when the Web UI has not been built', () => {
       expect(unknown.status).toBe(404);
       expect(await unknown.json()).toEqual({ error: 'not_found' });
     });
+  });
+
+  // 起動の知らせは assemble が日本語で出す。serveStatic の英語の警告（root path … is not found）は出さない
+  it('does not print an English warning about the missing web build', async () => {
+    const work = await mkdtemp(join(tmpdir(), 'drawroid-no-web-'));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const app = createApp({ webRoot: join(work, 'build', 'client'), deps: stubDeps() });
+      await app.request('/');
+      await app.request('/assets/app.js');
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+      await rm(work, { recursive: true, force: true });
+    }
+  });
+
+  it('serves a web build made after it started, without a restart', async () => {
+    const work = await mkdtemp(join(tmpdir(), 'drawroid-no-web-'));
+    const lateRoot = join(work, 'build', 'client');
+    try {
+      const app = createApp({ webRoot: lateRoot, deps: stubDeps() });
+      expect((await app.request('/assets/app.js')).status).not.toBe(200);
+
+      await mkdir(join(lateRoot, 'assets'), { recursive: true });
+      await writeFile(join(lateRoot, 'index.html'), '<p>late index</p>');
+      await writeFile(join(lateRoot, 'assets', 'app.js'), 'late = true');
+
+      const asset = await app.request('/assets/app.js');
+      expect(asset.status).toBe(200);
+      expect(await asset.text()).toContain('late = true');
+      expect(await (await app.request('/')).text()).toContain('late index');
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
   });
 });
 
