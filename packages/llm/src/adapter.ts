@@ -512,12 +512,14 @@ export class AiSdkLlm implements LlmPort {
       }
       const started = this.now();
       let streamed: Streamed;
-      // 本文の欄に書かれた思考は、思考として流す
+      // 本文の欄に書かれた思考は、思考として流す。reasoning: none なら、返答から外したうえで捨てる（思考を受け取らない）
       const splitter = new ThinkTagSplitter();
+      const keepsReasoning = config.reasoning !== 'none';
       let reasoning = '';
       let body = '';
       const emit = function* (part: StreamEvent): Generator<TalkStepPart> {
         if (part.kind === 'reasoning') {
+          if (!keepsReasoning) return;
           reasoning += part.text;
           yield { type: 'reasoning-delta', text: part.text };
         } else {
@@ -563,7 +565,7 @@ export class AiSdkLlm implements LlmPort {
       let rewrite: string | undefined;
       const close = body.toLowerCase().lastIndexOf(THINK_CLOSE);
       if (close !== -1) {
-        reasoning += body.slice(0, close);
+        if (keepsReasoning) reasoning += body.slice(0, close);
         body = body.slice(close + THINK_CLOSE.length);
         rewrite = '本文に書かれた思考を、思考に移した';
       }
