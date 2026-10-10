@@ -193,9 +193,11 @@ export function MaskTools({
   }, []);
   return (
     <>
-      <p className="text-xs text-muted-foreground">
-        キーボードでは塗れない（マウス・タッチ・ペンで塗る）。
-      </p>
+      {closeLabel === '閉じる' && (
+        <p className="text-xs text-muted-foreground">
+          キーボードでは塗れない（マウス・タッチ・ペンで塗る）。
+        </p>
+      )}
       <div ref={toolsRef} className="flex flex-wrap items-end gap-2">
         <Field label="筆の太さ（px）">
           <Input
