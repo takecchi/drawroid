@@ -74,7 +74,13 @@ export class ScriptedLlm implements LlmPort {
     const thought = this.options.reasoning?.[call.purpose]?.(call as LlmCall<unknown>, n);
     if (thought !== undefined) call.onReasoning?.(thought);
     const rawOutput = JSON.stringify(raw);
-    const attempt = { rawOutput, usage: { ...SCRIPTED_USAGE }, durationMs: 1 };
+    // 本物の口と同じく、流した思考を試行に載せる（記録へ載る道を、台本の試験でも通すため）
+    const attempt = {
+      rawOutput,
+      usage: { ...SCRIPTED_USAGE },
+      durationMs: 1,
+      ...(thought !== undefined && thought !== '' && { reasoning: thought }),
+    };
     const parsed = call.schema.safeParse(raw);
     if (parsed.success) return { ok: true, value: parsed.data, attempts: [attempt] };
     const validationError = `スキーマに合わない: ${parsed.error.issues[0]?.message ?? ''}`;
@@ -98,6 +104,7 @@ export class ScriptedLlm implements LlmPort {
       rawOutput: JSON.stringify(step),
       usage: { ...SCRIPTED_USAGE },
       durationMs: 1,
+      ...(step.reasoning !== undefined && step.reasoning !== '' && { reasoning: step.reasoning }),
     };
     // 引数は本物と同じくツールのスキーマで検証する。台本では出し直さず、落ちたらそのまま失敗にする
     const parts: TalkStepPart[] = [];

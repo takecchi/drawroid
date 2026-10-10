@@ -19,7 +19,7 @@ import {
   SubSection,
 } from '@drawroid/ui';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@drawroid/ui/shadcn';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 import { formatDuration } from '../lib/format';
 
@@ -93,6 +93,10 @@ function CallContent({
     );
   }
   const { input, budget, outcome } = data;
+  // 思考のある試行だけ出す。思考を残す前の記録は attempts に reasoning が無いので、節ごと出さない
+  const thoughts = data.attempts.flatMap((attempt, i) =>
+    attempt.reasoning === undefined ? [] : [{ attempt: i + 1, reasoning: attempt.reasoning }],
+  );
   return (
     <>
       <h5 className="text-xs font-semibold">system</h5>
@@ -111,6 +115,17 @@ function CallContent({
         <>
           <h5 className="text-xs font-semibold">予算の注記</h5>
           <CodeBlock>{JSON.stringify(budget.notes, null, 2)}</CodeBlock>
+        </>
+      )}
+      {thoughts.length > 0 && (
+        <>
+          <h5 className="text-xs font-semibold">思考</h5>
+          {thoughts.map(({ attempt, reasoning }) => (
+            <Fragment key={attempt}>
+              {data.attempts.length > 1 && <Muted>{attempt} 回目の試行</Muted>}
+              <CodeBlock>{reasoning}</CodeBlock>
+            </Fragment>
+          ))}
         </>
       )}
       <h5 className="text-xs font-semibold">結果</h5>

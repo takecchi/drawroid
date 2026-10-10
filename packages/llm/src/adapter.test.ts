@@ -463,7 +463,12 @@ describe('AiSdkLlm.generateStructured with reasoning', () => {
       ok: true,
       value: { params: { prompt: 'girl, beach, sunset', steps: 28 }, rationale: '最初の案' },
       attempts: [
-        { rawOutput: valid, usage: { inputTokens: 100, outputTokens: 20 }, durationMs: 10 },
+        {
+          rawOutput: valid,
+          usage: { inputTokens: 100, outputTokens: 20 },
+          durationMs: 10,
+          reasoning: '海辺なので逆光にする',
+        },
       ],
     });
   });
@@ -562,6 +567,7 @@ describe('AiSdkLlm.streamStep', () => {
               '調べます。\n[{"name":"search_candidates","input":{"kind":"lora","query":"miku"}}]',
             usage: { inputTokens: 300, outputTokens: 40 },
             durationMs: 10,
+            reasoning: 'キャラの LoRA があるか調べる',
           },
         ],
       },
@@ -848,5 +854,136 @@ describe('AiSdkLlm.generateStructured with the judge schema', () => {
     expect(outcome.ok).toBe(false);
     expect(model.doStreamCalls).toHaveLength(3);
     if (!outcome.ok) expect(outcome.reason).toMatch(/3 回続けてスキーマに合わなかった.*canStop/);
+  });
+});
+
+// 思考は、LLM 呼び出しの記録（attempts）にも載せる。試行ごとにその試行の思考だけを入れる
+describe('attempts carry the reasoning of each attempt', () => {
+  const broken = (reasoning?: string) =>
+    streamOf({ ...(reasoning === undefined ? {} : { reasoning }), text: '{"params":{}}' });
+  const wrongTool = (reasoning?: string) =>
+    streamOf({
+      ...(reasoning === undefined ? {} : { reasoning }),
+      toolCalls: [{ name: 'search_candidates', input: '{}' }],
+    });
+  const goodTool = (parts: { reasoning?: string; text?: string } = {}) =>
+    streamOf({
+      ...parts,
+      toolCalls: [{ name: 'search_candidates', input: '{"kind":"lora","query":"miku"}' }],
+    });
+  const brokenStep = (reasoning?: string) =>
+    streamOf({
+      ...(reasoning === undefined ? {} : { reasoning }),
+      text: '{"kind":"tool","name":"search_candidates","input":{"kind":"vae"}}',
+    });
+  const reply = '{"kind":"reply","text":"はい"}';
+  const jsonRole = (overrides: Partial<RoleConfig> = {}) =>
+    role({ toolCalling: 'json', structuredOutput: 'json', ...overrides });
+  const finishOf = (parts: TalkStepPart[]) => {
+    const finish = parts.at(-1);
+    if (finish?.type !== 'finish') throw new Error('finish がない');
+    return finish;
+  };
+  const stepAttempts = async (doStream: StreamResult[], config: RoleConfig = role(), retries = 2) =>
+    finishOf(
+      await partsOf(
+        adapter(new MockLanguageModelV4({ doStream }), config, retries).streamStep(stepCall()),
+      ),
+    ).attempts;
+
+  it('generateStructured: puts only that attempt thinking on each attempt, failed ones too', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        broken('1回目の考え'),
+        broken(),
+        streamOf({ reasoning: '3回目の考え', text: valid }),
+      ],
+    });
+    const outcome = await adapter(model, role(), 2).generateStructured(call());
+    expect(outcome.ok).toBe(true);
+    expect(outcome.attempts).toHaveLength(3);
+    expect(outcome.attempts[0]?.reasoning).toBe('1回目の考え');
+    expect(outcome.attempts[1]).not.toHaveProperty('reasoning');
+    expect(outcome.attempts[2]?.reasoning).toBe('3回目の考え');
+    expect(outcome.attempts[2]?.rawOutput).toBe(valid);
+  });
+
+  it('generateStructured: keeps the thinking out of rawOutput', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [streamOf({ reasoning: '海辺なので逆光にする', text: valid })],
+    });
+    const outcome = await adapter(model).generateStructured(call());
+    expect(outcome.attempts[0]?.reasoning).toBe('海辺なので逆光にする');
+    expect(outcome.attempts[0]?.rawOutput).toBe(valid);
+  });
+
+  it('generateStructured: has no field when no thinking flowed, or the role is reasoning none', async () => {
+    const plain = await adapter(
+      new MockLanguageModelV4({ doStream: [streamOf({ text: valid })] }),
+    ).generateStructured(call());
+    expect(plain.attempts[0]).not.toHaveProperty('reasoning');
+    const none = await adapter(
+      new MockLanguageModelV4({ doStream: [streamOf({ reasoning: '考え', text: valid })] }),
+      role({ reasoning: 'none' }),
+    ).generateStructured(call());
+    expect(none.attempts[0]).not.toHaveProperty('reasoning');
+  });
+
+  it('streamStepWithTools: puts the thinking on each attempt, failed one too, without carrying over', async () => {
+    const attempts = await stepAttempts([
+      wrongTool('1回目の考え'),
+      goodTool({ reasoning: '2回目の考え' }),
+    ]);
+    expect(attempts.map((a) => a.reasoning)).toEqual(['1回目の考え', '2回目の考え']);
+    expect(attempts[1]?.rawOutput).not.toContain('考え');
+  });
+
+  it('streamStepWithTools: includes the <think> text and the close-tag-only text, not in rawOutput', async () => {
+    const [tagged] = await stepAttempts([
+      goodTool({ text: '<think>タグの中の考え</think>調べます。' }),
+    ]);
+    expect(tagged?.reasoning).toBe('タグの中の考え');
+    // rawOutput は今までどおり、モデルが返した本文そのまま（タグごと）。思考の欄を足したことで変えない
+    expect(tagged?.rawOutput).toBe(
+      '<think>タグの中の考え</think>調べます。\n[{"name":"search_candidates","input":{"kind":"lora","query":"miku"}}]',
+    );
+    const [closeOnly] = await stepAttempts([
+      goodTool({ text: '閉じだけの考え</think>調べます。' }),
+    ]);
+    expect(closeOnly?.reasoning).toBe('閉じだけの考え');
+  });
+
+  it('streamStepWithTools: has no field without thinking or with reasoning none', async () => {
+    const [plain] = await stepAttempts([goodTool()]);
+    expect(plain).not.toHaveProperty('reasoning');
+    const [none] = await stepAttempts(
+      [goodTool({ reasoning: '考え', text: '<think>これも</think>調べます' })],
+      role({ reasoning: 'none' }),
+    );
+    expect(none).not.toHaveProperty('reasoning');
+  });
+
+  it('streamStepAsJson: puts the streamed thinking on each attempt, failed ones too, without carrying over', async () => {
+    const attempts = await stepAttempts(
+      [
+        brokenStep('1回目の考え'),
+        brokenStep(),
+        streamOf({ reasoning: '3回目の考え', text: reply }),
+      ],
+      jsonRole(),
+    );
+    expect(attempts).toHaveLength(3);
+    expect(attempts[0]?.reasoning).toBe('1回目の考え');
+    expect(attempts[1]).not.toHaveProperty('reasoning');
+    expect(attempts[2]?.reasoning).toBe('3回目の考え');
+    expect(attempts[2]?.rawOutput).toBe(reply);
+  });
+
+  it('streamStepAsJson: has no field with reasoning none', async () => {
+    const [none] = await stepAttempts(
+      [streamOf({ reasoning: '考え', text: reply })],
+      jsonRole({ reasoning: 'none' }),
+    );
+    expect(none).not.toHaveProperty('reasoning');
   });
 });

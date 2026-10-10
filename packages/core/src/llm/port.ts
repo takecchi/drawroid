@@ -65,6 +65,11 @@ export type LlmAttempt = {
   durationMs: number;
   /** スキーマ検証に失敗したときの短い理由 */
   validationError?: string;
+  /**
+   * その試行でモデルが流した思考（思考の増分をつないだもの）。デバッグのために記録へ残す（rawOutput には混ぜない）。
+   * 思考が流れなかった試行（出さないモデル・reasoning: none）では欄ごと省く
+   */
+  reasoning?: string;
 };
 
 export type LlmCallOutcome<T> =
