@@ -37,9 +37,16 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
 
 /**
  * 小さな偽の LLM（OpenAI 互換、ストリーム）。ツールを渡されたら doctor_ping を呼び、そうでなければ確かめの JSON を返す。
- * 渡された画像の形式と中身を取っておき、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る
+ * 渡された画像の形式と中身を取っておき、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る。
+ * rejectImages なら、画像を読めないモデル（mmproj の無い llama.cpp）と同じ文言の 400 で、どの画像も断る
  */
-async function startLlm({ rejectWebp }: { rejectWebp: boolean }) {
+async function startLlm({
+  rejectWebp,
+  rejectImages = false,
+}: {
+  rejectWebp: boolean;
+  rejectImages?: boolean;
+}) {
   const imageTypes: string[] = [];
   const images: Buffer[] = [];
   const server = createServer((req, res) => {
@@ -59,6 +66,18 @@ async function startLlm({ rejectWebp }: { rejectWebp: boolean }) {
       if (rejectWebp && body.includes('data:image/webp')) {
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: 'Failed to load image or audio file' } }));
+        return;
+      }
+      if (rejectImages && body.includes('data:image/')) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: {
+              message:
+                'image input is not supported - hint: if this is unexpected, you may need to provide the mmproj',
+            },
+          }),
+        );
         return;
       }
       const chunk = (delta: object, finish: string | null = null) =>
@@ -258,8 +277,8 @@ describe('runDoctor', () => {
     );
   });
 
-  // 見る役に渡る画像は、storage-fs が作る縮小版（webp）。確かめに別の形式（png）を渡すと、
-  // webp を読めないサーバ（llama.cpp）でも「1往復できた」と出て、ジョブを走らせてから見る役で落ちる
+  // 見る役に渡る画像は、storage-fs が作る縮小版（webp）を、LLM に送るときに JPEG にしたもの。
+  // 確かめで別の形式を渡すと、ジョブの見る役が読めるかどうかと、確かめの結果が食い違う
   it('shows the judge an image in the same format the job loop sends', async () => {
     const llm = await startLlm({ rejectWebp: true });
     const { text } = await setup({
@@ -272,9 +291,24 @@ describe('runDoctor', () => {
         },
       },
     });
-    expect(llm.imageTypes[0]).toBe('image/webp');
+    expect(llm.imageTypes).toEqual(['image/jpeg']);
+    expect(text).toMatch(/よい +見る役（a の m2、.*画像を1枚渡して1往復できた/);
+  });
+
+  it('names the format it sent when the judge cannot read the image', async () => {
+    const llm = await startLlm({ rejectWebp: false, rejectImages: true });
+    const { text } = await setup({
+      llm: {
+        providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+        roles: {
+          think: { provider: 'a', model: 'm1' },
+          judge: { provider: 'a', model: 'm2' },
+          talk: { provider: 'a', model: 'm1' },
+        },
+      },
+    });
     expect(text).toMatch(
-      /足りない {2}見る役（a の m2、.*画像（image\/webp。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない/,
+      /足りない {2}見る役（a の m2、.*画像（image\/jpeg。ジョブが見る役に渡すのと同じ形式）を渡すと返事が来ない/,
     );
   });
 
@@ -327,7 +361,7 @@ describe('runDoctor', () => {
   });
 
   it('passes the image only to the judge, and lists the roles as talk, think, judge', async () => {
-    const llm = await startLlm({ rejectWebp: true });
+    const llm = await startLlm({ rejectWebp: false, rejectImages: true });
     const { text } = await setup({
       llm: {
         providers: { a: { type: 'openai-compatible', baseURL: llm.url } },

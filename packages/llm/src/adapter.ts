@@ -25,6 +25,7 @@ import {
   type ToolSet,
   type UserContent,
 } from 'ai';
+import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
 import { ROLE_LABELS, type ResolvedRoles, type RoleConfig } from './config.js';
 
@@ -171,11 +172,33 @@ function abortError(signal: AbortSignal): Error {
   return error;
 }
 
-function toContent(messages: BudgetedMessages): Exclude<UserContent, string> {
-  return messages.user.map((part) =>
-    part.type === 'text'
-      ? { type: 'text' as const, text: part.text }
-      : { type: 'file' as const, data: part.data, mediaType: part.mediaType },
+/** LLM に送るときの画像の形式。webp だけを変え、PNG・JPEG はそのまま送る */
+export function sentImageMediaType(mediaType: string): string {
+  return mediaType === 'image/webp' ? 'image/jpeg' : mediaType;
+}
+
+// 縮小版そのもの（storage-fs）を JPEG にしない: 保存した縮小版と画面に出す画像の形式を、LLM のサーバの都合で変えないため。
+// PNG にしない: 縮小版の長辺 512 で約 5 倍の大きさになり、画質（webp を復号した画素との PSNR 44 dB）は JPEG で足りるため
+async function toSentImage(data: Uint8Array, mediaType: string): Promise<Uint8Array> {
+  if (sentImageMediaType(mediaType) === mediaType) return data;
+  const jpeg = await sharp(data)
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+  return new Uint8Array(jpeg);
+}
+
+async function toContent(messages: BudgetedMessages): Promise<Exclude<UserContent, string>> {
+  return Promise.all(
+    messages.user.map(async (part) =>
+      part.type === 'text'
+        ? { type: 'text' as const, text: part.text }
+        : {
+            type: 'file' as const,
+            data: await toSentImage(part.data, part.mediaType),
+            mediaType: sentImageMediaType(part.mediaType),
+          },
+    ),
   );
 }
 
@@ -299,7 +322,7 @@ export class AiSdkLlm implements LlmPort {
         : `${call.messages.system}\n次の JSON Schema に合う JSON だけを出力する:\n${JSON.stringify(
             z.toJSONSchema(call.schema as ZodType),
           )}`;
-    const content = toContent(call.messages);
+    const content = await toContent(call.messages);
     // 失敗した出力の全文は積まない: 再試行のたびに入力が膨らむため。足すのは直前の検証エラーの要約だけ
     if (previousError !== undefined) {
       content.push({
@@ -479,7 +502,7 @@ export class AiSdkLlm implements LlmPort {
     const attempts: LlmAttempt[] = [];
     let previousError: string | undefined;
     for (let i = 0; i <= this.options.validationRetries; i += 1) {
-      const content = toContent(call.messages);
+      const content = await toContent(call.messages);
       // 失敗した呼び出しの全文は積まない: 足すのは直前の検証エラーの要約だけ
       if (previousError !== undefined) {
         content.push({
@@ -612,7 +635,7 @@ export class AiSdkLlm implements LlmPort {
     let previousError: string | undefined;
     let lastText = '';
     for (let i = 0; i <= this.options.validationRetries; i += 1) {
-      const content = toContent(call.messages);
+      const content = await toContent(call.messages);
       if (previousError !== undefined) {
         content.push({
           type: 'text',
