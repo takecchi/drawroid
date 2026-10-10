@@ -4,7 +4,7 @@ import { z } from 'zod';
 export { MAX_MASK_BYTES };
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+const BASE64 = /^(data:image\/png;base64,)?[A-Za-z0-9+/]*={0,2}$/;
 
 /**
  * inpaint のマスク1枚。PNG を base64 で載せる。白い所を描き直す。
@@ -19,7 +19,7 @@ export const maskUploadSchema = z
       .regex(BASE64, { message: 'base64 ではない' }),
   })
   .transform((upload, ctx): Uint8Array => {
-    const bytes = new Uint8Array(Buffer.from(upload.data, 'base64'));
+    const bytes = new Uint8Array(Buffer.from(upload.data.replace('data:image/png;base64,', ''), 'base64'));
     if (bytes.byteLength > MAX_MASK_BYTES) {
       ctx.addIssue({
         code: 'custom',
