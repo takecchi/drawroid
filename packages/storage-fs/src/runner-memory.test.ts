@@ -207,6 +207,60 @@ describe('a stopped job leaves what it taught to the next job', () => {
     expect((await memoryStore.list()).items.map((i) => i.body)).toEqual([FINGERS]);
   });
 
+  // 口出しと選択は蒸留のいちばんの材料: 止まったジョブのものは載せ、ほかのジョブのものは混ぜない
+  it('gives the distillation the instructions and the selections of the stopped job, and only those', async () => {
+    const { store, distillLog, runner, submit, callsOf } = setup();
+    const job = await submit('夕暮れの海辺の少女');
+    const instruction = await runner.addInstruction(job.jobId, '指の崩れは許さない');
+    await store.writeSelection(job.jobId, {
+      imageKey: '1-0',
+      verdict: 'favorite',
+      selectedAt: now,
+    });
+    // 口出しも選択もある、別の止まったジョブ
+    const other = await store.createJob(
+      {
+        kind: 'auto',
+        request: '雨の街角の猫',
+        stopConditions: { aiJudgement: true, maxIterations: 1 },
+        batchSize: 1,
+      },
+      {
+        status: 'stopped',
+        carry: { intent: '雨の街角の猫', completedIterations: 1 },
+        stoppedAt: now,
+        imagesGenerated: 1,
+        reason: { kind: 'ai', detail: '見る役が意図どおりと判断した' },
+      },
+      new Date(),
+    );
+    await store.addIntervention(
+      other.jobId,
+      { kind: 'instruction', text: '背景は暗くする' },
+      new Date(),
+    );
+    await store.writeSelection(other.jobId, {
+      imageKey: '1-0',
+      verdict: 'rejected',
+      selectedAt: now,
+    });
+
+    runner.kick();
+    await runner.idle();
+
+    expect(callsOf('distill')).toHaveLength(1);
+    const input = textOf(callsOf('distill')[0]);
+    expect(input).toContain('口出し: 指の崩れは許さない');
+    expect(input).toContain('お気に入り');
+    expect(input).not.toContain('背景は暗くする');
+    expect(input).not.toContain('却下');
+    const [entry] = await distillLog.read(job.jobId);
+    expect(entry?.shown).toMatchObject({
+      interventions: [instruction.interventionId],
+      selections: ['1-0'],
+    });
+  });
+
   it('distills once when a job stops, even with neither instructions nor selections', async () => {
     const { store, runner, submit, callsOf } = setup({ distill: () => ({ operations: [] }) });
     const job = await submit('夕暮れの海辺の少女');
