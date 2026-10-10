@@ -115,12 +115,15 @@ function readsOf(path: string): number {
   return vi.mocked(fs.readFile).mock.calls.filter(([p]) => p === path).length;
 }
 
-/** 大きさと更新時刻を変えずに、中身だけを差し替える（inode も変わらない） */
+// 更新時刻をミリ秒ちょうどに揃える: utimes に渡す Date はミリ秒未満を持たないので、書いたときの時刻へは戻せないため
+const PINNED = new Date('2026-10-09T06:30:00.000Z');
+const pinTime = (path: string) => utimes(path, PINNED, PINNED);
+
+/** 大きさと更新時刻を変えずに、中身だけを差し替える（inode も変わらない）。読む前に pinTime しておくこと */
 async function rewriteInPlaceKeepingStat(path: string, text: string) {
-  const before = await stat(path);
-  expect(Buffer.byteLength(text)).toBe(before.size);
+  expect(Buffer.byteLength(text)).toBe((await stat(path)).size);
   await writeFile(path, text);
-  await utimes(path, before.atime, before.mtime);
+  await pinTime(path);
 }
 
 describe('FsJobStore reading finished iteration files', () => {
@@ -156,20 +159,25 @@ describe('FsJobStore reading finished iteration files', () => {
   it('returns the new plan even when it is rewritten with the same size and time', async () => {
     const { store, jobId, files } = await finishedJob();
     const path = files.iteration(1).plan;
+    await pinTime(path);
     await store.readStage(jobId, 1, 'plan');
     await rewriteInPlaceKeepingStat(path, '{"excluded":["x"]}'.padEnd((await stat(path)).size));
 
     expect(await store.readStage(jobId, 1, 'plan')).toEqual({ excluded: ['x'] });
   });
 
+  // store は rename で置き換えるので、大きさと更新時刻が同じでも、ファイルの実体（inode）は変わる
   it('returns the new content of a file rewritten through the store, even at the same size and time', async () => {
     const { store, jobId, files } = await finishedJob();
     const path = files.iteration(1).judge;
+    await pinTime(path);
     await store.readStage(jobId, 1, 'judge');
     const before = await stat(path);
     await store.writeStage(jobId, 1, 'judge', { canStop: false, images: [{ score: 2 }] });
-    await utimes(path, before.atime, before.mtime);
-    expect((await stat(path)).size).toBe(before.size);
+    await pinTime(path);
+    const after = await stat(path);
+    expect([after.size, after.mtimeMs]).toEqual([before.size, before.mtimeMs]);
+    expect(after.ino).not.toBe(before.ino);
 
     expect(await store.readStage(jobId, 1, 'judge')).toEqual({
       canStop: false,

@@ -70,6 +70,8 @@ const backendFailed: StopReason = {
 
 function serve(job: JobDetailData, backendError?: ApiError) {
   vi.mocked(useJobOverview).mockReturnValue({ data: job } as never);
+  // 詳細を読んでも画面は崩れない形で返す: 読んだかどうかを、それを見る試験の1件だけで捕まえるため
+  vi.mocked(useJob).mockReturnValue({ data: job } as never);
   vi.mocked(useBackendStatus).mockReturnValue({ error: backendError } as never);
 }
 
