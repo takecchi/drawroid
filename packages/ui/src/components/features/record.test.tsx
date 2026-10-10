@@ -42,4 +42,34 @@ describe('ImageCard', () => {
     expect(screen.getByAltText('seed 1').getAttribute('src')).toBe('/preview.webp');
     expect(container.querySelector('figure')?.getAttribute('data-verdict')).toBe('favorite');
   });
+
+  // 背が取れるときだけ遅れて読む。リンクの形（大きく見る窓を持たない呼び手）とボタンの形の両方で同じ
+  it.each([
+    ['links to the full image', {}],
+    ['opens it large', { onOpen: () => undefined }],
+  ])(
+    'loads the preview only as it comes near when its size is known, where the card %s',
+    (_, open) => {
+      render(
+        <ImageCard
+          href="/full.png"
+          src="/preview.webp"
+          alt="seed 1"
+          size={{ width: 512, height: 768 }}
+          {...open}
+        />,
+      );
+
+      expect(screen.getByAltText('seed 1').getAttribute('loading')).toBe('lazy');
+    },
+  );
+
+  it.each([
+    ['links to the full image', {}],
+    ['opens it large', { onOpen: () => undefined }],
+  ])('loads the preview at once when its size is not known, where the card %s', (_, open) => {
+    render(<ImageCard href="/full.png" src="/preview.webp" alt="seed 1" {...open} />);
+
+    expect(screen.getByAltText('seed 1').getAttribute('loading')).toBeNull();
+  });
 });

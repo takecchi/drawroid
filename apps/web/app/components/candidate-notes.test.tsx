@@ -69,6 +69,24 @@ describe('CandidateNotes', () => {
     });
   });
 
+  // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る。欄を触らない2回目の保存でも移る
+  it('moves the focus to the note that it saved, also on a second save', async () => {
+    render(<CandidateNotes />);
+    const SAVED = '保存した。次のジョブから考える役に渡る。';
+
+    await save();
+    const first = await screen.findByText(SAVED);
+    expect(first.getAttribute('role')).toBe('status');
+    expect(document.activeElement).toBe(first);
+
+    screen.getByRole('button', { name: '説明を保存' }).focus();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '説明を保存' }));
+    await save();
+
+    const second = await screen.findByText(SAVED);
+    expect(document.activeElement).toBe(second);
+  });
+
   it('keeps notes for candidates the backend no longer has, until they are removed', async () => {
     render(<CandidateNotes />);
 

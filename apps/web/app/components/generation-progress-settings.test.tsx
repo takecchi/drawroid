@@ -47,6 +47,25 @@ describe('GenerationProgressSettings', () => {
     expect(await screen.findByText('保存した。次に始まる生成から効く。')).toBeTruthy();
   });
 
+  // 押した欄は送っている間押せなくなるので、フォーカスは保存した知らせへ移る。欄を触らない2回目の保存でも移る
+  it('moves the focus to the note that it saved, also on a second save', async () => {
+    const user = userEvent.setup();
+    render(<GenerationProgressSettings />);
+    const SAVED = '保存した。次に始まる生成から効く。';
+
+    await user.click(box());
+    const first = await screen.findByText(SAVED);
+    expect(first.getAttribute('role')).toBe('status');
+    expect(document.activeElement).toBe(first);
+
+    box().focus();
+    expect(document.activeElement).toBe(box());
+    await user.click(box());
+
+    const second = await screen.findByText(SAVED);
+    expect(document.activeElement).toBe(second);
+  });
+
   it('saves off when it is turned off', async () => {
     mocks.useGenerationProgressSettings.mockReturnValue({
       data: { includePreview: true },

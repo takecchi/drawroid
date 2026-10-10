@@ -150,4 +150,30 @@ describe('AdoptButton', () => {
     expect(document.activeElement).toBe(elsewhere);
     elsewhere.remove();
   });
+
+  // 移すのは形が替わったときの一度だけ: 会話が流れて描き直されるたびに取り戻すと、ほかの所を触っている人から奪うため
+  it.each([
+    ['choosing again after the person changed their mind', false],
+    ['the mark after the image was decided', true],
+  ])('does not take the focus back to %s when it is drawn again', async (_, decide) => {
+    vi.mocked(adoptImage).mockResolvedValue({ adopted: { iteration: 2, index: 0 } });
+    const props = { jobId: JOB, image: { iteration: 2, index: 0 } };
+    const { rerender } = render(<AdoptButton {...props} imageLabel="2 回目の画像 1 番" />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
+    if (decide) {
+      await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
+      await screen.findByText('この画像に決めた');
+    } else {
+      await user.click(screen.getByRole('button', { name: 'やめる' }));
+    }
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    rerender(<AdoptButton {...props} imageLabel="2 回目の画像 1 番" />);
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
 });
