@@ -2,7 +2,8 @@ import type { ReferenceUpload } from '@drawroid/swr';
 
 import type { FormResult } from './stop-conditions-form';
 
-// api の references.ts と同じ値。api を runtime で import しない: サーバ側の依存（zod の transform や Buffer）をブラウザの成果物へ引き込まないため
+// サーバ（core の job/types.ts。api もそれを使う）と同じ値。同じであることは試験で縛る。
+// api を runtime で import しない: サーバ側の依存（zod の transform や Buffer）をブラウザの成果物へ引き込まないため
 export const MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
 export const MAX_REFERENCES_PER_REQUEST = 4;
 export const MAX_REFERENCE_NOTE_LENGTH = 200;
