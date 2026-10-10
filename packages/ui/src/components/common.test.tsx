@@ -216,4 +216,41 @@ describe('Textarea', () => {
     expect((screen.getByLabelText('伸びない') as HTMLTextAreaElement).style.height).toBe('');
     height.mockRestore();
   });
+
+  // 呼び手がフォーカスを移す先として掴めるように、ref は DOM の textarea に届ける
+  it('hands its ref to the textarea element', () => {
+    const ref = createRef<HTMLTextAreaElement>();
+    render(<Textarea ref={ref} aria-label="発言" />);
+
+    expect(ref.current).toBe(screen.getByLabelText('発言'));
+  });
+
+  it('hands a callback ref the textarea element too', () => {
+    const received: (HTMLTextAreaElement | null)[] = [];
+    render(<Textarea ref={(el) => void received.push(el)} aria-label="発言" />);
+
+    expect(received).toEqual([screen.getByLabelText('発言')]);
+  });
+
+  it('keeps growing to its content when the caller holds a ref', () => {
+    const height = vi
+      .spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(120);
+    const ref = createRef<HTMLTextAreaElement>();
+    render(<Textarea ref={ref} aria-label="伸びる" maxHeight="15rem" defaultValue="一行目" />);
+
+    expect(ref.current).toBe(screen.getByLabelText('伸びる'));
+    expect((screen.getByLabelText('伸びる') as HTMLTextAreaElement).style.height).toBe('120px');
+    height.mockRestore();
+  });
+});
+
+describe('Input', () => {
+  // 呼び手がフォーカスを移す先として掴めるように、ref は DOM の input に届ける
+  it('hands its ref to the input element', () => {
+    const ref = createRef<HTMLInputElement>();
+    render(<Input ref={ref} aria-label="筆の太さ" />);
+
+    expect(ref.current).toBe(screen.getByLabelText('筆の太さ'));
+  });
 });
