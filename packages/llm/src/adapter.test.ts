@@ -986,4 +986,93 @@ describe('attempts carry the reasoning of each attempt', () => {
     );
     expect(none).not.toHaveProperty('reasoning');
   });
+
+  // 失敗で終わる試行（上限で切れた・呼び出しが途中で落ちた）にも、そこまでに流れた思考を載せる: 失敗の原因を追うのに要るため
+  describe('the attempt that ends the call with a failure', () => {
+    const cut = (text: string) =>
+      streamOf({ reasoning: '長く考えた', text, finishReason: 'length' });
+
+    it('generateStructured: keeps the thinking of an attempt cut at the limit', async () => {
+      const outcome = await adapter(
+        new MockLanguageModelV4({ doStream: [cut(valid.slice(0, 30))] }),
+      ).generateStructured(call());
+      expect(outcome.ok).toBe(false);
+      expect(outcome.attempts).toEqual([expect.objectContaining({ reasoning: '長く考えた' })]);
+    });
+
+    it('generateStructured: keeps the thinking of an attempt whose call broke off', async () => {
+      const outcome = await adapter(
+        new MockLanguageModelV4({ doStream: [breaksAfterThinking('途中までの考え')] }),
+      ).generateStructured(call());
+      expect(outcome.ok).toBe(false);
+      expect(outcome.attempts).toEqual([
+        expect.objectContaining({ rawOutput: '', reasoning: '途中までの考え' }),
+      ]);
+    });
+
+    it.each([
+      ['streamStepWithTools', () => role()],
+      ['streamStepAsJson', () => jsonRole()],
+    ])('%s: keeps the thinking of an attempt cut at the limit', async (_, config) => {
+      const attempts = await stepAttempts([cut('{"kind":"reply","te')], config());
+      expect(attempts).toEqual([expect.objectContaining({ reasoning: '長く考えた' })]);
+    });
+
+    it.each([
+      ['streamStepWithTools', () => role()],
+      ['streamStepAsJson', () => jsonRole()],
+    ])('%s: keeps the thinking of an attempt whose call broke off', async (_, config) => {
+      const attempts = await stepAttempts([breaksAfterThinking('途中までの考え')], config());
+      expect(attempts).toEqual([
+        expect.objectContaining({ rawOutput: '', reasoning: '途中までの考え' }),
+      ]);
+    });
+  });
+
+  // 思考は記録にだけ残し、出し直しの入力には戻さない（docs/design/conversational-agent.md の「思考を入力に戻さない」）
+  describe('the input of the next attempt', () => {
+    it('generateStructured: does not carry the thinking of the failed attempt', async () => {
+      const model = new MockLanguageModelV4({
+        doStream: [broken('1回目だけの考え'), streamOf({ text: valid })],
+      });
+      await adapter(model, role(), 2).generateStructured(call());
+      expect(model.doStreamCalls).toHaveLength(2);
+      expect(userTexts(model, 1).join('')).not.toContain('1回目だけの考え');
+    });
+
+    it('streamStepWithTools: does not carry the thinking of the failed attempt', async () => {
+      const model = new MockLanguageModelV4({
+        doStream: [wrongTool('1回目だけの考え'), goodTool()],
+      });
+      await partsOf(adapter(model).streamStep(stepCall()));
+      expect(model.doStreamCalls).toHaveLength(2);
+      expect(userTexts(model, 1).join('')).not.toContain('1回目だけの考え');
+    });
+
+    it('streamStepAsJson: does not carry the thinking of the failed attempt', async () => {
+      const model = new MockLanguageModelV4({
+        doStream: [brokenStep('1回目だけの考え'), streamOf({ text: reply })],
+      });
+      await partsOf(adapter(model, jsonRole()).streamStep(stepCall()));
+      expect(model.doStreamCalls).toHaveLength(2);
+      expect(userTexts(model, 1).join('')).not.toContain('1回目だけの考え');
+    });
+  });
 });
+
+/** 思考を流したあと、本文に入る前に接続が切れる応答 */
+function breaksAfterThinking(reasoning: string): StreamResult {
+  return {
+    stream: new ReadableStream<StreamPart>({
+      start(stream) {
+        stream.enqueue({ type: 'stream-start', warnings: [] });
+        stream.enqueue({ type: 'reasoning-start', id: 'r' });
+        stream.enqueue({ type: 'reasoning-delta', id: 'r', delta: reasoning });
+      },
+      // 流した分を読み終えてから切る（先に error にすると、読む前の分も捨てられる）
+      pull(stream) {
+        stream.error(new Error('connection reset by peer'));
+      },
+    }),
+  };
+}
