@@ -147,9 +147,49 @@ function refuseWidening(
       ? undefined
       : '人間が選んだ候補の外は選べない';
   }
+  const overLimit = refuseOverSafetyLimit(key, wanted.value);
+  if (overLimit !== undefined) return overLimit;
   const names = candidateNamesOf(key, wanted.value);
   if (names === undefined || allowed === undefined) return undefined;
   return names.every((name) => allowed.includes(name)) ? undefined : '候補に無い値では固定できない';
+}
+
+/** 話す役が固定できる数の上限 */
+const FIXED_NUMBER_LIMITS: Partial<Record<ParamKey, number>> = {
+  steps: 150,
+  width: 4096,
+  height: 4096,
+};
+/** 話す役が固定できる文の文字数の上限 */
+const FIXED_TEXT_LIMIT = 4000;
+const FIXED_TEXT_KEYS: readonly ParamKey[] = ['prompt', 'negativePrompt'];
+/** 話す役が固定できる Hires. fix の倍率の上限 */
+const FIXED_HIRES_SCALE_LIMIT = 4;
+
+/**
+ * 話す役が AI 任せのものを固定するときの、安全のための上限。人間が固定した値には掛けない（その前の確かめで同じ値だけが通る）。
+ */
+// 上限を置く: 生成の要求の形は下限しか持たないので、話す役の言葉だけで steps や大きさを桁違いに固定され、バックエンドを
+// 長く占められるため。考える役は出力のスキーマで steps・倍率を絞るが、話す役の固定はそのスキーマを通らない
+function refuseOverSafetyLimit(key: ParamKey, value: unknown): string | undefined {
+  const numberLimit = FIXED_NUMBER_LIMITS[key];
+  if (numberLimit !== undefined && typeof value === 'number' && value > numberLimit) {
+    return `上限（${numberLimit}）を超える値では固定できない`;
+  }
+  if (
+    FIXED_TEXT_KEYS.includes(key) &&
+    typeof value === 'string' &&
+    value.length > FIXED_TEXT_LIMIT
+  ) {
+    return `文字数の上限（${FIXED_TEXT_LIMIT} 文字）を超える値では固定できない`;
+  }
+  if (key === 'hiresFix' && typeof value === 'object' && value !== null) {
+    const { scale } = value as { scale?: unknown };
+    if (typeof scale === 'number' && scale > FIXED_HIRES_SCALE_LIMIT) {
+      return `倍率の上限（${FIXED_HIRES_SCALE_LIMIT}）を超える値では固定できない`;
+    }
+  }
+  return undefined;
 }
 
 /** 見る役の評価の短い欄 */
