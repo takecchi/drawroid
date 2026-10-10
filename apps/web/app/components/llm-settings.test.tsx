@@ -49,6 +49,7 @@ const stored: LlmSettingsResponse = {
     },
     validationRetries: 2,
     networkRetries: 2,
+    callTimeoutSeconds: 300,
   },
   apiKeyEnv: { cloud: { name: 'ANTHROPIC_API_KEY', set: false } },
 };
@@ -401,6 +402,7 @@ describe('LlmSettings', () => {
           },
           validationRetries: config.validationRetries ?? 2,
           networkRetries: config.networkRetries ?? 2,
+          callTimeoutSeconds: config.callTimeoutSeconds ?? 300,
         },
         apiKeyEnv: {},
       };
@@ -827,6 +829,25 @@ describe('LlmSettings', () => {
       validationRetries: 4,
       networkRetries: 0,
     });
+  });
+
+  // 画面で保存しても、config.json に書いた待つ時間を落とさない（画面は設定の全体を書き戻すため）
+  it('shows and saves how long to wait for the LLM, and leaves an emptied one to the server default', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    expect(input('応答を待つ上限（秒）').value).toBe('300');
+    await user.clear(input('応答を待つ上限（秒）'));
+    await user.type(input('応答を待つ上限（秒）'), '900');
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings).toHaveBeenLastCalledWith({
+      ...stored.config,
+      callTimeoutSeconds: 900,
+    });
+
+    await user.clear(input('応答を待つ上限（秒）'));
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+    expect(mocks.saveLlmSettings.mock.lastCall?.[0]).not.toHaveProperty('callTimeoutSeconds');
   });
 
   it('leaves an emptied retry count to the server default', async () => {

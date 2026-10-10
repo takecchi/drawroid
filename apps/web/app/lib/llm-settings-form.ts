@@ -49,6 +49,8 @@ export interface LlmSettingsFormValues {
   validationRetries: string;
   /** 繋がらない・429 などのときに呼び直す回数（空ならサーバの既定） */
   networkRetries: string;
+  /** LLM が何も返さないまま待つ上限（秒。空ならサーバの既定） */
+  callTimeoutSeconds: string;
 }
 
 export function emptyProviderRow(): ProviderRow {
@@ -90,6 +92,7 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
       talk: roleToValues(undefined),
       validationRetries: '',
       networkRetries: '',
+      callTimeoutSeconds: '',
     };
   }
   return {
@@ -103,6 +106,7 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
     talk: roleToValues(config.roles.talk ?? config.roles.think),
     validationRetries: String(config.validationRetries),
     networkRetries: String(config.networkRetries),
+    callTimeoutSeconds: String(config.callTimeoutSeconds),
   };
 }
 
@@ -256,9 +260,11 @@ export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInpu
   const think = buildRole(values.think, names);
   const validationRetries = optionalNumber(values.validationRetries);
   const networkRetries = optionalNumber(values.networkRetries);
+  const callTimeoutSeconds = optionalNumber(values.callTimeoutSeconds);
   return {
     ...(validationRetries === undefined ? {} : { validationRetries }),
     ...(networkRetries === undefined ? {} : { networkRetries }),
+    ...(callTimeoutSeconds === undefined ? {} : { callTimeoutSeconds }),
     providers,
     roles: {
       think,

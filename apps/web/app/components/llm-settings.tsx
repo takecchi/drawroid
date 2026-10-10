@@ -393,6 +393,22 @@ export function LlmSettings() {
               </Field>
             </FieldRow>
           </SubSection>
+          <SubSection title="応答を待つ時間">
+            <Field
+              label="応答を待つ上限（秒）"
+              hint="LLM が何も返さないまま、この秒数がたったら打ち切る。返し続けている間は打ち切らない。既定は 300 秒"
+            >
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={values.callTimeoutSeconds}
+                onChange={(event) => change({ callTimeoutSeconds: event.target.value })}
+                aria-label="応答を待つ上限（秒）"
+                placeholder="既定"
+                className="w-32"
+              />
+            </Field>
+          </SubSection>
           <Button type="submit" variant="primary" disabled={saving}>
             LLM の設定を保存
           </Button>
