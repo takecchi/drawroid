@@ -72,6 +72,14 @@ describe('LlmSettings', () => {
     expect(input('provider local の接続先（baseURL）').value).toBe('http://127.0.0.1:11434/v1');
   });
 
+  // 役ごとに同じ欄が並ぶので、どの役の欄かを読み上げの名前で区別できる
+  it('names whether each role reads images after the role', () => {
+    render(<LlmSettings />);
+
+    expect(input('考える役は画像を読める').checked).toBe(false);
+    expect(input('見る役は画像を読める').checked).toBe(true);
+  });
+
   it('lets each role choose its provider only from the providers defined above', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);

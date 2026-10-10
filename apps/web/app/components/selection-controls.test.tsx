@@ -19,7 +19,14 @@ afterEach(() => {
 });
 
 function renderControls(verdict: 'favorite' | 'rejected' | null) {
-  render(<SelectionControls jobId="job-1" imageKey="1-0" verdict={verdict} />);
+  render(
+    <SelectionControls
+      jobId="job-1"
+      imageKey="1-0"
+      imageLabel="1 回目の画像 1 番"
+      verdict={verdict}
+    />,
+  );
   return userEvent.setup();
 }
 
@@ -38,7 +45,7 @@ describe('SelectionControls', () => {
     select.mockResolvedValue({} as Awaited<ReturnType<typeof setSelection>>);
     const user = renderControls(null);
 
-    await user.click(screen.getByRole('button', { name: 'お気に入り' }));
+    await user.click(screen.getByRole('button', { name: 'お気に入り: 1 回目の画像 1 番' }));
 
     expect(select).toHaveBeenCalledWith('job-1', '1-0', 'favorite');
   });
@@ -47,7 +54,7 @@ describe('SelectionControls', () => {
     select.mockResolvedValue({} as Awaited<ReturnType<typeof setSelection>>);
     const user = renderControls('favorite');
 
-    await user.click(screen.getByRole('button', { name: '却下' }));
+    await user.click(screen.getByRole('button', { name: '却下: 1 回目の画像 1 番' }));
 
     expect(select).toHaveBeenCalledWith('job-1', '1-0', 'rejected');
   });
@@ -56,7 +63,7 @@ describe('SelectionControls', () => {
     select.mockResolvedValue({} as Awaited<ReturnType<typeof setSelection>>);
     const user = renderControls('rejected');
 
-    await user.click(screen.getByRole('button', { name: '外す' }));
+    await user.click(screen.getByRole('button', { name: '外す: 1 回目の画像 1 番' }));
 
     expect(select).toHaveBeenCalledWith('job-1', '1-0', null);
   });
@@ -64,15 +71,52 @@ describe('SelectionControls', () => {
   it('disables the button for the state the image is already in', () => {
     renderControls('favorite');
 
-    expect(screen.getByRole('button', { name: 'お気に入り' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: '却下' })).toHaveProperty('disabled', false);
-    expect(screen.getByRole('button', { name: '外す' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'お気に入り: 1 回目の画像 1 番' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(screen.getByRole('button', { name: '却下: 1 回目の画像 1 番' })).toHaveProperty(
+      'disabled',
+      false,
+    );
+    expect(screen.getByRole('button', { name: '外す: 1 回目の画像 1 番' })).toHaveProperty(
+      'disabled',
+      false,
+    );
   });
 
   it('cannot clear a verdict on an image that has none', () => {
     renderControls(null);
 
-    expect(screen.getByRole('button', { name: '外す' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: '外す: 1 回目の画像 1 番' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
+  // ジョブの詳細には画像が並ぶ: どの画像のボタンかを、読み上げの名前で区別できる
+  it('names each button after its image, so the buttons of images side by side differ', () => {
+    render(
+      <>
+        <SelectionControls
+          jobId="job-1"
+          imageKey="1-0"
+          imageLabel="1 回目の画像 1 番"
+          verdict={null}
+        />
+        <SelectionControls
+          jobId="job-1"
+          imageKey="1-1"
+          imageLabel="1 回目の画像 2 番"
+          verdict={null}
+        />
+      </>,
+    );
+
+    for (const action of ['お気に入り', '却下', '外す']) {
+      expect(screen.getByRole('button', { name: `${action}: 1 回目の画像 1 番` })).toBeTruthy();
+      expect(screen.getByRole('button', { name: `${action}: 1 回目の画像 2 番` })).toBeTruthy();
+    }
   });
 
   it('shows the reason when the selection cannot be saved', async () => {
@@ -80,7 +124,7 @@ describe('SelectionControls', () => {
     select.mockRejectedValue(new ApiError('not_found', '画像が無い', 404));
     const user = renderControls(null);
 
-    await user.click(screen.getByRole('button', { name: '却下' }));
+    await user.click(screen.getByRole('button', { name: '却下: 1 回目の画像 1 番' }));
 
     expect((await screen.findByText(/選べない/)).textContent).toContain('画像が無い');
   });

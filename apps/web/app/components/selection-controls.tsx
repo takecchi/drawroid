@@ -11,10 +11,13 @@ const VERDICT_LABELS: Record<SelectionVerdict, string> = {
 export function SelectionControls({
   jobId,
   imageKey,
+  imageLabel,
   verdict,
 }: {
   jobId: string;
   imageKey: string;
+  /** どの画像のボタンか（「2 回目の画像 1 番」）。読み上げで、並んだ画像のボタンがどれも同じ「お気に入り」にならないように */
+  imageLabel: string;
   verdict: SelectionVerdict | null;
 }) {
   const [pending, setPending] = useState(false);
@@ -40,6 +43,7 @@ export function SelectionControls({
         <Button
           className="h-7 px-2 text-xs"
           disabled={pending || verdict === 'favorite'}
+          aria-label={`お気に入り: ${imageLabel}`}
           onClick={() => void choose('favorite')}
         >
           お気に入り
@@ -47,6 +51,7 @@ export function SelectionControls({
         <Button
           className="h-7 px-2 text-xs"
           disabled={pending || verdict === 'rejected'}
+          aria-label={`却下: ${imageLabel}`}
           onClick={() => void choose('rejected')}
         >
           却下
@@ -54,6 +59,7 @@ export function SelectionControls({
         <Button
           className="h-7 px-2 text-xs"
           disabled={pending || verdict === null}
+          aria-label={`外す: ${imageLabel}`}
           onClick={() => void choose(null)}
         >
           外す
