@@ -8,6 +8,8 @@
 //    押したあとはボタンの代わりに「この画像に決めた（お気に入り）」が出る（画像の枡と同じ口）
 // 7. 人が会話で添えた画像は、発言の行に縮小版で並び（読み上げではどの発言のものか分かる名前）、狭い画面でも横にはみ出さず、
 //    押すと同じ窓で大きく見られ、閉じると焦点がその縮小版へ戻る
+// 8. ジョブの詳細の「LLM の合計」は、狭い画面でも広い画面でも、表が枠の中に収まって横に送らずに読め、上の要約の数と単位が
+//    別の行に折れない（長いジョブの桁で）
 // 会話は、組み立てた @drawroid/storage-fs で置き場所へ直に書いてから起動する（画像を生成せずに画像の行を作るため）。
 // 前提: `pnpm build` 済み。ブラウザは取得しない（scripts/packed-browser-core.mjs）。
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -25,6 +27,46 @@ const STEP_TIMEOUT_MS = 30_000;
 const FIXTURES = join(repoRoot, 'packages/backend-forge/src/test-support/fixtures');
 const ITERATIONS = 2;
 const PER_ITERATION = 4;
+
+/**
+ * ジョブの詳細の「LLM の合計」の形を測る（ページの中で評価する式）。表の入れ物の中身の幅と枠の幅、表の行の数、
+ * 要約の文の「数 単位」の組ごとに、数の最後の字と単位の最初の字が同じ行にあるか。
+ * 組は文字の並びから探す（要素の作りに依らない）: 画面の組み立てを変えても、見ているものが変わらないようにするため
+ */
+const TOTALS_LAYOUT = `(() => {
+  const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((h) => h.textContent.trim() === 'LLM の合計');
+  const card = heading.closest('[data-slot="card"]');
+  const container = card.querySelector('[data-slot="table-container"]');
+  const summary = card.querySelector('p');
+  const chars = [];
+  const walker = document.createTreeWalker(summary, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    for (let i = 0; i < node.data.length; i += 1) chars.push({ node, i, c: node.data[i] });
+  }
+  const text = chars.map((x) => x.c).join('');
+  const topOf = (x) => {
+    const range = document.createRange();
+    range.setStart(x.node, x.i);
+    range.setEnd(x.node, x.i + 1);
+    return range.getBoundingClientRect().top;
+  };
+  const broken = [];
+  let pairs = 0;
+  for (const m of text.matchAll(/(\\d[\\d.,]*)(\\s+)(ms|秒|トークン|回)/g)) {
+    pairs += 1;
+    const lastDigit = chars[m.index + m[1].length - 1];
+    const firstUnit = chars[m.index + m[1].length + m[2].length];
+    if (Math.abs(topOf(lastDigit) - topOf(firstUnit)) > 2) broken.push(m[0]);
+  }
+  return JSON.stringify({
+    rows: container.querySelectorAll('tbody tr').length,
+    scrollWidth: container.scrollWidth,
+    clientWidth: container.clientWidth,
+    pairs,
+    broken,
+    summaryOverflow: summary.scrollWidth > summary.clientWidth || summary.getBoundingClientRect().right > card.getBoundingClientRect().right,
+  });
+})()`;
 
 /**
  * 画像の行が2回ぶんある会話を置き場所へ直に書く（回ごとに 512px の画像4枚。回ごとに色を変える）
@@ -105,6 +147,7 @@ async function seed(root) {
       canStop: false,
     });
   }
+  await seedLlmCalls(jobs, job.jobId);
   // ジョブは止まっている（会話にもそう書く）: 画面は会話の job.stopped で、「この画像に決める」を押せなくするため
   await append({
     type: 'job.stopped',
@@ -112,6 +155,59 @@ async function seed(root) {
     reason: { kind: 'human', detail: '確かめのため' },
   });
   return { conversationId, jobId: job.jobId };
+}
+
+/**
+ * ジョブの LLM 呼び出しの記録を、実行器と同じ組み立て（core の toLlmCallRecord）で書く。回ごとに考える役と見る役、
+ * ジョブ単位で蒸留を1回。長いジョブの桁（入力 6 桁・出力 5 桁・千秒を超える時間）にする:
+ * ジョブの詳細の「LLM の合計」が、狭い画面で枠に収まるか・数と単位が折れないかを見るため
+ * @param {any} jobs FsJobStore
+ * @param {string} jobId
+ */
+async function seedLlmCalls(jobs, jobId) {
+  const core = await import(join(repoRoot, 'packages/core/dist/index.js'));
+  /**
+   * @param {number | null} iteration
+   * @param {'think' | 'judge'} role
+   * @param {'think' | 'judge' | 'distill'} purpose
+   * @param {number} n 呼び出しを見分ける番号
+   */
+  const write = (iteration, role, purpose, n) => {
+    const startedAt = new Date(Date.UTC(2026, 9, 10, 0, 0, n));
+    return jobs.writeLlmCall(
+      core.toLlmCallRecord({
+        callId: `${startedAt.toISOString().replaceAll(/[-:.]/g, '')}-${String(n).padStart(6, '0')}`,
+        jobId,
+        iteration,
+        role,
+        purpose,
+        provider: 'local',
+        model: `${role}-model`,
+        startedAt,
+        messages: core.sealMessages('system', [{ type: 'text', text: '海辺の少女' }], {
+          estimatedInputTokens: 61728,
+          inputTokenLimit: 131072,
+          notes: [],
+        }),
+        outcome: {
+          ok: true,
+          value: {},
+          attempts: [
+            {
+              rawOutput: '{}',
+              usage: { inputTokens: 61728, outputTokens: 6172 },
+              durationMs: 205750,
+            },
+          ],
+        },
+      }),
+    );
+  };
+  for (let iteration = 1; iteration <= ITERATIONS; iteration += 1) {
+    await write(iteration, 'think', 'think', iteration * 2 - 1);
+    await write(iteration, 'judge', 'judge', iteration * 2);
+  }
+  await write(null, 'think', 'distill', ITERATIONS * 2 + 1);
 }
 
 /**
@@ -287,6 +383,35 @@ try {
 
     // ジョブの詳細の画像も、同じ窓で大きく見られる
     await page.goto(`${base}/jobs/${jobId}`);
+    // 「LLM の合計」: 表が枠の中に収まり、要約の数と単位が同じ行にある
+    await page.getByRole('heading', { name: 'LLM の合計' }).waitFor();
+    const totals = JSON.parse(String(await page.evaluate(TOTALS_LAYOUT)));
+    expect(
+      totals.rows >= 3 && totals.scrollWidth <= totals.clientWidth,
+      `${label}: ジョブの詳細の「LLM の合計」の表は枠の中に収まり、横に送らずに右の列まで読める（行 ${totals.rows}・中身の幅 ${totals.scrollWidth}・枠の幅 ${totals.clientWidth}）`,
+    );
+    // どこで折れるかは幅と値の組み合わせで決まるので、狭い画面では幅を少しずつ変えて、どの幅でも折れないことを見る
+    const sweep = width < 768 ? Array.from({ length: 36 }, (_, i) => 300 + i * 4) : [width];
+    const broken = new Set();
+    const overflowAt = [];
+    let pairs = Infinity;
+    for (const w of sweep) {
+      await page.setViewportSize({ width: w, height });
+      const at = JSON.parse(String(await page.evaluate(TOTALS_LAYOUT)));
+      pairs = Math.min(pairs, at.pairs);
+      for (const pair of at.broken) broken.add(`${pair}（幅 ${w}）`);
+      if (at.summaryOverflow) overflowAt.push(w);
+    }
+    await page.setViewportSize({ width, height });
+    expect(
+      pairs >= 4 && broken.size === 0,
+      `${label}: 「LLM の合計」の要約は、どの幅でも数と単位の間で折れない（幅 ${sweep[0]}〜${sweep.at(-1)}・見た組 ${pairs}${broken.size === 0 ? '' : `・折れた組: ${[...broken].join(', ')}`}）`,
+    );
+    // 折らないために要約ごと1行にすると、狭い画面で枠からはみ出す
+    expect(
+      overflowAt.length === 0,
+      `${label}: 「LLM の合計」の要約は、どの幅でも枠の中で折り返し、はみ出さない${overflowAt.length === 0 ? '' : `（はみ出した幅: ${overflowAt.join(', ')}）`}`,
+    );
     await page.getByRole('button', { name: '大きく見る: 1 回目の画像 1 番（seed 0）' }).click();
     const jobDialog = page.getByRole('dialog', { name: /1 回目の画像 1 番/ });
     await jobDialog.waitFor();
