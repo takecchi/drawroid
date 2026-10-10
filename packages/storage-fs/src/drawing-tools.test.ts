@@ -612,7 +612,11 @@ describe('revise_drawing and stop_drawing', () => {
     await untilRunning(jobs, '20261009-063012-ffffff');
     await run('stop_drawing', {}, context);
     await runner.idle();
-    const restarted = await run('start_drawing', { request: '夕焼け', stopConditions: LONG }, context);
+    const restarted = await run(
+      'start_drawing',
+      { request: '夕焼け', stopConditions: LONG },
+      context,
+    );
     try {
       expect(restarted.ok).toBe(true);
 

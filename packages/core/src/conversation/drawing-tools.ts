@@ -40,18 +40,23 @@ export type DrawingRunner = {
 };
 
 /**
- * 会話の最新のジョブ（止まったものも含む）。ジョブ ID は時刻順に並ぶので、新しい方から探す。
+ * 会話のいまのジョブ。走っている（まだ止まっていない）ジョブがあればそれ、無ければ最新の止まったジョブ。
  * 会話のイベントからは引かない: 実行器がターンの始めに読んだイベントには、そのターンで始めたジョブが載らないため
  */
-export async function latestJobOfConversation(
-  jobs: Pick<JobStore, 'listJobIds' | 'readJob'>,
+// ID の順だけで最新を決めない: ID は秒までの時刻と乱数なので、同じ秒に止めて描き直すと、新しいジョブが ID の順で前に来るため。
+// 1つの会話で走るジョブは同時に1つなので、走っているものを先に取れば取り違えない
+export async function currentJobOfConversation(
+  jobs: Pick<JobStore, 'listJobIds' | 'readJob' | 'readState'>,
   conversationId: string,
 ): Promise<string | undefined> {
+  let latest: string | undefined;
   for (const jobId of (await jobs.listJobIds()).sort().reverse()) {
     const spec = await jobs.readJob(jobId);
-    if (spec.kind === 'auto' && spec.conversationId === conversationId) return jobId;
+    if (spec.kind !== 'auto' || spec.conversationId !== conversationId) continue;
+    latest ??= jobId;
+    if ((await jobs.readState(jobId)).status !== 'stopped') return jobId;
   }
-  return undefined;
+  return latest;
 }
 
 /** 会話で走っている（まだ止まっていない）ジョブ。1つの会話で走るジョブは同時に1つ */
