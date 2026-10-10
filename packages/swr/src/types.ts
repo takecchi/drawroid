@@ -23,6 +23,11 @@ export type CandidateNotesInput = InferRequestType<
 /** 会話の一覧（最後の発言の先頭と、ターンが走っているか付き） */
 export type ConversationsResponse = InferResponseType<typeof client.conversations.$get, 200>;
 export type ConversationResponse = InferResponseType<typeof client.conversations.$post, 201>;
+/** 会話1つ（タイトルなど）。一覧の要約は付かない */
+export type ConversationDetailResponse = InferResponseType<
+  (typeof client.conversations)[':conversationId']['$get'],
+  200
+>;
 /** 確定したイベントの1ページ。last はどこまで読んだか、more はまだ後ろがあるか */
 export type ConversationEventsResponse = InferResponseType<
   (typeof client.conversations)[':conversationId']['events']['$get'],

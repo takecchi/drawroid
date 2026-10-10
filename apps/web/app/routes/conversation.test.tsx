@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { createConversation, useConversations } from '@drawroid/swr';
+import { createConversation, useConversation, useConversations } from '@drawroid/swr';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,13 +12,17 @@ import Conversations from './conversations';
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
   createConversation: vi.fn(),
+  useConversation: vi.fn(),
   useConversations: vi.fn(),
 }));
 vi.mock('../components/setup-notice', () => ({ SetupNotice: () => null }));
-// 会話の画面そのものは別の試験が見る。ここでは、話しかける欄へフォーカスを移して始めるかだけを見る
+// 会話の画面そのものは別の試験が見る。ここでは、話しかける欄へフォーカスを移して始めるかと、見出しのタイトルだけを見る
 vi.mock('../components/conversation-view', () => ({
-  ConversationView: ({ focusComposer }: { focusComposer?: boolean }) => (
-    <p>発言欄へ移す: {String(focusComposer)}</p>
+  ConversationView: ({ focusComposer, title }: { focusComposer?: boolean; title?: ReactNode }) => (
+    <>
+      <header>{title}</header>
+      <p>発言欄へ移す: {String(focusComposer)}</p>
+    </>
   ),
 }));
 
@@ -38,11 +43,21 @@ function renderApp(initial: Parameters<typeof MemoryRouter>[0]['initialEntries']
   );
 }
 
+/** 会話1つを読む口が返す形 */
+const conversationOf = (conversationId: string, title: string) =>
+  ({
+    data: {
+      conversation: { conversationId, title, createdAt: '2026-10-10T02:00:00.000Z' },
+    },
+    error: undefined,
+  }) as never;
+
 beforeEach(() => {
   vi.mocked(useConversations).mockReturnValue({
     data: { conversations: [] },
     error: undefined,
   } as never);
+  vi.mocked(useConversation).mockImplementation((id) => conversationOf(id ?? '', ''));
 });
 afterEach(() => {
   cleanup();
@@ -69,5 +84,24 @@ describe('starting a new conversation', () => {
     renderApp(['/conversations/c-1']);
 
     expect(screen.getByText('発言欄へ移す: false')).toBeTruthy();
+  });
+});
+
+describe('the title of a conversation', () => {
+  // 一覧を読まない: 一覧は全会話の要約で、会話が溜まるほど重く、会話の画面が数秒ごとに読み直すと開いている間ずっと払うため
+  it('shows the title read from this conversation alone, not from the list of all conversations', () => {
+    vi.mocked(useConversation).mockReturnValue(conversationOf('c-1', '海辺の少女を描いて'));
+
+    renderApp(['/conversations/c-1']);
+
+    expect(screen.getByText('海辺の少女を描いて')).toBeTruthy();
+    expect(useConversation).toHaveBeenCalledWith('c-1');
+    expect(useConversations).not.toHaveBeenCalled();
+  });
+
+  it('calls a conversation without a title yet a new conversation', () => {
+    renderApp(['/conversations/c-1']);
+
+    expect(screen.getByText('新しい会話')).toBeTruthy();
   });
 });

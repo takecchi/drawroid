@@ -26,6 +26,7 @@ export const keys = {
   unattachedLlmCalls: '/api/llm-calls',
   unattachedLlmCall: (callId: string) => `/api/llm-calls/${callId}`,
   conversations: '/api/conversations',
+  conversation: (conversationId: string) => `/api/conversations/${conversationId}`,
   conversationEvents: (conversationId: string, after: number) =>
     `/api/conversations/${conversationId}/events?after=${after}`,
 } as const;

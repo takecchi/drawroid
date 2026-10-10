@@ -127,6 +127,12 @@ export function conversationsRoutes({ conversations }: ApiDeps) {
         const conversation = await store.createConversation(new Date());
         return c.json({ conversation }, 201);
       })
+      // 1つだけ読む口を置く: 会話の画面がタイトルのために一覧を読むと、全会話の要約（末尾の行の読み出し）を数秒ごとに払うため
+      .get('/:conversationId', async (c) => {
+        const id = c.req.param('conversationId');
+        if (!(await store.hasConversation(id))) return notFound(c, missing(id));
+        return c.json({ conversation: await store.readConversation(id) }, 200);
+      })
       .patch('/:conversationId', jsonBody(titleSchema), async (c) => {
         const id = c.req.param('conversationId');
         if (!(await store.hasConversation(id))) return notFound(c, missing(id));

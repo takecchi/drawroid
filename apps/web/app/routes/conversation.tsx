@@ -1,4 +1,4 @@
-import { useConversations } from '@drawroid/swr';
+import { useConversation } from '@drawroid/swr';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
@@ -18,9 +18,9 @@ export default function ConversationRoute() {
     if (focusComposer) void navigate(location.pathname, { replace: true, state: null });
     // 最初の一度だけ
   }, []);
-  const { data } = useConversations();
+  const { data } = useConversation(conversationId);
   const actions = useMemo(() => apiConversationActions(conversationId), [conversationId]);
-  const title = data?.conversations.find((c) => c.conversationId === conversationId)?.title;
+  const title = data?.conversation.title;
   return (
     <ConversationView
       // 会話を移ったら画面ごと作り直す: 前の会話の下書きや送れなかった理由を、次の会話に持ち越さないため
