@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   basicPermissions,
   DEFAULT_BUDGET,
+  generationRequestSchema,
   JobRunner,
   type LlmCall,
   type MemoryItem,
@@ -214,6 +215,49 @@ describe('a stopped job leaves what it taught to the next job', () => {
     await runner.idle();
 
     expect(callsOf('distill')).toHaveLength(1);
+    // 口出しも選択も無くても、依頼の要点と止まった理由から学ぶ
+    const input = textOf(callsOf('distill')[0]);
+    expect(input).toContain('依頼の要点:\n夕暮れの海辺の少女');
+    expect(input).toContain('止まった理由: ai');
+  });
+
+  it('distills a job only once, even when a human stops it again after it stopped', async () => {
+    const { runner, submit, callsOf } = setup();
+    const job = await submit('夕暮れの海辺の少女');
+    runner.kick();
+    await runner.idle();
+
+    await runner.stop(job.jobId);
+
+    expect(callsOf('distill')).toHaveLength(1);
+  });
+
+  it('does not distill a manual job, which has no request in words, instructions or selections to learn from', async () => {
+    const { store, distillLog, runner, callsOf, logs } = setup();
+    const manual = await store.createJob(
+      {
+        kind: 'manual',
+        request: generationRequestSchema.parse({
+          prompt: 'a cat',
+          negativePrompt: '',
+          loras: [],
+          steps: 4,
+          cfgScale: 7,
+          width: 64,
+          height: 64,
+          batchSize: 1,
+        }),
+      },
+      { status: 'queued' },
+      new Date(),
+    );
+
+    await runner.stop(manual.jobId);
+
+    expect((await store.readState(manual.jobId)).status).toBe('stopped');
+    expect(callsOf('distill')).toEqual([]);
+    expect(await distillLog.read(manual.jobId)).toEqual([]);
+    expect(logs.join('\n')).not.toContain('蒸留');
   });
 
   it('keeps the reason the job stopped for when the distillation answers badly', async () => {
