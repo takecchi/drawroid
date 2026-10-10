@@ -12,6 +12,8 @@ class MemoryJobStore implements JobStore {
   readonly specs = new Map<string, JobSpec>();
   readonly states = new Map<string, JobState>();
   readonly generations = new Map<string, StoredGeneration[]>();
+  /** writeState を呼んだ順（書き終えた順ではない）。「ジョブ ID:状態」 */
+  readonly stateWrites: string[] = [];
 
   async createJob(spec: NewJobSpec, state: JobState, now: Date): Promise<JobSpec> {
     const jobId = `job-${this.specs.size + 1}`;
@@ -33,6 +35,7 @@ class MemoryJobStore implements JobStore {
     return this.states.get(jobId)!;
   }
   async writeState(jobId: string, state: JobState) {
+    this.stateWrites.push(`${jobId}:${state.status}`);
     this.states.set(jobId, state);
   }
   async writeGeneration(
@@ -86,6 +89,36 @@ class MemoryJobStore implements JobStore {
 
 async function notUsed(): Promise<never> {
   throw new Error('手動の生成では使わない口');
+}
+
+/** 1つ目の生成を、試験が release するまで返さないバックエンド。呼ばれた数と、いちばん多く重なった数を数える */
+class HeldBackend extends StubBackend {
+  calls = 0;
+  maxRunning = 0;
+  private running = 0;
+  private open: () => void = () => undefined;
+  private readonly gate = new Promise<void>((resolve) => (this.open = resolve));
+  private enter: () => void = () => undefined;
+  /** 1つ目の生成に入ったら解ける */
+  readonly firstEntered = new Promise<void>((resolve) => (this.enter = resolve));
+
+  release(): void {
+    this.open();
+  }
+
+  override async generate(...args: Parameters<StubBackend['generate']>) {
+    this.calls += 1;
+    this.maxRunning = Math.max(this.maxRunning, ++this.running);
+    try {
+      if (this.calls === 1) {
+        this.enter();
+        await this.gate;
+      }
+      return await super.generate(...args);
+    } finally {
+      this.running -= 1;
+    }
+  }
 }
 
 const params = { prompt: 'a cat', steps: 4, cfgScale: 7, width: 64, height: 64, batchSize: 2 };
@@ -150,25 +183,26 @@ describe('ManualGenerationRunner', () => {
     expect(backend.requests).toEqual([]);
   });
 
+  // 1つ目の生成は、試験が release するまで終わらない: 「2つ目を受けた時点で1つ目がまだ走っている」を、時間に頼らずに作るため
   it('does not let two generations overlap', async () => {
-    const backend = new StubBackend({ generateDelayMs: 10 });
-    let running = 0;
-    let maxRunning = 0;
-    const generate = backend.generate.bind(backend);
-    backend.generate = async (req, signal) => {
-      maxRunning = Math.max(maxRunning, ++running);
-      try {
-        return await generate(req, signal);
-      } finally {
-        running--;
-      }
-    };
+    const backend = new HeldBackend();
     const { runner, store } = setup(backend);
     const first = await runner.start(params);
+    await backend.firstEntered;
     const second = await runner.start(params);
+    backend.release();
     await runner.idle();
 
-    expect(maxRunning).toBe(1);
+    // 呼んだ順で見る: 1つ目は release まで止まりを書けないので、その前に2つ目が走り出していれば重なっている。
+    // 書き終えた順や経った時間では見ない: 置き場所の速さで、重なりが見えたり見えなかったりするため
+    expect(store.stateWrites).toEqual([
+      `${first.jobId}:running`,
+      `${first.jobId}:stopped`,
+      `${second.jobId}:running`,
+      `${second.jobId}:stopped`,
+    ]);
+    expect(backend.maxRunning).toBe(1);
+    expect(backend.calls).toBe(2);
     expect(store.states.get(first.jobId)).toMatchObject({ status: 'stopped' });
     expect(store.states.get(second.jobId)).toMatchObject({ status: 'stopped' });
   });

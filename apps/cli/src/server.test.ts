@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -71,5 +74,58 @@ describe('createApp, asked under a name other than this machine', () => {
   ])('serves %s', async (url) => {
     const res = await app.request(url);
     expect(res.status).toBe(200);
+  });
+});
+
+describe('createApp, sent a change from a page of another site', () => {
+  // 別のサイトのページは、プリフライトの要らない「単純な要求」（text/plain の POST）なら、ここへ送れてしまう。
+  // ブラウザは、そのページのオリジンを Origin に付ける
+  const fromAttacker = { Origin: 'https://attacker.example' };
+
+  it('refuses to create a conversation', async () => {
+    const res = await app.request('/api/conversations', { method: 'POST', headers: fromAttacker });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: { kind: 'forbidden_origin' } });
+  });
+
+  // 手動の生成の口は、content-type を見ずに本文を JSON として読む。text/plain でも生成が始まってしまう
+  it('refuses a text/plain body that the route reads as JSON', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'drawroid-server-'));
+    try {
+      const res = await createApp({ webRoot, deps: stubDeps(root) }).request('/api/jobs/manual', {
+        method: 'POST',
+        headers: { ...fromAttacker, 'content-type': 'text/plain' },
+        body: JSON.stringify({ prompt: 'a cat', steps: 4, cfgScale: 7, width: 64, height: 64 }),
+      });
+      expect(res.status).toBe(403);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['null', 'http://127.0.0.1.attacker.example:7878'])(
+    'refuses the origin %s',
+    async (origin) => {
+      const res = await app.request('/api/conversations', {
+        method: 'POST',
+        headers: { Origin: origin },
+      });
+      expect(res.status).toBe(403);
+    },
+  );
+
+  // 読むだけの要求は、別のサイトのページからは中身が読めない（CORS を許していない）ので、断らない
+  it('still answers a read from another site', async () => {
+    const res = await app.request('/api/health', { headers: fromAttacker });
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ['this machine', { Origin: 'http://127.0.0.1:7878' }],
+    ['the dev server', { Origin: 'http://localhost:5173' }],
+    ['a tool without Origin (curl)', {}],
+  ])('takes a change sent from %s', async (_, headers) => {
+    const res = await app.request('/api/conversations', { method: 'POST', headers });
+    expect(res.status).toBe(201);
   });
 });

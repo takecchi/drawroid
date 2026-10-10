@@ -102,19 +102,24 @@ export function neverStops(values: StopConditionsFormValues): boolean {
   return built.ok && !hasAnyStopCondition(built.value);
 }
 
-// 全部の欄を送り、空欄の上限は null で外す: 変更は「書いた欄だけを変える」ので、省くと人間が消した上限が残ってしまうため
+/** 人間が手で直した欄 */
+export type EditedStopConditionFields = Partial<Record<keyof StopConditionsFormValues, true>>;
+
+// 直した欄だけを送る: 変更は「書いた欄だけを変える」ので、直していない欄まで送ると、別のタブや API で変わったその欄を、
+// この画面が持つ古い値で戻してしまうため。直した欄の空欄の上限は null で外す: 省くと、人間が消した上限が残ってしまうため
 export function buildStopConditionsChange(
   values: StopConditionsFormValues,
+  edited: EditedStopConditionFields,
 ): FormResult<StopConditionsChange> {
   const limits = readLimits(values);
   if (!limits.ok) return limits;
   return {
     ok: true,
     value: {
-      aiJudgement: values.aiJudgement,
-      maxIterations: limits.value.maxIterations ?? null,
-      maxImages: limits.value.maxImages ?? null,
-      maxDurationMs: limits.value.maxDurationMs ?? null,
+      ...(edited.aiJudgement && { aiJudgement: values.aiJudgement }),
+      ...(edited.maxIterations && { maxIterations: limits.value.maxIterations ?? null }),
+      ...(edited.maxImages && { maxImages: limits.value.maxImages ?? null }),
+      ...(edited.maxDurationMinutes && { maxDurationMs: limits.value.maxDurationMs ?? null }),
     },
   };
 }
