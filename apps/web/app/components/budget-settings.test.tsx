@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, type BudgetSettingsResponse } from '@drawroid/swr';
+import { Button } from '@drawroid/ui';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -140,6 +141,34 @@ describe('BudgetSettings', () => {
       'imageLongEdge: 128 以上で入れる',
     );
     expect(input('imageLongEdge').value).toBe('64');
+  });
+
+  // ほかの設定の欄（LLM・許可・候補の説明）と同じ形にする: 素のボタンと素の文では、押す先が小さく、断られても欄の説明と見分けにくい
+  it('saves with the same primary button as the other settings', () => {
+    render(<BudgetSettings />);
+    const saveClass = saveButton().className;
+    cleanup();
+    render(
+      <Button type="submit" variant="primary">
+        保存
+      </Button>,
+    );
+
+    expect(saveClass).toBe(screen.getByRole('button', { name: '保存' }).className);
+  });
+
+  it('says it could not save in the same note as the other settings', async () => {
+    const user = userEvent.setup();
+    mocks.saveBudgetSettings.mockRejectedValue(
+      new ApiError('invalid_request', '考える役の考える段は、…を 90777 トークン超える', 400),
+    );
+    render(<BudgetSettings />);
+
+    await user.click(saveButton());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/^保存できない: 考える役の考える段は/);
+    expect(alert.getAttribute('data-slot')).toBe('alert');
   });
 
   it('says the stored budgets cannot be read', () => {
