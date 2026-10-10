@@ -66,6 +66,30 @@ describe('DoctorCheck', () => {
     expect(screen.getByRole('link', { name: '会話へ' }).getAttribute('href')).toBe('/');
   });
 
+  // 「確かめる」は設定の画面のいちばん下にあり、結果はボタンの下（画面の外）に出る。結果へ目を移せないと、押しても何も起きないように見える
+  it('moves focus to the result when the check finishes, so that it comes into view', async () => {
+    vi.mocked(runDoctor).mockResolvedValue(recordedDoctor);
+    renderCheck();
+    expect(document.activeElement).toBe(document.body);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
+
+    const verdict = await screen.findByText(/足りないものが 2 つある/);
+    expect(document.activeElement?.contains(verdict)).toBe(true);
+  });
+
+  it('moves focus to the reason when the check could not run', async () => {
+    vi.mocked(runDoctor).mockRejectedValue(
+      new ApiError('unavailable', 'この起動では、画面から確かめられない', 409),
+    );
+    renderCheck();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
+
+    const reason = await screen.findByRole('alert');
+    expect(document.activeElement?.contains(reason)).toBe(true);
+  });
+
   it('shows why the check could not run', async () => {
     vi.mocked(runDoctor).mockRejectedValue(
       new ApiError('unavailable', 'この起動では、画面から確かめられない', 409),

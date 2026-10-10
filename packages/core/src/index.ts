@@ -84,6 +84,7 @@ export * from './loop/runner.js';
 export * from './loop/iteration-permissions.js';
 export * from './loop/image-sources.js';
 export * from './loop/stop.js';
+export * from './loop/window-fit.js';
 export {
   isMemoryId,
   MEMORY_SCOPES,

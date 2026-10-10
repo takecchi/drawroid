@@ -1,6 +1,6 @@
 import { isApiError, runDoctor, type DoctorResponse } from '@drawroid/swr';
 import { Badge, Button, ErrorNote, Muted, OkNote, Section, Spinner, WarnNote } from '@drawroid/ui';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 type State =
@@ -15,6 +15,12 @@ type State =
  */
 export function DoctorCheck() {
   const [state, setState] = useState<State>({ step: 'idle' });
+  const outcomeRef = useRef<HTMLDivElement>(null);
+
+  // 終わったら結果へフォーカスを移す: このボタンは画面のいちばん下にあり、結果は画面の外に出るので、移さないと押しても何も起きないように見える
+  useEffect(() => {
+    if (state.step === 'done' || state.step === 'failed') outcomeRef.current?.focus();
+  }, [state.step]);
 
   async function check() {
     setState({ step: 'running' });
@@ -43,8 +49,10 @@ export function DoctorCheck() {
       {state.step === 'running' && (
         <Spinner label="確かめています…（LLM の返事を待つので、時間がかかることがある）" />
       )}
-      {state.step === 'failed' && <ErrorNote>確かめられなかった: {state.message}</ErrorNote>}
-      {state.step === 'done' && <DoctorResult report={state.report} />}
+      <div ref={outcomeRef} tabIndex={-1} className="outline-none">
+        {state.step === 'failed' && <ErrorNote>確かめられなかった: {state.message}</ErrorNote>}
+        {state.step === 'done' && <DoctorResult report={state.report} />}
+      </div>
     </Section>
   );
 }

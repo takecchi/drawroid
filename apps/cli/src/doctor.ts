@@ -41,6 +41,7 @@ import { z } from 'zod';
 
 import { BACKEND_LABELS, backendFactory } from './backend-factory.js';
 import { backendOptions } from './backend-settings.js';
+import { devWebUrl } from './dev-mode.js';
 import {
   configSchema,
   DEFAULT_BACKEND_KIND,
@@ -104,7 +105,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
     config.section,
     await checkBackend(options, config.backend),
     await checkLlm(options, config.llm, config.imageLongEdge ?? DEFAULT_BUDGET.imageLongEdge),
-    checkWeb(options.webRoot),
+    checkWeb(options.webRoot, devWebUrl(options.env)),
   ];
   const secrets = apiKeyValues(config.llm, options.env);
   const redacted = sections.map((section) => ({
@@ -881,8 +882,11 @@ function llmTodo(failure: string, hint: string): string {
 
 // --- web の配り先 -------------------------------------------------------------
 
-function checkWeb(webRoot: () => string): DoctorSection {
+function checkWeb(webRoot: () => string, devUrl: string | undefined): DoctorSection {
   const title = 'web の配り先';
+  if (devUrl !== undefined) {
+    return { title, items: [{ ok: true, what: `開発中は Vite（${devUrl}）が画面を配っている` }] };
+  }
   let root: string;
   try {
     root = webRoot();

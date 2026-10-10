@@ -1,5 +1,5 @@
 // 台本の LLM（OpenAI 互換 /v1/chat/completions、ストリーム対応）。役は model 名で見分ける: talk-model / think-model / judge-model。
-// 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing を呼び、結果が来たら短く返す。
+// 話す役は、ツールが渡されていて結果がまだ無ければ start_drawing（渡されていなければ渡された最初のツール）を呼び、結果が来たら短く返す。
 // toolCalling: json のときは tools を渡されず、response_format のスキーマ（reply か tool の union）で { kind: "tool", ... } を返す。
 // holdTalk() で、次の話す役の呼び出し（ツールを渡すもの）を releaseTalk() まで止められる（ターンの途中を作る）。呼び出し側が切れたら待ちをやめる。
 // ツールを渡さない呼び出し（ジョブが止まったことを伝えるターン）には TOOLLESS_REPLY を返す。
@@ -55,6 +55,28 @@ function generate(schema, hint = '') {
     default:
       return null;
   }
+}
+
+/**
+ * 話す役に渡されたツール。native は tools から、json は response_format のスキーマの { kind: "tool", name } の変種から読む
+ * @param {any} tools
+ * @param {any} schema
+ * @returns {{ name: string, inputSchema: any }[]}
+ */
+function offeredTools(tools, schema) {
+  if (Array.isArray(tools) && tools.length > 0) {
+    return tools.map((/** @type {any} */ t) => ({
+      name: t.function.name,
+      inputSchema: t.function.parameters,
+    }));
+  }
+  /** @type {any[]} */
+  const variants = schema?.anyOf ?? schema?.oneOf ?? [];
+  return variants
+    .filter(
+      (v) => v?.properties?.kind?.const === 'tool' && typeof v.properties.name?.const === 'string',
+    )
+    .map((v) => ({ name: v.properties.name.const, inputSchema: v.properties.input }));
 }
 
 /**
@@ -139,20 +161,22 @@ export async function startFakeLlm({ stopAfterIterations, rejectImages = false, 
         queued.remaining -= 1;
         if (queued.remaining <= 0) queuedTool = null;
       }
-      const toolName = queued?.name ?? 'start_drawing';
+      const offered = role === 'talk' ? offeredTools(request.tools, talkSchema) : [];
+      const chosen = offered.find((t) => t.name === 'start_drawing') ?? offered[0];
+      const toolName = queued?.name ?? chosen?.name ?? 'start_drawing';
       const toolArgs = JSON.stringify(
-        queued?.input ?? {
-          request: '夕焼けの海辺の少女',
-          stopConditions: { aiJudgement: true, maxIterations: stopAfter },
-        },
+        queued?.input ??
+          (chosen !== undefined && chosen.name !== 'start_drawing'
+            ? generate(chosen.inputSchema)
+            : {
+                request: '夕焼けの海辺の少女',
+                stopConditions: { aiJudgement: true, maxIterations: stopAfter },
+              }),
       );
       /** @type {'tool' | 'text' | 'json'} */
       let kind;
       let content = '';
-      const isJsonTalk =
-        role === 'talk' &&
-        !hasTools &&
-        (queued !== null || JSON.stringify(talkSchema ?? {}).includes('"start_drawing"'));
+      const isJsonTalk = role === 'talk' && !hasTools && (queued !== null || offered.length > 0);
       if (toolless) {
         stats.toollessTalkCalls++;
         kind = talkSchema === undefined ? 'text' : 'json';

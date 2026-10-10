@@ -147,7 +147,19 @@ describe('ReplaceableBackend', () => {
           this.waiting.splice(this.waiting.indexOf(wait), 1);
           wait.resolve();
         }
-        await new Promise<void>((resolve) => this.releases.push(resolve));
+        // 止められたら、本物の HTTP の待ちのように、待ちを切って投げる
+        // 止められた生成は返させる並びから外す: 残すと、次の release() がこの生成に使われ、後ろの生成が返らないため
+        await new Promise<void>((resolve, reject) => {
+          this.releases.push(resolve);
+          signal.addEventListener(
+            'abort',
+            () => {
+              this.releases.splice(this.releases.indexOf(resolve), 1);
+              reject(Object.assign(new Error('呼び手が止めた'), { name: 'AbortError' }));
+            },
+            { once: true },
+          );
+        });
         return super.generate(req, signal, images);
       }
 
@@ -268,13 +280,23 @@ describe('ReplaceableBackend', () => {
           permissions: basicPermissions({ width: 64, height: 64 }),
         });
         const manual = new ManualGenerationRunner({ backend, store });
-        // 手動の生成が入れ物まで来たら解ける: 手動は状態を書いてから入れ物を呼ぶので、受けた直後ではまだ来ていないため
-        let arrived!: () => void;
-        const manualArrived = new Promise<void>((resolve) => (arrived = resolve));
+        // その prompt の生成が入れ物まで来たら解ける: どちらの runner も状態を書いてから入れ物を呼ぶので、受けた直後ではまだ来ていないため
+        const arrivals = new Map<string, { promise: Promise<void>; resolve: () => void }>();
+        const arrival = (prompt: string) => {
+          let entry = arrivals.get(prompt);
+          if (entry === undefined) {
+            let resolve!: () => void;
+            entry = { promise: new Promise<void>((done) => (resolve = done)), resolve };
+            arrivals.set(prompt, entry);
+          }
+          return entry;
+        };
+        const arrived = (prompt: string) => arrival(prompt).promise;
+        const manualArrived = arrived('manual');
         const generate = backend.generate.bind(backend);
         backend.generate = (req, signal, images) => {
           const result = generate(req, signal, images);
-          if (req.prompt === 'manual') arrived();
+          arrival(req.prompt).resolve();
           return result;
         };
         const submitAuto = () =>
@@ -288,8 +310,109 @@ describe('ReplaceableBackend', () => {
             { status: 'queued', carry: { intent: '夕暮れの海辺', completedIterations: 0 } },
             new Date(),
           );
-        return { runner, manual, submitAuto, manualArrived };
+        return { store, backend, runner, manual, submitAuto, manualArrived, arrived };
       }
+
+      const reasonOf = async (store: FsJobStore, jobId: string) => {
+        const state = await store.readState(jobId);
+        return state.status === 'stopped' ? state.reason.kind : state.status;
+      };
+
+      // 止めた生成が順番を待っているだけなら、バックエンドの今の生成（ほかのジョブのもの）を止めない
+      it('does not cut the job generation when a manual generation waiting behind it is stopped', async () => {
+        const inner = new HeldBackend();
+        const { store, runner, manual, submitAuto, manualArrived } = setup(inner);
+        const auto = await submitAuto();
+        runner.kick();
+        await inner.reached(1);
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await manualArrived;
+
+        await manual.stop(jobId);
+        await manual.idle();
+        expect(await reasonOf(store, jobId)).toBe('human');
+        expect(inner.interruptCount).toBe(0);
+
+        inner.release();
+        await runner.idle();
+        expect(await reasonOf(store, auto.jobId)).toBe('limit:iterations');
+        expect(inner.entered).toEqual(['auto']);
+      });
+
+      it('does not cut a manual generation when a job waiting behind it is stopped', async () => {
+        const inner = new HeldBackend();
+        const { store, runner, manual, submitAuto, arrived } = setup(inner);
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await inner.reached(1);
+        const auto = await submitAuto();
+        runner.kick();
+        await arrived('auto');
+
+        await runner.stop(auto.jobId);
+        await runner.idle();
+        expect(await reasonOf(store, auto.jobId)).toBe('human');
+        expect(inner.interruptCount).toBe(0);
+
+        inner.release();
+        await manual.idle();
+        expect(await reasonOf(store, jobId)).toBe('limit:iterations');
+        expect(inner.entered).toEqual(['manual']);
+      });
+
+      // 順番待ちを止めたことは、その止める操作の間だけ覚える: あとで来る interrupt()（終わるときの合図の処理など）は、バックエンドまで届く
+      it('still passes a later interrupt on to the backend, after a manual generation waiting behind the job was stopped', async () => {
+        const inner = new HeldBackend();
+        const { runner, manual, submitAuto, manualArrived, backend } = setup(inner);
+        await submitAuto();
+        runner.kick();
+        await inner.reached(1);
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await manualArrived;
+        await manual.stop(jobId);
+        await manual.idle();
+
+        await backend.interrupt();
+        expect(inner.interruptCount).toBe(1);
+
+        inner.release();
+        await runner.idle();
+      });
+
+      // 順番待ちと走っている生成を同じ流れで止めても、走っている生成はバックエンドまで止める
+      it('tells the backend to stop when the waiting and the running generation are stopped together', async () => {
+        const inner = new HeldBackend();
+        const { store, runner, manual, submitAuto, manualArrived } = setup(inner);
+        const auto = await submitAuto();
+        runner.kick();
+        await inner.reached(1);
+        const { jobId } = await manual.start({ ...request, prompt: 'manual' });
+        await manualArrived;
+
+        await Promise.all([manual.stop(jobId), runner.stop(auto.jobId)]);
+        await Promise.all([manual.idle(), runner.idle()]);
+        expect(await reasonOf(store, jobId)).toBe('human');
+        expect(await reasonOf(store, auto.jobId)).toBe('human');
+        expect(inner.interruptCount).toBe(1);
+      });
+
+      // 走っている生成のジョブを止めたときは、今までどおりバックエンドにも止めさせる
+      it('still tells the backend to stop when the job whose generation runs is stopped', async () => {
+        const inner = new HeldBackend();
+        const { store, runner, manual, submitAuto } = setup(inner);
+        const auto = await submitAuto();
+        runner.kick();
+        await inner.reached(1);
+        await manual.start({ ...request, prompt: 'manual' });
+
+        await runner.stop(auto.jobId);
+        await runner.idle();
+        expect(await reasonOf(store, auto.jobId)).toBe('human');
+        expect(inner.interruptCount).toBe(1);
+
+        await inner.reached(2);
+        inner.release();
+        await manual.idle();
+      });
 
       it('holds a manual generation back while the job generates', async () => {
         const inner = new HeldBackend();
