@@ -374,6 +374,28 @@ describe('revise_drawing and stop_drawing', () => {
     await runner.idle();
   });
 
+  it('leaves no instruction behind when the stop-condition change is refused', async () => {
+    const { jobs, context, runner } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+
+    // 断りは例外で返り、話す役には失敗として渡る
+    await expect(
+      run(
+        'revise_drawing',
+        {
+          instruction: '夜っぽくして',
+          stopConditions: { aiJudgement: false, maxIterations: null },
+        },
+        context,
+      ),
+    ).rejects.toThrow('止まらなくなる');
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
   it('adds the images attached in the conversation to the references of the drawing going on', async () => {
     const { jobs, context, runner, conversations, conversationId } = await setup();
     await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);

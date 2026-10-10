@@ -302,13 +302,18 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
         input.attachments ?? [],
       );
       if (!attached.ok) return outcome(false, attached.reason);
+      // 止める条件の変更を指示より先に行う: 変更は「重ねると止まらなくなる」で断られうる。
+      // 指示を先に書くと、断られたとき指示だけが残り、話す役は失敗と受け取って出し直すので指示が二重になる
+      const conditions =
+        input.stopConditions !== undefined
+          ? await deps.runner.changeStopConditions(jobId, input.stopConditions)
+          : undefined;
       const done: string[] = [];
       if (input.instruction !== undefined) {
         await deps.runner.addInstruction(jobId, input.instruction);
         done.push('指示を伝えた');
       }
-      if (input.stopConditions !== undefined) {
-        const conditions = await deps.runner.changeStopConditions(jobId, input.stopConditions);
+      if (conditions !== undefined) {
         done.push(`止める条件を ${describeStopConditions(conditions)} にした`);
       }
       if (attached.references.length > 0) {
