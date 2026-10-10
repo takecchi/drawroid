@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { generationRequestSchema } from '../backend.js';
 import { PARAM_KEYS, type ParamKey } from '../params/param-key.js';
 import {
+  describePermissionIssue,
   effectivePermissions,
   mergePermissions,
   permissionOverridesSchema,
@@ -296,5 +298,26 @@ describe('readPermissionOverrides', () => {
     expect(invalid).toEqual([
       { param: '*', reason: '許可が、パラメータごとの欄の集まりになっていない' },
     ]);
+  });
+});
+
+// 境目を含まない上限を持つ欄が今の許可のスキーマに無いので、範囲の文は合成したスキーマで縛る
+describe('describePermissionIssue for a number out of range', () => {
+  const reasonFor = (schema: z.ZodType, value: unknown) => {
+    const result = schema.safeParse(value);
+    const issue = result.error?.issues[0];
+    if (issue === undefined) throw new Error(`${JSON.stringify(value)} が通ってしまった`);
+    return describePermissionIssue(issue);
+  };
+
+  // 境目を含まない範囲を「以上」「以下」と書くと、境目の値なら通るように読める
+  it('says whether the upper bound itself is allowed', () => {
+    expect(reasonFor(z.number().lt(10), 10)).toBe('大きすぎる（10 より小さく）');
+    expect(reasonFor(z.number().max(10), 11)).toBe('大きすぎる（10 以下）');
+  });
+
+  it('says whether the lower bound itself is allowed', () => {
+    expect(reasonFor(z.number().gt(0), 0)).toBe('小さすぎる（0 より大きく）');
+    expect(reasonFor(z.number().min(0), -1)).toBe('小さすぎる（0 以上）');
   });
 });
