@@ -204,6 +204,42 @@ describe('BudgetSettings', () => {
     expect(alert.getAttribute('data-slot')).toBe('alert');
   });
 
+  it('lists several reasons inside the same note', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+
+    await user.type(input('imageLongEdge'), '2.5');
+    await user.type(input('text.prompt'), '0');
+    await user.click(saveButton());
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/^保存できない:/);
+    expect(alert.getAttribute('data-slot')).toBe('alert');
+    expect(within(alert).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  // 断る文をボタンの前に置かない: 最後の欄の直下に出ると、その欄の説明のように読めるため
+  it.each([
+    ['the form', ['2.5'], undefined],
+    ['the API', ['64'], new ApiError('invalid_request', 'imageLongEdge: 128 以上で入れる', 400)],
+  ])(
+    'says it could not save after the save button when %s refuses, still letting the person save again',
+    async (_, [typed], refusal) => {
+      const user = userEvent.setup();
+      if (refusal !== undefined) mocks.saveBudgetSettings.mockRejectedValueOnce(refusal);
+      render(<BudgetSettings />);
+
+      await user.type(input('imageLongEdge'), typed!);
+      await user.click(saveButton());
+
+      const alert = await screen.findByRole('alert');
+      expect(
+        saveButton().compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(saveButton().hasAttribute('disabled')).toBe(false);
+    },
+  );
+
   it('says the stored budgets cannot be read', () => {
     mocks.useBudgetSettings.mockReturnValue({
       data: undefined,
@@ -211,7 +247,9 @@ describe('BudgetSettings', () => {
     });
     render(<BudgetSettings />);
 
-    expect(screen.getByRole('alert').textContent).toContain('config.json の budgets が不正');
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('config.json の budgets が不正');
+    expect(alert.getAttribute('data-slot')).toBe('alert');
   });
 });
 

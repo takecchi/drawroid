@@ -116,6 +116,16 @@ describe('referenceFileProblem', () => {
 
     expect(problem(file, MAX_REFERENCES_PER_REQUEST)).toContain('ほかの画像を外してから');
   });
+
+  // 種類・大きさ・空で断るときは、ほかの画像を外しても添えられないので、外せとは言わない
+  it.each([
+    ['of another type', { name: 'a.gif', type: 'image/gif', size: 10 }],
+    ['that is empty', { name: 'e.png', type: 'image/png', size: 0 }],
+    ['over the size', { name: 'big.png', type: 'image/png', size: MAX_REFERENCE_BYTES + 1 }],
+  ])('does not say to take off another image for a file %s', (_, file) => {
+    expect(problem(file, 0)).toBeDefined();
+    expect(problem(file, 0)).not.toContain('ほかの画像を外して');
+  });
 });
 
 describe('buildReferenceUploads', () => {
