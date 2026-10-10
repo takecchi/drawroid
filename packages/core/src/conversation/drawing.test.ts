@@ -13,6 +13,7 @@ import {
 const human = mergePermissions(basicPermissions({ width: 512, height: 512 }), {
   checkpoint: { mode: 'auto', choices: ['anime.safetensors', 'real.safetensors'] },
   loras: { mode: 'auto' },
+  controlnet: { mode: 'auto', choices: ['canny'] },
 });
 const lists = {
   checkpoint: ['anime.safetensors', 'real.safetensors', 'other.safetensors'],
@@ -39,6 +40,22 @@ describe('narrowPermissions', () => {
         steps: { mode: 'fixed', value: 30 },
       },
     });
+  });
+
+  it('lets it leave to the AI what the human left to the AI without choosing candidates', () => {
+    expect(narrowPermissions(human, { loras: { mode: 'auto' } }, lists)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('lets it fix ControlNet to a model among the human candidates', () => {
+    expect(
+      narrowPermissions(
+        human,
+        { controlnet: { mode: 'fixed', value: [{ image: 'image:1-0', model: 'canny' }] } },
+        lists,
+      ),
+    ).toMatchObject({ ok: true });
   });
 
   it('lets it narrow the candidates to fewer of the same', () => {
@@ -68,6 +85,21 @@ describe('narrowPermissions', () => {
       'adding candidates the human did not choose',
       { checkpoint: { mode: 'auto', choices: ['other.safetensors'] } },
       'checkpoint',
+    ],
+    [
+      'dropping the candidates the human chose, which would open every candidate',
+      { checkpoint: { mode: 'auto' } },
+      'checkpoint',
+    ],
+    [
+      'fixing ControlNet to a model the human did not choose',
+      {
+        controlnet: {
+          mode: 'fixed',
+          value: [{ image: 'image:1-0', model: 'other-canny' }],
+        },
+      },
+      'ControlNet',
     ],
     ['changing what the human fixed', { width: { mode: 'fixed', value: 1024 } }, '幅'],
     ['turning off what the human fixed', { width: { mode: 'auto' } }, '幅'],
