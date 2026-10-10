@@ -316,6 +316,26 @@ describe('filling in the job events a restart left out', () => {
     ]);
   });
 
+  // #307 で外した理由（not-supported-yet）を書いた古い plan.json でも、起動時の書き足しを止めない
+  it('still writes job.think, with nothing excluded, for an iteration whose plan.json holds a reason no longer written', async () => {
+    const conversations = new FsConversationStore(root);
+    const hubs = new ConversationHubs({ store: conversations });
+    const { conversationId } = await conversations.createConversation(new Date());
+    const files = new FsJobStore(root);
+    const spec = await runJob(files, conversationId);
+    await files.writeStage(spec.jobId, 1, 'plan', {
+      excluded: [{ param: 'controlnet', wanted: 'auto', reason: { kind: 'not-supported-yet' } }],
+    });
+
+    await backfillJobEvents({ jobs: files, conversations, hubs });
+
+    const events = (await conversations.readEvents(conversationId)).events;
+    expect(jobKeys(events)).toContain('job.think:1');
+    expect(events.find((e) => e.type === 'job.think' && e.iteration === 1)).toMatchObject({
+      excluded: [],
+    });
+  });
+
   it('carries the thinking left in the stage files onto the think and judge events it writes', async () => {
     const conversations = new FsConversationStore(root);
     const hubs = new ConversationHubs({ store: conversations });

@@ -168,6 +168,42 @@ describe('LlmSettings', () => {
     expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('local');
   });
 
+  // 役に名前を持たせるのは、2つ目の「名前」が付いたときだけ。空白だけの行や、同じ名前を貼った行は2つ目に数えない。
+  // 数えると、その行を外して1つに戻ったあとも役に古い名前が残り、残った1つの名前を打ち直すと「（定義に無い）」になる
+  it.each([
+    [
+      'only spaces',
+      (user: ReturnType<typeof userEvent.setup>) => user.type(input('provider 2番目 の名前'), '  '),
+    ],
+    [
+      'the same name pasted',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(input('provider 2番目 の名前'));
+        await user.paste('local');
+      },
+    ],
+  ])(
+    'keeps following the only provider when a row given %s is taken away and the name is typed again',
+    async (_, fillSecondRow) => {
+      const user = userEvent.setup();
+      mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+      render(<LlmSettings />);
+      await user.type(input('provider 1番目 の名前'), 'local');
+      await user.type(input('考える役のモデル'), 'qwen2.5');
+
+      await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+      await fillSecondRow(user);
+      const remove = screen.getAllByRole('button', { name: /^provider .+ を外す$/ });
+      await user.click(remove[1]!);
+      await user.clear(input('provider local の名前'));
+      await user.type(input('provider 1番目 の名前'), 'lm');
+
+      expect(input('考える役の provider').value).toBe('lm');
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+      expect(mocks.saveLlmSettings.mock.calls[0]?.[0].roles.think.provider).toBe('lm');
+    },
+  );
+
   it('does not choose for the person when two providers are defined and the role has none', async () => {
     const user = userEvent.setup();
     mocks.useLlmSettings.mockReturnValue({
