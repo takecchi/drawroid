@@ -21,8 +21,40 @@ export function handleUncaught(error: Error, c: Context) {
     const kind = status === 400 ? 'invalid_request' : 'http_error';
     return c.json(errorBody(kind, error.message), status);
   }
+  const storage = describeStorageFailure(error);
+  if (storage !== undefined) {
+    // 置き場所は端末にだけ出す（応答には出さない）。積み上げは出さない: 権限や空きの問題で、コードの不具合ではないため
+    const path = (error as NodeJS.ErrnoException).path;
+    console.error(`drawroid: ${storage.said}${path === undefined ? '' : `: ${path}`}`);
+    return c.json(errorBody('storage_failed', `${storage.said}。${storage.next}`), 500);
+  }
   console.error(error);
   return c.json(errorBody('internal_error', 'サーバの中で想定外の失敗があった'), 500);
+}
+
+/** データディレクトリの読み書きの失敗を、何が起きたかと次に何をするかの言葉にする。ほかの失敗は undefined */
+export function describeStorageFailure(error: unknown): { said: string; next: string } | undefined {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  switch (code) {
+    case 'EACCES':
+    case 'EPERM':
+      return {
+        said: `データディレクトリを読み書きできなかった（${code}）`,
+        next: 'drawroid を動かしているユーザーが、データディレクトリに書けるかを確かめる。置き場所は drawroid の端末に出した',
+      };
+    case 'EROFS':
+      return {
+        said: 'データディレクトリが読み取り専用で、書けなかった（EROFS）',
+        next: '書ける場所を --data-dir で指して、drawroid を起動し直す',
+      };
+    case 'ENOSPC':
+      return {
+        said: 'ディスクの空きが足りず、データディレクトリに書けなかった（ENOSPC）',
+        next: '空きを作ってから、もう一度行う',
+      };
+    default:
+      return undefined;
+  }
 }
 
 export function invalidRequest(c: Context, message: string) {

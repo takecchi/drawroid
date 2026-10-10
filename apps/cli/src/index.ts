@@ -4,6 +4,7 @@ import { dataPaths, resolveDataDir } from '@drawroid/storage-fs';
 import { parseCliArgs } from './args.js';
 import { assembleDrawroid } from './assemble.js';
 import { formatDoctorReport, runDoctor } from './doctor.js';
+import { describeStartupFailure } from './startup-failure.js';
 import { resolveWebRoot } from './web-root.js';
 
 async function main() {
@@ -37,11 +38,6 @@ async function main() {
 }
 
 main().catch((error: unknown) => {
-  const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : null;
-  if (code === 'EADDRINUSE') {
-    process.stderr.write('drawroid: ポートが既に使われている。--port で別のポートを指定する\n');
-  } else {
-    process.stderr.write(`drawroid: ${error instanceof Error ? error.message : String(error)}\n`);
-  }
+  process.stderr.write(`${describeStartupFailure(error)}\n`);
   process.exitCode = 1;
 });

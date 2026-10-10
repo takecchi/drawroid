@@ -45,14 +45,24 @@ export async function readConfig(path: string): Promise<Config> {
   try {
     json = JSON.parse(text);
   } catch (error) {
-    throw new Error(`${name} が JSON として読めない: ${(error as Error).message}`, {
-      cause: error,
-    });
+    throw new Error(
+      `${name} が JSON として読めない（${path}）: ${(error as Error).message}。${CONFIG_FIX}`,
+      { cause: error },
+    );
   }
   const parsed = configSchema.safeParse(json);
-  if (!parsed.success) throw new Error(`${name} の形が違う: ${parsed.error.message}`);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
+    throw new Error(`${name} の形が違う（${path}）: ${issues}。${CONFIG_FIX}`);
+  }
   return parsed.data;
 }
+
+// doctor の言い方に揃える: 同じ失敗を、起動と doctor で違う言葉にしないため
+const CONFIG_FIX =
+  '書き損じを直す。直せなければ別の名前へ退けて起動し、画面の「設定」から入れ直す。drawroid doctor でも確かめられる';
 
 // 優先順位は CLI 引数 > config.json > 既定
 export function resolveBackendUrlWithSource(

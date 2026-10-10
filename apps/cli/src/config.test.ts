@@ -71,6 +71,26 @@ describe('readConfig', () => {
     await expect(readConfig(path)).rejects.toThrow(/config\.json/);
   });
 
+  // 起動が止まるので、どこの何を直せば起動できるかまで言う
+  it('says where the broken file is and how to start anyway', async () => {
+    const path = join(dir, 'config.json');
+    for (const [text, said] of [
+      ['{ broken', `config.json が JSON として読めない（${path}）: `],
+      [
+        JSON.stringify({ backend: { url: 'not a url' } }),
+        `config.json の形が違う（${path}）: backend.url: `,
+      ],
+    ] as const) {
+      await writeFile(path, text);
+      const error = await readConfig(path).catch((caught: unknown) => caught as Error);
+      expect((error as Error).message.startsWith(said)).toBe(true);
+      expect((error as Error).message).toContain(
+        '別の名前へ退けて起動し、画面の「設定」から入れ直す',
+      );
+      expect((error as Error).message).not.toContain('\n');
+    }
+  });
+
   it('names the file when a value has the wrong shape', async () => {
     const path = join(dir, 'config.json');
     for (const bad of [

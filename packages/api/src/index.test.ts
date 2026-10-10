@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { BackendError, ManualGenerationRunner } from '@drawroid/core';
 import { STUB_PNG, StubBackend } from '@drawroid/core/testing';
 import { createFsMemoryStore, dataPaths, FsJobStore } from '@drawroid/storage-fs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { createApi } from './index.js';
 import {
@@ -226,4 +226,38 @@ describe('errors outside the routes share the error shape', () => {
     expect(body.error.kind).toBe('internal_error');
     expect(body.error.message).not.toContain('secret');
   });
+
+  it.each([
+    [
+      'EACCES',
+      'データディレクトリを読み書きできなかった（EACCES）。drawroid を動かしているユーザーが',
+    ],
+    [
+      'EROFS',
+      'データディレクトリが読み取り専用で、書けなかった（EROFS）。書ける場所を --data-dir で',
+    ],
+    ['ENOSPC', 'ディスクの空きが足りず、データディレクトリに書けなかった（ENOSPC）。空きを作って'],
+  ])(
+    'says what went wrong with the data directory on %s, and logs one line without the stack',
+    async (code, said) => {
+      const failure = Object.assign(new Error(`${code}: open '/home/someone/secret/x.json'`), {
+        code,
+        path: '/home/someone/secret/x.json',
+      });
+      vi.spyOn(backend, 'probe').mockRejectedValue(failure);
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      onTestFinished(() => logged.mockRestore());
+
+      const res = await api.request('/backend');
+
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: { kind: string; message: string } };
+      expect(body.error.kind).toBe('storage_failed');
+      expect(body.error.message.startsWith(said)).toBe(true);
+      expect(body.error.message).not.toContain('secret');
+      expect(logged.mock.calls).toEqual([
+        [expect.stringContaining(`（${code}）: /home/someone/secret/x.json`)],
+      ]);
+    },
+  );
 });
