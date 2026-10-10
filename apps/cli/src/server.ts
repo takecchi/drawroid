@@ -1,9 +1,10 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createApi, type ApiDeps } from '@drawroid/api';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 
 /** この端末を指す名前。ポートは問わない（開発中は Vite が localhost:5173 の Host のまま中継する） */
 const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -58,7 +59,16 @@ export function createApp({ webRoot, deps }: { webRoot: string; deps: ApiDeps })
   app.route('/api', createApi(deps));
   // 未知の /api/* を index.html で返さない: API の誤りが 200 の HTML に化けて、呼び手から見えなくなるため
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
-  app.use('/*', serveStatic({ root: webRoot }));
+  // 配り先ができてから serveStatic を作る: 無いうちに作ると英語の警告（root path … is not found）が出るため（知らせは assemble が日本語で出す）。
+  // 起動の時点で決め打ちにしないのは、起動後に pnpm build したものを、起動し直さずに配るため
+  let serveWeb: MiddlewareHandler | undefined;
+  app.use('/*', async (c, next) => {
+    if (serveWeb === undefined) {
+      if (!existsSync(webRoot)) return next();
+      serveWeb = serveStatic({ root: webRoot });
+    }
+    return serveWeb(c, next);
+  });
   // SPA の経路（/jobs/123 など）はファイルが無いので、index.html を返して画面側の routing に任せる
   app.get('/*', async (c) => {
     const index = await readFile(join(webRoot, 'index.html'), 'utf8').catch(() => undefined);
