@@ -26,6 +26,16 @@ describe('summarizeToolResult', () => {
     expect(summarizeToolResult('ok', 'あ'.repeat(100))).toBe(`${'あ'.repeat(80)}…`);
   });
 
+  // 括弧の中（URL や失敗の符号）の途中で切らない: 「（ECONNREF…」のような切れ端を出さないため。閉じた括弧は残す
+  it('drops a bracket cut in the middle, keeping the closed ones', () => {
+    const reason =
+      '描き始められない: 画像のバックエンド（Forge / A1111）に繋がらない（http://127.0.0.1:33355/ に繋がらない（ECONNREFUSED））';
+
+    expect(summarizeToolResult('error', reason)).toBe(
+      'できなかった: 描き始められない: 画像のバックエンド（Forge / A1111）に繋がらない…',
+    );
+  });
+
   it('says it could not, with the first sentence of the reason', () => {
     expect(summarizeToolResult('error', '描いている絵が無い。新しく描くなら start_drawing')).toBe(
       'できなかった: 描いている絵が無い。',
