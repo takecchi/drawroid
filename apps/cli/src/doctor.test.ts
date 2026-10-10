@@ -38,14 +38,17 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
 /**
  * 小さな偽の LLM（OpenAI 互換、ストリーム）。ツールを渡されたら doctor_ping を呼び、そうでなければ確かめの JSON を返す。
  * 渡された画像の形式と中身を取っておき、rejectWebp なら webp の画像を llama.cpp と同じ文言の 400 で断る。
- * rejectImages なら、画像を読めないモデル（mmproj の無い llama.cpp）と同じ文言の 400 で、どの画像も断る
+ * rejectImages なら、画像を読めないモデル（mmproj の無い llama.cpp）と同じ文言の 400 で、どの画像も断る。
+ * talkReply を渡したら、話す役の確かめ（doctor_ping を名指す要求）には、ツールを呼ばずにその本文を返す
  */
 async function startLlm({
   rejectWebp,
   rejectImages = false,
+  talkReply,
 }: {
   rejectWebp: boolean;
   rejectImages?: boolean;
+  talkReply?: string;
 }) {
   const imageTypes: string[] = [];
   const images: Buffer[] = [];
@@ -83,7 +86,10 @@ async function startLlm({
       const chunk = (delta: object, finish: string | null = null) =>
         `data: ${JSON.stringify({ id: 'c', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       res.writeHead(200, { 'content-type': 'text/event-stream' });
-      if ((request.tools ?? []).length > 0) {
+      if (talkReply !== undefined && body.includes('doctor_ping')) {
+        res.write(chunk({ role: 'assistant', content: talkReply }));
+        res.write(chunk({}, 'stop'));
+      } else if ((request.tools ?? []).length > 0) {
         res.write(
           chunk({
             role: 'assistant',
@@ -259,6 +265,73 @@ describe('runDoctor', () => {
     expect(serverTrips).toHaveLength(2);
     expect(serverTrips[0]).toContain('話す役・考える役（a の m');
     expect(serverTrips[1]).toContain('見る役（b の m');
+  });
+
+  // 返す本文は、実機の llama.cpp（Qwen2.5-VL-3B・Qwen2.5-1.5B）が doctor の確かめに返したもの
+  describe('when the talking role does not call the tool', () => {
+    async function talkItem(
+      role: { toolCalling: string; structuredOutput: string },
+      talkReply: string,
+    ) {
+      const llm = await startLlm({ rejectWebp: false, talkReply });
+      const { report } = await setup({
+        llm: {
+          providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+          validationRetries: 0,
+          roles: { think: { provider: 'a', model: 'm', ...role } },
+        },
+      });
+      const item = report.sections
+        .find(({ title }) => title === 'LLM')
+        ?.items.find(({ what }) => what.includes('話す役'));
+      expect(item?.ok).toBe(false);
+      return item!;
+    }
+
+    it('says the reply was empty, rather than quoting an empty reply', async () => {
+      const item = await talkItem({ toolCalling: 'native', structuredOutput: 'native' }, '');
+
+      expect(item.what).toContain('文も返さなかった');
+      expect(item.what).not.toContain('「」');
+      expect(item.todo).toContain('toolCalling を json にする');
+    });
+
+    it('quotes the reply, and points native tool calling to json', async () => {
+      const item = await talkItem(
+        { toolCalling: 'native', structuredOutput: 'native' },
+        'doctor_ping',
+      );
+
+      expect(item.what).toContain('ツールを呼ばずに文で返した: 「doctor_ping」');
+      expect(item.todo).toContain('toolCalling を json にする');
+      expect(item.todo).not.toContain('structuredOutput');
+    });
+
+    it.each([
+      ['the name of the tool', '{"kind":"reply","text":"doctor_ping"}'],
+      ['a word of its own', '{"kind":"reply","text":"pong"}'],
+    ])(
+      'points json tool calling with native structured output to json structured output, when it replies with %s',
+      async (_, talkReply) => {
+        const item = await talkItem({ toolCalling: 'json', structuredOutput: 'native' }, talkReply);
+
+        expect(item.todo).toContain('structuredOutput を json にする');
+        expect(item.todo).not.toContain('指示に従えるモデル');
+      },
+    );
+
+    it.each(['json', 'text'])(
+      'points json tool calling with %s structured output to another model',
+      async (structuredOutput) => {
+        const item = await talkItem(
+          { toolCalling: 'json', structuredOutput },
+          '{"kind":"reply","text":"pong"}',
+        );
+
+        expect(item.todo).toContain('指示に従えるモデルに変える');
+        expect(item.todo).not.toContain('structuredOutput を json');
+      },
+    );
   });
 
   it('flags a judge model that is set not to read images, without calling it', async () => {
