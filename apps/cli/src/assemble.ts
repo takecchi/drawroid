@@ -196,7 +196,12 @@ export async function assembleDrawroid({
   });
   // いま効いている LLM の設定（LLM から読んだ窓を埋めたもの）。予算の保存で、窓と比べるために持つ
   let configuredLlm: LlmConfig | undefined;
-  const inputWindows = createInputWindows({ current: () => configuredLlm, log });
+  const inputWindows = createInputWindows({
+    current: () => configuredLlm,
+    // 保存のときの読みでは「LLM から読んだ」の行を出さない: 保存が通れば、そのあとの configureLlm が出すため
+    detect: async (llm) => (await detectContextTokens(llm, { env })).config,
+    log,
+  });
   // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため
   const configureLlm = async (llm: LlmConfig) => {
     const { config, detected } = await detectContextTokens(llm, { env });

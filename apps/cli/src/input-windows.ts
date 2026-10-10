@@ -5,16 +5,20 @@ import { resolveRoles, ROLE_LABELS, type LlmConfig } from '@drawroid/llm';
 const COMPARED_ROLES = ['think', 'judge'] as const;
 
 /**
- * 予算と比べる、役ごとの窓を返す口。llm を渡せばその設定の、省けばいま効いている設定（provider から読んだ窓を含む）の、
- * 分かっている窓だけを返す。分からない役があれば、比べなかったことを1行出す
+ * 予算と比べる、役ごとの窓を返す口。llm を渡せばその設定の（書かれていない窓は detect で LLM から読む）、
+ * 省けばいま効いている設定（provider から読んだ窓を含む）の、分かっている窓だけを返す。
+ * 分からない役があれば、比べなかったことを1行出す
  */
 // 分からない役を既定の窓で比べない: 実際の窓は LLM 側で決まり、既定の窓で断ると、収まる設定まで保存できなくなるため
 export function createInputWindows(deps: {
   current: () => LlmConfig | undefined;
+  detect: (llm: LlmConfig) => Promise<LlmConfig>;
   log: (line: string) => void;
 }): (llm?: LlmConfig) => Promise<Partial<Record<LlmRole, ModelWindow>>> {
   return async (llm) => {
-    const config = llm ?? deps.current();
+    // 渡された設定は保存前の生のもの: 窓を読まずに比べると、窓の小さいモデルでも保存が通ってしまうため、ここで読む。
+    // いま効いている設定は configureLlm が読んだ窓を埋め済みなので、読み直さない
+    const config = llm === undefined ? deps.current() : await deps.detect(llm);
     if (config === undefined) {
       deps.log('drawroid: LLM が未設定なので、予算の欄ごとの上限の和を窓と比べなかった');
       return {};

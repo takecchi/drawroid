@@ -9,10 +9,25 @@ const llm = (roles: Record<string, unknown>): LlmConfig =>
     roles,
   });
 
-function setup(current?: LlmConfig) {
+// detected は LLM から読めた窓。読めなかった役は contextTokens を埋めずに返す
+function setup(current?: LlmConfig, detected: Partial<Record<'think' | 'judge', number>> = {}) {
   const lines: string[] = [];
-  const windows = createInputWindows({ current: () => current, log: (line) => lines.push(line) });
-  return { windows, lines };
+  const detectCalls: LlmConfig[] = [];
+  const windows = createInputWindows({
+    current: () => current,
+    detect: async (config) => {
+      detectCalls.push(config);
+      const roles = Object.fromEntries(
+        Object.entries(config.roles).map(([role, value]) => [
+          role,
+          { ...value, contextTokens: value.contextTokens ?? detected[role as 'think' | 'judge'] },
+        ]),
+      );
+      return { ...config, roles } as LlmConfig;
+    },
+    log: (line) => lines.push(line),
+  });
+  return { windows, lines, detectCalls };
 }
 
 describe('createInputWindows', () => {
@@ -57,5 +72,39 @@ describe('createInputWindows', () => {
     const { windows } = setup(current);
 
     expect((await windows()).think).toEqual({ contextTokens: 2048, maxOutputTokens: 1024 });
+  });
+
+  it('compares against the window read from the LLM when the passed settings leave contextTokens out', async () => {
+    const { windows, lines } = setup(undefined, { think: 8192 });
+    const config = llm({ think: { provider: 'local', model: 'm' } });
+
+    expect(await windows(config)).toEqual({
+      think: { contextTokens: 8192, maxOutputTokens: 1024 },
+      judge: { contextTokens: 8192, maxOutputTokens: 1024 },
+    });
+    expect(lines).toEqual([]);
+  });
+
+  it('leaves out a passed role whose window could not be read, and says so', async () => {
+    const { windows, lines } = setup(undefined, { think: 8192 });
+    const config = llm({
+      think: { provider: 'local', model: 'm' },
+      judge: { provider: 'local', model: 'v' },
+    });
+
+    expect(await windows(config)).toEqual({
+      think: { contextTokens: 8192, maxOutputTokens: 1024 },
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('見る役');
+    expect(lines[0]).toContain('比べなかった');
+  });
+
+  it('does not read from the LLM for the settings in effect, which already carry the read windows', async () => {
+    const current = llm({ think: { provider: 'local', model: 'm', contextTokens: 2048 } });
+    const { windows, detectCalls } = setup(current, { think: 9999 });
+
+    expect((await windows()).think).toEqual({ contextTokens: 2048, maxOutputTokens: 1024 });
+    expect(detectCalls).toEqual([]);
   });
 });
