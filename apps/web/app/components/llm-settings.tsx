@@ -25,6 +25,7 @@ import {
   TOOL_CALLING_MODES,
   STRUCTURED_OUTPUT_MODES,
   toFormValues,
+  unnamedProviderRowNumber,
   withProviderAdded,
   withProviderChanged,
   type LlmSettingsFormValues,
@@ -215,6 +216,11 @@ export function LlmSettings() {
     const duplicated = duplicatedProviderName(values.providers);
     if (duplicated !== undefined) {
       setSaveError(`provider の名前「${duplicated}」が2つある。どちらかの名前を変える`);
+      return;
+    }
+    const unnamed = unnamedProviderRowNumber(values.providers);
+    if (unnamed !== undefined) {
+      setSaveError(`provider ${unnamed}番目 に名前が無い。名前を付けるか、その行を外す`);
       return;
     }
     setSaving(true);

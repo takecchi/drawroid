@@ -297,6 +297,38 @@ describe('LlmSettings', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('saves without a provider row that was added and left empty', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.type(input('provider local の接続先（baseURL）'), 'http://127.0.0.1:11434/v1');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(Object.keys(mocks.saveLlmSettings.mock.calls[0]?.[0].providers)).toEqual(['local']);
+  });
+
+  it('refuses to save a provider row that has an endpoint but no name, saying which row', async () => {
+    const user = userEvent.setup();
+    mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+    render(<LlmSettings />);
+    await user.type(input('provider 1番目 の名前'), 'local');
+    await user.type(input('provider local の接続先（baseURL）'), 'http://127.0.0.1:11434/v1');
+    await user.type(input('考える役のモデル'), 'qwen2.5');
+    await user.click(screen.getByRole('button', { name: 'provider を足す' }));
+    await user.type(input('provider 2番目 の接続先（baseURL）'), 'http://127.0.0.1:1234/v1');
+
+    await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('provider 2番目 に名前が無い');
+    expect(mocks.saveLlmSettings).not.toHaveBeenCalled();
+    expect(input('provider 2番目 の接続先（baseURL）').value).toBe('http://127.0.0.1:1234/v1');
+  });
+
   it('shows only the name of the variable that holds a key and whether it is set', () => {
     render(<LlmSettings />);
 
