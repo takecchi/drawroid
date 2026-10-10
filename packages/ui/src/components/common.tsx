@@ -85,9 +85,10 @@ const BUTTON_VARIANTS = {
 } as const;
 
 const BUTTON_SIZES = {
-  // 狭い画面ではタップ標的を 44px（`h-11`）にする: 指で押す先は 44px 以上が下限のため
-  sm: { shadcn: 'sm', className: 'h-11 px-3 text-xs md:h-7 md:px-2' },
-  md: { shadcn: 'default', className: 'h-11 px-3 text-sm md:h-9' },
+  // タップ標的を 44px（`h-11`）にし、広い画面でマウスなど細かく指せるとき（pointer: fine）だけ詰める: 指で押す先は 44px 以上が下限のため。
+  // 幅だけで決めない: 広いタブレットも指で押すため
+  sm: { shadcn: 'sm', className: 'h-11 px-3 text-xs md:pointer-fine:h-7 md:pointer-fine:px-2' },
+  md: { shadcn: 'default', className: 'h-11 px-3 text-sm md:pointer-fine:h-9' },
 } as const;
 
 export function Button({
