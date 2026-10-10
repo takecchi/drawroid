@@ -188,9 +188,9 @@ async function api(base, method, path, body) {
  * @returns {Promise<string[]>}
  */
 async function chooseButtonsOverflowing(page) {
-  const found = await page.evaluate(`(() => [...document.querySelectorAll('button')]
-    .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: '))
-    .flatMap((b) => {
+  return measuredChooseButtons(
+    page,
+    `(b) => {
       const box = b.closest('figure, section') ?? document.body;
       const r = b.getBoundingClientRect();
       const c = box.getBoundingClientRect();
@@ -201,7 +201,30 @@ async function chooseButtonsOverflowing(page) {
       return over > 0.5
         ? [b.getAttribute('aria-label') + '（' + Math.round(over) + 'px。ボタン ' + Math.round(r.width) + 'px・文字 ' + Math.round(t.width) + 'px・入れ物 ' + Math.round(c.width) + 'px）']
         : [];
-    }))()`);
+    }`,
+  );
+}
+
+/**
+ * 「この画像に決める（お気に入りにする）」のボタンを、止まりのカード（section）と画像の枡（figure）ごとに数え、
+ * 1 つずつ problemsOf に通して、見つかった問題を返す。カードと枡のどちらかに 1 つも無ければ、それも問題として返す:
+ * 測る相手が無いと、「どれも〜しない」は中身が無いまま成り立つため
+ * @param {import('playwright-core').Page} page
+ * @param {string} problemsOf ボタンを受け取り、問題の文の配列を返す関数（ページの中で評価する式）
+ * @returns {Promise<string[]>}
+ */
+async function measuredChooseButtons(page, problemsOf) {
+  const found = await page.evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('button')]
+      .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: '));
+    const cards = buttons.filter((b) => b.closest('section') !== null).length;
+    const tiles = buttons.filter((b) => b.closest('figure') !== null).length;
+    return [
+      ...(cards === 0 ? ['止まりのカードに決めるボタンが無い（測れない）'] : []),
+      ...(tiles === 0 ? ['画像の枡に決めるボタンが無い（測れない）'] : []),
+      ...buttons.flatMap(${problemsOf}),
+    ];
+  })()`);
   return /** @type {string[]} */ (found);
 }
 
@@ -212,9 +235,9 @@ async function chooseButtonsOverflowing(page) {
  * @returns {Promise<string[]>}
  */
 async function chooseButtonsBreakingWords(page) {
-  const found = await page.evaluate(`(() => [...document.querySelectorAll('button')]
-    .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: '))
-    .flatMap((b) => {
+  return measuredChooseButtons(
+    page,
+    `(b) => {
       const walker = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
       const broken = [];
       for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
@@ -224,8 +247,8 @@ async function chooseButtonsBreakingWords(page) {
         if (lines.size > 1) broken.push(b.getAttribute('aria-label') + '「' + node.textContent + '」が ' + lines.size + ' 行');
       }
       return broken;
-    }))()`);
-  return /** @type {string[]} */ (found);
+    }`,
+  );
 }
 
 const work = await mkdtemp(
@@ -636,14 +659,25 @@ try {
   );
   // 文字を折り返すので、狭い画面でもカード・画像の枡からはみ出さない。目立つ形（紫）はカードのボタンだけ
   const narrowOverflow = await chooseButtonsOverflowing(narrow);
-  const prominent = /** @type {string[]} */ (
-    await narrow.evaluate(`[...document.querySelectorAll('button')]
-      .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: ') && b.className.includes('bg-primary'))
-      .map((b) => b.closest('section')?.getAttribute('aria-label') ?? '(枡)')`)
+  // 目立つ形は、カードのボタンのどれもが持ち、ほかのどれも持たない（目立つものが 0 個でも「カードだけ」にならないように、カードの数と突き合わせる）
+  const { prominent, cards } = /** @type {{ prominent: string[], cards: number }} */ (
+    await narrow.evaluate(`(() => {
+      const buttons = [...document.querySelectorAll('button')]
+        .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('この画像に決める（お気に入りにする）: '));
+      return {
+        prominent: buttons
+          .filter((b) => b.className.includes('bg-primary'))
+          .map((b) => b.closest('section')?.getAttribute('aria-label') ?? '(枡)'),
+        cards: buttons.filter((b) => b.closest('section')?.getAttribute('aria-label')?.startsWith('最良の画像: ')).length,
+      };
+    })()`)
   );
   expect(
-    narrowOverflow.length === 0 && prominent.every((where) => where.startsWith('最良の画像: ')),
-    `狭い画面で、「この画像に決める（お気に入りにする）」はどれも枠からはみ出さず、目立つ形は止まりのカードだけ${narrowOverflow.length === 0 ? '' : `: ${narrowOverflow.join(', ')}`}（目立つ形: ${prominent.join(', ')}）`,
+    narrowOverflow.length === 0 &&
+      cards > 0 &&
+      prominent.length === cards &&
+      prominent.every((where) => where.startsWith('最良の画像: ')),
+    `狭い画面で、「この画像に決める（お気に入りにする）」はどれも枠からはみ出さず、目立つ形は止まりのカードだけ${narrowOverflow.length === 0 ? '' : `: ${narrowOverflow.join(', ')}`}（カードのボタン ${cards} 個・目立つ形: ${prominent.join(', ')}）`,
   );
   const narrowBroken = await chooseButtonsBreakingWords(narrow);
   expect(
