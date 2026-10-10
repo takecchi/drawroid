@@ -50,6 +50,7 @@ import { createLlmSettings } from './llm-settings.js';
 import { createPermissionReader } from './permission-reader.js';
 import { wireGenerationProgress } from './progress-wiring.js';
 import { ReplaceableBackend } from './replaceable-backend.js';
+import { shutdownHandler } from './shutdown.js';
 import { createStopConditionParser } from './stop-condition-parser.js';
 import { resolveWebRoot } from './web-root.js';
 
@@ -94,6 +95,9 @@ async function main() {
     initial: { kind, url, source, config },
   });
   const log = (line: string) => process.stdout.write(`${line}\n`);
+  const shutdown = shutdownHandler({ backend, log, exit: (code) => process.exit(code) });
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
   const conversationStore = new FsConversationStore(root);
   const conversationHubs = new ConversationHubs({ store: conversationStore });
   // ジョブの置き場所を橋渡しで包む: 会話から作ったジョブの段が、会話のログに出るように
