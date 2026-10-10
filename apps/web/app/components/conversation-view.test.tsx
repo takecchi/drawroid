@@ -645,6 +645,31 @@ describe('ConversationView', () => {
     expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
   });
 
+  // 走っているジョブの段は数秒ごとに確定する。そのたびに長い会話の全部の行を描き直さない
+  it('does not draw the earlier rows again when a step of the running job is confirmed', async () => {
+    const { source, stream } = fakeSource([]);
+    renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] }),
+    );
+    const drawn = vi.mocked(useSelections).mock.calls.length;
+
+    stream.emit(
+      confirmed({
+        type: 'job.think',
+        jobId: JOB,
+        iteration: 2,
+        rationale: '空を抑える',
+        params: { steps: 28 },
+        excluded: [],
+      }),
+    );
+
+    expect(screen.getByText('空を抑える')).toBeTruthy();
+    expect(vi.mocked(useSelections).mock.calls.length).toBe(drawn);
+  });
+
   it('draws an image row again once its image is chosen or its job stops, even though the row itself did not change', async () => {
     const { source, stream } = fakeSource([]);
     renderView(source);

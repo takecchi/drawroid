@@ -219,6 +219,67 @@ describe('long conversations', () => {
     expect(after.at(-1)).toMatchObject({ kind: 'assistant', text: '流れている', streaming: true });
   });
 
+  // 走っているジョブの段は数秒ごとに確定する。そのたびに全部の行が新しくなると、長い会話の全部の行を描き直すことになる
+  it('keeps the earlier rows as the same objects when one more event is confirmed', () => {
+    const earlier = confirmAll([
+      { type: 'user.message', text: '海を描いて', attachments: [] },
+      { type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] },
+    ]);
+    const before = chatItems(earlier);
+
+    const after = chatItems(
+      confirmAll(
+        [
+          {
+            type: 'job.think',
+            jobId: JOB,
+            iteration: 2,
+            rationale: '空を抑える',
+            params: { steps: 28 },
+            excluded: [],
+          },
+        ],
+        earlier,
+      ),
+    );
+
+    expect(after).toHaveLength(3);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+  });
+
+  // 使い回すのは中身が同じ行だけ: 評価は前の画像の行に重なるので、その行は新しくして描き直す
+  it('gives a new object to an earlier row that a later event changes, and keeps the others', () => {
+    const earlier = confirmAll([
+      { type: 'user.message', text: '海を描いて', attachments: [] },
+      { type: 'job.images', jobId: JOB, iteration: 1, images: [{ index: 0, seed: 1 }] },
+    ]);
+    const before = chatItems(earlier);
+
+    const after = chatItems(
+      confirmAll(
+        [
+          {
+            type: 'job.judge',
+            jobId: JOB,
+            iteration: 1,
+            images: [{ index: 0, score: 0.8, issues: ['手が崩れている'] }],
+            nextChange: '手を隠す',
+            canStop: false,
+          },
+        ],
+        earlier,
+      ),
+    );
+
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).not.toBe(before[1]);
+    expect(after[1]).toMatchObject({
+      kind: 'images',
+      images: [{ index: 0, score: 0.8, issues: ['手が崩れている'] }],
+    });
+  });
+
   it('takes in many confirmed events at once exactly as one at a time, with repeats and late ones', () => {
     const events = [
       { type: 'user.message', text: '一', attachments: [], seq: 1, at: AT },

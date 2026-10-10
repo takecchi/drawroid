@@ -946,6 +946,17 @@ function renderItem(
   }
 }
 
+/** 行の外にあって、その行の描き方を変えるもの（画像の行なら、ジョブが止まったかと、選ばれた画像）。同じなら描き直さなくてよい */
+function outsideOfRow(
+  item: ChatItem,
+  stoppedJobs: ReadonlySet<string>,
+  chosenImages: ReadonlySet<string>,
+): string {
+  if (item.kind !== 'images') return '';
+  const chosen = [...chosenImages].filter((key) => key.startsWith(`${item.jobId}:`));
+  return `${stoppedJobs.has(item.jobId)}|${chosen.join(',')}`;
+}
+
 function newClientMessageId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -1073,21 +1084,27 @@ export function ConversationView({
     [items],
   );
   // 行が変わらなければ、前に作った行の要素をそのまま渡す: 同じ要素なら React はその行を描き直さない。
-  // 書きかけの増分のたびに、確定した数千行まで描き直すと、長い会話で増分1回が重くなるため（確定した行は chatItems が同じオブジェクトで返す）。
-  // ジョブが止まった・画像が選ばれたは確定したイベントで届き、そのとき確定した行は作り直される（使い回されない）ので、ここでは見なくてよい
+  // 書きかけの増分や、走っているジョブの段が確定するたびに、確定した数千行まで描き直すと、長い会話で1回が重くなるため
+  // （中身の変わらない確定した行は chatItems が同じオブジェクトで返す）。
+  // 画像の行は、ジョブが止まった・画像が選ばれたでも描き直す: 行そのものは変わらず同じオブジェクトのまま届くため
   // 大きく見ている画像（窓の画像の key）。setViewing は変わらない関数なので、行の使い回しを崩さない
   const [viewing, setViewing] = useState<string | null>(null);
   const rowCache = useRef(
-    new WeakMap<ChatItem, { sending: boolean; disconnected: boolean; row: ReactNode }>(),
+    new WeakMap<
+      ChatItem,
+      { sending: boolean; disconnected: boolean; outside: string; row: ReactNode }
+    >(),
   );
   const rows = useMemo(
     () =>
       items.map((item) => {
         const cached = rowCache.current.get(item);
+        const outside = outsideOfRow(item, stoppedJobs, chosenImages);
         // つながりで変わるのは進み具合のカードだけ: 切れた・戻ったで、確定した数千行まで描き直さないため
         if (
           cached !== undefined &&
           cached.sending === sending &&
+          cached.outside === outside &&
           (item.kind !== 'progress' || cached.disconnected === disconnected)
         )
           return cached.row;
@@ -1104,7 +1121,7 @@ export function ConversationView({
             )}
           </LogRow>
         );
-        rowCache.current.set(item, { sending, disconnected, row });
+        rowCache.current.set(item, { sending, disconnected, outside, row });
         return row;
       }),
     [items, conversationId, resend, sending, stoppedJobs, chosenImages, disconnected],
