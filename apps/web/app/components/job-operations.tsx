@@ -152,7 +152,8 @@ function ReferenceForm({ jobId }: { jobId: string }) {
 function StopConditionsChanger({ jobId }: { jobId: string }) {
   // 走行中の画面にだけ出すので live 固定: 別の口出し（別タブ・API）で変わった条件も、取り直して見せるため
   const { data, error: loadError } = useStopConditions(jobId, { live: true });
-  // 手で直した分だけを持つ: 取り直した current で毎回上書きすると、入力の途中を消してしまうため
+  // 触ったあとは、フォーム全体を下書きとして持つ: 取り直した current で毎回上書きすると、入力の途中を消してしまうため。
+  // そのため、1欄を触ると、ほかの欄もその時点の値で止まり、変えると4欄とも送る（別のタブで変えた欄も、この値で戻る）
   const [draft, setDraft] = useState<StopConditionsFormValues | undefined>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
