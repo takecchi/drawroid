@@ -51,6 +51,18 @@ vi.mock('../lib/mask-png', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/mask-png')>()),
   encodeMaskPng: vi.fn(),
 }));
+// 上限の値を試験から変えられるようにする: 「画像を添える」を押せなくする数が、web の上限の定数から来ていることを見るため
+// （その定数が core と同じ値であることは reference-upload.test.ts が縛る）
+const referenceLimit = vi.hoisted(() => ({ override: undefined as number | undefined }));
+vi.mock('../lib/reference-upload', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/reference-upload')>();
+  return {
+    ...actual,
+    get MAX_REFERENCES_PER_REQUEST() {
+      return referenceLimit.override ?? actual.MAX_REFERENCES_PER_REQUEST;
+    },
+  };
+});
 
 const JOB = '20261009-153112-a3f9c1';
 const AT = '2026-10-09T15:30:00+09:00';
@@ -1580,6 +1592,23 @@ describe('ConversationView', () => {
 
         expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
         expect(attachButton().getAttribute('aria-describedby')).toBeNull();
+      });
+
+      describe('when the limit is another number', () => {
+        afterEach(() => {
+          referenceLimit.override = undefined;
+        });
+
+        // 上限を変えたときに、画面だけが古い枚数で押せなくなる（または押せるまま残る）ことがないように
+        it('disables adding an image at the limit of the web, saying that number', async () => {
+          referenceLimit.override = 2;
+          const { user } = await openView();
+
+          await user.upload(screen.getByLabelText('添える画像を選ぶ'), files(2));
+
+          expect((attachButton() as HTMLButtonElement).disabled).toBe(true);
+          expect(reasonOf(attachButton())).toContain('2 枚まで');
+        });
       });
     });
 

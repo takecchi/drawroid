@@ -411,6 +411,22 @@ describe('inpaint masks, as an intervention', () => {
     expect(await store.listInterventions(jobId)).toEqual([]);
   });
 
+  // 素の base64 だけを受ける: 画面は頭（data:image/png;base64,）の無い base64 を送り、送る前の大きさの確かめもそれを数える。
+  // 頭付きを受けると、画面とサーバで数える文字列がずれる
+  it('refuses a mask sent as a data URL, writing nothing', async () => {
+    const jobId = await createAuto();
+    await withFirstImage(jobId);
+
+    const res = await intervene(jobId, {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: { data: `data:image/png;base64,${png}` },
+    });
+
+    expect(res.status).toBe(400);
+    expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
   it('refuses a mask that is not a PNG', async () => {
     const jobId = await createAuto();
     await withFirstImage(jobId);
