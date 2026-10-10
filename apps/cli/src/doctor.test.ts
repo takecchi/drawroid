@@ -41,7 +41,8 @@ async function startBackend(routes: Record<string, unknown>): Promise<string> {
  * rejectImages なら、画像を読めないモデル（mmproj の無い llama.cpp）と同じ文言の 400 で、どの画像も断る。
  * talkReply を渡したら、話す役の確かめ（doctor_ping を名指す要求）には、ツールを呼ばずにその本文を返す。
  * talkReplies を渡したら、話す役の確かめの n 回目に n 番目の本文を返す（null の回と、並びより後の回は doctor_ping を呼ぶ）。
- * thinkReply を渡したら、考える役の確かめ（ok を求める要求）には、その本文を返す
+ * thinkReply を渡したら、考える役の確かめ（ok を求める要求）には、その本文を返す。
+ * talkThinking を渡したら、ツールを呼ぶ前に、その文を本文の欄に書く（思考を本文に書くローカル LLM）
  */
 async function startLlm({
   rejectWebp,
@@ -49,12 +50,14 @@ async function startLlm({
   talkReply,
   talkReplies = [],
   thinkReply,
+  talkThinking,
 }: {
   rejectWebp: boolean;
   rejectImages?: boolean;
   talkReply?: string;
   talkReplies?: (string | null)[];
   thinkReply?: string;
+  talkThinking?: string;
 }) {
   const imageTypes: string[] = [];
   const images: Buffer[] = [];
@@ -100,6 +103,8 @@ async function startLlm({
         res.write(chunk({ role: 'assistant', content: reply }));
         res.write(chunk({}, 'stop'));
       } else if ((request.tools ?? []).length > 0) {
+        if (talkThinking !== undefined)
+          res.write(chunk({ role: 'assistant', content: talkThinking }));
         res.write(
           chunk({
             role: 'assistant',
@@ -352,6 +357,24 @@ describe('runDoctor', () => {
 
       expect(item.ok).toBe(false);
       expect(requests).toBe(1);
+    });
+
+    // 本文に書かれた思考は、reasoning の設定によらず本文から切り出される（#163・#361）。think-tag を勧める理由が無い
+    it('is fine with reasoning: none when the model writes its thinking in the text before calling the tool', async () => {
+      const llm = await startLlm({ rejectWebp: false, talkThinking: '<think>呼ぶべきか</think>' });
+      const { report } = await setup({
+        llm: {
+          providers: { a: { type: 'openai-compatible', baseURL: llm.url } },
+          roles: { think: { provider: 'a', model: 'm', reasoning: 'none' } },
+        },
+      });
+      const item = report.sections
+        .find(({ title }) => title === 'LLM')
+        ?.items.find(({ what }) => what.includes('話す役'));
+
+      expect(item?.ok).toBe(true);
+      expect(item?.what).toContain('3回続けて1往復できた');
+      expect(item?.what).not.toContain('<think>');
     });
   });
 
