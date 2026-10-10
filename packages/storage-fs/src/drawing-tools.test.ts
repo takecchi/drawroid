@@ -408,6 +408,22 @@ describe('revise_drawing and stop_drawing', () => {
     await runner.idle();
   });
 
+  it('refuses a revision with nothing to change instead of saying it changed the drawing', async () => {
+    const { jobs, context, runner } = await setup();
+    await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
+    const [jobId] = await jobIds(jobs);
+
+    await expect(async () => run('revise_drawing', {}, context)).rejects.toThrow('どれかを書く');
+    await expect(async () => run('revise_drawing', { attachments: [] }, context)).rejects.toThrow(
+      'どれかを書く',
+    );
+    expect(await jobs.listInterventions(jobId!)).toEqual([]);
+    expect(await jobs.listReferences(jobId!)).toEqual([]);
+    await untilRunning(jobs, jobId!);
+    await runner.stop(jobId!);
+    await runner.idle();
+  });
+
   it('adds the images attached in the conversation to the references of the drawing going on', async () => {
     const { jobs, context, runner, conversations, conversationId } = await setup();
     await run('start_drawing', { request: '海辺', stopConditions: LONG }, context);
