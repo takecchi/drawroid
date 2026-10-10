@@ -65,6 +65,14 @@ class FakeStream implements StreamLike {
       }
     });
   }
+  /** EventSource と同じく、切れたら error、つながったら open を（data の無い Event で）出す */
+  connection(type: 'error' | 'open') {
+    act(() => {
+      for (const listener of this.listeners.get(type) ?? []) {
+        listener(new Event(type) as MessageEvent<string>);
+      }
+    });
+  }
 }
 
 function fakeSource(pages: EventPage[]) {
@@ -1328,6 +1336,89 @@ describe('ConversationView', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('会話が無い');
     expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('描いて');
+  });
+
+  describe('when the connection to drawroid is cut', () => {
+    const NOT_CONNECTED = 'drawroid につながっていない。つながり直すのを待っている';
+    const STALLED = /^止まっている: drawroid につながっていないので/;
+    const generating = (stream: FakeStream) => {
+      stream.emit(
+        confirmed({
+          type: 'job.started',
+          jobId: JOB,
+          request: '夕暮れの海',
+          stopConditions: { aiJudgement: true, maxIterations: 3 },
+        }),
+      );
+      stream.emit({
+        type: 'generation.progress',
+        jobId: JOB,
+        iteration: 1,
+        progress: 0.25,
+        step: 5,
+        steps: 20,
+        etaMs: 3_000,
+      });
+    };
+
+    it('says it is not connected, and that the progress has stalled, while the stream is cut', async () => {
+      const { source, stream } = fakeSource([]);
+      renderView(source);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+      generating(stream);
+
+      stream.connection('error');
+
+      expect(screen.getByText(NOT_CONNECTED)).toBeTruthy();
+      expect(screen.getByText(STALLED)).toBeTruthy();
+      expect(screen.queryByText(/できあがったら、画像の行/)).toBeNull();
+    });
+
+    it('takes the notice back, with what failed to send or stop while cut, once the stream is open again', async () => {
+      const { source, stream } = fakeSource([]);
+      const given = actions();
+      given.send.mockRejectedValue(new ApiError('network', 'drawroid の API に繋がらない', null));
+      given.stop.mockRejectedValue(new ApiError('network', 'drawroid の API に繋がらない', null));
+      const { user } = renderView(source, given);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+      generating(stream);
+      stream.emit(confirmed({ type: 'turn.started', turn: 1, messageSeqs: [] }));
+      stream.connection('error');
+      await user.type(screen.getByLabelText('発言'), '描いて{Enter}');
+      await user.click(screen.getByRole('button', { name: '止める' }));
+      expect(await screen.findByText('送れない: drawroid の API に繋がらない')).toBeTruthy();
+      expect(await screen.findByText('止められない: drawroid の API に繋がらない')).toBeTruthy();
+
+      stream.connection('open');
+
+      expect(screen.queryByText(NOT_CONNECTED)).toBeNull();
+      expect(screen.queryByText(/^送れない/)).toBeNull();
+      expect(screen.queryByText(/^止められない/)).toBeNull();
+      expect(screen.queryByText(STALLED)).toBeNull();
+      expect(screen.getByText(/できあがったら、画像の行/)).toBeTruthy();
+      // 打った文は残す: 送れなかったものを、つながり直したら送り直せるように
+      expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('描いて');
+    });
+
+    it('does not say it is not connected while the stream stays open, and keeps a failure that came without a cut', async () => {
+      const { source, stream } = fakeSource([]);
+      const given = actions();
+      given.send.mockRejectedValue(new Error('会話が無い'));
+      const { user } = renderView(source, given);
+      await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+      // 初めてつながるまで（open の前）は、切れたのではない
+      expect(screen.queryByText(NOT_CONNECTED)).toBeNull();
+      stream.connection('open');
+      generating(stream);
+
+      await user.type(screen.getByLabelText('発言'), '描いて{Enter}');
+      expect(await screen.findByText('送れない: 会話が無い')).toBeTruthy();
+      stream.connection('open');
+
+      expect(screen.queryByText(NOT_CONNECTED)).toBeNull();
+      expect(screen.queryByText(STALLED)).toBeNull();
+      expect(screen.getByText('送れない: 会話が無い')).toBeTruthy();
+    });
   });
 
   // 送る失敗と同じ文で出さない: 止めようとしたのに「送れない」と出ると、何が効かなかったのかが分からないため

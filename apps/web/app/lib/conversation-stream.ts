@@ -44,6 +44,8 @@ export interface ConversationSource {
 
 type Action =
   | { type: 'reset' }
+  /** 購読が切れた（ブラウザがつなぎ直すのを待っている）・つながった */
+  | { type: 'connection'; disconnected: boolean }
   /** 読み込んだページまでを畳んだもの。購読を開く前だけ使う（ほかから状態が変わらない間） */
   | { type: 'restored'; chat: ChatState }
   | { type: 'confirmed'; event: ConversationEvent }
@@ -55,14 +57,25 @@ interface StreamState {
   chat: ChatState;
   loaded: boolean;
   error: string | undefined;
+  /** 購読が切れていて、ブラウザがつなぎ直すのを待っている */
+  disconnected: boolean;
 }
 
-const INITIAL: StreamState = { chat: EMPTY_CHAT_STATE, loaded: false, error: undefined };
+const INITIAL: StreamState = {
+  chat: EMPTY_CHAT_STATE,
+  loaded: false,
+  error: undefined,
+  disconnected: false,
+};
 
 function reduce(state: StreamState, action: Action): StreamState {
   switch (action.type) {
     case 'reset':
       return INITIAL;
+    case 'connection':
+      return state.disconnected === action.disconnected
+        ? state
+        : { ...state, disconnected: action.disconnected };
     case 'restored':
       return { ...state, chat: action.chat };
     case 'confirmed':
@@ -129,6 +142,9 @@ export function useConversationStream(conversationId: string, source: Conversati
           if (action !== undefined) dispatch(action);
         });
       }
+      // 切れたことは EventSource の error で、つながり直したことは open で知る（つなぎ直すのはブラウザ）
+      stream.addEventListener('error', () => dispatch({ type: 'connection', disconnected: true }));
+      stream.addEventListener('open', () => dispatch({ type: 'connection', disconnected: false }));
     }
 
     open().catch((error: unknown) => {
