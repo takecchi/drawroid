@@ -136,7 +136,7 @@ describe('holding the LLM stages of a running job', () => {
     const { store, runner, llm } = setup({ backend });
     const jobId = await submit(store, { aiJudgement: false, maxIterations: 1 });
     runner.kick();
-    await vi.waitFor(() => expect(backend.generateSignals).toHaveLength(1));
+    await backend.generated(1);
 
     const release = runner.holdLlmStages(jobId);
     await tick();
