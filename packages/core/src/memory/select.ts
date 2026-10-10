@@ -1,4 +1,5 @@
 import { type PackLimits, type PackResult, packWithinBudget } from '../budget/pack.js';
+import { normalizeForMatch } from '../text/normalize.js';
 import type { MemoryItem } from './item.js';
 
 /**
@@ -30,21 +31,9 @@ interface Ranked {
   matchedTags: number;
 }
 
-const KATAKANA_WITH_HIRAGANA = /[ァ-ヶ]/g;
-const HIRAGANA_OFFSET = 0x60;
-
-// 長音・濁点・小書きは寄せない: ビール と ビル、はけ と バケツ、びよういん と びょういん のように、別の語が当たるようになるため
-const toHiragana = (text: string) =>
-  text.replace(KATAKANA_WITH_HIRAGANA, (kana) =>
-    String.fromCharCode(kana.charCodeAt(0) - HIRAGANA_OFFSET),
-  );
-
-// NFKC を先にする: 半角カナを全角へ揃えてからでないと、ひらがなへ寄せられないため
-const normalize = (text: string) => toHiragana(text.normalize('NFKC')).toLowerCase();
-
 // 寄せたあとの形で数える: ねこ と ネコ のように同じ語を両方の表記で書いたタグを2つと数えると、2語が当たった項目と並ぶため
 function countMatchedTags(item: MemoryItem, gist: string): number {
-  const needles = new Set(item.tags.map((tag) => normalize(tag).trim()));
+  const needles = new Set(item.tags.map((tag) => normalizeForMatch(tag).trim()));
   return [...needles].filter((needle) => needle !== '' && gist.includes(needle)).length;
 }
 
@@ -75,7 +64,7 @@ export function selectMemory(
   requestGist: string,
   limits: MemoryRoleLimits,
 ): MemorySelection {
-  const gist = normalize(requestGist);
+  const gist = normalizeForMatch(requestGist);
   const relevant = items
     .map((item) => ({ item, matchedTags: countMatchedTags(item, gist) }))
     .filter((ranked) => ranked.item.scope === 'always' || ranked.matchedTags > 0);

@@ -63,6 +63,39 @@ describe('selectCandidates', () => {
     expect(names(shown)).toEqual(['zzz_noted', 'bbb_mentioned', 'ccc_labeled', 'aaa_plain']);
   });
 
+  // 予算が1件だけなので、先に残るのは要点に出た候補（名前順では aaa_plain が先）
+  const firstKept = (label: string, requestGist: string) =>
+    names(
+      selectCandidates(
+        [{ name: 'aaa_plain' }, { name: 'zzz_labeled', label }],
+        undefined,
+        noNotes,
+        requestGist,
+        { maxCount: 1, maxSize: 10_000 },
+      ).shown,
+    )[0];
+
+  it.each([
+    ['ミク', 'みくを描いて'],
+    ['みく', 'ミクを描いて'],
+    ['ミク', 'ﾐｸを描いて'],
+    ['ﾐｸ', 'みくを描いて'],
+  ])('treats the label %s and the request %s as the same word', (label, requestGist) => {
+    expect(firstKept(label, requestGist)).toBe('zzz_labeled');
+  });
+
+  it.each([
+    ['ビール', 'ビルを描いて'],
+    ['ビル', 'ビールを描いて'],
+    ['はけ', 'バケツを描いて'],
+    ['びよういん', 'びょういんを描いて'],
+  ])(
+    'does not treat the label %s as mentioned in the request %s, which differs by a long vowel, voicing or small kana',
+    (label, requestGist) => {
+      expect(firstKept(label, requestGist)).toBe('aaa_plain');
+    },
+  );
+
   it('passes the human note along with the candidate', () => {
     const notes = new Map([['lora_000', '水彩の質感を足す']]);
 

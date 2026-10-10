@@ -153,6 +153,37 @@ describe('search_candidates', () => {
     expect(byLabel.result).toContain('Miku_V2');
   });
 
+  it('matches a katakana label by a hiragana or half-width katakana query', async () => {
+    const { run } = setup({
+      loras: [{ name: 'lora_a', label: 'ミク' }, { name: 'rin_v1' }],
+    });
+
+    for (const query of ['みく', 'ﾐｸ']) {
+      const outcome = await run('search_candidates', { kind: 'lora', query });
+      expect(outcome.result).toContain('lora_a');
+      expect(outcome.result).not.toContain('rin_v1');
+    }
+  });
+
+  it('does not match a label that differs only by a long vowel mark, a voiced mark or a small kana', async () => {
+    const { run } = setup({
+      loras: [
+        { name: 'lora_a', label: 'ビール' },
+        { name: 'lora_b', label: 'ハケ' },
+        { name: 'lora_c', label: 'びよういん' },
+      ],
+    });
+
+    const longVowel = await run('search_candidates', { kind: 'lora', query: 'ビル' });
+    expect(longVowel.result).not.toContain('lora_a');
+
+    const voiced = await run('search_candidates', { kind: 'lora', query: 'バケ' });
+    expect(voiced.result).not.toContain('lora_b');
+
+    const small = await run('search_candidates', { kind: 'lora', query: 'びょういん' });
+    expect(small.result).not.toContain('lora_c');
+  });
+
   it('returns no more candidates than the count in the budget, and says how many were left', async () => {
     const { run } = setup({
       loras: ['a', 'b', 'c', 'd'].map((x) => ({ name: `lora_${x}` })),

@@ -14,6 +14,7 @@ import { selectMemory } from '../../memory/select.js';
 import type { MemoryStore } from '../../memory/store.js';
 import type { ParamKey } from '../../params/param-key.js';
 import type { Permissions } from '../../permissions/permission.js';
+import { normalizeForMatch } from '../../text/normalize.js';
 import { candidateNamesOf, talkImageLabel } from '../drawing.js';
 import { latestJobOfConversation } from '../drawing-tools.js';
 import type { ConversationEvent } from '../events.js';
@@ -144,13 +145,13 @@ export function createReadOnlyTools(deps: ReadOnlyToolDeps): TalkTool[] {
             ? undefined
             : permission.choices;
       const notes = (await deps.candidateNotes?.()) ?? new Map<string, string>();
-      const needle = query.normalize('NFKC').toLowerCase().trim();
+      const needle = normalizeForMatch(query).trim();
       const matched =
         needle === ''
           ? all
           : all.filter((c) =>
               [c.name, c.label ?? '', notes.get(c.name) ?? ''].some((text) =>
-                text.normalize('NFKC').toLowerCase().includes(needle),
+                normalizeForMatch(text).includes(needle),
               ),
             );
       const selection = selectCandidates(matched, choices, notes, query, limits.candidates);
