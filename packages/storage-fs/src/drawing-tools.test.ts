@@ -268,14 +268,15 @@ describe('start_drawing', () => {
       { request: '海辺', attachments: [{ uploadId, note: 'この構図で' }] },
       context,
     );
-    const [started] = await jobIds(jobs);
-    await untilRunning(jobs, started!);
-    await runner.stop(started!);
+    // 走り始めを待たない: 参照画像はジョブを作るときに写す。偽の LLM には参照画像の要点の台本が無く、ジョブは数 ms で
+    // 自分で止まるので、走っている間を見に行くと、見る前に止まって待ち切れないことがある
+    const [jobId] = await jobIds(jobs);
+    const references = await jobs.listReferences(jobId!);
+    await runner.stop(jobId!);
     await runner.idle();
 
     expect(outcome.ok).toBe(true);
-    const [jobId] = await jobIds(jobs);
-    expect(await jobs.listReferences(jobId!)).toEqual([
+    expect(references).toEqual([
       expect.objectContaining({ mediaType: 'image/png', note: 'この構図で' }),
     ]);
   });

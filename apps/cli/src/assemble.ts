@@ -67,6 +67,14 @@ export interface AssembleOptions {
   webRoot?: string;
 }
 
+export interface AssembledDrawroid extends Listening {
+  /**
+   * 後ろで走る仕事（自動ジョブの待ち行列と、話す役のターン）が走り終えるまで待つ（試験のため）。
+   * HTTP の口を閉じても、これらはデータディレクトリに書き続けるので、片付ける前に待つ
+   */
+  idle(): Promise<void>;
+}
+
 /**
  * drawroid を組み立てて、HTTP の口を開く（doctor 以外の起動）。index.ts の main はこれを呼ぶだけ。
  * 試験から呼べるように、process の口（標準出力・環境変数・合図・終わり方）を引数で受ける
@@ -81,7 +89,7 @@ export async function assembleDrawroid({
   exit,
   write,
   webRoot,
-}: AssembleOptions): Promise<Listening> {
+}: AssembleOptions): Promise<AssembledDrawroid> {
   const { sweptTempFiles } = await initDataDir(root);
   write(`drawroid: データディレクトリ ${root}\n`);
   if (sweptTempFiles.length > 0) {
@@ -279,7 +287,7 @@ export async function assembleDrawroid({
   });
   // 落ちる前の自動ジョブを再開する。talkRunner を作ってから回す: 再開したジョブが止まったときに、橋渡しが話す役へ知らせるため
   autoQueue.kick();
-  return listen({
+  const listening = await listen({
     port: args.port,
     webRoot: webRoot ?? resolveWebRoot(),
     deps: {
@@ -322,4 +330,13 @@ export async function assembleDrawroid({
       }),
     },
   });
+  return {
+    ...listening,
+    // ジョブの止まりが話す役のターンを起こし、ターンが描き始めればジョブが積まれるので、ジョブ・ターン・ジョブの順に待つ
+    idle: async () => {
+      await autoQueue.idle();
+      await talkRunner.idleAll();
+      await autoQueue.idle();
+    },
+  };
 }
