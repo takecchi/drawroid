@@ -12,6 +12,7 @@ import {
   type StopReason,
 } from '@drawroid/core';
 import {
+  ApiError,
   addMask,
   adoptImage,
   recheckBackendStatus,
@@ -1327,6 +1328,23 @@ describe('ConversationView', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('会話が無い');
     expect((screen.getByLabelText('発言') as HTMLTextAreaElement).value).toBe('描いて');
+  });
+
+  // 送る失敗と同じ文で出さない: 止めようとしたのに「送れない」と出ると、何が効かなかったのかが分からないため
+  it('says it could not stop, not that it could not send, when stopping fails', async () => {
+    const { source, stream } = fakeSource([]);
+    const given = actions();
+    given.stop.mockRejectedValue(new ApiError('network', 'drawroid の API に繋がらない', null));
+    const { user } = renderView(source, given);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(confirmed({ type: 'turn.started', turn: 1, messageSeqs: [] }));
+
+    await user.click(screen.getByRole('button', { name: '止める' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      '止められない: drawroid の API に繋がらない',
+    );
+    expect(screen.queryByText(/送れない/)).toBeNull();
   });
 
   it('offers to resend a message whose turn was cut off by a restart', async () => {
