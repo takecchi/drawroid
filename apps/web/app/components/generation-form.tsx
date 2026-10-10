@@ -67,10 +67,7 @@ function LoraPicker({
         {loras.map((lora, index) => (
           <Item key={`${lora.name}-${index}`}>
             {lora.name}（重み {lora.weight}）{' '}
-            <Button
-              className="h-7 px-2 text-xs"
-              onClick={() => onChange(loras.filter((_, i) => i !== index))}
-            >
+            <Button size="sm" onClick={() => onChange(loras.filter((_, i) => i !== index))}>
               外す
             </Button>
           </Item>

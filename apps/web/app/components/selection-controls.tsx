@@ -41,7 +41,7 @@ export function SelectionControls({
       <p className="text-xs">今の状態: {verdict === null ? '未選択' : VERDICT_LABELS[verdict]}</p>
       <div className="flex flex-wrap gap-1">
         <Button
-          className="h-7 px-2 text-xs"
+          size="sm"
           disabled={pending || verdict === 'favorite'}
           aria-label={`お気に入り: ${imageLabel}`}
           onClick={() => void choose('favorite')}
@@ -49,7 +49,7 @@ export function SelectionControls({
           お気に入り
         </Button>
         <Button
-          className="h-7 px-2 text-xs"
+          size="sm"
           disabled={pending || verdict === 'rejected'}
           aria-label={`却下: ${imageLabel}`}
           onClick={() => void choose('rejected')}
@@ -57,7 +57,7 @@ export function SelectionControls({
           却下
         </Button>
         <Button
-          className="h-7 px-2 text-xs"
+          size="sm"
           disabled={pending || verdict === null}
           aria-label={`外す: ${imageLabel}`}
           onClick={() => void choose(null)}
