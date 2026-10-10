@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.build.json",
     "build:incremental": "tsc -p tsconfig.build.json --incremental --tsBuildInfoFile dist/tsconfig.build.tsbuildinfo",
     "dev": "pnpm run build:incremental --watch --preserveWatchOutput",
-    "dev:serve": "node --watch dist/index.js",
+    "dev:serve": "node --watch --env-file=dev.env dist/index.js",
     "bundle": "node scripts/bundle.mjs",
     "prepack": "pnpm run bundle",
     "typecheck": "tsc --noEmit"

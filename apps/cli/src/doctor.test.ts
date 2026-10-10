@@ -646,6 +646,18 @@ describe('runDoctor', () => {
     const { text } = await setup(undefined, { webRoot: () => '/nonexistent/web' });
     expect(text).toMatch(/足りない {2}\/nonexistent\/web に index\.html が無い\n {12}→ /);
   });
+
+  // pnpm dev は web を build せず、Vite が画面を配る。dev の起動（dev:serve）は dev.env でこの印を渡す
+  it('counts the web as fine during development, where Vite serves the screen', async () => {
+    const { report, text } = await setup(undefined, {
+      webRoot: () => '/nonexistent/web',
+      env: { DRAWROID_DEV_WEB_URL: 'http://localhost:5173/' },
+    });
+    expect(text).toContain('よい      開発中は Vite（http://localhost:5173/）が画面を配っている');
+    expect(text).not.toContain('index.html が無い');
+    const web = report.sections.find(({ title }) => title === 'web の配り先');
+    expect(web?.items.every(({ ok }) => ok)).toBe(true);
+  });
 });
 
 // 起動（index.ts）と同じ組み立てで、画面が叩く POST /api/doctor を通す
