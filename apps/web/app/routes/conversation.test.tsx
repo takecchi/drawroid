@@ -112,6 +112,8 @@ describe('starting a new conversation', () => {
     const user = userEvent.setup();
     renderApp(['/']);
     await user.click(screen.getByRole('button', { name: '新しい会話' }));
+    // 新しい会話に着いてから、印が手放されるのを待つ: 始めた画面の state も null なので、印だけを待つと、移る前に通って戻ってしまう
+    expect(await screen.findByText('発言欄へ移す: true')).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByRole('status', { name: 'history の state' }).textContent).toBe('null'),
     );
