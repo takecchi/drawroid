@@ -145,6 +145,57 @@ describe('the default permissions over HTTP', () => {
     });
   });
 
+  it('replaces the whole permissions already written, not adding the fields it was sent, and keeps the other keys', async () => {
+    await writeFile(
+      paths.config,
+      JSON.stringify({
+        llm: { providers: {} },
+        permissions: { checkpoint: { mode: 'auto', choices: ['animeMix'] } },
+      }),
+    );
+
+    const res = await send('PUT', '/settings/permissions', { steps: { mode: 'fixed', value: 28 } });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { overrides: object; permissions: Permissions };
+    expect(body.overrides).toEqual({ steps: { mode: 'fixed', value: 28 } });
+    expect(body.permissions.checkpoint).toEqual(base.checkpoint);
+    expect(await readConfig()).toEqual({
+      llm: { providers: {} },
+      permissions: { steps: { mode: 'fixed', value: 28 } },
+    });
+    expect(
+      ((await (await app.request('/settings/permissions')).json()) as { overrides: object })
+        .overrides,
+    ).toEqual({
+      steps: { mode: 'fixed', value: 28 },
+    });
+  });
+
+  it('puts every parameter back to the base when sent an empty body, writing an empty permissions', async () => {
+    await writeFile(
+      paths.config,
+      JSON.stringify({
+        llm: { providers: {} },
+        permissions: {
+          steps: { mode: 'fixed', value: 28 },
+          checkpoint: { mode: 'auto', choices: ['animeMix'] },
+        },
+      }),
+    );
+
+    const res = await send('PUT', '/settings/permissions', {});
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ overrides: {}, permissions: base, invalid: [] });
+    expect(await readConfig()).toEqual({ llm: { providers: {} }, permissions: {} });
+    expect(await (await app.request('/settings/permissions')).json()).toEqual({
+      overrides: {},
+      permissions: base,
+      invalid: [],
+    });
+  });
+
   it('refuses permissions it cannot take, leaving config.json as it was', async () => {
     await writeFile(paths.config, JSON.stringify({ llm: { providers: {} } }));
 
