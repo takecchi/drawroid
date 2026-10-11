@@ -254,7 +254,11 @@ export class JobRunner {
       this.rescanRequested = true;
       return;
     }
-    this.draining = this.drain();
+    const p = this.drain();
+    this.draining = p;
+    void p.finally(() => {
+      this.draining = undefined;
+    });
   }
 
   /** 待ち行列が空になるまで待つ */
@@ -443,7 +447,7 @@ export class JobRunner {
         await this.runJob(next);
       }
     } finally {
-      this.draining = undefined;
+      // moved to kick
     }
   }
 
