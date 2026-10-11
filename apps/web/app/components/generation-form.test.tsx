@@ -120,7 +120,9 @@ describe('GenerationForm', () => {
   // 押した「生成する」は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
   it('moves the focus to the reason when the API refuses, also on a second refusal', async () => {
     const user = userEvent.setup();
-    mocks.startManualJob.mockRejectedValue(new ApiError('invalid_request', 'steps: 数を入れる', 400));
+    mocks.startManualJob.mockRejectedValue(
+      new ApiError('invalid_request', 'steps: 数を入れる', 400),
+    );
     render(<GenerationForm onStarted={() => {}} />);
     const button = () => screen.getByRole('button', { name: '生成する' });
 
@@ -136,7 +138,9 @@ describe('GenerationForm', () => {
 
   it('leaves the focus in a field being corrected after a refusal', async () => {
     const user = userEvent.setup();
-    mocks.startManualJob.mockRejectedValue(new ApiError('invalid_request', 'steps: 数を入れる', 400));
+    mocks.startManualJob.mockRejectedValue(
+      new ApiError('invalid_request', 'steps: 数を入れる', 400),
+    );
     render(<GenerationForm onStarted={() => {}} />);
     await user.click(screen.getByRole('button', { name: '生成する' }));
     await expectFocusMovesTo(await screen.findByRole('alert'));

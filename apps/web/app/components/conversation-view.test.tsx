@@ -1879,7 +1879,12 @@ describe('ConversationView', () => {
     const cutOff = [
       confirmed({ type: 'user.message', text: '続きを描いて', attachments: [] }),
       confirmed({ type: 'turn.started', turn: 1, messageSeqs: [1] }),
-      confirmed({ type: 'turn.ended', turn: 1, outcome: 'interrupted', reason: 'プロセスの再起動' }),
+      confirmed({
+        type: 'turn.ended',
+        turn: 1,
+        outcome: 'interrupted',
+        reason: 'プロセスの再起動',
+      }),
     ];
 
     it('moves the focus to the reason when resending is refused, also on a second refusal', async () => {

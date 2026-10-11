@@ -114,20 +114,23 @@ describe('JobOperations moving the focus to a refusal', () => {
   it.each([
     ['stopping', false],
     ['stopping a manual job', true],
-  ])('moves the focus to the reason when %s is refused, also on a second refusal', async (_, manual) => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const stopping = manual ? vi.mocked(stopManualJob) : stop;
-    stopping.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
-    render(<JobOperations job={manual ? manualJob() : runningAuto()} />);
-    const user = userEvent.setup();
+  ])(
+    'moves the focus to the reason when %s is refused, also on a second refusal',
+    async (_, manual) => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const stopping = manual ? vi.mocked(stopManualJob) : stop;
+      stopping.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+      render(<JobOperations job={manual ? manualJob() : runningAuto()} />);
+      const user = userEvent.setup();
 
-    await press(user, screen.getByRole('button', { name: 'ジョブを止める' }));
-    await expectFocusMovesTo(await screen.findByRole('alert'));
+      await press(user, screen.getByRole('button', { name: 'ジョブを止める' }));
+      await expectFocusMovesTo(await screen.findByRole('alert'));
 
-    await press(user, screen.getByRole('button', { name: 'ジョブを止める' }));
-    await waitFor(() => expect(stopping).toHaveBeenCalledTimes(2));
-    await expectFocusMovesTo(await screen.findByRole('alert'));
-  });
+      await press(user, screen.getByRole('button', { name: 'ジョブを止める' }));
+      await waitFor(() => expect(stopping).toHaveBeenCalledTimes(2));
+      await expectFocusMovesTo(await screen.findByRole('alert'));
+    },
+  );
 
   it('moves the focus to the reason when the instruction is refused, also on a second refusal', async () => {
     instruct.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
