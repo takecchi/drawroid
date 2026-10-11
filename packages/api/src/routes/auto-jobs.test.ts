@@ -149,6 +149,16 @@ describe('POST /jobs/auto', () => {
     );
   });
 
+  it('says what each listed job was asked to draw: the request for auto, the prompt for manual', async () => {
+    const auto = await create();
+    const manual = await createManual();
+    const { jobs } = (await (await app.request('/jobs')).json()) as {
+      jobs: { jobId: string; request: string }[];
+    };
+    expect(jobs.find((job) => job.jobId === auto)?.request).toBe('夕暮れの海辺の少女');
+    expect(jobs.find((job) => job.jobId === manual)?.request).toBe('a cat');
+  });
+
   it.each([
     ['an empty request', { request: '' }],
     ['a missing request', {}],

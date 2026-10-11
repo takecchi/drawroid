@@ -40,6 +40,7 @@ describe('JobList', () => {
             jobId: 'running-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:02:00Z',
+            request: '鳥',
             state: { status: 'running' },
           },
         ],
@@ -69,6 +70,79 @@ describe('JobList', () => {
     expect(screen.queryByRole('list')).toBeNull();
   });
 
+  it('shows what each job was asked to draw, cut short when it is long', () => {
+    const long = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調、'.repeat(10);
+    const exactlyAtLimit = 'あ'.repeat(60);
+    mocks.useJobs.mockReturnValue({
+      data: {
+        jobs: [
+          {
+            jobId: 'auto-1',
+            kind: 'auto',
+            createdAt: '2026-10-09T00:00:00Z',
+            request: '猫の絵',
+            state: { status: 'queued' },
+          },
+          {
+            jobId: 'manual-1',
+            kind: 'manual',
+            createdAt: '2026-10-09T00:01:00Z',
+            request: long,
+            state: { status: 'queued' },
+          },
+          {
+            jobId: 'manual-2',
+            kind: 'manual',
+            createdAt: '2026-10-09T00:02:00Z',
+            request: exactlyAtLimit,
+            state: { status: 'queued' },
+          },
+        ],
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('猫の絵')).toBeTruthy();
+    expect(screen.getByText(exactlyAtLimit)).toBeTruthy();
+    expect(screen.queryByText(long)).toBeNull();
+    expect(screen.getByText(`${[...long].slice(0, 60).join('')}…`)).toBeTruthy();
+  });
+
+  // 依頼の文は人や LLM が書いたものをそのまま出す。タグの形の文が混じっても、要素にせず文字のまま見せる
+  it('shows the request as the very letters written, even when it looks like HTML', () => {
+    const request = '<img src="x" onerror="alert(1)"><b>太字の猫</b> &amp; 犬';
+    mocks.useJobs.mockReturnValue({
+      data: {
+        jobs: [
+          {
+            jobId: 'auto-1',
+            kind: 'auto',
+            createdAt: '2026-10-09T00:00:00Z',
+            request,
+            state: { status: 'queued' },
+          },
+        ],
+        invalid: [],
+      },
+      error: undefined,
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(request)).toBeTruthy();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('b')).toBeNull();
+  });
+
   it('shows the running section first, then the queued, then the stopped', () => {
     mocks.useJobs.mockReturnValue({
       data: {
@@ -78,18 +152,21 @@ describe('JobList', () => {
             jobId: 'stopped-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:00:00Z',
+            request: '猫',
             state: { status: 'stopped', reason: { kind: 'human', detail: '人間が止めた' } },
           },
           {
             jobId: 'queued-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:01:00Z',
+            request: '犬',
             state: { status: 'queued' },
           },
           {
             jobId: 'running-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:02:00Z',
+            request: '鳥',
             state: { status: 'running' },
           },
         ],

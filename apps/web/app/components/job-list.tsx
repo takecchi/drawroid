@@ -3,7 +3,7 @@ import { Badge, EmptyState, ErrorNote, Item, ItemList, Section } from '@drawroid
 import { Link } from 'react-router';
 
 import { groupJobsByStatus, JOB_STATUS_ORDER, type JobSummary } from '../lib/job-groups';
-import { formatTime, KIND_LABELS, STATUS_LABELS } from '../lib/job-labels';
+import { formatTime, KIND_LABELS, previewRequest, STATUS_LABELS } from '../lib/job-labels';
 import type { BackendKind } from '../lib/backend-error';
 import { summarizeStopReason } from '../lib/stop-reason';
 import { useBackendKind } from '../lib/use-backend-kind';
@@ -16,6 +16,7 @@ function JobRow({ job, backendKind }: { job: JobSummary; backendKind?: BackendKi
         <code>{job.jobId}</code>
       </Link>
       <Badge>{KIND_LABELS[job.kind]}</Badge>
+      <span>{previewRequest(job.request)}</span>
       <span className="text-muted-foreground">{formatTime(job.createdAt)}</span>
       <JobStatusBadge status={job.state.status} />
       {job.state.status === 'stopped' && (

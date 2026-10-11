@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
 import { conflict, describeIssues, invalidFile, invalidRequest, notFound } from '../errors.js';
+import { jobRequestText } from '../job-request.js';
 
 // 蒸留の出力と同じ上限を人間の編集にも掛ける: 手で長く書けると、予算で締めた LLM への入力が人間の編集で膨らむため。
 // 上限は設定で変わるので、要求のたびに読んで組み立てる
@@ -53,7 +54,7 @@ export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
     if (!knownJobIds.has(jobId)) return { kind: 'job', jobId, job: null };
     try {
       const spec: JobSpec = await store.readJob(jobId);
-      const request = spec.kind === 'auto' ? spec.request : spec.request.prompt;
+      const request = jobRequestText(spec);
       return { kind: 'job', jobId, job: { kind: spec.kind, createdAt: spec.createdAt, request } };
     } catch {
       // 読めないジョブで項目の表示を止めない: 学んだ元が壊れていても、記憶そのものは見て直せるべきため

@@ -112,6 +112,11 @@ function connectionCode(error: unknown): string | undefined {
   }
   return undefined;
 }
+// 符号（code）だけで見分けない: fetch が禁止ポート（9 番など）を断るときの失敗には符号が無く、原因の文（bad port）だけが残るため
+function failedBeforeAnyAnswer(error: unknown): boolean {
+  return APICallError.isInstance(error) && error.statusCode === undefined && error.cause != null;
+}
+
 /**
  * サーバの返した理由が「この使い方に対応していない」と言っているか。llama.cpp は画像を読めないモデルに画像を渡すと、
  * 500 で「image input is not supported」と返す
@@ -160,12 +165,12 @@ export function describeCallFailure(error: unknown): string {
     }
     return `${LLM_CALL_FAILED_PREFIX}LLM のサーバが失敗を返した（${status ?? '応答の途中'}）。少し待ってから、もう一度頼む${said}`;
   }
-  const code = connectionCode(error);
-  if (code !== undefined) {
-    return `${LLM_CALL_FAILED_PREFIX}LLM に繋がらない（${code}）。LLM の設定の接続先（baseURL）と、LLM のサーバが起動しているかを確かめる`;
-  }
   // AI SDK が出す文（英語）は、LLM の返した理由ではないので、別の名前で添える
   const sdkSaid = message === '' ? '' : `（AI SDK の文: ${message}）`;
+  const code = connectionCode(error);
+  if (code !== undefined || failedBeforeAnyAnswer(error)) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM に繋がらない${code === undefined ? '' : `（${code}）`}。LLM の設定の接続先（baseURL）と、LLM のサーバが起動しているかを確かめる${sdkSaid}`;
+  }
   if (UNREADABLE_RESPONSES.some((kind) => kind.isInstance(error))) {
     return `${LLM_CALL_FAILED_PREFIX}LLM の応答の形が読めなかった。LLM の設定の provider の種類と接続先（baseURL）が、使っている LLM のサーバに合っているかを確かめる。合っていれば、LLM のサーバの画面やログで、応答の途中で落ちていないかを見る${sdkSaid}`;
   }
