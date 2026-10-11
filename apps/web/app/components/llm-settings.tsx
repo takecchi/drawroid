@@ -421,7 +421,7 @@ export function LlmSettings() {
                 type="text"
                 inputMode="numeric"
                 value={values.totalCallTimeoutSeconds}
-                onChange={(event) => change({ totalCallTimeoutSeconds: event.target.value })}
+                onChange={(event) => change({ callTimeoutSeconds: event.target.value })}
                 aria-label="1回の呼び出しの全体の上限（秒）"
                 placeholder="既定"
                 className="w-32"
