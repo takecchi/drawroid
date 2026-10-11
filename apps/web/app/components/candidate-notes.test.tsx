@@ -101,6 +101,17 @@ describe('CandidateNotes', () => {
     await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
+  // 欄を触ったら、前の保存の知らせは古くなる（許可・記憶・予算・LLM・バックエンドの URL の画面と同じ）
+  it('takes the note that it saved away once a note is touched again', async () => {
+    render(<CandidateNotes />);
+    await save();
+    await screen.findByText('保存した。次のジョブから考える役に渡る。');
+
+    await userEvent.type(noteOf('style.safetensors'), '線');
+
+    expect(screen.queryByText('保存した。次のジョブから考える役に渡る。')).toBeNull();
+  });
+
   it('keeps notes for candidates the backend no longer has, until they are removed', async () => {
     render(<CandidateNotes />);
 
