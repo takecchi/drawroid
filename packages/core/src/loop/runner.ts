@@ -486,7 +486,10 @@ export class JobRunner {
       try {
         const spec = await this.deps.store.readJob(jobId);
         if (spec.kind !== 'auto') continue;
-        const { status } = await this.deps.store.readState(jobId);
+        const { status } = await this.deps.store.readState(jobId).catch((error: unknown) => {
+          this.deps.log?.(`drawroid: ジョブ ${jobId} を読めず、待ち行列から飛ばした: ${messageOf(error)}`);
+          throw error;
+        });
         if (status === 'running') return jobId;
         if (status === 'queued') queued ??= jobId;
       } catch (error) {
