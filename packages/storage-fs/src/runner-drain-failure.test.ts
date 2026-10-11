@@ -147,6 +147,28 @@ describe('when the queue scan fails', () => {
   });
 });
 
+describe('probe: two running on disk', () => {
+  it('records what the failed job looks like while the other runs', async () => {
+    const { files, instrumented, runner, submit } = setup();
+    const failing = await submit();
+    const other = await submit();
+    instrumented.failStoppedWriteOnce(failing.jobId);
+    const seen: string[] = [];
+    const originalWrite = files.writeState.bind(files);
+    files.writeState = async (jobId: string, state: JobState) => {
+      if (jobId === other.jobId && state.status === 'running') {
+        seen.push(`failing=${(await files.readState(failing.jobId)).status}`);
+      }
+      return originalWrite(jobId, state);
+    };
+    runner.kick();
+    await runner.idle();
+    seen.push(`after-first-drain failing=${(await files.readState(failing.jobId)).status}`);
+    console.log('PROBE', JSON.stringify(seen));
+    expect(seen).toEqual(['failing=running', 'after-first-drain failing=running']);
+  });
+});
+
 describe('when running a queued job fails outside the job loop', () => {
   it('logs why, keeps draining the others, and runs the failed job again on the next kick', async () => {
     const { files, instrumented, runner, submit, logs } = setup();
