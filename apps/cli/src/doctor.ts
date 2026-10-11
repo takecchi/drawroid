@@ -102,7 +102,7 @@ export function screenDoctor({
 }
 
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
-  const config = await checkConfig(options.configPath);
+  const config = await checkConfig(options);
   const sections = [
     config.section,
     // 起動が拒む config.json のときは、config.json に頼る項を確かめない: 既定の値で確かめても、起動できない今は意味が無い
@@ -153,7 +153,7 @@ type LlmState = { state: 'unset' } | { state: 'invalid' } | { state: 'ok'; confi
 
 interface ConfigCheck {
   section: DoctorSection;
-  // 起動が config.json を読めずに拒む（読めない・JSON でない・欄の集まりでない・backend の形が違う）。llm の誤りは含まない（起動は未設定で続ける）
+  // 起動が config.json を読めずに拒む（読めない・JSON でない・欄の集まりでない・backend の形が違う・backend.url でバックエンドを作れない）。llm の誤りは含まない（起動は未設定で続ける）
   refusedAtStart: boolean;
   // 読めなかった欄は undefined にして、既定で続ける（起動と同じ値で確かめるため）
   backend: Config['backend'];
@@ -165,7 +165,11 @@ interface ConfigCheck {
   imageLongEdge?: number;
 }
 
-async function checkConfig(path: string): Promise<ConfigCheck> {
+async function checkConfig({
+  configPath: path,
+  backendKind,
+  backendUrl,
+}: DoctorOptions): Promise<ConfigCheck> {
   const title = '設定ファイル';
   let text: string;
   try {
@@ -301,11 +305,30 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
     });
   }
 
+  const backendConfig = backend.success ? backend.data.backend : undefined;
+  // 起動は、この URL でバックエンドを作れずに落ちる。--backend-url を付けたときは、起動もこの URL を使わない
+  const configUrl = backendConfig?.url;
+  const unusableUrl =
+    configUrl !== undefined &&
+    backendUrl === undefined &&
+    !canBuildBackend(
+      backendKind ?? backendConfig?.kind ?? DEFAULT_BACKEND_KIND,
+      configUrl,
+      backendConfig,
+    );
+  if (unusableUrl) {
+    items.push({
+      ok: false,
+      what: `config.json の backend.url が使えない（http:// か https:// で始まる URL で書く）: ${safeUrl(configUrl)}`,
+      todo: 'config.json の backend を直す。直すまで drawroid は起動しない',
+    });
+  }
+
   if (items.length === 0) items.push({ ok: true, what: `読める（${path}）` });
   return {
     section: { title, items },
-    refusedAtStart: !backend.success,
-    backend: backend.success ? backend.data.backend : undefined,
+    refusedAtStart: !backend.success || unusableUrl,
+    backend: backendConfig,
     llm,
     imageLongEdge: resolveBudgets(readBudgetOverrides(record.budgets).overrides).imageLongEdge,
   };
@@ -347,8 +370,21 @@ async function checkBackend(
   const section: DoctorSection = { title: `画像のバックエンド（${label}）`, items: [] };
   const timeoutMs = options.backendTimeoutMs ?? DEFAULT_BACKEND_TIMEOUT_MS;
   const signal = () => AbortSignal.timeout(timeoutMs);
-  const backend = backendFactory(kind)(backendOptions(url, backendConfig));
   const where = `${safeUrl(url)}（${URL_SOURCES[source]}）`;
+
+  let backend: ImageBackend;
+  try {
+    backend = backendFactory(kind)(backendOptions(url, backendConfig));
+  } catch {
+    // ここへ来るのは --backend-url の URL だけ（config.json の URL は「設定ファイル」の項で拒む）。
+    // アダプタの断りの文は載せない: 書いたままの URL を含み、URL に書いたパスワードまで出るため
+    section.items.push({
+      ok: false,
+      what: `URL として使えない: ${where}（http:// か https:// で始まる URL で書く）`,
+      todo: '--backend-url を http:// か https:// で始まる URL にする。この URL では drawroid も起動しない',
+    });
+    return section;
+  }
 
   let capabilities: BackendCapabilities;
   try {
@@ -376,6 +412,20 @@ async function checkBackend(
   );
   section.items.push(await checkControlNet(backend, capabilities, signal));
   return section;
+}
+
+// アダプタが URL を受け付けるか（http・https で始まるか）は、アダプタを作って確かめる: 決まりを doctor に書き写すと、アダプタとずれるため
+function canBuildBackend(
+  kind: BackendKind,
+  url: string,
+  backendConfig: Config['backend'],
+): boolean {
+  try {
+    backendFactory(kind)(backendOptions(url, backendConfig));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function backendTodo(
