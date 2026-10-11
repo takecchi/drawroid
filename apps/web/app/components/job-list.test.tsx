@@ -76,6 +76,35 @@ describe('JobList', () => {
     expect(screen.getByText(`${[...long].slice(0, 60).join('')}…`)).toBeTruthy();
   });
 
+  // 依頼の文は人や LLM が書いたものをそのまま出す。タグの形の文が混じっても、要素にせず文字のまま見せる
+  it('shows the request as the very letters written, even when it looks like HTML', () => {
+    const request = '<img src="x" onerror="alert(1)"><b>太字の猫</b> &amp; 犬';
+    mocks.useJobs.mockReturnValue({
+      data: {
+        jobs: [
+          {
+            jobId: 'auto-1',
+            kind: 'auto',
+            createdAt: '2026-10-09T00:00:00Z',
+            request,
+            state: { status: 'queued' },
+          },
+        ],
+        invalid: [],
+      },
+      error: undefined,
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(request)).toBeTruthy();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('b')).toBeNull();
+  });
+
   it('shows the running section first, then the queued, then the stopped', () => {
     mocks.useJobs.mockReturnValue({
       data: {
