@@ -253,6 +253,37 @@ describe('MemoryItemView editing', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  // 確かめを取り消した「消す」は何も送っていない: 前の知らせは今の状態のままなので残す
+  it('keeps the note that it saved when deleting is cancelled at the confirmation', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    const note = await screen.findByRole('status');
+
+    await user.click(screen.getByRole('button', { name: '消す' }));
+
+    expect(screen.getByRole('status')).toBe(note);
+    expect(mocks.deleteMemoryItem).not.toHaveBeenCalled();
+  });
+
+  it('keeps the refusal when deleting is cancelled at the confirmation', async () => {
+    mocks.saveMemoryItem.mockRejectedValue(new ApiError('invalid_request', '本文が空', 400));
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    const refusal = await screen.findByRole('alert');
+
+    await user.click(screen.getByRole('button', { name: '消す' }));
+
+    expect(screen.getByRole('alert')).toBe(refusal);
+    expect(mocks.deleteMemoryItem).not.toHaveBeenCalled();
+  });
+
   it('clears the note when only the tags are touched, and keeps the focus in the tags', async () => {
     mocks.saveMemoryItem.mockResolvedValue({
       item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
