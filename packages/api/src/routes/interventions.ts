@@ -73,7 +73,7 @@ export function interventionsRoutes({ store, autoQueue }: ApiDeps) {
         // ジョブの有無より先に読む: 画像の誤りは、ほかの本文の検証と同じく、対象を見る前に断るため
         const problem =
           body.kind === 'reference'
-            ? await imageProblem(body.image.data, body.image.mediaType)
+            ? undefined
             : body.kind === 'mask'
               ? await imageProblem(body.mask, 'image/png')
               : undefined;
