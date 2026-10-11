@@ -139,6 +139,7 @@
   - ジョブの始めの段（バックエンドの能力と候補を取る段）で止まったときは、`iterations/` はできない
 - `jobs/<jobId>/llm-calls/<callId>.json` — LLM 呼び出し1回の記録
   - `usage`（トークン数。M2:75）、`chars`（入力・出力の文字数。`input`・`output`。provider がトークン数を返さなくても数える）、`attempts`（試行ごとの生の出力と、スキーマに合わなかった理由。モデルが思考を流した試行には、その思考 `reasoning` も残る。失敗で終わった試行にも残り、出し直しの入力には戻さない。思考を出さないモデルや `reasoning: none` の役では、欄ごと無い）、`outcome`、`budget.notes`（予算で切った・落としたもの）、`provider`・`model`（M2:76 で切り替わったか）
+  - 人の停止・会話の割り込みで打ち切った呼び出しも残る。`outcome` は `ok: false`、`reason` は「呼び手が打ち切った…」（時間切れ・スキーマ違い・LLM の失敗とは別の文）、`attempts` の `rawOutput`・`reasoning` は打ち切るまでに流れた分（`usage` は不明で `null`）。時間切れで終わった呼び出しにも、流れていた分が残る。会話の話す役の打ち切りは `reason` が「人間の割り込みで打ち切った」
   - `purpose` が `think`・`judge` のものは回ごと。止まったときの蒸留（`distill`）など、回に属さない呼び出しは `iteration` が `null`
 - `jobs/<jobId>/distill.json` — 止まったときの蒸留の記録（M5 の節）
 

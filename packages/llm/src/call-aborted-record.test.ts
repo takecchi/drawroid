@@ -198,6 +198,44 @@ describe('a call that times out while the model is still writing', () => {
     ]);
   });
 
+  it('keeps the answer written so far when the model never stops and the whole-call limit cuts it', async () => {
+    let controller!: ReadableStreamDefaultController<StreamPart>;
+    const model = new MockLanguageModelV4({
+      doStream: async ({ abortSignal }) => {
+        abortSignal?.addEventListener('abort', () =>
+          controller.error(new DOMException('This operation was aborted', 'AbortError')),
+        );
+        return {
+          stream: new ReadableStream<StreamPart>({
+            start(c) {
+              controller = c;
+              c.enqueue({ type: 'stream-start', warnings: [] });
+              c.enqueue({ type: 'text-start', id: 't' });
+              c.enqueue({ type: 'text-delta', id: 't', delta: '{"prompt": "' });
+            },
+          }),
+        };
+      },
+    });
+    const settled = adapter(model)
+      .generateStructured(call())
+      .then((value) => value as LlmCallOutcome<unknown>);
+
+    // 10 秒ごとに増分が来続ける（黙っている時間の上限には当たらない）
+    for (let elapsed = 10; elapsed < 900; elapsed += 10) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      controller.enqueue({ type: 'text-delta', id: 't', delta: 'あ' });
+    }
+    await vi.advanceTimersByTimeAsync(10_000);
+    await flush();
+
+    const result = await settled;
+    expect(!result.ok && result.reason).toContain('全体の上限');
+    expect(result.attempts).toEqual([
+      expect.objectContaining({ rawOutput: `{"prompt": "${'あ'.repeat(89)}` }),
+    ]);
+  });
+
   it('keeps what the talking role had written, in the attempt of the failed step', async () => {
     const parts: TalkStepPart[] = [];
     const done = (async () => {
