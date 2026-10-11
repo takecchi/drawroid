@@ -117,6 +117,26 @@ describe('GenerationForm', () => {
     expect(onStarted).toHaveBeenCalledWith('job-1');
   });
 
+  // 「選ぶ」のままのときと同じ形で断る。バックエンドが空白だけの名前の候補を返しても足せない
+  it.each([
+    ['nothing is chosen', ''],
+    ['the chosen name is only spaces', '  '],
+  ])('does not let a LoRA be added while %s', async (_, name) => {
+    const loras = [{ name: '  ', label: '（空白の名前）' }, { name: 'detail' }];
+    mocks.useCandidates.mockImplementation((kind: string) => ({
+      data: { candidates: kind === 'lora' ? loras : (lists[kind] ?? []) },
+      error: undefined,
+    }));
+    const user = userEvent.setup();
+    render(<GenerationForm onStarted={() => {}} />);
+
+    await user.selectOptions(screen.getByLabelText('LoRA'), name);
+    await user.click(screen.getByRole('button', { name: '足す' }));
+
+    expect(screen.getByRole('button', { name: '足す' })).toHaveProperty('disabled', true);
+    expect(screen.queryByRole('button', { name: '外す' })).toBeNull();
+  });
+
   it('cannot be sent again while it is sending', async () => {
     mocks.startManualJob.mockReturnValue(new Promise(() => {}));
     render(<GenerationForm onStarted={() => {}} />);

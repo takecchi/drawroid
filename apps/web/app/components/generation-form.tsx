@@ -96,7 +96,7 @@ function LoraPicker({
           className="w-24"
         />
         <Button
-          disabled={name === ''}
+          disabled={name.trim() === ''}
           onClick={() => {
             onChange([...loras, { name, weight }]);
             setName('');
