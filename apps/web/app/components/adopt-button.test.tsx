@@ -127,6 +127,23 @@ describe('AdoptButton', () => {
     ).toBeTruthy();
   });
 
+  // 読み上げに聞こえるよう role=alert で出す。文は変えない。フォーカスは断りへは移さない:
+  // 送っていた確かめのボタンは消え、替わった先の「この画像に決める」（押せる）へ移るので、そのまま押し直せる
+  it('says why the image could not be taken as an alert, leaving the focus on choosing again', async () => {
+    vi.mocked(adoptImage).mockRejectedValue(new ApiError('conflict', '採れなかった', 409));
+    const user = renderButton();
+    const choose = () =>
+      screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' });
+
+    choose().focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
+
+    expect((await screen.findByRole('alert')).textContent).toBe('決められない: 採れなかった');
+    await expectFocusMovesTo(choose());
+    await expectFocusStaysOn(choose());
+  });
+
   // 押したボタンは次の形に替わって消える。フォーカスは、替わった先の最初のボタン・決めた印へ移る
   it('moves the focus along as the person decides: to deciding, back to choosing, then to the mark', async () => {
     vi.mocked(adoptImage).mockResolvedValue({ adopted: { iteration: 2, index: 0 } });
