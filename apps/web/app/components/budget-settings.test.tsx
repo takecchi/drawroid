@@ -315,6 +315,12 @@ describe('BudgetSettings', () => {
   });
 });
 
+// API が invalid[].reason に返す形（config.json の欄名と日本語の説明と原文までを含む1文）
+const PROMPT_REASON =
+  'config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）';
+const LONG_EDGE_REASON =
+  'config.json の budgets.imageLongEdge が読めない（128 以上）（原文: Too small: expected number to be >=128）';
+
 describe('BudgetInvalidNotice', () => {
   it('shows nothing when every field of budgets was read', () => {
     const { container } = render(<BudgetInvalidNotice />);
@@ -322,13 +328,21 @@ describe('BudgetInvalidNotice', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('names each field that went back to the default, with the reason', () => {
+  it('shows the sentence of the API as it is, without putting the field name in front', () => {
     mocks.useBudgetSettings.mockReturnValue({
       data: {
         ...stored,
         invalid: [
-          { path: 'text.prompt', reason: '1 以上にする' },
-          { path: 'text.unknownField', reason: '知らない欄' },
+          {
+            path: 'text.prompt',
+            reason:
+              'config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）',
+          },
+          {
+            path: 'text.unknownField',
+            reason:
+              'config.json の budgets.text.unknownField が読めない（知らない欄）（原文: nope）',
+          },
         ],
       },
       error: undefined,
@@ -341,32 +355,33 @@ describe('BudgetInvalidNotice', () => {
       .getAllByRole('listitem')
       .map((item) => item.textContent);
     expect(items).toEqual([
-      'プロンプトの文字数（text.prompt）: 1 以上にする',
-      'text.unknownField: 知らない欄',
+      'config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）',
+      'config.json の budgets.text.unknownField が読めない（知らない欄）（原文: nope）',
     ]);
   });
 
   it('says the whole budgets could not be read', () => {
     mocks.useBudgetSettings.mockReturnValue({
-      data: { ...stored, invalid: [{ path: '*', reason: '予算が、欄の集まりになっていない' }] },
+      data: {
+        ...stored,
+        invalid: [{ path: '*', reason: 'config.json の budgets: 予算が読めない' }],
+      },
       error: undefined,
     });
     render(<BudgetInvalidNotice />);
 
-    expect(screen.getByRole('listitem').textContent).toBe(
-      '予算の全体: 予算が、欄の集まりになっていない',
-    );
+    expect(screen.getByRole('listitem').textContent).toBe('config.json の budgets: 予算が読めない');
   });
 
   it('marks the field in the form that went back to the default', () => {
     mocks.useBudgetSettings.mockReturnValue({
-      data: { ...stored, invalid: [{ path: 'text.prompt', reason: '1 以上にする' }] },
+      data: { ...stored, invalid: [{ path: 'text.prompt', reason: PROMPT_REASON }] },
       error: undefined,
     });
     render(<BudgetSettings />);
 
     expect(
-      screen.getByText('config.json の値が読めず、既定の値に戻している: 1 以上にする'),
+      screen.getByText(`config.json の値が読めず、既定の値に戻している: ${PROMPT_REASON}`),
     ).toBeTruthy();
     expect(screen.getAllByText(/既定の値に戻している/)).toHaveLength(1);
   });
@@ -376,8 +391,8 @@ describe('BudgetInvalidNotice', () => {
       data: {
         ...stored,
         invalid: [
-          { path: 'text.prompt', reason: '1 以上にする' },
-          { path: 'imageLongEdge', reason: '整数にする' },
+          { path: 'text.prompt', reason: PROMPT_REASON },
+          { path: 'imageLongEdge', reason: LONG_EDGE_REASON },
         ],
       },
       error: undefined,
@@ -388,10 +403,10 @@ describe('BudgetInvalidNotice', () => {
     const noteOf = (path: string) =>
       input(path).closest('label')?.nextElementSibling?.textContent ?? null;
     expect(noteOf('text.prompt')).toBe(
-      'config.json の値が読めず、既定の値に戻している: 1 以上にする',
+      `config.json の値が読めず、既定の値に戻している: ${PROMPT_REASON}`,
     );
     expect(noteOf('imageLongEdge')).toBe(
-      'config.json の値が読めず、既定の値に戻している: 整数にする',
+      `config.json の値が読めず、既定の値に戻している: ${LONG_EDGE_REASON}`,
     );
     expect(noteOf('text.intent')).toBeNull();
   });
