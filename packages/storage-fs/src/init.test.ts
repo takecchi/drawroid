@@ -37,4 +37,26 @@ describe('initDataDir', () => {
     expect(sweptTempFiles).toEqual([join(paths.jobs, '.tmp-abc-state.json')]);
     expect(await readdir(paths.jobs)).toEqual(['keep.json']);
   });
+
+  it('sweeps temp files anywhere in the data directory, not only under jobs', async () => {
+    const { paths } = await initDataDir(root);
+    await writeFile(join(paths.root, '.tmp-abc-config.json'), '{"half');
+    await writeFile(join(paths.memory, '.tmp-def-m1.md'), '---\nhalf');
+
+    const { sweptTempFiles } = await initDataDir(root);
+
+    expect(sweptTempFiles.sort()).toEqual(
+      [join(paths.root, '.tmp-abc-config.json'), join(paths.memory, '.tmp-def-m1.md')].sort(),
+    );
+  });
+
+  it('keeps a file whose name only contains the temp prefix, not starting with it', async () => {
+    const { paths } = await initDataDir(root);
+    await writeFile(join(paths.memory, 'note.tmp-1.md'), '---\n---\nkept\n');
+
+    const { sweptTempFiles } = await initDataDir(root);
+
+    expect(sweptTempFiles).toEqual([]);
+    expect(await readdir(paths.memory)).toEqual(['note.tmp-1.md']);
+  });
 });

@@ -46,6 +46,10 @@ describe('jobFiles', () => {
     expect(job.state).toBe(join('/d', 'jobs', 'j1', 'state.json'));
     expect(job.llmCall('c1')).toBe(join('/d', 'jobs', 'j1', 'llm-calls', 'c1.json'));
     expect(it1.think).toBe(join('/d', 'jobs', 'j1', 'iterations', '0001', 'think.json'));
+    expect(it1.request).toBe(join('/d', 'jobs', 'j1', 'iterations', '0001', 'request.json'));
+    expect(it1.judge).toBe(join('/d', 'jobs', 'j1', 'iterations', '0001', 'judge.json'));
+    expect(job.mask('i1')).toBe(join('/d', 'jobs', 'j1', 'masks', 'i1.png'));
+    expect(job.selection('2-0')).toBe(join('/d', 'jobs', 'j1', 'selections', '2-0.json'));
     expect(it1.image(0)).toBe(join('/d', 'jobs', 'j1', 'iterations', '0001', 'images', '0.png'));
     expect(it1.preview(0, 512)).toBe(
       join('/d', 'jobs', 'j1', 'iterations', '0001', 'images', '0.preview-512.webp'),
@@ -54,5 +58,12 @@ describe('jobFiles', () => {
       join('/d', 'jobs', 'j1', 'iterations', '0001', 'images', '0.sent.json'),
     );
     expect(dataPaths('/d').llmCall('c2')).toBe(join('/d', 'llm-calls', 'c2.json'));
+  });
+});
+
+describe('conversationFiles', () => {
+  it('lays out a conversation as described in the conversational agent design', () => {
+    const conversation = dataPaths('/d').conversationFiles('c1');
+    expect(conversation.meta).toBe(join('/d', 'conversations', 'c1', 'conversation.json'));
   });
 });

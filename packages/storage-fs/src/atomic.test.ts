@@ -76,4 +76,10 @@ describe('createJsonExclusive', () => {
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ n: 1 });
     expect(await readdir(dir)).toEqual(['000001.json']);
   });
+
+  it('writes indented JSON with a trailing newline, like the other writes', async () => {
+    const path = join(dir, '000001.json');
+    await createJsonExclusive(path, { a: 1 });
+    expect(await readFile(path, 'utf8')).toBe('{\n  "a": 1\n}\n');
+  });
 });
