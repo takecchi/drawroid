@@ -1058,7 +1058,7 @@ function writtenCallOf(
   // 引数を JSON の文字列で書くモデルもある
   if (typeof args === 'string') {
     try {
-      return { name: record.name, input: JSON.parse(args) as unknown };
+      return { name: record.name, input: args as unknown };
     } catch {
       return { name: record.name, input: INVALID_ARGUMENTS };
     }
