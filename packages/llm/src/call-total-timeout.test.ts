@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { AiSdkLlm } from './adapter.js';
-import { llmConfigSchema, roleConfigSchema } from './config.js';
+import { roleConfigSchema } from './config.js';
 import { createLlm } from './index.js';
 
 type StreamResult = Awaited<ReturnType<MockLanguageModelV4['doStream']>>;
@@ -129,15 +129,6 @@ afterEach(() => {
 });
 
 describe('the time one LLM call may take in total', () => {
-  it('is 900 seconds unless the settings say otherwise', () => {
-    const parsed = llmConfigSchema.parse({
-      providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:1/v1' } },
-      roles: { think: { provider: 'local', model: 'qwen' } },
-    });
-
-    expect(parsed.totalCallTimeoutSeconds).toBe(900);
-  });
-
   it('gives up after exactly 900 seconds by default even though the answer never stops coming', async () => {
     const { model, push } = openStream();
     const outcome = track(adapter(model).generateStructured(call()));
@@ -281,43 +272,44 @@ describe('the time one LLM call may take in total', () => {
     );
   });
 
-  it('applies the limit written in the LLM settings to a call made from those settings', async () => {
+  // 10 秒ごとに増分を返し続ける、本物の HTTP の流れに近い偽のサーバ
+  const runawayServer = async (_input: string | URL | Request, init?: RequestInit) => {
     const encoder = new TextEncoder();
-    // 10 秒ごとに増分を返し続ける、本物の HTTP の流れに近い偽のサーバ
-    const fetch = async (_input: string | URL | Request, init?: RequestInit) => {
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-          let first = true;
-          const tick = (): void => {
-            const content = first ? '{"prompt": "' : 'あ';
-            first = false;
-            const data = { choices: [{ index: 0, delta: { content }, finish_reason: null }] };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-            timer = setTimeout(tick, 10_000);
-          };
-          let timer: ReturnType<typeof setTimeout>;
-          tick();
-          init?.signal?.addEventListener('abort', () => {
-            clearTimeout(timer);
-            controller.error(new DOMException('This operation was aborted', 'AbortError'));
-          });
-        },
-      });
-      return new Response(stream, {
-        status: 200,
-        headers: { 'content-type': 'text/event-stream' },
-      });
-    };
-    const llm = createLlm(
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        let first = true;
+        const tick = (): void => {
+          const content = first ? '{"prompt": "' : 'あ';
+          first = false;
+          const data = { choices: [{ index: 0, delta: { content }, finish_reason: null }] };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          timer = setTimeout(tick, 10_000);
+        };
+        let timer: ReturnType<typeof setTimeout>;
+        tick();
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(timer);
+          controller.error(new DOMException('This operation was aborted', 'AbortError'));
+        });
+      },
+    });
+    return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  };
+  const llmFromSettings = (settings: object) =>
+    createLlm(
       {
         providers: { local: { type: 'openai-compatible', baseURL: 'http://127.0.0.1:1/v1' } },
         roles: { think: { provider: 'local', model: 'qwen' } },
         networkRetries: 0,
-        totalCallTimeoutSeconds: 30,
+        ...settings,
       },
-      { env: {}, fetch: fetch as typeof globalThis.fetch },
+      { env: {}, fetch: runawayServer as typeof globalThis.fetch },
     );
-    const outcome = track(llm.generateStructured(call()));
+
+  it('applies the limit written in the LLM settings to a call made from those settings', async () => {
+    const outcome = track(
+      llmFromSettings({ totalCallTimeoutSeconds: 30 }).generateStructured(call()),
+    );
 
     await vi.advanceTimersByTimeAsync(29_999);
     expect(outcome.settled).toBe(false);
@@ -327,5 +319,18 @@ describe('the time one LLM call may take in total', () => {
 
     const result = outcome.value as LlmCallOutcome<unknown>;
     expect(!result.ok && result.reason).toContain('全体の上限 30 秒を超えた');
+  });
+
+  it('applies 900 seconds to a call made from settings that do not write the limit', async () => {
+    const outcome = track(llmFromSettings({}).generateStructured(call()));
+
+    await vi.advanceTimersByTimeAsync(899_999);
+    expect(outcome.settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await flush();
+    expect(outcome.settled).toBe(true);
+
+    const result = outcome.value as LlmCallOutcome<unknown>;
+    expect(!result.ok && result.reason).toContain('全体の上限 900 秒を超えた');
   });
 });

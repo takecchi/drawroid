@@ -170,9 +170,13 @@ describe('PUT /settings/llm', () => {
     });
   });
 
-  it('fills in 900 seconds for the whole time of one LLM call when it is left out', async () => {
+  it('leaves the limit on the whole time of one LLM call unwritten when it is left out', async () => {
     const res = await put(makeApp({ TEST_KEY: SECRET }), config);
-    expect(((await res.json()) as { config: LlmConfig }).config.totalCallTimeoutSeconds).toBe(900);
+    expect(res.status).toBe(200);
+    expect(written[0]).not.toHaveProperty('totalCallTimeoutSeconds');
+    expect(((await res.json()) as { config: LlmConfig }).config).not.toHaveProperty(
+      'totalCallTimeoutSeconds',
+    );
   });
 
   it('rejects a limit on the whole time that is zero, and stores nothing', async () => {

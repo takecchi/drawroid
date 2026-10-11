@@ -92,12 +92,12 @@ export const llmConfigSchema = z
     networkRetries: z.number().int().min(0).default(2),
     /** LLM が何も返さないまま待つ上限（秒）。流れが続いている間は打ち切らない */
     callTimeoutSeconds: z.number().int().positive().default(DEFAULT_CALL_TIMEOUT_SECONDS),
-    /** 1回の呼び出しの全体の時間の上限（秒）。出力が流れ続けていても、超えたら打ち切る */
-    totalCallTimeoutSeconds: z
-      .number()
-      .int()
-      .positive()
-      .default(DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS),
+    /**
+     * 1回の呼び出しの全体の時間の上限（秒）。出力が流れ続けていても、超えたら打ち切る。
+     * 省略したら DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS を、使う所（createLlm・adapter）で埋める
+     */
+    // スキーマで .default にしない: 出力の型で必須になり、設定を型で持つ所（画面の見本など）すべてに欄が要るため
+    totalCallTimeoutSeconds: z.number().int().positive().optional(),
   })
   .superRefine((config, ctx) => {
     const defined = Object.keys(config.providers);
