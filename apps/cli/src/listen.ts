@@ -51,7 +51,6 @@ export function claimPort(port: number): Promise<ClaimedPort> {
           release: () =>
             new Promise<void>((released) => {
               server.close(() => released());
-              if ('closeAllConnections' in server) server.closeAllConnections();
             }),
         }),
     );

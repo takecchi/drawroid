@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { stubDeps } from './test-support.js';
 
-import { DEFAULT_PORT, HOST, listen } from './listen.js';
+import { claimPort, DEFAULT_PORT, HOST, listen } from './listen.js';
 
 const webRoot = fileURLToPath(new URL('./test-fixtures/web', import.meta.url));
 
@@ -127,6 +127,23 @@ describe('listen', () => {
     // この1本だけ上限を延ばす: 1050 回の往復を1件ずつ行う数そのものが確かめの中身で、減らせない。
     // ふだんは 2 秒ほどだが、ほかの試験と並べて混ませた回に 6.6 秒まで伸びて、既定の上限（5 秒）で落ちた実測がある
   }, 20_000);
+
+  // 組み立てが済まずに release するとき、待たされている要求の接続も切る: 切らないと close が終わらず、起動の失敗が固まる
+  it('finishes releasing the port even while a request is waiting for the assembly', async () => {
+    const claimed = await claimPort(0);
+    const socket = net.connect(claimed.address.port, '127.0.0.1');
+    socket.on('error', () => {});
+    const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+    await new Promise<void>((resolve) =>
+      socket.once('connect', () => {
+        socket.write('GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n', () => resolve());
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    await claimed.release();
+    await closed;
+  });
 
   it('rejects when the port is already taken', async () => {
     const first = await listen({ port: 0, webRoot, deps: stubDeps() });
