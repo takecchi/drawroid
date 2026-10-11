@@ -1,5 +1,5 @@
 import { adoptImage, isApiError } from '@drawroid/swr';
-import { Button } from '@drawroid/ui';
+import { Button, ErrorNote } from '@drawroid/ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { DecidedMark } from './decided-mark';
@@ -116,8 +116,12 @@ export function AdoptButton({
       >
         この画像に決める
       </Button>
+      {/* focus は渡さない: 断られると、上の effect が押せる「この画像に決める」へフォーカスを移す（そのまま押し直せる）。
+          画像の小さな枠の中なので、文字と余白は小さく保つ */}
       {state.step === 'failed' && (
-        <p className="text-xs text-destructive">決められない: {state.message}</p>
+        <ErrorNote className="px-2 py-1 *:data-[slot=alert-description]:text-xs">
+          決められない: {state.message}
+        </ErrorNote>
       )}
     </div>
   );
