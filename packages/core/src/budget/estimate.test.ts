@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { clipText, estimateImageTokens } from './estimate.js';
+import { clipText, estimateImageTokens, estimateTextTokens } from './estimate.js';
+
+describe('estimateTextTokens', () => {
+  it('counts three ASCII characters as one token', () => {
+    expect(estimateTextTokens('abcdefghijkl')).toBe(4);
+  });
+
+  it('rounds a partial group of ASCII characters up, so the estimate is never short', () => {
+    expect(estimateTextTokens('abcd')).toBe(2);
+  });
+
+  it('counts each character outside ASCII as one token', () => {
+    expect(estimateTextTokens('夕暮れの海')).toBe(5);
+  });
+
+  it('draws the ASCII line between U+007F and U+0080', () => {
+    expect(estimateTextTokens('\u007f'.repeat(3))).toBe(1);
+    expect(estimateTextTokens('\u0080'.repeat(3))).toBe(3);
+  });
+});
 
 describe('estimateImageTokens', () => {
   it('counts one token per 750 square pixels of a square with the given long edge', () => {
