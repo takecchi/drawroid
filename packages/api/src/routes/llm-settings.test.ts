@@ -102,6 +102,18 @@ describe('GET /settings/llm', () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toMatchObject({ error: { kind: 'invalid_config' } });
   });
+
+  it('names the broken field of the stored settings in Japanese, with the original message behind', async () => {
+    saved = { providers: {}, roles: {} };
+    const res = await makeApp({}).request('/settings/llm');
+    expect(await res.json()).toEqual({
+      error: {
+        kind: 'invalid_config',
+        message:
+          'config.json の llm.roles.think が読めない（欄が無い）（原文: Invalid input: expected object, received undefined）',
+      },
+    });
+  });
 });
 
 describe('PUT /settings/llm', () => {

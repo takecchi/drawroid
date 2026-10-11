@@ -564,6 +564,24 @@ describe('assembleDrawroid, saving LLM settings that leave the window out', () =
   });
 });
 
+// config.json の llm が壊れていても、起動は止めない（LLM は未設定のまま進む）。どの欄かを日本語で言う
+describe('assembleDrawroid with a broken llm in config.json', () => {
+  it('starts anyway and names the broken field in Japanese', async () => {
+    await writeFile(
+      join(root, 'config.json'),
+      JSON.stringify({ llm: { providers: {}, roles: {} } }),
+    );
+    const written: string[] = [];
+
+    const listening = await start(undefined, undefined, (text) => written.push(text));
+
+    expect(listening.address.port).toBeGreaterThan(0);
+    expect(written).toContain(
+      'drawroid: config.json の llm が不正なので未設定のまま進む: config.json の llm.roles.think が読めない（欄が無い）（原文: Invalid input: expected object, received undefined）\n',
+    );
+  });
+});
+
 // 予算の欄ごとの上限の和が窓を超えていても、起動は止めない。端末に1行だけ知らせる
 describe('assembleDrawroid with budgets that do not fit the window', () => {
   const llmWith = (contextTokens: number) => ({
