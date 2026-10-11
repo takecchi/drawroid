@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { ApiError } from '@drawroid/swr';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GenerationForm } from './generation-form';
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 const mocks = vi.hoisted(() => ({
   startManualJob: vi.fn(),
@@ -109,6 +115,37 @@ describe('GenerationForm', () => {
       batchSize: 1,
     });
     expect(onStarted).toHaveBeenCalledWith('job-1');
+  });
+
+  // 押した「生成する」は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when the API refuses, also on a second refusal', async () => {
+    const user = userEvent.setup();
+    mocks.startManualJob.mockRejectedValue(new ApiError('invalid_request', 'steps: 数を入れる', 400));
+    render(<GenerationForm onStarted={() => {}} />);
+    const button = () => screen.getByRole('button', { name: '生成する' });
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(mocks.startManualJob).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('leaves the focus in a field being corrected after a refusal', async () => {
+    const user = userEvent.setup();
+    mocks.startManualJob.mockRejectedValue(new ApiError('invalid_request', 'steps: 数を入れる', 400));
+    render(<GenerationForm onStarted={() => {}} />);
+    await user.click(screen.getByRole('button', { name: '生成する' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    const steps = screen.getByLabelText('steps');
+    await user.clear(steps);
+    await user.type(steps, '30');
+
+    expect(document.activeElement).toBe(steps);
   });
 
   // 指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
