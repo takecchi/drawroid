@@ -163,4 +163,16 @@ describe('llmConfigSchema', () => {
       imageInput: true,
     });
   });
+
+  it('accepts a whole number of seconds for the limit of one call in total', () => {
+    expect(llmConfigSchema.parse({ ...base, totalCallTimeoutSeconds: 1800 })).toMatchObject({
+      totalCallTimeoutSeconds: 1800,
+    });
+  });
+
+  it('rejects a limit of one call in total that is not a whole number of seconds', () => {
+    expect(llmConfigSchema.safeParse({ ...base, totalCallTimeoutSeconds: 1.5 }).success).toBe(
+      false,
+    );
+  });
 });

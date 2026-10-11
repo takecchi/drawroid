@@ -620,6 +620,17 @@ describe('revise_drawing and stop_drawing', () => {
       expect(again.summary).toBe(again.result);
     });
 
+    it('finds the same instruction among the waiting ones even when another was put after it', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+      await run('revise_drawing', { instruction: '雲を足して' }, context);
+
+      const again = await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      expect(again.ok).toBe(true);
+      expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く', '雲を足して']);
+    });
+
     it('treats the same sentence in another width, case, kana or with outer spaces as the same', async () => {
       const { jobs, context, jobId } = await startHeld();
       await run('revise_drawing', { instruction: '空をもっとＲＥＤにして' }, context);
@@ -660,6 +671,7 @@ describe('revise_drawing and stop_drawing', () => {
     it('puts only the change of stop conditions when the same instruction comes with it', async () => {
       const { jobs, context, jobId } = await startHeld();
       await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+      const [first] = await jobs.listInterventions(jobId);
 
       const again = await run(
         'revise_drawing',
@@ -675,11 +687,15 @@ describe('revise_drawing and stop_drawing', () => {
       ]);
       expect(again.result).toContain('止める条件を');
       expect(again.result).toContain('3 回まで');
+      expect(again.result).toContain(
+        `同じ指示は口出し ${first!.interventionId} として既にあり、新しくは置かなかった`,
+      );
     });
 
     it('puts the attached images when the same instruction comes with them', async () => {
       const { jobs, context, jobId, conversations, conversationId } = await startHeld();
       await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+      const [first] = await jobs.listInterventions(jobId);
       const attachments = await uploads(conversations, conversationId, 2);
 
       const again = await run(
@@ -692,6 +708,9 @@ describe('revise_drawing and stop_drawing', () => {
       expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く']);
       expect(await jobs.listReferences(jobId)).toHaveLength(2);
       expect(again.result).toContain('参照画像を 2 枚添えた');
+      expect(again.result).toContain(
+        `同じ指示は口出し ${first!.interventionId} として既にあり、新しくは置かなかった`,
+      );
     });
 
     it('still puts nothing at all when an attached image is missing, even for the same instruction', async () => {

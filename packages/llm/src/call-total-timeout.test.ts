@@ -73,6 +73,35 @@ function openStream(): { model: MockLanguageModelV4; push: (part: StreamPart) =>
   };
 }
 
+/** 呼び出しのたびに新しい流れを開く偽の LLM。push は、いちばん新しく開いた流れへ流す */
+function openStreamPerAttempt(): { model: MockLanguageModelV4; push: (part: StreamPart) => void } {
+  let controller!: ReadableStreamDefaultController<StreamPart>;
+  const model = new MockLanguageModelV4({
+    doStream: async ({ abortSignal }) => {
+      let own!: ReadableStreamDefaultController<StreamPart>;
+      const stream = new ReadableStream<StreamPart>({
+        start(c) {
+          own = c;
+          c.enqueue({ type: 'stream-start', warnings: [] });
+          c.enqueue({ type: 'text-start', id: 't' });
+        },
+      });
+      controller = own;
+      abortSignal?.addEventListener('abort', () =>
+        own.error(new DOMException('This operation was aborted', 'AbortError')),
+      );
+      return { stream };
+    },
+  });
+  return {
+    model,
+    push: (part) => {
+      controller.enqueue(part);
+      if (part.type === 'finish') controller.close();
+    },
+  };
+}
+
 const call = () => ({
   role: 'think' as const,
   purpose: 'think' as const,
@@ -191,6 +220,51 @@ describe('the time one LLM call may take in total', () => {
     const result = outcome.value as LlmCallOutcome<unknown>;
     expect(!result.ok && result.attempts).toHaveLength(1);
     expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  it('starts the total time again for each asking again after a wrong answer', async () => {
+    const { model, push } = openStreamPerAttempt();
+    const outcome = track(
+      adapter(model, { totalCallTimeoutSeconds: 30, retries: 1 }).generateStructured(call()),
+    );
+
+    // 1回目: 全体の上限の少し手前（25 秒）まで流してから、閉じない JSON のまま終える（スキーマに合わない出力）
+    await flush();
+    await runawayUntil(push, 20);
+    await vi.advanceTimersByTimeAsync(5_000);
+    push({ type: 'text-end', id: 't' });
+    push(finishPart());
+    await flush();
+    expect(outcome.settled).toBe(false);
+    expect(model.doStreamCalls).toHaveLength(2);
+
+    // 2回目: 通しでは 50 秒目まで流れるが、1回の試行としては 25 秒で、正しい出力で終わる
+    await runawayUntil(push, 20);
+    await vi.advanceTimersByTimeAsync(5_000);
+    push({ type: 'text-delta', id: 't', delta: '"}' });
+    push({ type: 'text-end', id: 't' });
+    push(finishPart());
+    await flush();
+    expect(outcome.settled).toBe(true);
+
+    const result = outcome.value as LlmCallOutcome<unknown>;
+    expect(result.ok).toBe(true);
+    expect(result.attempts).toHaveLength(2);
+  });
+
+  it('leaves no timer behind once a call has finished', async () => {
+    const before = vi.getTimerCount();
+    const { model, push } = openStream();
+    const outcome = track(adapter(model).generateStructured(call()));
+
+    push({ type: 'text-delta', id: 't', delta: '{"prompt": "x"}' });
+    push({ type: 'text-end', id: 't' });
+    push(finishPart());
+    await flush();
+    expect(outcome.settled).toBe(true);
+    expect((outcome.value as LlmCallOutcome<unknown>).ok).toBe(true);
+
+    expect(vi.getTimerCount()).toBe(before);
   });
 
   it('leaves a failed record in the LLM call log, with the total limit as the reason and the time spent', async () => {
