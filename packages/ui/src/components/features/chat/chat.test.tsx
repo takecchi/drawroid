@@ -511,7 +511,11 @@ describe('ChatLayout status', () => {
 
   it('is the one main landmark of the page, holding the header, the log and the composer', () => {
     render(
-      <ChatLayout header={<h1>題</h1>} log={<p>ログ</p>} composer={<textarea aria-label="発言" />} />,
+      <ChatLayout
+        header={<h1>題</h1>}
+        log={<p>ログ</p>}
+        composer={<textarea aria-label="発言" />}
+      />,
     );
 
     const main = screen.getByRole('main');
