@@ -919,6 +919,7 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
     });
     return {
       state,
+      port,
       close: () =>
         new Promise((resolve) => {
           server.close(resolve);
@@ -946,6 +947,7 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
     const jobs = new FsJobStore(root);
     const conversations = new FsConversationStore(root);
     return {
+      api,
       clock,
       written,
       readLines: () => written.filter((line) => line.includes('LLM から読んだ')),
@@ -1052,6 +1054,58 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
     expect(llm.state.asked).toBe(3);
     expect(app.readLines()).toEqual([READ_LINE]);
     expect(new Set(limits)).toEqual(new Set([32768 - 1024]));
+  }, 30_000);
+
+  it('waits out the interval after a re-read that also could not read the window', async () => {
+    const app = await startWithClock();
+    app.clock.ms += 30_000;
+    await app.runJob();
+    expect(llm.state.asked).toBe(2);
+
+    await app.runJob();
+    app.clock.ms += 1_000;
+    await app.runJob();
+    await app.runTurn();
+
+    expect(llm.state.asked).toBe(2);
+  }, 30_000);
+
+  it('re-reads at 30 seconds after the last read and not at 29 seconds', async () => {
+    const app = await startWithClock();
+    expect(llm.state.asked).toBe(1);
+
+    app.clock.ms += 29_000;
+    await app.runJob();
+    expect(llm.state.asked).toBe(1);
+
+    app.clock.ms += 1_000;
+    await app.runJob();
+    expect(llm.state.asked).toBe(2);
+  }, 30_000);
+
+  it('counts the read made when saving the LLM settings as the last read', async () => {
+    const app = await startWithClock();
+    app.clock.ms += 600_000;
+    const saved = await fetch(`${app.api}/settings/llm`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        providers: {
+          local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${llm.port}/v1` },
+        },
+        roles: { think: { provider: 'local', model: 'm' } },
+      }),
+    });
+    expect(saved.status).toBe(200);
+    const askedAfterSave = llm.state.asked;
+    expect(askedAfterSave).toBe(2);
+
+    await app.runJob();
+    app.clock.ms += 1_000;
+    await app.runJob();
+    await app.runTurn();
+
+    expect(llm.state.asked).toBe(askedAfterSave);
   }, 30_000);
 
   it('asks /v1/models once when a job and a turn start at the same time', async () => {

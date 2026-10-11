@@ -405,6 +405,61 @@ describe('TalkRunner', () => {
     expect(received).toHaveLength(2);
   });
 
+  /** 数値・真偽値・文字列・文字列だけの配列・素のオブジェクトの欄を持つ、走った回数を数えるツール */
+  const probeTwice = async (first: unknown, second: unknown) => {
+    const counter = { runs: 0 };
+    const tool: TalkTool = {
+      name: 'probe',
+      description: '試験用。いろいろな型の欄を受け取る',
+      inputSchema: z.object({
+        count: z.number().optional(),
+        flag: z.boolean().optional(),
+        text: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        nested: z.object({ label: z.string().optional() }).optional(),
+      }),
+      run: async () => {
+        counter.runs += 1;
+        return { ok: true, result: '受け取った', summary: '受け取った' };
+      },
+    };
+    const { say } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'probe', input: first }] }
+          : n === 1
+            ? { toolCalls: [{ name: 'probe', input: second }] }
+            : { text: '受け取りました' },
+      { extraTools: [tool] },
+    );
+    await say('試して');
+    return counter.runs;
+  };
+
+  it.each([
+    ['a number', { count: 1 }, { count: 1.4 }],
+    ['a boolean', { flag: true }, { flag: false }],
+    ['the order of an array', { tags: ['夕焼け', '海'] }, { tags: ['海', '夕焼け'] }],
+    ['a space inside the text', { text: 'sunset glow' }, { text: 'sunsetglow' }],
+    ['punctuation inside the text', { text: '夕焼け、海' }, { text: '夕焼け海' }],
+  ])('runs a call again when only %s differs', async (_label, first, second) => {
+    expect(await probeTwice(first, second)).toBe(2);
+  });
+
+  it.each([
+    ['inside an array of strings', { tags: ['ﾊﾞｯｸﾗｲﾄ'] }, { tags: ['バックライト'] }],
+    [
+      'inside a plain nested object',
+      { nested: { label: 'ﾊﾞｯｸﾗｲﾄ' } },
+      { nested: { label: 'バックライト' } },
+    ],
+  ])(
+    'treats text that differs only in width %s as the same call',
+    async (_label, first, second) => {
+      expect(await probeTwice(first, second)).toBe(1);
+    },
+  );
+
   // ID は大小・仮名・全角半角の違いで別の物を指しうる: 間違えた ID が断られたあとの、直した ID での呼び直しを、同じ呼び出しとして塞がないため
   it.each([
     ['upper and lower case', 'ABC-1', 'abc-1'],

@@ -102,6 +102,35 @@ describe('the human words that are both an intervention and a conversation messa
     expect(textOf(input)).not.toContain('会話での人間の発言');
   });
 
+  it('are matched when only hiragana and katakana differ', () => {
+    const input = stopped(
+      material({
+        interventions: [{ id: 'i1', text: 'ばっくらいとを強く' }],
+        conversation: [{ id: '9', text: 'バックライトを強く' }],
+      }),
+    );
+
+    expect(textOf(input)).not.toContain('会話での人間の発言');
+    expect(input.messages.report.notes).toContainEqual(
+      expect.objectContaining({ section: 'message[9]', reason: '同じ文が口出しにある' }),
+    );
+  });
+
+  it('are not dropped between conversation messages that say the same thing twice', () => {
+    const text = textOf(
+      stopped(
+        material({
+          conversation: [
+            { id: '8', text: said },
+            { id: '9', text: said },
+          ],
+        }),
+      ),
+    );
+
+    expect(count(text, `会話での人間の発言: ${said}`)).toBe(2);
+  });
+
   it('are kept in the conversation when the wording only differs', () => {
     const text = textOf(
       stopped(
