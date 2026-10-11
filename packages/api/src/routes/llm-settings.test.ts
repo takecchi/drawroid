@@ -206,6 +206,42 @@ describe('PUT /settings/llm', () => {
   });
 });
 
+describe('PUT /settings/llm refusing the input', () => {
+  const messageOf = async (res: Response) =>
+    ((await res.json()) as { error: { message: string } }).error.message;
+
+  it('says the wrong field in Japanese with the original message in parentheses behind', async () => {
+    const res = await put(makeApp({ TEST_KEY: SECRET }), { ...config, validationRetries: -1 });
+    expect(res.status).toBe(400);
+    expect(await messageOf(res)).toMatch(/^validationRetries の値が違う（.+）（原文: .+）$/);
+    expect(written).toEqual([]);
+  });
+
+  it('says the own Japanese message of the schema once, without the original message behind', async () => {
+    const res = await put(makeApp({ TEST_KEY: SECRET }), {
+      ...config,
+      roles: { think: { provider: 'cloud', model: '' } },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: {
+        kind: 'invalid_request',
+        message: 'roles.think.model: 考える役のモデルの名前を入れる',
+      },
+    });
+  });
+
+  it('does not blame config.json, because the input is not the stored file', async () => {
+    const wrongField = await put(makeApp({}), { ...config, validationRetries: -1 });
+    const emptyModel = await put(makeApp({}), {
+      ...config,
+      roles: { think: { provider: 'cloud', model: '' } },
+    });
+    expect(await messageOf(wrongField)).not.toContain('config.json');
+    expect(await messageOf(emptyModel)).not.toContain('config.json');
+  });
+});
+
 describe('API key values', () => {
   it('never appear in the responses of PUT and GET', async () => {
     const app = makeApp({ TEST_KEY: SECRET });
