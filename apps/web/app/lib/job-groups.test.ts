@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { groupJobsByStatus, type JobSummary } from './job-groups';
 
 function job(jobId: string, createdAt: string, state: JobSummary['state']): JobSummary {
-  return { jobId, kind: 'manual', createdAt, state };
+  return { jobId, kind: 'manual', createdAt, request: 'a cat', state };
 }
 
 const stopped = {

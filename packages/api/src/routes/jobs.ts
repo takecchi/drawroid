@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
 import { notFound } from '../errors.js';
+import { jobRequestText } from '../job-request.js';
 import { readAllIterationViews, summarizeAdopted, summarizeJudge } from '../iterations.js';
 
 export function jobsRoutes({ store }: ApiDeps) {
@@ -13,7 +14,13 @@ export function jobsRoutes({ store }: ApiDeps) {
       for (const jobId of (await store.listJobIds()).reverse()) {
         try {
           const [spec, state] = await Promise.all([store.readJob(jobId), store.readState(jobId)]);
-          jobs.push({ jobId, kind: spec.kind, createdAt: spec.createdAt, state });
+          jobs.push({
+            jobId,
+            kind: spec.kind,
+            createdAt: spec.createdAt,
+            request: jobRequestText(spec),
+            state,
+          });
         } catch (error) {
           // 一覧ごと失敗させない: 人間が手で触って壊した1件のために、ほかのジョブまで見えなくなるため
           invalid.push({ jobId, reason: error instanceof Error ? error.message : String(error) });

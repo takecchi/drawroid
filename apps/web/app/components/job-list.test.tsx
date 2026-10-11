@@ -32,6 +32,41 @@ describe('JobList', () => {
     expect(screen.getAllByText('まだ無い。')).toHaveLength(1);
   });
 
+  it('shows what each job was asked to draw, cut short when it is long', () => {
+    const long = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調、'.repeat(10);
+    mocks.useJobs.mockReturnValue({
+      data: {
+        jobs: [
+          {
+            jobId: 'auto-1',
+            kind: 'auto',
+            createdAt: '2026-10-09T00:00:00Z',
+            request: '猫の絵',
+            state: { status: 'queued' },
+          },
+          {
+            jobId: 'manual-1',
+            kind: 'manual',
+            createdAt: '2026-10-09T00:01:00Z',
+            request: long,
+            state: { status: 'queued' },
+          },
+        ],
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('猫の絵')).toBeTruthy();
+    expect(screen.queryByText(long)).toBeNull();
+    expect(screen.getByText(`${[...long].slice(0, 60).join('')}…`)).toBeTruthy();
+  });
+
   it('shows the running section first, then the queued, then the stopped', () => {
     mocks.useJobs.mockReturnValue({
       data: {
@@ -41,18 +76,21 @@ describe('JobList', () => {
             jobId: 'stopped-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:00:00Z',
+            request: '猫',
             state: { status: 'stopped', reason: { kind: 'human', detail: '人間が止めた' } },
           },
           {
             jobId: 'queued-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:01:00Z',
+            request: '犬',
             state: { status: 'queued' },
           },
           {
             jobId: 'running-1',
             kind: 'auto',
             createdAt: '2026-10-09T00:02:00Z',
+            request: '鳥',
             state: { status: 'running' },
           },
         ],

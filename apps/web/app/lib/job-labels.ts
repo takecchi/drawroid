@@ -11,6 +11,15 @@ export const STATUS_LABELS: Record<JobSummary['state']['status'], string> = {
   stopped: '終了',
 };
 
+const REQUEST_PREVIEW_LIMIT = 60;
+
+export function previewRequest(request: string): string {
+  const chars = [...request.trim()];
+  return chars.length <= REQUEST_PREVIEW_LIMIT
+    ? chars.join('')
+    : `${chars.slice(0, REQUEST_PREVIEW_LIMIT).join('')}…`;
+}
+
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('ja-JP');
 }
