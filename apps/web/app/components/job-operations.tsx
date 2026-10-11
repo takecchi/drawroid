@@ -55,7 +55,8 @@ function StopButton({ jobId, manual = false }: { jobId: string; manual?: boolean
       <Button variant="danger" disabled={pending} onClick={() => void stop()}>
         ジョブを止める
       </Button>
-      {error !== undefined && <ErrorNote>止められない: {error}</ErrorNote>}
+      {/* 押したボタンは送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す（以下の断りも同じ） */}
+      {error !== undefined && <ErrorNote focus>止められない: {error}</ErrorNote>}
     </SubSection>
   );
 }
@@ -96,7 +97,7 @@ function InstructionForm({ jobId }: { jobId: string }) {
         </Button>
       </div>
       {sent && <OkNote>送った。次の回の「考える」から反映される</OkNote>}
-      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+      {error !== undefined && <ErrorNote focus>送れない: {error}</ErrorNote>}
     </SubSection>
   );
 }
@@ -146,7 +147,7 @@ function ReferenceForm({ jobId }: { jobId: string }) {
           {sent} 枚送った。次の回の境目で見る役が1度だけ見て要点にする（原寸の画像は毎回は渡さない）
         </OkNote>
       )}
-      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+      {error !== undefined && <ErrorNote focus>送れない: {error}</ErrorNote>}
     </SubSection>
   );
 }
@@ -243,7 +244,7 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
           onConfirm: () => void change(),
         }}
       />
-      {error !== undefined && <ErrorNote>変えられない: {error}</ErrorNote>}
+      {error !== undefined && <ErrorNote focus>変えられない: {error}</ErrorNote>}
     </SubSection>
   );
 }

@@ -1875,6 +1875,89 @@ describe('ConversationView', () => {
     expect(screen.queryByText(/送れない/)).toBeNull();
   });
 
+  describe('moving the focus when a send is refused', () => {
+    const cutOff = [
+      confirmed({ type: 'user.message', text: '続きを描いて', attachments: [] }),
+      confirmed({ type: 'turn.started', turn: 1, messageSeqs: [1] }),
+      confirmed({
+        type: 'turn.ended',
+        turn: 1,
+        outcome: 'interrupted',
+        reason: 'プロセスの再起動',
+      }),
+    ];
+
+    it('moves the focus to the reason when resending is refused, also on a second refusal', async () => {
+      const { source } = fakeSource([{ events: cutOff, last: 3, more: false }]);
+      const given = actions();
+      given.send.mockRejectedValue(new Error('会話が無い'));
+      const { user } = renderView(source, given);
+      const resend = await screen.findByRole('button', { name: '送り直す' });
+
+      resend.focus();
+      await user.keyboard('{Enter}');
+      const first = await screen.findByRole('alert');
+      expect(first.textContent).toBe('送れない: 会話が無い');
+      await waitFor(() => expect(document.activeElement).toBe(first));
+
+      resend.focus();
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(given.send).toHaveBeenCalledTimes(2));
+      const second = await screen.findByRole('alert');
+      await waitFor(() => expect(document.activeElement).toBe(second));
+    });
+
+    it('leaves the focus in the message field when Enter there is refused', async () => {
+      const { source } = fakeSource([]);
+      const given = actions();
+      given.send.mockRejectedValue(new Error('会話が無い'));
+      const { user } = renderView(source, given);
+
+      const field = screen.getByLabelText('発言');
+      await user.type(field, '描いて{Enter}');
+
+      expect((await screen.findByRole('alert')).textContent).toBe('送れない: 会話が無い');
+      expect(document.activeElement).toBe(field);
+    });
+
+    it('leaves the focus in the message field when the send button is refused, as the composer returns it there', async () => {
+      const { source } = fakeSource([]);
+      const given = actions();
+      given.send.mockRejectedValue(new Error('会話が無い'));
+      const { user } = renderView(source, given);
+
+      const field = screen.getByLabelText('発言');
+      await user.type(field, '描いて');
+      await user.click(screen.getByRole('button', { name: '送る' }));
+
+      expect((await screen.findByRole('alert')).textContent).toBe('送れない: 会話が無い');
+      expect(document.activeElement).toBe(field);
+    });
+
+    it('moves the focus to the reason when it is outside the message field at the refusal', async () => {
+      const { source } = fakeSource([]);
+      const given = actions();
+      let refuse: (reason: Error) => void = () => {};
+      given.send.mockReturnValue(
+        new Promise<void>((_, reject) => {
+          refuse = reject;
+        }),
+      );
+      const { user } = renderView(source, given);
+
+      await user.type(screen.getByLabelText('発言'), '描いて{Enter}');
+      const attach = document.createElement('button');
+      document.body.append(attach);
+      attach.focus();
+      await act(async () => refuse(new Error('会話が無い')));
+
+      expect((await screen.findByRole('alert')).textContent).toBe('送れない: 会話が無い');
+      // 入力欄の外にあるときは、知らせへ移す（押したボタンが送っている間 disabled になって落ちた場合と同じ扱い）
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('alert')));
+      attach.remove();
+    });
+  });
+
   it('offers to resend a message whose turn was cut off by a restart', async () => {
     const events = [
       confirmed({ type: 'user.message', text: '続きを描いて', attachments: [] }),

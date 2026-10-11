@@ -70,6 +70,12 @@ const roleConfigOf = (role: keyof typeof ROLE_LABELS) =>
 // 長めにする: ローカルの CPU で動く小さなモデルは、長い入力を読み終えて最初の1語を返すまでに数分かかることがあるため
 export const DEFAULT_CALL_TIMEOUT_SECONDS = 300;
 
+// 900 秒（15 分）にする。短くしない: ローカルの CPU で動く小さなモデルの正当な呼び出しが長い
+// （3B で、話す役が約 195 秒・見る役が約 300 秒。生成は 1〜4 トークン/秒）ので、実測の最長の3倍の余裕を置く。
+// 長くしない: 出力の上限を送らない既定のまま止まらなくなった呼び出しは、20 分以上流れ続け、ジョブが進まなかった。
+// 出力トークンの上限で止めない: その既定は設計の判断で、時間の上限は上限が無い設定のときの安全網だから
+export const DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS = 900;
+
 export const llmConfigSchema = z
   .object({
     providers: z.record(z.string(), providerConfigSchema),
@@ -86,6 +92,12 @@ export const llmConfigSchema = z
     networkRetries: z.number().int().min(0).default(2),
     /** LLM が何も返さないまま待つ上限（秒）。流れが続いている間は打ち切らない */
     callTimeoutSeconds: z.number().int().positive().default(DEFAULT_CALL_TIMEOUT_SECONDS),
+    /**
+     * 1回の呼び出しの全体の時間の上限（秒）。出力が流れ続けていても、超えたら打ち切る。
+     * 省略したら DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS を、使う所（createLlm・adapter）で埋める
+     */
+    // スキーマで .default にしない: 出力の型で必須になり、設定を型で持つ所（画面の見本など）すべてに欄が要るため
+    totalCallTimeoutSeconds: z.number().int().positive().optional(),
   })
   .superRefine((config, ctx) => {
     const defined = Object.keys(config.providers);
