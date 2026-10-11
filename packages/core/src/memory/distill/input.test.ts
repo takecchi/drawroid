@@ -136,6 +136,18 @@ describe('the human words that are both an intervention and a conversation messa
     );
   });
 
+  it('stay in the conversation when the intervention itself did not fit the budget', () => {
+    const interventions = Array.from(
+      { length: (budget.interventions.maxCount ?? 0) + 1 },
+      (_, n) => ({ id: `i${n}`, text: n === 0 ? said : `別の口出し ${n}` }),
+    );
+    const text = textOf(
+      stopped(material({ interventions, conversation: [{ id: '9', text: said }] })),
+    );
+
+    expect(text).toContain(`会話での人間の発言: ${said}`);
+  });
+
   it('do not use up the message budget of the other words', () => {
     const others = Array.from({ length: budget.messages.maxCount ?? 0 }, (_, n) => ({
       id: `o${n}`,

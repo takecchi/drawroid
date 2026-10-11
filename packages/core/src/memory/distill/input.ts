@@ -107,7 +107,7 @@ function interventionSections(
   w: SectionWriter,
   interventions: readonly InterventionMaterial[],
   budget: DistillBudget,
-): Section[] {
+): { sections: Section[]; shownTexts: string[] } {
   const clipped = interventions.map((intervention, index) => ({
     id: intervention.id,
     index,
@@ -128,9 +128,11 @@ function interventionSections(
     });
   }
   const kept = new Set(packed.included);
-  return clipped
-    .filter((i) => kept.has(i))
-    .map((i) => ({ name: `intervention[${i.id}]`, text: `口出し: ${i.text}` }));
+  const included = clipped.filter((i) => kept.has(i));
+  return {
+    sections: included.map((i) => ({ name: `intervention[${i.id}]`, text: `口出し: ${i.text}` })),
+    shownTexts: included.map((i) => interventions[i.index]!.text),
+  };
 }
 
 const sameSentence = (a: string, b: string) =>
@@ -140,13 +142,14 @@ const sameSentence = (a: string, b: string) =>
 function conversationSections(
   w: SectionWriter,
   allMessages: readonly InterventionMaterial[],
-  interventions: readonly InterventionMaterial[],
+  shownInterventionTexts: readonly string[],
   budget: DistillBudget,
 ): Section[] {
   // 口出しと同じ文は載せない: 会話で描いたジョブでは、話す役が人の発言をそのまま口出しとしてジョブに置くので、同じ文が二度載り予算も食うため。
+  // 比べる相手は入力に載った口出しだけ: 口出しが予算で落ちたなら、会話の発言が唯一の材料になる。
   // 部分一致では比べない: 言い換えや一部だけの発言は別の材料で、落とすと好みの手掛かりが減るため
   const messages = allMessages.filter((message) => {
-    if (!interventions.some((i) => sameSentence(i.text, message.text))) return true;
+    if (!shownInterventionTexts.some((text) => sameSentence(text, message.text))) return true;
     w.notes.push({
       kind: 'dropped',
       section: `message[${message.id}]`,
@@ -261,9 +264,10 @@ export function buildStoppedJobDistillInput(args: {
   ];
   const selected = selectMemory(memory, material.intent, budget.memory);
   recordMemoryDrops(w, selected.droppedByBudget, budget.memory);
+  const interventions = interventionSections(w, material.interventions, budget);
   const optional = [
-    ...interventionSections(w, material.interventions, budget),
-    ...conversationSections(w, material.conversation ?? [], material.interventions, budget),
+    ...interventions.sections,
+    ...conversationSections(w, material.conversation ?? [], interventions.shownTexts, budget),
     ...selectionSections(w, material.selections, budget),
     // 既存の項目を最後に置く: 入力の上限で削るときは、学ぶ材料より先に削る
     ...selected.selected.map(memorySection),
