@@ -56,6 +56,20 @@ describe('checkStopAtBoundary', () => {
     };
     expect(checkStopAtBoundary(check)?.kind).toBe('ai');
   });
+
+  it('names the iteration limit, then the image limit, then the time limit when several are reached together', () => {
+    const allReached = {
+      ...base,
+      conditions: { aiJudgement: false, maxIterations: 3, maxImages: 4, maxDurationMs: 60_000 },
+      completedIterations: 3,
+      imagesGenerated: 4,
+      elapsedMs: 60_000,
+    };
+    expect(checkStopAtBoundary(allReached)?.kind).toBe('limit:iterations');
+    expect(checkStopAtBoundary({ ...allReached, completedIterations: 2 })?.kind).toBe(
+      'limit:images',
+    );
+  });
 });
 
 describe('effectiveStopConditions', () => {
