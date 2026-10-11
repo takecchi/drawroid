@@ -414,7 +414,7 @@ export class AiSdkLlm implements LlmPort {
           durationMs: this.now() - started,
           ...reasoningOf(thought.text),
         };
-        if (call.signal.aborted) throw new LlmCallAborted([...attempts, unfinished], error);
+        if (call.signal.aborted) throw new LlmCallAborted([unfinished], error);
         const message = error instanceof Error ? error.message : String(error);
         if (error instanceof OutputCutAtLimit || LENGTH_IN_MESSAGE.test(message)) {
           const cut = error instanceof OutputCutAtLimit ? error : undefined;
