@@ -105,6 +105,29 @@ describe('ChooseAsFavorite refusal', () => {
   });
 });
 
+describe('ChooseAsFavorite refusal drawn again', () => {
+  // 断りが出たまま描き直されても（別の所の選び直しが届いたとき）、ほかへ移したフォーカスを奪わない
+  it('does not take the focus again when it is drawn again while the refusal stays', async () => {
+    vi.mocked(setSelection).mockRejectedValue(new ApiError('conflict', '画像が無い', 409));
+    const row = () => (
+      <ChooseAsFavorite jobId={JOB} imageKey="2-0" imageLabel="2 回目の画像 1 番" verdict={null} />
+    );
+    const { rerender } = render(row());
+    await userEvent.setup().click(screen.getByRole('button', { name: CHOOSE }));
+    const refusal = await screen.findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(refusal));
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    rerender(row());
+
+    expect(screen.getByRole('alert')).toBe(refusal);
+    await expectFocusStaysOn(elsewhere);
+    elsewhere.remove();
+  });
+});
+
 describe('ChooseAsFavorite focus', () => {
   // 押したボタンは決めた印に替わって消える。フォーカスは、押した所の印へ移る（同じ画像の、ほかの所の印へは移さない）
   it('moves the focus to the mark where the person chose the image', async () => {
