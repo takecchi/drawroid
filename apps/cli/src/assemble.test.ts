@@ -962,8 +962,6 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
         await vi.waitFor(async () => expect((await jobs.readState(jobId)).status).toBe('stopped'), {
           timeout: 10_000,
         });
-        // 止まった直後は、ランナーがまだ待ち行列を見終わっていないことがある。そこで次のジョブを投入すると、起こす合図が空振りして待ち行列に残る
-        await new Promise((resolve) => setTimeout(resolve, 300));
       },
       /** 会話で1回話しかけ、ターンが閉じるまで待って、その LLM 呼び出しの入力の上限を返す */
       async runTurn() {
