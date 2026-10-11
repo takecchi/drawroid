@@ -61,6 +61,11 @@ export type {
 } from './deps.js';
 export type { ApiErrorBody } from './errors.js';
 export { describeStorageFailure } from './errors.js';
+export {
+  describeConfigIssue,
+  describeConfigIssues,
+  describeUnparsableConfig,
+} from './config-problems.js';
 
 // 機能ごとのルートは routes/ に1ファイルずつ置き、ここには1行ずつ足す。
 // 本文の上限はルートごとに付けず、ここで全体にかける: ルートを足したときに付け忘れないため

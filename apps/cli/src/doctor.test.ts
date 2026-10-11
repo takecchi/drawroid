@@ -198,8 +198,91 @@ describe('runDoctor', () => {
 
   it('names the broken JSON', async () => {
     const { text } = await setup('{"llm": ');
-    expect(text).toContain('足りない  JSON として読めない');
-    expect(text).toContain('config.json の llm が読めないので確かめられない');
+    expect(text).toContain('足りない  config.json が JSON として読めない（原文: ');
+    expect(text).toContain('config.json が読めないので確かめられない');
+  });
+
+  // 起動は config.json が読めないと拒む。直すまで起動しないので、「起動して」とは勧めず、既定の値で確かめにも行かない
+  describe('when config.json is one that start-up refuses', () => {
+    const FIX_FIRST = '→ config.json を直してから確かめる';
+    const START_ADVICE = 'drawroid を起動し、画面の「設定」';
+
+    it.each([
+      ['not JSON', '{'],
+      ['a backend url of the wrong type', '{"backend":{"url":123}}'],
+      ['an unknown backend kind', '{"backend":{"kind":"comfyui"}}'],
+      ['not an object', '[]'],
+    ])('says to fix it first for the backend and the LLM, with %s', async (_, text) => {
+      const { report, text: report_text } = await setup(text);
+      const backend = report.sections.find(({ title }) => title.startsWith('画像のバックエンド'));
+      const llm = report.sections.find(({ title }) => title === 'LLM');
+      for (const section of [backend, llm]) {
+        expect(section?.items).toHaveLength(1);
+        expect(section?.items[0]).toMatchObject({
+          ok: false,
+          what: 'config.json が読めないので確かめられない（「設定ファイル」の項を見る）',
+          todo: 'config.json を直してから確かめる',
+        });
+      }
+      expect(report_text.split(FIX_FIRST)).toHaveLength(3);
+      expect(report_text).not.toContain(START_ADVICE);
+      expect(report_text).not.toContain('繋がらない');
+    });
+
+    it('does not ask the backend, even when the URL in config.json answers', async () => {
+      let asked = 0;
+      const server = createServer((_, res) => {
+        asked += 1;
+        res.end('{}');
+      });
+      servers.push(server);
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+      await setup({ backend: { url, kind: 'comfyui' } }, { backendUrl: url });
+
+      expect(asked).toBe(0);
+    });
+
+    it('still checks where the web is served', async () => {
+      const { report } = await setup('{', { webRoot: () => '/nonexistent/web' });
+      const web = report.sections.find(({ title }) => title === 'web の配り先');
+      expect(web?.items[0]?.what).toContain('/nonexistent/web に index.html が無い');
+      const good = await setup('{');
+      expect(good.text).toContain('よい      ある（');
+    });
+
+    it('does not say to fix it first when config.json can be read', async () => {
+      for (const config of [undefined, {}, { backend: { url: 'http://127.0.0.1:1' } }]) {
+        const { text } = await setup(config);
+        expect(text).not.toContain('config.json を直してから確かめる');
+      }
+    });
+  });
+
+  // llm だけの誤りでは、起動は LLM を未設定のまま続ける。画像のバックエンドは今までどおり確かめる
+  describe('when only the llm of config.json is broken', () => {
+    it('says to fix the llm first, says it stays unset until then, and does not tell to start drawroid', async () => {
+      const { report, text } = await setup({ llm: { providers: {}, roles: {} } });
+      const llm = report.sections.find(({ title }) => title === 'LLM');
+      expect(llm?.items).toEqual([
+        {
+          ok: false,
+          what: 'config.json の llm が読めないので確かめられない（「設定ファイル」の項を見る）',
+          todo: 'config.json の llm を直してから確かめる（直すまで、起動しても LLM は未設定のまま）',
+        },
+      ]);
+      expect(text).not.toContain('drawroid を起動し、画面の「設定」');
+      expect(text).toContain(
+        '足りない  config.json の llm.roles.think が読めない（欄が無い）（原文: Invalid input: expected object, received undefined）',
+      );
+    });
+
+    it('still checks the image backend with the URL it would use', async () => {
+      const { text, url } = await setup({ llm: { providers: {}, roles: {} } });
+      expect(text).toContain(`足りない  繋がらない: ${url}`);
+      expect(text).not.toContain('config.json を直してから確かめる\n');
+    });
   });
 
   it('names each broken field of config.json', async () => {
@@ -212,8 +295,8 @@ describe('runDoctor', () => {
       conversations: { defaultStopConditions: {} },
     });
     for (const field of [
-      'backend.url',
-      'llm.roles.think',
+      'config.json の backend.url',
+      'config.json の llm.roles.think',
       'budgets.text.prompt',
       'permissions.steps',
       'generationProgress.',

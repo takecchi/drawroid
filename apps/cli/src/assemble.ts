@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { BackendKind } from '@drawroid/api';
+import { describeConfigIssues, type BackendKind } from '@drawroid/api';
 import {
   activeJobOfConversation,
   backfillJobEvents,
@@ -247,7 +247,7 @@ export async function assembleDrawroid({
       await configureLlm(parsed.data);
     } else {
       log(
-        `drawroid: config.json の llm が不正なので未設定のまま進む: ${parsed.error.issues[0]?.message ?? ''}`,
+        `drawroid: config.json の llm が不正なので未設定のまま進む: ${describeConfigIssues(parsed.error, ['llm'])}`,
       );
     }
   }
