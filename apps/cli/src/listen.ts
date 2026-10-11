@@ -15,20 +15,50 @@ export interface Listening {
   address: AddressInfo;
 }
 
-export function listen({
-  port,
-  webRoot,
-  deps,
-}: {
-  port: number;
-  webRoot: string;
-  deps: ApiDeps;
-}): Promise<Listening> {
+type Fetch = ReturnType<typeof createApp>['fetch'];
+
+/** 取れたポート。組み立てが済んだら open で要求を受け始め、済まずに終わるなら release で返す */
+export interface ClaimedPort {
+  address: AddressInfo;
+  open(options: { webRoot: string; deps: ApiDeps }): Listening;
+  release(): Promise<void>;
+}
+
+/**
+ * ポートを取る。取れなければ EADDRINUSE などで失敗する。
+ * 取ってから open までに来た要求は、断らずに open まで待たせる
+ */
+// 確かめて閉じてから listen し直さない: 確かめと listen の間に別の drawroid が同じポートを取る窓ができ、
+// 起動の行を出したあとで落ちる元の形に戻るため。取ったものをそのまま使う
+export function claimPort(port: number): Promise<ClaimedPort> {
   return new Promise((resolve, reject) => {
+    let ready!: (fetch: Fetch) => void;
+    const app = new Promise<Fetch>((resolveApp) => (ready = resolveApp));
     const server = serve(
-      { fetch: createApp({ webRoot, deps }).fetch, hostname: HOST, port },
-      (address) => resolve({ server, address }),
+      {
+        // 組み立ての途中は app が決まらず、要求はここで待つ。release されたら接続ごと閉じるので待ち続けない
+        fetch: async (...args: Parameters<Fetch>) => (await app)(...args),
+        hostname: HOST,
+        port,
+      },
+      (address) =>
+        resolve({
+          address,
+          open: ({ webRoot, deps }) => {
+            ready(createApp({ webRoot, deps }).fetch);
+            return { server, address };
+          },
+          release: () =>
+            new Promise<void>((released) => {
+              server.close(() => released());
+              if ('closeAllConnections' in server) server.closeAllConnections();
+            }),
+        }),
     );
     server.once('error', reject);
   });
+}
+
+export async function listen(options: { port: number; webRoot: string; deps: ApiDeps }) {
+  return (await claimPort(options.port)).open(options);
 }

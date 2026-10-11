@@ -2,9 +2,9 @@
 // 組み立ての順（話す役を立ててからジョブを再開する・落ちる前の止まりで話しかけ直さない）と、止める合図のつなぎは、
 // 部品の試験からは見えないため、組み立てそのものを呼ぶ
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer as createTcpServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -473,6 +473,158 @@ describe('assembleDrawroid, interrupting everything in a conversation', () => {
     expect(await interruptAll()).toBe(newer);
     expect((await store.readState(newer)).status).toBe('stopped');
     expect((await store.readState(older)).status).toBe('queued');
+  });
+});
+
+/** 空いているポートを1つ選ぶ（閉じて返す） */
+async function freePort(): Promise<number> {
+  const probe = createTcpServer();
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
+const startOn = (port: number, dataRoot: string, write: (text: string) => void = () => undefined) =>
+  assembleDrawroid({
+    root: dataRoot,
+    args: { port, backend: undefined, backendUrl: 'http://127.0.0.1:9' },
+    env: {},
+    signals: new EventEmitter(),
+    exit: vi.fn(),
+    write,
+    webRoot,
+  });
+
+const exists = (path: string) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
+
+describe('assembleDrawroid, when the port is already taken', () => {
+  let holder: ReturnType<typeof createTcpServer> | undefined;
+  afterEach(async () => {
+    await new Promise((resolve) => (holder ? holder.close(resolve) : resolve(undefined)));
+    holder = undefined;
+  });
+  const takePort = async () => {
+    holder = createTcpServer();
+    await new Promise<void>((resolve) => holder!.listen(0, '127.0.0.1', resolve));
+    return (holder.address() as AddressInfo).port;
+  };
+
+  it('fails with EADDRINUSE without writing any start-up line', async () => {
+    const port = await takePort();
+    const written: string[] = [];
+
+    await expect(startOn(port, root, (text) => written.push(text))).rejects.toMatchObject({
+      code: 'EADDRINUSE',
+    });
+
+    expect(written).toEqual([]);
+  });
+
+  it('creates nothing in the data directory that did not exist', async () => {
+    const port = await takePort();
+    const fresh = join(root, '..', 'fresh-data');
+
+    await expect(startOn(port, fresh)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+
+    expect(await exists(fresh)).toBe(false);
+  });
+
+  it('leaves the leftover temporary files of the last run where they are', async () => {
+    const port = await takePort();
+    await writeFile(join(root, '.tmp-left-over'), 'partial');
+
+    await expect(startOn(port, root)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+
+    expect(await readdir(root)).toContain('.tmp-left-over');
+  });
+});
+
+describe('assembleDrawroid, when the start-up fails for another reason', () => {
+  it('gives the port back and does not blame the port', async () => {
+    await writeFile(join(root, 'config.json'), '{ broken');
+    const port = await freePort();
+    const written: string[] = [];
+
+    const failure = await startOn(port, root, (text) => written.push(text)).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as NodeJS.ErrnoException).code).not.toBe('EADDRINUSE');
+    const again = createTcpServer();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        again.once('error', reject);
+        again.listen(port, '127.0.0.1', resolve);
+      });
+    } finally {
+      await new Promise((resolve) => again.close(resolve));
+    }
+  });
+});
+
+describe('assembleDrawroid, the lines it writes when it starts', () => {
+  it('writes the data directory, the backend and the unset LLM in this order', async () => {
+    const written: string[] = [];
+
+    await start(undefined, undefined, (text) => written.push(text));
+
+    const lines = written.join('').split('\n');
+    const at = (part: string) => lines.findIndex((line) => line.includes(part));
+    expect(at('drawroid: データディレクトリ ')).toBe(0);
+    expect(at('drawroid: Forge http://127.0.0.1:9')).toBeGreaterThan(at('データディレクトリ'));
+    expect(at('drawroid: LLM が未設定')).toBeGreaterThan(at('drawroid: Forge'));
+  });
+});
+
+// 待ち受けは組み立ての前に始まる。組み立てが済むまでに来た要求は、断らず、済んでから答える
+describe('assembleDrawroid, a request that arrives while it is still assembling', () => {
+  it('is answered after the assembly finishes, not refused', async () => {
+    let modelsAsked: (() => void) | undefined;
+    const asked = new Promise<void>((resolve) => (modelsAsked = resolve));
+    let held: import('node:http').ServerResponse | undefined;
+    const llm = createServer((req, res) => {
+      req.resume();
+      held = res;
+      modelsAsked?.();
+    });
+    await new Promise<void>((resolve) => llm.listen(0, '127.0.0.1', resolve));
+    await writeLlmSettings(join(root, 'config.json'), {
+      providers: {
+        local: {
+          type: 'openai-compatible',
+          baseURL: `http://127.0.0.1:${(llm.address() as AddressInfo).port}/v1`,
+        },
+      },
+      roles: { think: { provider: 'local', model: 'm' } },
+    });
+    const port = await freePort();
+    try {
+      const starting = startOn(port, root).then((listening) => (running = listening));
+      // LLM の窓を読む問い合わせが来た = 組み立ての途中
+      await asked;
+      const early = fetch(`http://127.0.0.1:${port}/api/settings/backend`);
+      const settled = vi.fn();
+      void early.then(settled, settled);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(settled).not.toHaveBeenCalled();
+
+      held?.writeHead(404).end();
+      await starting;
+
+      const res = await early;
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ kind: 'forge' });
+    } finally {
+      llm.closeAllConnections();
+      await new Promise((resolve) => llm.close(resolve));
+    }
   });
 });
 

@@ -56,7 +56,7 @@ import { createDetectedOnSave } from './detected-on-save.js';
 import { createGenerationProgressSettings } from './generation-progress-settings.js';
 import { readConfig, resolveBackendKindWithSource, resolveBackendUrlWithSource } from './config.js';
 import { createInputWindows } from './input-windows.js';
-import { listen, type Listening } from './listen.js';
+import { claimPort, type ClaimedPort, type Listening } from './listen.js';
 import { screenDoctor } from './doctor.js';
 import { logFailedJobs } from './failure-log.js';
 import { createLlmSettings } from './llm-settings.js';
@@ -91,16 +91,22 @@ export interface AssembleOptions {
  */
 // 組み立ての順を変えない: 途切れたターンを閉じて書き足してから話す役を立て、話す役を立ててからジョブを再開する。
 // 順を崩すと、落ちる前の止まりで話しかけ直したり、再開したジョブの止まりが話す役に届かなかったりするため
-export async function assembleDrawroid({
-  root,
-  args,
-  env,
-  signals,
-  exit,
-  write,
-  webRoot,
-  now = Date.now,
-}: AssembleOptions): Promise<Listening> {
+export async function assembleDrawroid(options: AssembleOptions): Promise<Listening> {
+  // ポートは、起動の行もデータディレクトリへの書き込みも前に取る: 取れないのに「成功しそうな行」を先に出して落ちないため。
+  // 組み立ての途中で失敗したら返す: ポートを握ったまま固まらないため
+  const claimed = await claimPort(options.args.port);
+  try {
+    return await assembleOn(claimed, options);
+  } catch (error) {
+    await claimed.release();
+    throw error;
+  }
+}
+
+async function assembleOn(
+  claimed: ClaimedPort,
+  { root, args, env, signals, exit, write, webRoot, now = Date.now }: AssembleOptions,
+): Promise<Listening> {
   const { sweptTempFiles } = await initDataDir(root);
   write(`drawroid: データディレクトリ ${root}\n`);
   if (sweptTempFiles.length > 0) {
@@ -342,8 +348,7 @@ export async function assembleDrawroid({
   });
   // 落ちる前の自動ジョブを再開する。talkRunner を作ってから回す: 再開したジョブが止まったときに、橋渡しが話す役へ知らせるため
   autoQueue.kick();
-  return listen({
-    port: args.port,
+  return claimed.open({
     webRoot: servedWebRoot,
     deps: {
       backend,
