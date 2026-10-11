@@ -152,6 +152,17 @@ describe('selections of the images of a job', () => {
     expect(notified).toEqual([jobId]);
   });
 
+  it('tells the background distiller when a selection is cleared, too', async () => {
+    const jobId = await jobWithImages();
+    await put(jobId, '10-1', { verdict: 'favorite' });
+    notified = [];
+
+    const res = await put(jobId, '10-1', { verdict: null });
+
+    expect(res.status).toBe(200);
+    expect(notified).toEqual([jobId]);
+  });
+
   it('does not tell the background distiller about a selection that was refused', async () => {
     const jobId = await jobWithImages();
 
@@ -190,6 +201,27 @@ describe('selections of the images of a job', () => {
     expect(await selections(jobId)).toEqual([
       { imageKey: '2-1', verdict: 'favorite', issues: [] },
       { imageKey: '10-0', verdict: 'rejected', score: 0.4, issues: ['背景が暗い'] },
+    ]);
+  });
+
+  it('lists the images of one iteration by their number, not by the name', async () => {
+    const jobId = await jobWithImages();
+    const elevenImages: GenerationResult = {
+      images: Array.from({ length: 11 }, (_, i) => ({
+        png: Uint8Array.of(137, 80, 78, 71, i),
+        seed: i,
+        metadata: {},
+      })),
+      metadata: {},
+    };
+    await store.writeGeneration(jobId, 3, request, elevenImages);
+
+    await put(jobId, '3-10', { verdict: 'rejected' });
+    await put(jobId, '3-2', { verdict: 'favorite' });
+
+    expect(await selections(jobId)).toMatchObject([
+      { imageKey: '3-2', verdict: 'favorite' },
+      { imageKey: '3-10', verdict: 'rejected' },
     ]);
   });
 
