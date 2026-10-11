@@ -56,9 +56,9 @@ export async function recheckBackendStatus(): Promise<void> {
   await mutate(keys.backend);
 }
 
-/** URL か種類が不正なときは ApiError（kind: 'invalid_request'）を投げる。kind を省けば、いまの種類のまま */
+/** URL か種類が不正なときは ApiError（kind: 'invalid_request'）を投げる。省いたほうは、いまの値のまま（どちらも省くと不正） */
 export async function saveBackendSettings(input: {
-  url: string;
+  url?: string;
   kind?: BackendSettingsResponse['kind'];
 }): Promise<BackendSettingsResponse> {
   const saved = await unwrap<BackendSettingsResponse>(() =>

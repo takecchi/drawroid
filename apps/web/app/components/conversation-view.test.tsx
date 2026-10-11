@@ -585,6 +585,26 @@ describe('ConversationView', () => {
     expect(document.activeElement === screen.getByLabelText('発言')).toBe(focused);
   });
 
+  // main の目印が無いと、読み上げの「本文へ」で会話の画面だけ本文が見つからない
+  it('holds the heading, the log and the message field in the one main landmark', () => {
+    const { source } = fakeSource([]);
+    render(
+      <MemoryRouter>
+        <ConversationView
+          conversationId="c1"
+          source={source}
+          actions={actions()}
+          title={<h1>海辺の少女を描いて</h1>}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    const main = screen.getByRole('main');
+    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('海辺の少女を描いて');
+    expect(within(main).getByLabelText('発言')).toBeTruthy();
+  });
+
   it('draws the restored log once, after every page has been read', async () => {
     let releaseSecond: (page: EventPage) => void = () => {};
     const first = [confirmed({ type: 'user.message', text: '一つ目のページ', attachments: [] })];

@@ -311,6 +311,17 @@ describe('progressOf', () => {
       }),
     ).toEqual({ iteration: 2, remainingImages: 0, remainingMs: 0 });
   });
+
+  it('does not count the iterations below zero when the limit was lowered under the iterations done', () => {
+    expect(
+      progressOf({
+        iteration: 4,
+        imagesGenerated: 0,
+        elapsedMs: 0,
+        conditions: { aiJudgement: true, maxIterations: 2 },
+      }),
+    ).toEqual({ iteration: 4, remainingIterations: 0 });
+  });
 });
 
 describe('the progress line in the think input', () => {

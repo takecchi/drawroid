@@ -184,6 +184,61 @@ describe('assembleDrawroid, telling where the backend kind came from', () => {
   });
 });
 
+describe('assembleDrawroid, telling whether the start-up arguments are in effect', () => {
+  const startWith = async (args: { backend?: 'forge' | 'a1111'; backendUrl?: string }) => {
+    running = await assembleDrawroid({
+      root,
+      args: { port: 0, backend: args.backend, backendUrl: args.backendUrl },
+      env: {},
+      signals: new EventEmitter(),
+      exit: vi.fn(),
+      write: () => undefined,
+      webRoot,
+    });
+    return `http://127.0.0.1:${running.address.port}/api/settings/backend`;
+  };
+  const save = (url: string, body: object) =>
+    fetch(url, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('keeps saying both arguments win next time after the screen saves a kind and a url', async () => {
+    const url = await startWith({ backend: 'forge', backendUrl: 'http://127.0.0.1:9' });
+    expect(await (await fetch(url)).json()).toMatchObject({
+      startupArgs: { kind: true, url: true },
+    });
+    const saved = await save(url, { url: 'http://127.0.0.1:9', kind: 'a1111' });
+    expect(await saved.json()).toMatchObject({
+      kindSource: 'config',
+      urlSource: 'config',
+      startupArgs: { kind: true, url: true },
+    });
+    expect(await (await fetch(url)).json()).toMatchObject({
+      kindSource: 'config',
+      urlSource: 'config',
+      startupArgs: { kind: true, url: true },
+    });
+  });
+
+  it('says neither argument is in effect when started without them, also after a save', async () => {
+    const url = await startWith({});
+    expect(await (await fetch(url)).json()).toMatchObject({
+      startupArgs: { kind: false, url: false },
+    });
+    const saved = await save(url, { url: 'http://127.0.0.1:9', kind: 'a1111' });
+    expect(await saved.json()).toMatchObject({ startupArgs: { kind: false, url: false } });
+  });
+
+  it('tells the kind and the url apart when only one of them is given at start-up', async () => {
+    const url = await startWith({ backend: 'a1111' });
+    expect(await (await fetch(url)).json()).toMatchObject({
+      startupArgs: { kind: true, url: false },
+    });
+  });
+});
+
 describe('assembleDrawroid after a restart', () => {
   // 落ちる前の止まりで話しかけ直さない: 途切れたターンをやり直さないのと同じく、話しかけるのは止まったその場だけ
   it('does not speak about a job that stopped before the process went down, even if it had not spoken yet', async () => {
@@ -644,5 +699,201 @@ describe('assembleDrawroid, telling what it compared and reading the window once
     expect(saved.status).toBe(200);
     expect(saved.asked()).toBe(1);
     expect(saved.elapsedMs).toBeLessThan(8000);
+  }, 30_000);
+});
+
+// 起動が LLM サーバのモデル読み込み中（/v1/models が 503）に重なって窓を読めなかった役は、LLM が上がったあと、次に使うときに読み直す
+describe('assembleDrawroid, reading the window again for an LLM that was still loading at start-up', () => {
+  const MINUTE_MS = 60_000;
+  const READ_LINE = 'drawroid: think の役の文脈の上限を LLM から読んだ: 32768\n';
+
+  /** 読み込み中（503）から始まる偽の LLM。chat は構造化出力にならない返事だけを返し、ジョブも話す役のターンも1回の呼び出しで閉じる */
+  async function loadingLlm() {
+    const state = { loaded: false, delayMs: 0, asked: 0 };
+    const server = createServer((req, res) => {
+      req.resume();
+      if (req.url === '/v1/models') {
+        state.asked += 1;
+        setTimeout(() => {
+          res.statusCode = state.loaded ? 200 : 503;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            JSON.stringify(
+              state.loaded ? { data: [{ id: 'm', meta: { n_ctx: 32768 } }] } : { error: 'loading' },
+            ),
+          );
+        }, state.delayMs);
+        return;
+      }
+      res.setHeader('content-type', 'application/json');
+      res.end(
+        JSON.stringify({
+          id: 'c',
+          object: 'chat.completion',
+          created: 0,
+          model: 'm',
+          choices: [
+            { index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'いいえ' } },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    await writeLlmSettings(join(root, 'config.json'), {
+      providers: { local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${port}/v1` } },
+      roles: { think: { provider: 'local', model: 'm' } },
+      validationRetries: 0,
+      networkRetries: 0,
+    });
+    return {
+      state,
+      close: () =>
+        new Promise((resolve) => {
+          server.close(resolve);
+          server.closeAllConnections();
+        }),
+    };
+  }
+
+  /** 組み立てを、動かせる時計つきで起動する */
+  async function startWithClock() {
+    const clock = { ms: Date.parse('2026-10-11T00:00:00Z') };
+    const written: string[] = [];
+    const listening = await assembleDrawroid({
+      root,
+      args: { port: 0, backend: undefined, backendUrl: 'http://127.0.0.1:9' },
+      env: {},
+      signals: new EventEmitter(),
+      exit: vi.fn(),
+      write: (text) => written.push(text),
+      webRoot,
+      now: () => clock.ms,
+    });
+    running = listening;
+    const api = `http://127.0.0.1:${listening.address.port}/api`;
+    const jobs = new FsJobStore(root);
+    const conversations = new FsConversationStore(root);
+    return {
+      clock,
+      written,
+      readLines: () => written.filter((line) => line.includes('LLM から読んだ')),
+      /** 自動ジョブを1つ投入し、止まるまで待つ（バックエンドが繋がらないので、LLM を呼ぶ前に止まる。窓は端末の行と /v1/models の問い合わせで見る） */
+      async runJob() {
+        const response = await fetch(`${api}/jobs/auto`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ request: '夕暮れの海辺に立つ少女' }),
+        });
+        const { jobId } = (await response.json()) as { jobId: string };
+        await vi.waitFor(async () => expect((await jobs.readState(jobId)).status).toBe('stopped'), {
+          timeout: 10_000,
+        });
+        // 止まった直後は、ランナーがまだ待ち行列を見終わっていないことがある。そこで次のジョブを投入すると、起こす合図が空振りして待ち行列に残る
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      },
+      /** 会話で1回話しかけ、ターンが閉じるまで待って、その LLM 呼び出しの入力の上限を返す */
+      async runTurn() {
+        const { conversationId } = await conversations.createConversation(new Date());
+        const response = await fetch(`${api}/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: 'こんにちは' }),
+        });
+        expect(response.status).toBe(202);
+        await turnEnded(conversations, conversationId);
+        return (await conversations.listLlmCallRecords(conversationId)).records.map(
+          (r) => r.budget.inputTokenLimit,
+        );
+      },
+    };
+  }
+
+  let llm: Awaited<ReturnType<typeof loadingLlm>>;
+  beforeEach(async () => {
+    llm = await loadingLlm();
+  });
+  afterEach(async () => {
+    await llm.close();
+  });
+
+  it('says it read the window, once, when the next job starts after the LLM has come up', async () => {
+    const app = await startWithClock();
+    expect(app.readLines()).toEqual([]);
+    llm.state.loaded = true;
+    app.clock.ms += 10 * MINUTE_MS;
+
+    await app.runJob();
+
+    expect(app.readLines()).toEqual([READ_LINE]);
+  }, 30_000);
+
+  it('applies the window to the next turn of the talk role after the LLM has come up', async () => {
+    const app = await startWithClock();
+    llm.state.loaded = true;
+    app.clock.ms += 10 * MINUTE_MS;
+
+    const limits = await app.runTurn();
+
+    expect(app.readLines()).toEqual([READ_LINE]);
+    expect(limits.length).toBeGreaterThan(0);
+    expect(new Set(limits)).toEqual(new Set([32768 - 1024]));
+  }, 30_000);
+
+  it('does not ask /v1/models again once every role has its window', async () => {
+    const app = await startWithClock();
+    llm.state.loaded = true;
+    app.clock.ms += 10 * MINUTE_MS;
+    await app.runJob();
+    const askedAfterReread = llm.state.asked;
+
+    app.clock.ms += 10 * MINUTE_MS;
+    await app.runJob();
+    await app.runTurn();
+
+    expect(llm.state.asked).toBe(askedAfterReread);
+    expect(app.readLines()).toEqual([READ_LINE]);
+  }, 30_000);
+
+  it('does not ask /v1/models again within a short time of the last read, even while the server is still not ready', async () => {
+    const app = await startWithClock();
+    const askedAtStartup = llm.state.asked;
+
+    await app.runJob();
+    app.clock.ms += 1000;
+    await app.runJob();
+    await app.runTurn();
+
+    expect(llm.state.asked).toBe(askedAtStartup);
+  }, 30_000);
+
+  it('asks again at a later use when the server is still not ready at the first re-read', async () => {
+    const app = await startWithClock();
+    app.clock.ms += 10 * MINUTE_MS;
+    await app.runJob();
+    expect(llm.state.asked).toBe(2);
+    expect(app.readLines()).toEqual([]);
+
+    llm.state.loaded = true;
+    app.clock.ms += 10 * MINUTE_MS;
+    const limits = await app.runTurn();
+
+    expect(llm.state.asked).toBe(3);
+    expect(app.readLines()).toEqual([READ_LINE]);
+    expect(new Set(limits)).toEqual(new Set([32768 - 1024]));
+  }, 30_000);
+
+  it('asks /v1/models once when a job and a turn start at the same time', async () => {
+    const app = await startWithClock();
+    const askedAtStartup = llm.state.asked;
+    llm.state.loaded = true;
+    llm.state.delayMs = 400;
+    app.clock.ms += 10 * MINUTE_MS;
+
+    await Promise.all([app.runJob(), app.runTurn()]);
+
+    expect(llm.state.asked).toBe(askedAtStartup + 1);
+    expect(app.readLines()).toEqual([READ_LINE]);
   }, 30_000);
 });

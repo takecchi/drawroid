@@ -34,10 +34,16 @@ export function BackendUrlSettings() {
     setSaved(undefined);
     try {
       const url = input.trim();
-      // 種類は触ったときだけ送る: 触っていない種類（--backend で起動した種類など）を config.json に書かないため
-      await saveBackendSettings({ url, ...(editedKind !== undefined && { kind: editedKind }) });
+      // 触ったものだけ送る: 触っていない種類や URL（--backend / --backend-url で起動した値など）を config.json に書かないため。
+      // 何も触らずに押した保存は、出ている URL を保存する意思とみなす（同じ URL を保存できないと、起動の引数の URL を config.json へ書く手段が無くなる）
+      const sendsUrl = edited !== undefined || editedKind === undefined;
+      await saveBackendSettings({
+        ...(sendsUrl && { url }),
+        ...(editedKind !== undefined && { kind: editedKind }),
+      });
       setEdited(undefined);
       setEditedKind(undefined);
+      // 知らせの URL は、送らなかったときも、いま繋いでいる URL（欄に出ている値）
       setSaved({ kind, url });
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
@@ -55,7 +61,7 @@ export function BackendUrlSettings() {
           <p>
             種類: {BACKEND_KIND_LABELS[data.kind]}（{SOURCE_LABELS[data.kindSource]}）
           </p>
-          {data.kindSource === 'cli' && (
+          {data.startupArgs.kind && (
             <p>
               注意: 起動時に --backend
               で指定されている。ここで保存した種類はいまの起動中だけ効き、次に起動したときも同じ
@@ -65,7 +71,7 @@ export function BackendUrlSettings() {
           <p>
             いまの URL: <code>{data.url}</code>（{SOURCE_LABELS[data.urlSource]}）
           </p>
-          {data.urlSource === 'cli' && (
+          {data.startupArgs.url && (
             <p>
               注意: 起動時に --backend-url（古い名前 --forge-url）で指定されている。ここで保存した
               URL はいまの起動中だけ効き、次に起動したときも同じ引数を付ければ、そちらが勝つ。

@@ -15,7 +15,7 @@ import {
 
 function setup(initial: BackendSettingsView, { busy = false } = {}) {
   let view = initial;
-  const written: { url: string; kind?: string }[] = [];
+  const written: { url?: string; kind?: string }[] = [];
   const backend = new StubBackend();
   const store = new FsJobStore('/nonexistent-drawroid-test-root');
   const api = createApi({
@@ -31,8 +31,7 @@ function setup(initial: BackendSettingsView, { busy = false } = {}) {
         written.push(input);
         view = {
           ...view,
-          url: input.url,
-          urlSource: 'config',
+          ...(input.url !== undefined && { url: input.url, urlSource: 'config' as const }),
           ...(input.kind !== undefined && { kind: input.kind, kindSource: 'config' as const }),
         };
         return view;
@@ -70,6 +69,7 @@ const initial: BackendSettingsView = {
   url: 'http://127.0.0.1:7860',
   urlSource: 'default',
   kindSource: 'cli',
+  startupArgs: { kind: true, url: false },
   auth: null,
   generateTimeoutMs: null,
 };
@@ -84,6 +84,7 @@ describe('GET /settings/backend', () => {
       url: 'http://127.0.0.1:7860',
       urlSource: 'default',
       kindSource: 'cli',
+      startupArgs: { kind: true, url: false },
       auth: { username: 'u' },
       generateTimeoutMs: null,
     });
@@ -119,7 +120,7 @@ describe('PUT /settings/backend', () => {
   it.each([
     ['not a url', { url: 'gpu:7860' }],
     ['a scheme other than http and https', { url: 'ftp://gpu:7860' }],
-    ['a missing url', {}],
+    ['a body with neither a url nor a kind', {}],
     ['the old name forgeUrl', { forgeUrl: 'http://gpu:7860' }],
     ['a url that is not a string', { url: 7860 }],
     ['a body that is not JSON', 'not json'],
@@ -157,17 +158,70 @@ describe('PUT /settings/backend', () => {
     expect(written).toEqual([{ url: 'http://gpu:7860' }]);
   });
 
+  it('accepts a kind without a url, passing only the kind and leaving the url as it is', async () => {
+    const { put, written } = setup(initial);
+    const res = await put({ kind: 'forge' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      kind: 'forge',
+      kindSource: 'config',
+      url: 'http://127.0.0.1:7860',
+      urlSource: 'default',
+    });
+    expect(written).toEqual([{ kind: 'forge' }]);
+  });
+
+  it('keeps telling that the start-up arguments are in effect after a save', async () => {
+    const { put } = setup(initial);
+    const res = await put({ kind: 'forge', url: 'http://gpu:7860' });
+    expect(await res.json()).toMatchObject({ startupArgs: { kind: true, url: false } });
+  });
+
   it.each([
     ['an unknown kind', { kind: 'comfyui', url: 'http://gpu:7860' }],
     ['a kind that is not a string', { kind: 1, url: 'http://gpu:7860' }],
     ['a null kind', { kind: null, url: 'http://gpu:7860' }],
-    ['a kind without a url', { kind: 'forge' }],
+    ['an unknown kind without a url', { kind: 'comfyui' }],
   ])('refuses %s with invalid_request and saves nothing', async (_name, body) => {
     const { put, written } = setup(initial);
     const res = await put(body);
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: { kind: 'invalid_request' } });
     expect(written).toEqual([]);
+  });
+});
+
+describe('PUT /settings/backend refusal messages', () => {
+  const messageOf = async (body: unknown) => {
+    const { put } = setup(initial);
+    const res = await put(body);
+    expect(res.status).toBe(400);
+    return ((await res.json()) as { error: { message: string } }).error.message;
+  };
+
+  it.each([
+    ['not a url', { url: 'gpu:7860' }],
+    ['a scheme other than http and https', { url: 'ftp://gpu' }],
+    ['a url that is not a string', { url: 7860 }],
+  ])('tells in Japanese how to write the url for %s', async (_name, body) => {
+    expect(await messageOf(body)).toBe('url: URL は http:// か https:// で始まる形で書く');
+  });
+
+  it('tells that a body with neither a url nor a kind needs one of them', async () => {
+    expect(await messageOf({})).toBe('(body): url か kind の少なくとも一方が要る');
+  });
+
+  it('does not show the raw validation text (marks and line breaks)', async () => {
+    for (const body of [{ url: 'ftp://gpu' }, {}, { kind: 'comfyui' }]) {
+      const message = await messageOf(body);
+      expect(message).not.toContain('✖');
+      expect(message).not.toContain('→');
+      expect(message).not.toContain('\n');
+    }
+  });
+
+  it('does not put the url message on a refused kind', async () => {
+    expect(await messageOf({ kind: 'comfyui' })).not.toContain('URL');
   });
 });
 

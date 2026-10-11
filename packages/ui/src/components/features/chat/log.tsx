@@ -231,7 +231,8 @@ export function ChatLayout({
   status?: ChatStatus;
 }) {
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col md:h-dvh">
+    // main にする（外に main を足さない）: 外に包むと、高さを決めるこの枠と入力欄の下留めの間に1段増え、レイアウトが崩れうるため
+    <main className="flex h-[calc(100dvh-3.5rem)] flex-col md:h-dvh">
       {header !== undefined && (
         <div className="border-b border-border">
           <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-2">{header}</div>
@@ -245,6 +246,6 @@ export function ChatLayout({
       <div className="border-t border-border bg-background">
         <div className="mx-auto max-w-3xl px-4 py-3">{composer}</div>
       </div>
-    </div>
+    </main>
   );
 }

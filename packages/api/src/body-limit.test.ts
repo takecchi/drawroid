@@ -36,6 +36,7 @@ const backendView = {
   url: 'http://gpu:7860',
   urlSource: 'config',
   kindSource: 'config',
+  startupArgs: { kind: false, url: false },
   auth: null,
   generateTimeoutMs: null,
 } as const;
