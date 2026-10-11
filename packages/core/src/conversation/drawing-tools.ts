@@ -20,6 +20,7 @@ import type { Revised, Revision } from '../loop/runner.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
 import { adoptImage as adoptChosenImage } from '../selection/adopt.js';
+import { formatDuration } from '../text/duration.js';
 import { normalizeForMatch } from '../text/normalize.js';
 import {
   indexOfTalkImageNumber,
@@ -222,17 +223,11 @@ export function describeStopConditions(conditions: StopConditions): string {
     ...(conditions.aiJudgement ? ['AI の判断'] : []),
     ...(conditions.maxIterations === undefined ? [] : [`${conditions.maxIterations} 回まで`]),
     ...(conditions.maxImages === undefined ? [] : [`${conditions.maxImages} 枚まで`]),
-    ...(conditions.maxDurationMs === undefined ? [] : [durationLimit(conditions.maxDurationMs)]),
+    ...(conditions.maxDurationMs === undefined
+      ? []
+      : [`${formatDuration(conditions.maxDurationMs)}まで`]),
   ];
   return parts.join('・');
-}
-
-// 1 分に満たない上限は秒で書く: 分に丸めると「0 分まで」になり、人にも話す役にも意味が通らないため。
-// 1 秒に満たない上限はミリ秒で書く: 秒に丸めると同じく「0 秒まで」になるため。秒に丸めて 60 になるなら分で書く（「60 秒まで」にしない）
-function durationLimit(ms: number): string {
-  if (ms < 1000) return `${ms} ミリ秒まで`;
-  const seconds = Math.round(ms / 1000);
-  return seconds < 60 ? `${seconds} 秒まで` : `${Math.round(ms / 60_000)} 分まで`;
 }
 
 /**
