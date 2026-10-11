@@ -15,11 +15,6 @@ import {
   nameBudgetFields,
 } from '../lib/budget-labels';
 
-/** 読めなかった欄の名前。日本語の説明があれば添え、内部名（config.json の鍵）も残す */
-function invalidBudgetName(path: string): string {
-  return path === '*' ? '予算の全体' : budgetFieldName(path);
-}
-
 /**
  * config.json の budgets に、読めずに既定へ戻した欄があることの知らせ。どの欄が戻ったかと理由を出す。
  * 予算の設定は「詳しい設定」として畳んであるので、その外（すぐ上）に置いて、開かなくても見えるようにする
@@ -38,9 +33,7 @@ export function BudgetInvalidNotice() {
       </p>
       <ul className="mt-1 list-disc pl-5">
         {invalid.map(({ path, reason }) => (
-          <li key={path}>
-            {invalidBudgetName(path)}: {reason}
-          </li>
+          <li key={path}>{reason}</li>
         ))}
       </ul>
     </WarnNote>

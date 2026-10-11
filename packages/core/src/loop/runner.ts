@@ -239,6 +239,7 @@ export class JobRunner {
   private readonly newCallId: (now: Date) => string;
   private running: Running | undefined;
   private draining: Promise<void> | undefined;
+  private rescanRequested = false;
 
   constructor(private readonly deps: JobRunnerDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -247,9 +248,12 @@ export class JobRunner {
 
   /** 待ち行列を回し始める。回っている間に呼んでもよい */
   kick(): void {
-    this.draining ??= this.drain().finally(() => {
-      this.draining = undefined;
-    });
+    // 回っている間の合図を捨てない: 走査が「次は無い」と読み終えたあとに来た合図だと、そのジョブは誰にも拾われず queued に残るため
+    if (this.draining !== undefined) {
+      this.rescanRequested = true;
+      return;
+    }
+    this.draining = this.drain();
   }
 
   /** 待ち行列が空になるまで待つ */
@@ -425,11 +429,20 @@ export class JobRunner {
   }
 
   private async drain(): Promise<void> {
-    for (;;) {
-      const next = await this.nextJobId();
-      if (next === undefined) return;
-      await this.deps.beforeJob?.();
-      await this.runJob(next);
+    try {
+      for (;;) {
+        this.rescanRequested = false;
+        const next = await this.nextJobId();
+        if (next === undefined) {
+          // 走査が空を返したあとに来た合図を取りこぼさない。見るのと draining を外すのは同じ同期の区間にする
+          if (this.rescanRequested) continue;
+          return;
+        }
+        await this.deps.beforeJob?.();
+        await this.runJob(next);
+      }
+    } finally {
+      this.draining = undefined;
     }
   }
 

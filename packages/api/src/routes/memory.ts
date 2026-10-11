@@ -64,10 +64,13 @@ export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
 
   return (
     new Hono()
-      // validator は JSON として読めない body を HTTPException で投げ、他のルートと違う形の応答になる。エラーの体を揃えるためここで受ける
+      // validator は JSON として読めない body を HTTPException で投げ、他のルートと違う形の応答になる。エラーの体を揃えるためここで受ける。
+      // hono の文（英語）を返さない: 断りの文は記憶の画面にそのまま出るため。この口で 400 を投げるのは json の validator だけ
       .onError((error, c) => {
         if (!(error instanceof HTTPException)) throw error;
-        return error.status === 400 ? invalidRequest(c, error.message) : error.getResponse();
+        return error.status === 400
+          ? invalidRequest(c, '(body): JSON として読めない')
+          : error.getResponse();
       })
       // 更新した時刻の新しい順に並べる（同じ時刻は ID の順）: 置き場所の順（ID の順）だと、直したばかりの記憶が探しにくいため。
       // 並べ替えるのはこの口だけ: 置き場所の list は LLM へ渡す記憶を選ぶ側も使い、その順は変えないため

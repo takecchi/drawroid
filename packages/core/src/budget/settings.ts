@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { describeConfigIssue, describeConfigNote } from '../config-problems.js';
 import { DEFAULT_CANDIDATE_LIMITS } from '../loop/iteration-permissions.js';
 import { DEFAULT_BUDGET, type Budget } from '../loop/budget.js';
 import { DEFAULT_DISTILL_BUDGET, type DistillBudget } from '../memory/distill/budget.js';
@@ -117,11 +118,17 @@ export function resolveBudgets(overrides: BudgetOverrides): Budgets {
   return overlay(DEFAULT_BUDGETS, overrides) as Budgets;
 }
 
-/** 読めなかった予算の欄。path は欄の道筋（例: text.prompt）で、'*' なら budgets 全体が読めなかった */
+/**
+ * 読めなかった予算の欄。path は欄の道筋（例: text.prompt）で、'*' なら budgets 全体が読めなかった。
+ * reason は config.json の文（欄名は budgets.<欄>）で、起動の行・doctor・API が同じものを出す
+ */
 export interface InvalidBudget {
   path: string;
   reason: string;
 }
+
+/** config.json での欄の名前。読めない欄の文は、budgets.<欄> の形で言う */
+const BUDGETS = 'budgets';
 
 function removeAt(target: Record<string, unknown>, path: readonly PropertyKey[]): void {
   let node: unknown = target;
@@ -143,7 +150,12 @@ export function readBudgetOverrides(raw: unknown): {
 } {
   if (raw === undefined) return { overrides: {}, invalid: [] };
   if (!isPlainObject(raw)) {
-    return { overrides: {}, invalid: [{ path: '*', reason: '予算が、欄の集まりになっていない' }] };
+    return {
+      overrides: {},
+      invalid: [
+        { path: '*', reason: describeConfigNote('予算が、欄の集まりになっていない', ['budgets']) },
+      ],
+    };
   }
   const draft = structuredClone(raw);
   const invalid: InvalidBudget[] = [];
@@ -155,18 +167,31 @@ export function readBudgetOverrides(raw: unknown): {
     for (const issue of parsed.error.issues) {
       if (issue.code === 'unrecognized_keys') {
         for (const key of issue.keys) {
-          invalid.push({ path: [...issue.path, key].join('.'), reason: '知らない欄' });
-          removeAt(draft, [...issue.path, key]);
+          const path = [...issue.path.map(String), key];
+          invalid.push({
+            path: path.join('.'),
+            reason: describeConfigNote('知らない欄', [BUDGETS, ...path]),
+          });
+          removeAt(draft, path);
         }
         continue;
       }
       if (issue.path.length === 0) break;
-      invalid.push({ path: issue.path.join('.'), reason: issue.message });
+      invalid.push({
+        path: issue.path.join('.'),
+        reason: describeConfigIssue(issue, [BUDGETS]),
+      });
       removeAt(draft, issue.path);
     }
     // 外せる欄が無いのに読めない: 全体を外す
     if (invalid.length === before) {
-      return { overrides: {}, invalid: [...invalid, { path: '*', reason: '予算が読めない' }] };
+      return {
+        overrides: {},
+        invalid: [
+          ...invalid,
+          { path: '*', reason: describeConfigNote('予算が読めない', [BUDGETS]) },
+        ],
+      };
     }
   }
 }

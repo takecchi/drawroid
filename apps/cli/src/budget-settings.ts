@@ -16,7 +16,7 @@ export function createBudgetSettings(
   return {
     read: async () => {
       const { overrides, invalid } = readBudgetOverrides(await readBudgetSettings(configPath));
-      const now = invalid.map((i) => `${i.path}: ${i.reason}`).join('; ');
+      const now = invalid.map((i) => i.reason).join('; ');
       if (now !== reported) {
         log(
           now === ''

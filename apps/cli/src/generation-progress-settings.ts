@@ -1,4 +1,4 @@
-import type { GenerationProgressSettingsPort } from '@drawroid/api';
+import { describeConfigIssues, type GenerationProgressSettingsPort } from '@drawroid/api';
 import {
   DEFAULT_GENERATION_PROGRESS_SETTINGS,
   generationProgressSettingsSchema,
@@ -19,10 +19,7 @@ export function createGenerationProgressSettings(
       const parsed = generationProgressSettingsSchema.safeParse(stored);
       // 読めない設定を既定で置き換えない: 無効のつもりの途中の画像が流れる側へ倒れないよう、理由を付けて投げる
       if (!parsed.success) {
-        const reason = parsed.error.issues
-          .map((issue) => `${issue.path.join('.') || '(generationProgress)'}: ${issue.message}`)
-          .join('; ');
-        throw new Error(`config.json の generationProgress が不正: ${reason}`);
+        throw new Error(describeConfigIssues(parsed.error, ['generationProgress']));
       }
       return parsed.data;
     },
