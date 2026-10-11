@@ -20,6 +20,7 @@ import type { Revised, Revision } from '../loop/runner.js';
 import { hasAnyStopCondition } from '../loop/stop.js';
 import type { Permissions } from '../permissions/permission.js';
 import { adoptImage as adoptChosenImage } from '../selection/adopt.js';
+import { normalizeForMatch } from '../text/normalize.js';
 import {
   indexOfTalkImageNumber,
   narrowPermissions,
@@ -234,6 +235,26 @@ function durationLimit(ms: number): string {
   return seconds < 60 ? `${seconds} 秒まで` : `${Math.round(ms / 60_000)} 分まで`;
 }
 
+/**
+ * まだ取り込まれていない指示のうち、同じ文のもの。取り込み済みの同じ文は含めない（もう一度言うことに意味がある）。
+ * 言い換え・部分一致は同じとみなさない
+ */
+// 話す役のツールの側で判る: 小さなモデルは同じ指示を引数違いで2度呼ぶことがあり、呼び出しの重複の判定（引数の一致）をすり抜けるため。
+// ジョブ実行器（revise・addInstruction）には入れない: 人が HTTP で直接送る口は「届いた時点で置く」決まりで、同じ文でも置くため
+async function pendingSameInstruction(
+  jobs: Pick<JobStore, 'listInterventions'>,
+  jobId: string,
+  instruction: string,
+): Promise<InterventionRecord | undefined> {
+  const sentence = normalizeForMatch(instruction.trim());
+  return (await jobs.listInterventions(jobId)).find(
+    (i) =>
+      i.kind === 'instruction' &&
+      i.appliedInIteration === undefined &&
+      normalizeForMatch(i.text.trim()) === sentence,
+  );
+}
+
 /** 描くツール（副作用のあるもの）。会話の実行器に、副作用の無いツール（createReadOnlyTools）と並べて渡す */
 export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
   const activeJobOf = (context: TalkToolContext) =>
@@ -324,8 +345,21 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
         input.attachments ?? [],
       );
       if (!attached.ok) return outcome(false, attached.reason);
+      const already =
+        input.instruction === undefined
+          ? undefined
+          : await pendingSameInstruction(deps.jobs, jobId, input.instruction);
+      const placesAnythingElse =
+        input.stopConditions !== undefined || attached.references.length > 0;
+      if (already !== undefined && !placesAnythingElse) {
+        return outcome(
+          true,
+          `ジョブ ${jobId} には同じ指示が口出し ${already.interventionId} として既にあり、新しくは置かなかった（次の回の境目で取り込まれる）`,
+        );
+      }
       const revised = await deps.runner.revise(jobId, {
-        ...(input.instruction !== undefined && { instruction: input.instruction }),
+        ...(input.instruction !== undefined &&
+          already === undefined && { instruction: input.instruction }),
         ...(input.stopConditions !== undefined && { stopConditions: input.stopConditions }),
         references: attached.references,
       });
@@ -337,7 +371,14 @@ export function createDrawingTools(deps: DrawingToolDeps): TalkTool[] {
       if (revised.references.length > 0) {
         done.push(`参照画像を ${revised.references.length} 枚添えた`);
       }
-      return outcome(true, `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）`);
+      const dropped =
+        already === undefined
+          ? ''
+          : `。同じ指示は口出し ${already.interventionId} として既にあり、新しくは置かなかった（次の回の境目で取り込まれる）`;
+      return outcome(
+        true,
+        `ジョブ ${jobId} に${done.join('。')}（次の回の境目から効く）${dropped}`,
+      );
     },
   };
 

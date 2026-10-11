@@ -68,6 +68,7 @@ const human = mergePermissions(basicPermissions({ width: 512, height: 512 }), {
 async function setup(
   store: FsJobStore = new FsJobStore(root),
   drawingRunner?: DrawingToolDeps['runner'],
+  options: { holdJobs?: boolean } = {},
 ) {
   const conversations = new MemoryConversationStore();
   const hubs = new ConversationHubs({ store: conversations });
@@ -82,7 +83,17 @@ async function setup(
   const { conversationId } = await conversations.createConversation(new Date());
   const tools = createDrawingTools({
     jobs,
-    runner: drawingRunner ?? runner,
+    // 回し始めない実行器: 置いた口出しが、取り込まれずに「まだ」の状態で残るようにする
+    runner:
+      drawingRunner ??
+      (options.holdJobs === true
+        ? {
+            kick: () => undefined,
+            stop: (jobId) => runner.stop(jobId),
+            adopt: (jobId, image) => runner.adopt(jobId, image),
+            revise: (jobId, revision) => runner.revise(jobId, revision),
+          }
+        : runner),
     conversations,
     humanPermissions: async () => human,
     candidateNames: async (kind) =>
@@ -580,6 +591,135 @@ describe('revise_drawing and stop_drawing', () => {
     await untilRunning(jobs, jobId!);
     await runner.stop(jobId!);
     await runner.idle();
+  });
+
+  describe('saying the same instruction again', () => {
+    const texts = async (jobs: JobStore, jobId: string) =>
+      (await jobs.listInterventions(jobId)).flatMap((i) =>
+        i.kind === 'instruction' ? [i.text] : [],
+      );
+
+    async function startHeld() {
+      const made = await setup(undefined, undefined, { holdJobs: true });
+      await run('start_drawing', { request: '海辺', stopConditions: LONG }, made.context);
+      const [jobId] = await jobIds(made.jobs);
+      return { ...made, jobId: jobId! };
+    }
+
+    it('puts the instruction only once, and tells which intervention already holds it', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+      const [first] = await jobs.listInterventions(jobId);
+
+      const again = await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      expect(again.ok).toBe(true);
+      expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く']);
+      expect(again.result).toContain(first!.interventionId);
+      expect(again.result).toContain('次の回の境目');
+      expect(again.summary).toBe(again.result);
+    });
+
+    it('treats the same sentence in another width, case, kana or with outer spaces as the same', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっとＲＥＤにして' }, context);
+
+      await run('revise_drawing', { instruction: '  空をもっとredにして ' }, context);
+      await run('revise_drawing', { instruction: '空をモットredにして' }, context);
+
+      expect(await texts(jobs, jobId)).toEqual(['空をもっとＲＥＤにして']);
+    });
+
+    it('puts the same sentence again once the first has been taken in', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+      const [first] = await jobs.listInterventions(jobId);
+      await jobs.markInterventionApplied(jobId, first!.interventionId, 1);
+
+      const again = await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      expect(again.ok).toBe(true);
+      expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く', '空をもっと赤く']);
+      expect(again.result).not.toContain(first!.interventionId);
+    });
+
+    it('puts a reworded or partly overlapping instruction as a new one', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      await run('revise_drawing', { instruction: '空を赤く' }, context);
+      await run('revise_drawing', { instruction: '空をもっと赤くして、雲も足して' }, context);
+
+      expect(await texts(jobs, jobId)).toEqual([
+        '空をもっと赤く',
+        '空を赤く',
+        '空をもっと赤くして、雲も足して',
+      ]);
+    });
+
+    it('puts only the change of stop conditions when the same instruction comes with it', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      const again = await run(
+        'revise_drawing',
+        { instruction: '空をもっと赤く', stopConditions: { aiJudgement: false, maxIterations: 3 } },
+        context,
+      );
+
+      expect(again.ok).toBe(true);
+      expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く']);
+      expect((await jobs.listInterventions(jobId)).map((i) => i.kind)).toEqual([
+        'instruction',
+        'stopConditions',
+      ]);
+      expect(again.result).toContain('止める条件を');
+      expect(again.result).toContain('3 回まで');
+    });
+
+    it('puts the attached images when the same instruction comes with them', async () => {
+      const { jobs, context, jobId, conversations, conversationId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+      const attachments = await uploads(conversations, conversationId, 2);
+
+      const again = await run(
+        'revise_drawing',
+        { instruction: '空をもっと赤く', attachments },
+        context,
+      );
+
+      expect(again.ok).toBe(true);
+      expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く']);
+      expect(await jobs.listReferences(jobId)).toHaveLength(2);
+      expect(again.result).toContain('参照画像を 2 枚添えた');
+    });
+
+    it('still puts nothing at all when an attached image is missing, even for the same instruction', async () => {
+      const { jobs, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      const refused = await run(
+        'revise_drawing',
+        {
+          instruction: '空をもっと赤く',
+          stopConditions: { maxIterations: 5 },
+          attachments: [{ uploadId: '20261009-000000-none' }],
+        },
+        context,
+      );
+
+      expect(refused.ok).toBe(false);
+      expect((await jobs.listInterventions(jobId)).map((i) => i.kind)).toEqual(['instruction']);
+    });
+
+    it('puts the same sentence again when it is sent straight to the job, as the intervention endpoint does', async () => {
+      const { jobs, runner, context, jobId } = await startHeld();
+      await run('revise_drawing', { instruction: '空をもっと赤く' }, context);
+
+      await runner.addInstruction(jobId, '空をもっと赤く');
+
+      expect(await texts(jobs, jobId)).toEqual(['空をもっと赤く', '空をもっと赤く']);
+    });
   });
 
   it('stops the drawing going on', async () => {
