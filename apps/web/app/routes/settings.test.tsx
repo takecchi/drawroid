@@ -83,6 +83,25 @@ describe('Settings, reached from a link to one of its parts', () => {
     );
   });
 
+  // 開いたばかりの画面では、欄はあとから描かれるので、ブラウザは欄まで流さない。フォーカスだけが画面の外に行かないように
+  it('brings the part into view as it moves the focus there', async () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      renderAt('/settings#llm');
+
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'LLM の設定' })),
+      );
+      expect(scrolled).toEqual([document.getElementById('llm')]);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it('leaves the focus alone when the address names no part', async () => {
     renderAt('/settings');
     await new Promise((resolve) => setTimeout(resolve, 50));

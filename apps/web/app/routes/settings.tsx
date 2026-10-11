@@ -21,12 +21,13 @@ export default function Settings() {
   // キーボードと読み上げの人は欄まで辿り直すことになるため。key でも走らせる: 同じ欄へのリンクを押し直したときにも移すため
   useEffect(() => {
     if (hash === '') return;
-    const target = document
-      .getElementById(decodeURIComponent(hash.slice(1)))
-      ?.querySelector<HTMLElement>('h2, summary');
-    if (target === null || target === undefined) return;
+    const part = document.getElementById(decodeURIComponent(hash.slice(1)));
+    const target = part?.querySelector<HTMLElement>('h2, summary');
+    if (part === null || target === null || target === undefined) return;
     if (target.tagName === 'H2') target.tabIndex = -1;
-    // 流すのは任せる: 欄の id には scroll-mt を付けてあり、フォーカスで流すとその余白が効かないため
+    // 欄そのものを流す: 開いたばかりの画面では欄があとから描かれるので、ブラウザは欄まで流さない。
+    // 見出しのフォーカスで流さない: 欄の id に付けた scroll-mt の余白が効かないため
+    part.scrollIntoView?.({ block: 'start' });
     target.focus({ preventScroll: true });
   }, [hash, key]);
   return (
