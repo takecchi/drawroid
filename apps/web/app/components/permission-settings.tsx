@@ -72,7 +72,10 @@ export function PermissionSettings() {
             effective={data.permissions as Partial<Record<ParamKey, Permission>>}
             invalid={invalidRows}
             defaults={{ option: '既定のまま', note: '既定' }}
-            onChange={setEdited}
+            onChange={(next) => {
+              setSaved(false);
+              setEdited(next);
+            }}
           />
           <Button type="submit" variant="primary" disabled={saving}>
             許可を保存

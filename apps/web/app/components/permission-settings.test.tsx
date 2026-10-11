@@ -160,6 +160,17 @@ describe('PermissionSettings', () => {
     await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
+  // 欄を触ったら、前の保存の知らせは古くなる（記憶・候補の説明・予算・LLM・バックエンドの URL の画面と同じ）
+  it('takes the note that it saved away once a field is touched again', async () => {
+    render(<PermissionSettings />);
+    await save();
+    await screen.findByText('保存した。走行中のジョブにも次の回から効く。');
+
+    await userEvent.selectOptions(rowOf('CFG scale').getByRole('combobox'), 'fixed');
+
+    expect(screen.queryByText('保存した。走行中のジョブにも次の回から効く。')).toBeNull();
+  });
+
   it('cannot be saved again while it is saving', async () => {
     mocks.savePermissionSettings.mockReturnValue(new Promise(() => {}));
     render(<PermissionSettings />);
