@@ -146,6 +146,17 @@ describe('CandidateNotes', () => {
     );
   });
 
+  it('cannot be saved again while it is saving', async () => {
+    mocks.saveCandidateNotes.mockReturnValue(new Promise(() => {}));
+    render(<CandidateNotes />);
+
+    await save();
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '説明を保存' }).disabled).toBe(
+      true,
+    );
+  });
+
   it('shows why the API refused the notes', async () => {
     mocks.saveCandidateNotes.mockRejectedValue(
       new ApiError('invalid_request', '説明は 5000 件まで', 400),

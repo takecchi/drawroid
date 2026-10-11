@@ -70,6 +70,24 @@ describe('GenerationProgressSettings', () => {
     await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
+  it('cannot be pressed again while it is saving', async () => {
+    mocks.saveGenerationProgressSettings.mockReturnValue(new Promise(() => {}));
+    render(<GenerationProgressSettings />);
+
+    await userEvent.setup().click(box());
+
+    expect(box().disabled).toBe(true);
+  });
+
+  it('shows the value that was pressed until the save finishes', async () => {
+    mocks.saveGenerationProgressSettings.mockReturnValue(new Promise(() => {}));
+    render(<GenerationProgressSettings />);
+
+    await userEvent.setup().click(box());
+
+    expect(box().checked).toBe(true);
+  });
+
   it('saves off when it is turned off', async () => {
     mocks.useGenerationProgressSettings.mockReturnValue({
       data: { includePreview: true },
