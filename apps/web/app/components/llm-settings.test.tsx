@@ -999,6 +999,32 @@ describe('LlmSettings', () => {
       await expectFocusMovesTo(alert);
       expect(input(label).value).toBe('0');
     });
+
+    // 画面では値を直さない: 丸めたり落としたりすると、打った値と保存される値が黙ってずれる。断るのはサーバ
+    it.each([
+      ['1.5', 1.5],
+      ['0', 0],
+    ])('sends %s as it is typed, and leaves refusing it to the server', async (typed, sent) => {
+      const user = userEvent.setup();
+      render(<LlmSettings />);
+
+      await user.type(input(label), typed);
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      expect(mocks.saveLlmSettings).toHaveBeenLastCalledWith({
+        ...stored.config,
+        callTimeoutSeconds: 300,
+        totalCallTimeoutSeconds: sent,
+      });
+    });
+
+    // 既定の 900 は画面で埋めない: 埋めると、保存したときに既定ではなく 900 という値が書かれる
+    it('is empty when nothing is set yet', () => {
+      mocks.useLlmSettings.mockReturnValue({ data: { config: null }, error: undefined });
+      render(<LlmSettings />);
+
+      expect(input(label).value).toBe('');
+    });
   });
 
   it('leaves an emptied retry count to the server default', async () => {
