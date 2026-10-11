@@ -88,7 +88,8 @@ export function StopConditionsEditor({
           案を作る
         </Button>
       </div>
-      {parseError !== undefined && <ErrorNote>{parseError}</ErrorNote>}
+      {/* 押した「案を作る」は読んでいる間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す */}
+      {parseError !== undefined && <ErrorNote focus>{parseError}</ErrorNote>}
       {notes?.clippedFrom !== undefined && (
         <p className="text-sm">
           入力が長いので途中で切って読んだ（{notes.clippedFrom} 文字のうち先頭だけ）

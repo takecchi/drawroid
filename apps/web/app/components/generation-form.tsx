@@ -200,7 +200,8 @@ export function GenerationForm({ onStarted }: { onStarted: (jobId: string) => vo
           生成する
         </Button>
       </form>
-      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+      {/* 押した「生成する」は送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す */}
+      {error !== undefined && <ErrorNote focus>送れない: {error}</ErrorNote>}
     </Section>
   );
 }

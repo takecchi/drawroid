@@ -65,7 +65,8 @@ export function SelectionControls({
           外す
         </Button>
       </div>
-      {error !== undefined && <ErrorNote>選べない: {error}</ErrorNote>}
+      {/* 押したボタンは送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す */}
+      {error !== undefined && <ErrorNote focus>選べない: {error}</ErrorNote>}
     </div>
   );
 }

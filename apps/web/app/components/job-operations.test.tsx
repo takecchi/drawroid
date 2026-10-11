@@ -10,7 +10,7 @@ import {
   type JobDetail,
   type ChangeStopConditionsResponse,
 } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -98,6 +98,111 @@ async function apiError(kind: string, message: string, status: number) {
   const { ApiError } = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
   return new ApiError(kind, message, status);
 }
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
+
+// 押したボタンは送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+describe('JobOperations moving the focus to a refusal', () => {
+  const press = async (user: ReturnType<typeof userEvent.setup>, button: HTMLElement) => {
+    button.focus();
+    await user.keyboard('{Enter}');
+  };
+
+  it.each([
+    ['stopping', false],
+    ['stopping a manual job', true],
+  ])(
+    'moves the focus to the reason when %s is refused, also on a second refusal',
+    async (_, manual) => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const stopping = manual ? vi.mocked(stopManualJob) : stop;
+      stopping.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+      render(<JobOperations job={manual ? manualJob() : runningAuto()} />);
+      const user = userEvent.setup();
+
+      await press(user, screen.getByRole('button', { name: 'ジョブを止める' }));
+      await expectFocusMovesTo(await screen.findByRole('alert'));
+
+      await press(user, screen.getByRole('button', { name: 'ジョブを止める' }));
+      await waitFor(() => expect(stopping).toHaveBeenCalledTimes(2));
+      await expectFocusMovesTo(await screen.findByRole('alert'));
+    },
+  );
+
+  it('moves the focus to the reason when the instruction is refused, also on a second refusal', async () => {
+    instruct.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと明るく');
+
+    await press(user, screen.getByRole('button', { name: '送る' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await press(user, screen.getByRole('button', { name: '送る' }));
+    await waitFor(() => expect(instruct).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('leaves the focus in the instruction field being corrected after a refusal', async () => {
+    instruct.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと明るく');
+    await user.click(screen.getByRole('button', { name: '送る' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await user.type(screen.getByLabelText('人間の指示'), 'さらに');
+
+    expect(document.activeElement).toBe(screen.getByLabelText('人間の指示'));
+  });
+
+  it('moves the focus to the reason when a reference image is refused, also on a second refusal', async () => {
+    reference.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    await user.upload(
+      screen.getByLabelText(/参照画像を選ぶ/),
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'ref.png', { type: 'image/png' }),
+    );
+
+    await press(user, screen.getByRole('button', { name: '参照画像を送る' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await press(user, screen.getByRole('button', { name: '参照画像を送る' }));
+    await waitFor(() => expect(reference).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('moves the focus to the reason when the stop conditions are refused, also on a second refusal', async () => {
+    change.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/枚数の上限/), '6');
+
+    await press(user, screen.getByRole('button', { name: '条件を変える' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await press(user, screen.getByRole('button', { name: '条件を変える' }));
+    await waitFor(() => expect(change).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('leaves the focus in the stop condition field being corrected after a refusal', async () => {
+    change.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/枚数の上限/), '6');
+    await user.click(screen.getByRole('button', { name: '条件を変える' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await user.type(screen.getByLabelText(/枚数の上限/), '0');
+
+    expect(document.activeElement).toBe(screen.getByLabelText(/枚数の上限/));
+  });
+});
 
 describe('JobOperations', () => {
   it('shows no operations for a stopped job', () => {

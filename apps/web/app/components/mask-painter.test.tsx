@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { addMask, ApiError } from '@drawroid/swr';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +16,11 @@ vi.mock('../lib/mask-png', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/mask-png')>()),
   encodeMaskPng: vi.fn(),
 }));
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 const send = vi.mocked(addMask);
 const encode = vi.mocked(encodeMaskPng);
@@ -190,6 +195,54 @@ describe('MaskPainter', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'マスクを送る' }).disabled).toBe(
       false,
     );
+  });
+
+  // 押した「マスクを送る」は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when the mask is refused, also on a second refusal', async () => {
+    send.mockRejectedValue(new ApiError('conflict', 'ジョブはもう止まっている', 409));
+    const { user, canvas } = await openPainter();
+    drag(canvas, [0, 0], [10, 10]);
+    const button = () => screen.getByRole('button', { name: 'マスクを送る' });
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('moves the focus to the reason when the mask is refused before sending, also when pressed again', async () => {
+    encode.mockResolvedValue(Buffer.from(new Uint8Array(MAX_MASK_BYTES + 1)).toString('base64'));
+    const { user, canvas } = await openPainter();
+    drag(canvas, [0, 0], [10, 10]);
+    const button = () => screen.getByRole('button', { name: 'マスクを送る' });
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(encode).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('leaves the focus in the brush size being corrected after a refusal', async () => {
+    send.mockRejectedValue(new ApiError('conflict', 'ジョブはもう止まっている', 409));
+    const { user, canvas } = await openPainter();
+    drag(canvas, [0, 0], [10, 10]);
+    await user.click(screen.getByRole('button', { name: 'マスクを送る' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    const radius = screen.getByLabelText('筆の太さ（px）');
+    await user.clear(radius);
+    await user.type(radius, '8');
+
+    expect(document.activeElement).toBe(radius);
   });
 
   // 上限を超えたマスクは送らずに断る: 大きなマスクを送ってからサーバに断られると、待たされたうえに、何を直せばよいかが分からないため

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { parseStopConditionsText, type StopConditionsDraftResponse } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -60,7 +60,42 @@ async function makeDraftFrom(text: string) {
   return user;
 }
 
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
+
 describe('StopConditionsEditor', () => {
+  // 押した「案を作る」は読んでいる間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when the sentence cannot be read, also on a second refusal', async () => {
+    parse.mockRejectedValue(await apiError('unparsable', '止める条件が見つからない', 422));
+    render(<Harness />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/文から案を作る/), 'ほどほどに');
+    const button = () => screen.getByRole('button', { name: '案を作る' });
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(parse).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('leaves the focus in a field being corrected after a refusal', async () => {
+    parse.mockRejectedValue(await apiError('unparsable', '止める条件が見つからない', 422));
+    render(<Harness />);
+    const user = await makeDraftFrom('ほどほどに');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await user.type(screen.getByLabelText(/回数の上限/), '0');
+    expect(document.activeElement).toBe(screen.getByLabelText(/回数の上限/));
+    await user.type(screen.getByLabelText(/文から案を作る/), 'です');
+    expect(document.activeElement).toBe(screen.getByLabelText(/文から案を作る/));
+  });
+
   it('fills the form with the draft returned for the typed sentence', async () => {
     parse.mockResolvedValue(
       draftOf({
