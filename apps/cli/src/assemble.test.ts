@@ -1108,6 +1108,44 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
     expect(llm.state.asked).toBe(askedAfterSave);
   }, 30_000);
 
+  it('throws away the window it read when the LLM settings were replaced while it was reading', async () => {
+    const app = await startWithClock();
+    const askedAtStartup = llm.state.asked;
+    llm.state.loaded = true;
+    llm.state.delayMs = 500;
+    app.clock.ms += 10 * MINUTE_MS;
+
+    const started = await fetch(`${app.api}/jobs/auto`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: '夕暮れの海辺に立つ少女' }),
+    });
+    const { jobId } = (await started.json()) as { jobId: string };
+    // 読み直しが /v1/models の返事を待っている間に、窓を書いた設定を保存する
+    await vi.waitFor(() => expect(llm.state.asked).toBe(askedAtStartup + 1), { timeout: 10_000 });
+    const saved = await fetch(`${app.api}/settings/llm`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        providers: {
+          local: { type: 'openai-compatible', baseURL: `http://127.0.0.1:${llm.port}/v1` },
+        },
+        roles: { think: { provider: 'local', model: 'm', contextTokens: 16384 } },
+      }),
+    });
+    expect(saved.status).toBe(200);
+    const jobs = new FsJobStore(root);
+    await vi.waitFor(async () => expect((await jobs.readState(jobId)).status).toBe('stopped'), {
+      timeout: 10_000,
+    });
+
+    const limits = await app.runTurn();
+
+    expect(app.readLines()).toEqual([]);
+    expect(limits.length).toBeGreaterThan(0);
+    expect(new Set(limits)).toEqual(new Set([16384 - 1024]));
+  }, 30_000);
+
   it('asks /v1/models once when a job and a turn start at the same time', async () => {
     const app = await startWithClock();
     const askedAtStartup = llm.state.asked;

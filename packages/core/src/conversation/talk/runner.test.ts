@@ -460,6 +460,71 @@ describe('TalkRunner', () => {
     },
   );
 
+  describe('on the fields of the tools that exist', () => {
+    /**
+     * 欄の名前と型を、実在のツールから写した偽ツール。走った回数を数える。
+     * - request: start_drawing の request（drawing-tools.ts の startInputSchema）
+     * - tags: remember の tags（memory-tools.ts の rememberInput）
+     */
+    const copiedFields = () => {
+      const counter = { runs: 0 };
+      const tool: TalkTool = {
+        name: 'copied_fields',
+        description: '試験用。start_drawing の request と remember の tags の欄を写す',
+        inputSchema: z.object({
+          request: z.string().trim().min(1).max(2000).optional(),
+          tags: z.array(z.string().trim().min(1).max(20)).max(6).default([]),
+        }),
+        run: async () => {
+          counter.runs += 1;
+          return { ok: true, result: '受け取った', summary: '受け取った' };
+        },
+      };
+      return { tool, counter };
+    };
+
+    const copiedTwice = async (first: unknown, second: unknown) => {
+      const { tool, counter } = copiedFields();
+      const { say } = await setup(
+        (_call, n) =>
+          n === 0
+            ? { toolCalls: [{ name: 'copied_fields', input: first }] }
+            : n === 1
+              ? { toolCalls: [{ name: 'copied_fields', input: second }] }
+              : { text: '受け取りました' },
+        { extraTools: [tool] },
+      );
+      await say('試して');
+      return counter.runs;
+    };
+
+    it('treats a request that differs only in width or kana as the same call', async () => {
+      expect(await copiedTwice({ request: '（ﾈｺを描く）' }, { request: '(ねこを描く)' })).toBe(1);
+    });
+
+    it('treats tags that differ only in width or kana as the same call', async () => {
+      expect(await copiedTwice({ tags: ['ＢＡＣＫ', 'ﾈｺ'] }, { tags: ['back', 'ねこ'] })).toBe(1);
+    });
+
+    it('treats a search query of search_candidates that differs only in width or spaces as the same call', async () => {
+      const { say, events } = await setup((_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'search_candidates', input: { kind: 'lora', query: 'miku' } }] }
+          : n === 1
+            ? {
+                toolCalls: [
+                  { name: 'search_candidates', input: { kind: 'lora', query: '　ＭＩＫＵ ' } },
+                ],
+              }
+            : { text: '答えます' },
+      );
+      await say('ミクの LoRA ある？');
+
+      const results = (await events()).flatMap((e) => (e.type === 'tool.result' ? [e.ok] : []));
+      expect(results).toEqual([true, false]);
+    });
+  });
+
   // ID は大小・仮名・全角半角の違いで別の物を指しうる: 間違えた ID が断られたあとの、直した ID での呼び直しを、同じ呼び出しとして塞がないため
   it.each([
     ['upper and lower case', 'ABC-1', 'abc-1'],
