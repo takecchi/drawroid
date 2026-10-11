@@ -1,5 +1,5 @@
 import { isApiError, saveBudgetSettings, useBudgetSettings } from '@drawroid/swr';
-import { Button, ErrorNote, Input, OkNote, WarnNote } from '@drawroid/ui';
+import { Button, ErrorNote, Input, OkNote, Section, WarnNote } from '@drawroid/ui';
 import { useState, type FormEvent } from 'react';
 
 import {
@@ -83,15 +83,14 @@ export function BudgetSettings() {
   }
 
   return (
-    <section>
-      <h2>予算の設定</h2>
+    <Section title="予算の設定">
       <p>1回の LLM 呼び出しに載せてよい量の上限。空欄は既定のまま。</p>
       <p>保存した値は、次に投入するジョブから効く。走っているジョブは変わらない。</p>
       {error !== undefined && <ErrorNote>予算を読めない: {error.message}</ErrorNote>}
       {data !== undefined && values !== undefined && (
-        <form onSubmit={(event) => void save(event)}>
+        <form onSubmit={(event) => void save(event)} className="space-y-4">
           {groupBudgetLeaves(budgetLeaves(data.defaults)).map((group) => (
-            <fieldset key={group.title} className="space-y-1">
+            <fieldset key={group.title} className="space-y-2">
               <legend className="font-medium">{group.title}</legend>
               {group.leaves.map(({ path, defaultValue }) => {
                 // 内部名は消さない: 設定ファイル（config.json の budgets）の鍵と同じなので、手で直す人の手がかりになるため
@@ -99,9 +98,12 @@ export function BudgetSettings() {
                 const invalid = data.invalid.find((entry) => entry.path === path);
                 return (
                   <div key={path}>
-                    <label className="flex flex-wrap items-baseline gap-x-2">
-                      <span>{label}</span>
-                      <code className="text-xs text-muted-foreground">{path}</code>
+                    {/* 入力欄は右の決まった幅の列に置く: ラベルの長さなりに並べると、欄の位置が行ごとにずれるため。
+                        並びの幅は抑える: カードの幅いっぱいだと、広い画面でラベルと欄が離れすぎて、どの欄かを目で追えないため */}
+                    <label className="grid max-w-2xl grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-x-3">
+                      <span className="min-w-0">
+                        {label} <code className="text-xs text-muted-foreground">{path}</code>
+                      </span>
                       <Input
                         className="w-24"
                         type="text"
@@ -145,6 +147,6 @@ export function BudgetSettings() {
       {saved && (
         <OkNote focus>保存した。次に投入するジョブから効く。走っているジョブは変わらない。</OkNote>
       )}
-    </section>
+    </Section>
   );
 }

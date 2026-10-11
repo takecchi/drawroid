@@ -32,6 +32,43 @@ describe('JobList', () => {
     expect(screen.getAllByText('まだ無い。')).toHaveLength(1);
   });
 
+  it('leaves no empty list in the sections that have no job, but keeps the sections', () => {
+    mocks.useJobs.mockReturnValue({
+      data: {
+        jobs: [
+          {
+            jobId: 'running-1',
+            kind: 'auto',
+            createdAt: '2026-10-09T00:02:00Z',
+            state: { status: 'running' },
+          },
+        ],
+        invalid: [],
+      },
+      error: undefined,
+    });
+    render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: '待ち（0）' })).toBeTruthy();
+    expect(screen.getAllByRole('list')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('leaves no list at all when there is no job', () => {
+    mocks.useJobs.mockReturnValue({ data: { jobs: [], invalid: [] }, error: undefined });
+    render(
+      <MemoryRouter>
+        <JobList />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('list')).toBeNull();
+  });
+
   it('shows the running section first, then the queued, then the stopped', () => {
     mocks.useJobs.mockReturnValue({
       data: {

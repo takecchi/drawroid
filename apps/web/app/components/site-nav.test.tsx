@@ -30,6 +30,27 @@ describe('SiteNav', () => {
     expect(hrefOf('LLM の記録')).toBe('/llm-calls');
   });
 
+  // 見出しが最初の項目の中にあると、読み上げで「描く 依頼」が1項目に聞こえ、組の区切りが伝わらない
+  it('keeps each group heading outside of the items and names the group list after it', () => {
+    render(
+      <MemoryRouter>
+        <SiteNav />
+      </MemoryRouter>,
+    );
+
+    for (const [heading, first, last] of [
+      ['描く', '依頼', '手動で生成'],
+      ['覚えること', '記憶', '候補の説明'],
+      ['設定', '設定', 'LLM の記録'],
+    ] as const) {
+      const group = screen.getByRole('list', { name: heading });
+      const items = within(group).getAllByRole('listitem');
+      expect(items[0]?.textContent).toBe(first);
+      expect(items.at(-1)?.textContent).toBe(last);
+    }
+    expect(screen.getAllByRole('list')).toHaveLength(4);
+  });
+
   it('marks the conversations as the current place on the list and on each conversation', () => {
     for (const path of ['/', '/conversations/20261009-153012-k3f9']) {
       render(

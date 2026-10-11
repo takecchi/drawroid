@@ -47,23 +47,25 @@ export default function Conversations() {
             まだ会話は無い。「新しい会話」から、描いてほしいものや聞きたいことを話しかける。
           </Muted>
         )}
-        <ul className="divide-y divide-border">
-          {data?.conversations.map((conversation) => (
-            <li key={conversation.conversationId}>
-              <Link
-                to={`/conversations/${conversation.conversationId}`}
-                className="-mx-2 block rounded-md px-2 py-3 hover:bg-muted"
-              >
-                <ConversationSummary
-                  title={conversation.title === '' ? '新しい会話' : conversation.title}
-                  preview={conversation.lastMessage}
-                  running={conversation.running}
-                  meta={formatTime(conversation.lastActiveAt)}
-                />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {data !== undefined && data.conversations.length > 0 && (
+          <ul className="divide-y divide-border">
+            {data.conversations.map((conversation) => (
+              <li key={conversation.conversationId}>
+                <Link
+                  to={`/conversations/${conversation.conversationId}`}
+                  className="-mx-2 block rounded-md px-2 py-3 hover:bg-muted"
+                >
+                  <ConversationSummary
+                    title={conversation.title === '' ? '新しい会話' : conversation.title}
+                    preview={conversation.lastMessage}
+                    running={conversation.running}
+                    meta={formatTime(conversation.lastActiveAt)}
+                  />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
     </Page>
   );
