@@ -148,8 +148,12 @@ function conversationSections(
   // 口出しと同じ文は載せない: 会話で描いたジョブでは、話す役が人の発言をそのまま口出しとしてジョブに置くので、同じ文が二度載り予算も食うため。
   // 比べる相手は入力に載った口出しだけ: 口出しが予算で落ちたなら、会話の発言が唯一の材料になる。
   // 部分一致では比べない: 言い換えや一部だけの発言は別の材料で、落とすと好みの手掛かりが減るため
+  const seenTexts: string[] = [];
   const messages = allMessages.filter((message) => {
-    if (!shownInterventionTexts.some((text) => sameSentence(text, message.text))) return true;
+    const repeated = seenTexts.some((text) => sameSentence(text, message.text));
+    seenTexts.push(message.text);
+    if (!repeated && !shownInterventionTexts.some((text) => sameSentence(text, message.text)))
+      return true;
     w.notes.push({
       kind: 'dropped',
       section: `message[${message.id}]`,
