@@ -2261,7 +2261,12 @@ describe('ConversationView', () => {
       const favorite = dialog().getByRole('button', { name: 'お気に入り: 2 回目の画像 1 番' });
       favorite.focus();
       stream.emit(
-        confirmed({ type: 'job.images', jobId: JOB, iteration: 3, images: [{ index: 0, seed: 1 }] }),
+        confirmed({
+          type: 'job.images',
+          jobId: JOB,
+          iteration: 3,
+          images: [{ index: 0, seed: 1 }],
+        }),
       );
       expect(dialog().getByRole('status')).toBe(first);
       await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
