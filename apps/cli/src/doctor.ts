@@ -193,7 +193,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
           },
         ],
       },
-      refusedAtStart: true,
+      refusedAtStart: false,
       backend: undefined,
       llm: { state: 'invalid' },
     };
