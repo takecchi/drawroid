@@ -321,6 +321,22 @@ describe('runDoctor', () => {
     }
   });
 
+  it('lists only the budget fields it cannot read, not the ones it can', async () => {
+    const { report } = await setup({ budgets: { imageLongEdge: 256, text: { prompt: -1 } } });
+    const section = report.sections.find(({ title }) => title === '設定ファイル');
+    expect(section?.items.map(({ what }) => what)).toEqual([
+      'config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）',
+    ]);
+  });
+
+  it('says a budgets that is not an object of fields, once, as budgets', async () => {
+    const { report } = await setup({ budgets: 7 });
+    const section = report.sections.find(({ title }) => title === '設定ファイル');
+    expect(section?.items.map(({ what }) => what)).toEqual([
+      'config.json の budgets: 予算が、欄の集まりになっていない',
+    ]);
+  });
+
   it('names the mode of a broken permission only once', async () => {
     const { text } = await setup({ permissions: { steps: { mode: 'sometimes' } } });
     expect(text).toContain(
