@@ -337,6 +337,18 @@ describe('PUT /memory/:id', () => {
     expect(emptyTag).toBe('tags.0: 空のタグがある');
   });
 
+  // ほかの断りと同じ「欄: 文」の形で、日本語で言う（hono の英語の文をそのまま返さない）
+  it('says in Japanese, in the field: reason form, that the body cannot be read as JSON', async () => {
+    await putFile('no-broken-fingers', itemFile());
+
+    const res = await put('no-broken-fingers', '{not json');
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: { kind: 'invalid_request', message: '(body): JSON として読めない' },
+    });
+  });
+
   it('names the limits of the settings at the time of the request in the reason', async () => {
     await putFile('no-broken-fingers', itemFile());
     await budgetSettings.write({ distill: { output: { body: 5, tags: 1, tag: 3 } } });
