@@ -247,7 +247,7 @@ async function pendingSameInstruction(
   instruction: string,
 ): Promise<InterventionRecord | undefined> {
   const sentence = normalizeForMatch(instruction.trim());
-  return (await jobs.listInterventions(jobId)).find(
+  return (await jobs.listInterventions(jobId)).slice(-1).find(
     (i) =>
       i.kind === 'instruction' &&
       i.appliedInIteration === undefined &&
