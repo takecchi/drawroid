@@ -79,6 +79,55 @@ describe('/settings/budgets', () => {
   });
 });
 
+describe('the sentence of a refused PUT /settings/budgets', () => {
+  const refusal = async (body: unknown) => {
+    const res = await putBudgets(body);
+    expect(res.status).toBe(400);
+    return (await res.json()) as { error: { kind: string; message: string } };
+  };
+
+  it.each([
+    [
+      'a long edge that is too small',
+      { imageLongEdge: 0 },
+      'imageLongEdge の値が違う（128 以上）（原文: Too small: expected number to be >=128）',
+    ],
+    [
+      'a nested field of the wrong type',
+      { text: { prompt: 'x' } },
+      'text.prompt の値が違う（数で書く）（原文: Invalid input: expected number, received string）',
+    ],
+    [
+      'an unknown key',
+      { nope: 1 },
+      '(body) の値が違う（知らない欄 nope）（原文: Unrecognized key: "nope"）',
+    ],
+  ])('says %s in Japanese with the original in parentheses', async (_name, body, message) => {
+    expect(await refusal(body)).toEqual({ error: { kind: 'invalid_request', message } });
+  });
+
+  it('does not name config.json: the input is not the file', async () => {
+    expect((await refusal({ imageLongEdge: 0 })).error.message).not.toContain('config.json');
+  });
+
+  it('joins the problems of several fields with "; "', async () => {
+    const { message } = (await refusal({ imageLongEdge: 0, imagesPerJudge: 99 })).error;
+
+    expect(message.split('; ')).toHaveLength(2);
+    expect(message).toContain('imageLongEdge の値が違う');
+    expect(message).toContain('imagesPerJudge の値が違う');
+  });
+
+  it('keeps the other routes on the sentence of describeIssues', async () => {
+    const res = await send('PUT', '/settings/llm', { nope: 1 });
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).not.toContain(
+      'の値が違う',
+    );
+  });
+});
+
 describe('budgets written to job.json', () => {
   it('copies the budgets resolved at submission', async () => {
     await putBudgets({ imageLongEdge: 256, text: { prompt: 300 } });

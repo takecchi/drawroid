@@ -5,7 +5,7 @@ type Issue = ZodError['issues'][number];
 /**
  * 壊れた config.json の文。起動・doctor・API が同じ言い方をするため、ここに1つだけ置く。
  * 日本語の説明を前に、node・zod の原文を括弧で後ろに残す（原文は、調べるときの手がかりになる）。
- * API の入力の 400 に使う describeIssues とは別: あちらは入力の欄を言い、これは config.json の欄を言う
+ * API の入力の 400 は describeInputIssues（入力の欄を言う）で、これは config.json の欄を言う
  */
 export function describeConfigIssues(error: ZodError, root: readonly string[] = []): string {
   return error.issues.map((issue) => describeConfigIssue(issue, root)).join('; ');
@@ -21,13 +21,28 @@ export function describeConfigIssue(issue: Issue, root: readonly string[] = []):
   return `config.json の ${fieldName(path)} が読めない（${explain(issue)}）（原文: ${issue.message}）`;
 }
 
+/**
+ * API の入力の誤り（400）の文。config.json の文と同じく、日本語の説明を前に、zod の原文を括弧で後ろに置く。
+ * 欄は入力の道筋（値が無い道筋は (body)）。config.json の欄ではないので「config.json の」は付けない。
+ * 入力の値は文に含めない: 値が API キーなどの秘密でも、応答に出さないため
+ */
+export function describeInputIssues(error: ZodError): string {
+  return error.issues.map(describeInputIssue).join('; ');
+}
+
+function describeInputIssue(issue: Issue): string {
+  const field = fieldName(issue.path.map(String), '(body)');
+  if (issue.code === 'custom' && JAPANESE.test(issue.message)) return `${field}: ${issue.message}`;
+  return `${field} の値が違う（${explain(issue)}）（原文: ${issue.message}）`;
+}
+
 /** zod の issue が無い、自前の日本語の1文（予算の「欄の集まりになっていない」など）を、同じ形で言う */
 export function describeConfigNote(note: string, path: readonly string[] = []): string {
   return `config.json の ${fieldName(path)}: ${note}`;
 }
 
-function fieldName(path: readonly string[]): string {
-  return path.join('.') || '(全体)';
+function fieldName(path: readonly string[], whenEmpty = '(全体)'): string {
+  return path.join('.') || whenEmpty;
 }
 
 /** JSON として読めないときは、欄を言えない（全体が読めていない）。ファイルのパスは呼び手が添える */
