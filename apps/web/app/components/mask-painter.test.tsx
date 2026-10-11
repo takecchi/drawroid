@@ -37,7 +37,7 @@ afterEach(() => {
 // 元は 1024×768 の画像を、画面には 512×384 で出している
 async function openPainter() {
   const user = userEvent.setup();
-  render(
+  const { rerender } = render(
     <MaskPainter
       jobId="job-1"
       image={{ iteration: 2, index: 1, url: '/api/jobs/job-1/images/2-1.png' }}
@@ -51,7 +51,7 @@ async function openPainter() {
   const canvas = screen.getByLabelText('マスクを塗る所');
   canvas.getBoundingClientRect = () =>
     ({ left: 0, top: 0, width: 512, height: 384, right: 512, bottom: 384, x: 0, y: 0 }) as DOMRect;
-  return { user, canvas };
+  return { user, canvas, rerender };
 }
 
 function drag(canvas: HTMLElement, from: [number, number], to: [number, number]) {
@@ -164,6 +164,45 @@ describe('MaskPainter', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'マスクを送る' }).disabled).toBe(
       true,
     );
+  });
+
+  it('cannot send the same mask again while it is being sent', async () => {
+    send.mockReturnValue(new Promise(() => undefined));
+    const { user, canvas } = await openPainter();
+
+    drag(canvas, [0, 0], [256, 192]);
+    await user.click(screen.getByRole('button', { name: 'マスクを送る' }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'マスクを送る' })).toHaveProperty('disabled', true);
+  });
+
+  it('empties what was painted once the mask is sent', async () => {
+    const { user, canvas } = await openPainter();
+
+    drag(canvas, [0, 0], [256, 192]);
+    await user.click(screen.getByRole('button', { name: 'マスクを送る' }));
+    await screen.findByText(/送った/);
+
+    for (const name of ['ひとつ戻す', '全部消す', 'マスクを送る']) {
+      expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true);
+    }
+  });
+
+  // 別の画像の上に、前の画像の筆が残らない
+  it('drops what was painted when the image to paint on changes', async () => {
+    const { canvas, rerender } = await openPainter();
+    drag(canvas, [0, 0], [256, 192]);
+    expect(screen.getByRole('button', { name: '全部消す' })).toHaveProperty('disabled', false);
+
+    rerender(
+      <MaskPainter
+        jobId="job-1"
+        image={{ iteration: 2, index: 2, url: '/api/jobs/job-1/images/2-2.png' }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '全部消す' })).toHaveProperty('disabled', true);
   });
 
   it('takes back the last stroke, and erases with the eraser at the chosen size', async () => {
