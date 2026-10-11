@@ -218,6 +218,22 @@ describe('errors outside the routes share the error shape', () => {
     expect(((await res.json()) as { error: { kind: string } }).error.kind).toBe('invalid_request');
   });
 
+  it('says a body that is not JSON in Japanese on a route other than budgets, with hono’s sentence in parentheses', async () => {
+    const res = await api.request('/settings/llm', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: '{ not json',
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: {
+        kind: 'invalid_request',
+        message: '(body): JSON として読めない（原文: Malformed JSON in request body）',
+      },
+    });
+  });
+
   it('answers an unexpected failure with internal_error, without its message', async () => {
     vi.spyOn(backend, 'probe').mockRejectedValue(new Error('/home/someone/secret/config.json'));
 

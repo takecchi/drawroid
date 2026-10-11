@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { describeConfigIssues, describeUnparsableConfig } from './config-problems.js';
+import {
+  describeConfigIssues,
+  describeInputIssues,
+  describeUnparsableConfig,
+} from './config-problems.js';
 
 /** schema に value を渡して失敗させ、config.json の文にする */
 function said(schema: z.ZodType, value: unknown, root: string[] = []): string {
@@ -109,6 +113,54 @@ describe('describeConfigIssues', () => {
 
   it('names the whole file when the path is empty', () => {
     expect(said(z.object({}), 'x')).toContain('config.json の (全体) が読めない');
+  });
+});
+
+/** schema に value を渡して失敗させ、API の入力の誤りの文にする */
+function saidOfInput(schema: z.ZodType, value: unknown): string {
+  const parsed = schema.safeParse(value);
+  if (parsed.success) throw new Error('この値は通ってしまった');
+  return describeInputIssues(parsed.error);
+}
+
+describe('describeInputIssues', () => {
+  it('says the input field, a Japanese explanation, and the original message, without naming config.json', () => {
+    expect(saidOfInput(z.object({ imageLongEdge: z.number().min(128) }), { imageLongEdge: 0 })).toBe(
+      'imageLongEdge の値が違う（128 以上）（原文: Too small: expected number to be >=128）',
+    );
+  });
+
+  it('joins a nested path with dots', () => {
+    const schema = z.object({ text: z.object({ prompt: z.number() }) });
+    expect(saidOfInput(schema, { text: { prompt: 'x' } })).toBe(
+      'text.prompt の値が違う（数で書く）（原文: Invalid input: expected number, received string）',
+    );
+  });
+
+  it('names the whole body as (body) when the path is empty', () => {
+    expect(saidOfInput(z.strictObject({ a: z.string() }), { a: 'x', nope: 1 })).toBe(
+      '(body) の値が違う（知らない欄 nope）（原文: Unrecognized key: "nope"）',
+    );
+  });
+
+  it('does not put the original message after a custom message that is already Japanese', () => {
+    const schema = z.object({ f: z.string().refine(() => false, { message: '空にできない' }) });
+    expect(saidOfInput(schema, { f: 'a' })).toBe('f: 空にできない');
+  });
+
+  it('joins several issues with "; "', () => {
+    expect(
+      saidOfInput(z.object({ a: z.string(), b: z.number() }), { a: 1, b: 'x' }).split('; '),
+    ).toEqual([
+      'a の値が違う（文字列で書く）（原文: Invalid input: expected string, received number）',
+      'b の値が違う（数で書く）（原文: Invalid input: expected number, received string）',
+    ]);
+  });
+
+  it('does not repeat the input value, which may be a secret', () => {
+    expect(saidOfInput(z.object({ key: z.number() }), { key: 'sk-secret-value' })).not.toContain(
+      'sk-secret-value',
+    );
   });
 });
 
