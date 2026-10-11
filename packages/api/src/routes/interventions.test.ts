@@ -6,6 +6,7 @@ import {
   DEFAULT_BUDGET,
   basicPermissions,
   generationRequestSchema,
+  InterventionRejectedError,
   JobRunner,
   ManualGenerationRunner,
 } from '@drawroid/core';
@@ -31,8 +32,11 @@ import {
 let root: string;
 let store: FsJobStore;
 let app: ReturnType<typeof createApi>;
+// 入れると、待ち行列が口出しを受けずに投げる。自動ジョブでは起きない経路を試すため
+let rejectInstructionWith: InterventionRejectedError | undefined;
 
 beforeEach(async () => {
+  rejectInstructionWith = undefined;
   root = await mkdtemp(join(tmpdir(), 'drawroid-api-interventions-'));
   store = new FsJobStore(root);
   const backend = new StubBackend();
@@ -59,7 +63,10 @@ beforeEach(async () => {
     autoQueue: {
       kick: () => undefined,
       stop: (jobId) => runner.stop(jobId),
-      addInstruction: (jobId, text) => runner.addInstruction(jobId, text),
+      addInstruction: (jobId, text) =>
+        rejectInstructionWith === undefined
+          ? runner.addInstruction(jobId, text)
+          : Promise.reject(rejectInstructionWith),
       changeStopConditions: (jobId, change) => runner.changeStopConditions(jobId, change),
       addReference: (jobId, reference) => runner.addReference(jobId, reference),
       addMask: (jobId, mask) => runner.addMask(jobId, mask),
@@ -235,6 +242,17 @@ describe('POST /jobs/auto/:jobId/interventions', () => {
     expect((await intervene(manual.jobId, { kind: 'instruction', text: 'x' })).status).toBe(404);
     expect((await intervene('no-such-job', { kind: 'instruction', text: 'x' })).status).toBe(404);
   });
+
+  it('answers 404 when the queue rejects an intervention because the job is manual', async () => {
+    const jobId = await createAuto();
+    rejectInstructionWith = new InterventionRejectedError(jobId, 'manual');
+
+    const res = await intervene(jobId, { kind: 'instruction', text: '逆光にして' });
+
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: { kind: string } }).error.kind).toBe('not_found');
+    expect(await store.listInterventions(jobId)).toEqual([]);
+  });
 });
 
 describe('GET /jobs/auto/:jobId/stop-conditions', () => {
@@ -391,6 +409,21 @@ describe('inpaint masks, as an intervention', () => {
     });
 
     expect(res.status).toBe(404);
+    expect(await store.listInterventions(jobId)).toEqual([]);
+  });
+
+  it('refuses a mask painted on iteration 0, before looking for the job or the image, writing nothing', async () => {
+    const jobId = await createAuto();
+    await withFirstImage(jobId);
+    const onIterationZero = {
+      kind: 'mask',
+      image: { iteration: 0, index: 0 },
+      mask: { data: png },
+    };
+
+    for (const target of [jobId, 'no-such-job']) {
+      expect((await intervene(target, onIterationZero)).status).toBe(400);
+    }
     expect(await store.listInterventions(jobId)).toEqual([]);
   });
 
