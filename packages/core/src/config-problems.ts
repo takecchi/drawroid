@@ -95,12 +95,24 @@ function explain(issue: Issue): string {
       return bound(issue.origin, String(issue.maximum), issue.inclusive !== false, '以下');
     case 'unrecognized_keys':
       return `知らない欄 ${issue.keys.join('・')}`;
+    case 'invalid_union':
+      return discriminatorOptions(issue) ?? OTHER;
     default:
       return OTHER;
   }
 }
 
 const OTHER = '書き方が違う';
+
+/** 判別 union の判別の欄が、どの枝にも当たらなかったときに、選べる値を言う */
+function discriminatorOptions(
+  issue: Extract<Issue, { code: 'invalid_union' }>,
+): string | undefined {
+  // options は判別の欄の誤りのときだけ実行時に入り、zod の型には無い（permission.ts の describePermissionIssue と同じ読み方）
+  const options = (issue as { options?: readonly unknown[] }).options ?? [];
+  if (options.length === 0) return undefined;
+  return oneOf(options.map((value) => JSON.stringify(value)));
+}
 
 function oneOf(values: readonly string[]): string {
   if (values.length === 1) return `${values[0]} と書く`;

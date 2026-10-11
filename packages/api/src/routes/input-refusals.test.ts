@@ -159,6 +159,48 @@ describe('the 400 of an input that zod refuses, on every route', () => {
 
   it.each([
     [
+      'POST /jobs/auto/:jobId/interventions',
+      'POST',
+      '/jobs/auto/j/interventions',
+      { kind: 'adopt' },
+      'kind の値が違う（"instruction"・"stopConditions"・"reference"・"mask" のどれか）（原文: Invalid discriminator value. Expected \'instruction\' | \'stopConditions\' | \'reference\' | \'mask\'）',
+    ],
+    [
+      'PUT /settings/permissions',
+      'PUT',
+      '/settings/permissions',
+      { steps: { mode: 'off' } },
+      'steps.mode の値が違う（"auto" か "fixed" のどちらか）（原文: Invalid discriminator value. Expected \'auto\' | \'fixed\'）',
+    ],
+    [
+      'POST /jobs/auto',
+      'POST',
+      '/jobs/auto',
+      { request: '海辺', permissions: { seed: { mode: 'random' } } },
+      'permissions.seed.mode の値が違う（"auto"・"fixed"・"off" のどれか）（原文: Invalid discriminator value. Expected \'auto\' | \'fixed\' | \'off\'）',
+    ],
+  ])(
+    '%s names the values a discriminator can take, in Japanese',
+    async (_route, method, path, body, message) => {
+      expect(await refusalMessage(await send(method, path, body))).toBe(message);
+    },
+  );
+
+  it('PUT /settings/llm names the provider types it accepts', async () => {
+    const message = await refusalMessage(
+      await send('PUT', '/settings/llm', {
+        providers: { local: { type: 'ollama' } },
+        roles: { think: { provider: 'local', model: 'm' } },
+      }),
+    );
+
+    expect(message).toContain(
+      'providers.local.type の値が違う（"openai-compatible"・"openai"・"anthropic" のどれか）',
+    );
+  });
+
+  it.each([
+    [
       'a memory body that is empty',
       'PUT',
       '/memory/m',

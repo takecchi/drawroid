@@ -77,6 +77,18 @@ describe('describeConfigIssues', () => {
     );
   });
 
+  it('lists the allowed values of a discriminator', () => {
+    const provider = z.discriminatedUnion('type', [
+      z.object({ type: z.literal('openai-compatible') }),
+      z.object({ type: z.literal('openai') }),
+      z.object({ type: z.literal('anthropic') }),
+    ]);
+    const schema = z.object({ llm: z.object({ providers: z.record(z.string(), provider) }) });
+    expect(said(schema, { llm: { providers: { local: { type: 'ollama' } } } })).toBe(
+      'config.json の llm.providers.local.type が読めない（"openai-compatible"・"openai"・"anthropic" のどれか）（原文: Invalid discriminator value. Expected \'openai-compatible\' | \'openai\' | \'anthropic\'）',
+    );
+  });
+
   it('falls back to "書き方が違う" for the other kinds', () => {
     const schema = z.object({ f: z.number().multipleOf(5) });
     expect(said(schema, { f: 3 })).toContain('（書き方が違う）');
@@ -199,6 +211,47 @@ describe('describeInputIssues', () => {
   it('keeps the Japanese explanation and the original message for the default English message', () => {
     expect(saidOfInput(z.object({ f: z.string().min(1) }), { f: '' })).toBe(
       'f の値が違う（1 文字以上）（原文: Too small: expected string to have >=1 characters）',
+    );
+  });
+
+  describe('a discriminator', () => {
+    const intervention = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('instruction'), text: z.string() }),
+      z.object({ kind: z.literal('reference'), image: z.string() }),
+    ]);
+    const permission = z.discriminatedUnion('mode', [
+      z.object({ mode: z.literal('auto') }),
+      z.object({ mode: z.literal('fixed'), value: z.unknown() }),
+      z.object({ mode: z.literal('off') }),
+    ]);
+
+    it('says the allowed values in Japanese, not only in the original message', () => {
+      expect(saidOfInput(intervention, { kind: 'mask' })).toBe(
+        'kind の値が違う（"instruction" か "reference" のどちらか）（原文: Invalid discriminator value. Expected \'instruction\' | \'reference\'）',
+      );
+    });
+
+    it('lists three or more allowed values on a nested field', () => {
+      expect(saidOfInput(z.object({ steps: permission }), { steps: { mode: 'bogus' } })).toBe(
+        'steps.mode の値が違う（"auto"・"fixed"・"off" のどれか）（原文: Invalid discriminator value. Expected \'auto\' | \'fixed\' | \'off\'）',
+      );
+    });
+
+    it('lists the allowed values when the discriminator is missing', () => {
+      expect(saidOfInput(intervention, { text: '逆光にして' })).toContain(
+        'kind の値が違う（"instruction" か "reference" のどちらか）',
+      );
+    });
+
+    it('says the one allowed value of a discriminator with a single option', () => {
+      const only = z.discriminatedUnion('kind', [z.object({ kind: z.literal('manual') })]);
+      expect(saidOfInput(only, { kind: 'auto' })).toContain('kind の値が違う（"manual" と書く）');
+    });
+  });
+
+  it('falls back to "書き方が違う" for a union without a discriminator', () => {
+    expect(saidOfInput(z.object({ f: z.union([z.string(), z.number()]) }), { f: true })).toContain(
+      'f の値が違う（書き方が違う）',
     );
   });
 
