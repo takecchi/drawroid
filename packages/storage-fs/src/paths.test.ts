@@ -59,7 +59,9 @@ describe('jobFiles', () => {
     );
     expect(dataPaths('/d').llmCall('c2')).toBe(join('/d', 'llm-calls', 'c2.json'));
   });
+});
 
+describe('conversationFiles', () => {
   it('lays out a conversation as described in the conversational agent design', () => {
     const conversation = dataPaths('/d').conversationFiles('c1');
     expect(conversation.meta).toBe(join('/d', 'conversations', 'c1', 'conversation.json'));
