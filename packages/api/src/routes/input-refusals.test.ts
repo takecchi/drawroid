@@ -45,7 +45,13 @@ describe('the 400 of an input that zod refuses, on every route', () => {
       { iteration: '1', index: 0 },
       'iteration の値が違う（数で書く）（原文: Invalid input: expected number, received string）',
     ],
-    ['POST /jobs/auto', 'POST', '/jobs/auto', { request: 1 }, `request ${stringExpected('number')}`],
+    [
+      'POST /jobs/auto',
+      'POST',
+      '/jobs/auto',
+      { request: 1 },
+      `request ${stringExpected('number')}`,
+    ],
     [
       'PUT /backend/candidate-notes',
       'PUT',
