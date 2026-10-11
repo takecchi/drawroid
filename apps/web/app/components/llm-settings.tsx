@@ -413,6 +413,20 @@ export function LlmSettings() {
                 className="w-32"
               />
             </Field>
+            <Field
+              label="1回の呼び出しの全体の上限（秒）"
+              hint="出力が流れ続けていても、この秒数を超えたら打ち切る。空なら 900 秒"
+            >
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={values.totalCallTimeoutSeconds}
+                onChange={(event) => change({ totalCallTimeoutSeconds: event.target.value })}
+                aria-label="1回の呼び出しの全体の上限（秒）"
+                placeholder="既定"
+                className="w-32"
+              />
+            </Field>
           </SubSection>
           <Button type="submit" variant="primary" disabled={saving}>
             LLM の設定を保存
