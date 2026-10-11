@@ -2340,6 +2340,21 @@ describe('ConversationView', () => {
       });
     });
 
+    // 塗り直すと前の知らせは空になる: やめて見る形に戻っても、送っていない塗りの知らせのように残さない
+    it('does not bring back the note of the mask sent before, once painting again is given up', async () => {
+      const { user, dialog } = await startPainting();
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+      paint(loadOriginal(dialog));
+      await user.click(dialog().getByRole('button', { name: 'マスクを送る' }));
+      await dialog().findByText('マスクを送った。次の回で描き直す。');
+
+      await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+      await user.click(dialog().getByRole('button', { name: '塗るのをやめる' }));
+
+      expect(dialog().getByRole('button', { name: 'マスクを塗る' })).toBeTruthy();
+      expect(dialog().queryByText('マスクを送った。次の回で描き直す。')).toBeNull();
+    });
+
     it('closes on Escape while painting with nothing painted yet, without saying it stays open', async () => {
       const { user, dialog } = await startPainting();
       await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
