@@ -1,11 +1,11 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { writeBackendSettings } from './backend-settings.js';
-import { updateConfigObject } from './config-file.js';
+import { readConfigObject, updateConfigObject } from './config-file.js';
 import { writeLlmSettings } from './llm-settings.js';
 import { writePermissionSettings } from './permission-settings.js';
 
@@ -21,6 +21,29 @@ afterEach(async () => {
 });
 
 const readConfig = async () => JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+
+describe('reading config.json that is not JSON', () => {
+  it('fails with the message of JSON.parse kept as the original, so the caller can say it in its own words', async () => {
+    await writeFile(path, '{');
+    let original = '';
+    try {
+      JSON.parse('{');
+    } catch (error) {
+      original = (error as Error).message;
+    }
+
+    await expect(readConfigObject(path)).rejects.toMatchObject({ original });
+  });
+
+  it('keeps failing with a plain error for JSON that is not an object', async () => {
+    await writeFile(path, '[1]');
+
+    const error = await readConfigObject(path).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toHaveProperty('original');
+  });
+});
 
 describe('writing config.json from several places at once', () => {
   it('keeps both changes when the LLM settings and the permissions are written at the same time', async () => {

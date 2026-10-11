@@ -5,6 +5,7 @@ import {
   describeConfigIssues,
   describeInputIssues,
   describeUnparsableConfig,
+  UnparsableConfigError,
 } from './config-problems.js';
 
 /** schema に value を渡して失敗させ、config.json の文にする */
@@ -222,5 +223,15 @@ describe('describeUnparsableConfig', () => {
     expect(describeUnparsableConfig("Expected property name or '}' in JSON at position 1")).toBe(
       "config.json が JSON として読めない（原文: Expected property name or '}' in JSON at position 1）",
     );
+  });
+});
+
+describe('UnparsableConfigError', () => {
+  it('carries the original message, and its own message is the same sentence as describeUnparsableConfig', () => {
+    const said = "Expected property name or '}' in JSON at position 1";
+    const error = new UnparsableConfigError(said);
+
+    expect(error.original).toBe(said);
+    expect(error.message).toBe(describeUnparsableConfig(said));
   });
 });

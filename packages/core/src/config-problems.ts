@@ -51,6 +51,20 @@ export function describeUnparsableConfig(message: string): string {
   return `config.json が JSON として読めない（原文: ${message}）`;
 }
 
+/**
+ * config.json が JSON として読めなかった失敗。node の原文を持つ。
+ * 読んだ置き場（storage-fs）と、文にして返す口（api）が別の層のため、層をまたいで見分けられる型にする
+ */
+export class UnparsableConfigError extends Error {
+  constructor(
+    readonly original: string,
+    options?: ErrorOptions,
+  ) {
+    super(describeUnparsableConfig(original), options);
+    this.name = 'UnparsableConfigError';
+  }
+}
+
 const JAPANESE = /[぀-ヿ㐀-鿿]/u;
 
 const EXPECTED_TYPES: Readonly<Record<string, string>> = {
