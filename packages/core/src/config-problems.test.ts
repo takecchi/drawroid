@@ -90,6 +90,36 @@ describe('describeConfigIssues', () => {
     );
   });
 
+  it('does not put the original message after a Japanese message of a kind other than custom', () => {
+    const schema = z.object({
+      llm: z.object({
+        roles: z.object({
+          think: z.object({ model: z.string().min(1, '考える役のモデルの名前を入れる') }),
+        }),
+      }),
+    });
+    const sentence = said(schema, { llm: { roles: { think: { model: '' } } } });
+    expect(sentence).toBe('config.json の llm.roles.think.model: 考える役のモデルの名前を入れる');
+    expect(sentence).not.toContain('原文');
+  });
+
+  it.each([
+    ['hiragana only', 'ひらがなだけ'],
+    ['katakana only', 'エラー'],
+    ['kanji only', '欄名不正'],
+  ])('treats a message of %s as Japanese, custom or not', (_, message) => {
+    const custom = z.string().refine(() => false, { message });
+    const tooSmall = z.string().min(1, message);
+    expect(said(z.object({ f: custom }), { f: 'a' })).toBe(`config.json の f: ${message}`);
+    expect(said(z.object({ f: tooSmall }), { f: '' })).toBe(`config.json の f: ${message}`);
+  });
+
+  it('keeps the Japanese explanation and the original message for the default English message', () => {
+    expect(said(z.object({ f: z.string().min(1) }), { f: '' })).toBe(
+      'config.json の f が読めない（1 文字以上）（原文: Too small: expected string to have >=1 characters）',
+    );
+  });
+
   it('treats a custom message in English as the fallback', () => {
     const schema = z.string().refine(() => false, { message: 'nope' });
     expect(said(z.object({ f: schema }), { f: 'a' })).toBe(
@@ -146,6 +176,29 @@ describe('describeInputIssues', () => {
   it('does not put the original message after a custom message that is already Japanese', () => {
     const schema = z.object({ f: z.string().refine(() => false, { message: '空にできない' }) });
     expect(saidOfInput(schema, { f: 'a' })).toBe('f: 空にできない');
+  });
+
+  it('does not put the original message after a Japanese message of a kind other than custom', () => {
+    const sentence = saidOfInput(z.object({ f: z.string().min(1, '空にできない') }), { f: '' });
+    expect(sentence).toBe('f: 空にできない');
+    expect(sentence).not.toContain('原文');
+  });
+
+  it.each([
+    ['hiragana only', 'ひらがなだけ'],
+    ['katakana only', 'エラー'],
+    ['kanji only', '欄名不正'],
+  ])('treats a message of %s as Japanese, custom or not', (_, message) => {
+    const custom = z.string().refine(() => false, { message });
+    const tooSmall = z.string().min(1, message);
+    expect(saidOfInput(z.object({ f: custom }), { f: 'a' })).toBe(`f: ${message}`);
+    expect(saidOfInput(z.object({ f: tooSmall }), { f: '' })).toBe(`f: ${message}`);
+  });
+
+  it('keeps the Japanese explanation and the original message for the default English message', () => {
+    expect(saidOfInput(z.object({ f: z.string().min(1) }), { f: '' })).toBe(
+      'f の値が違う（1 文字以上）（原文: Too small: expected string to have >=1 characters）',
+    );
   });
 
   it('joins several issues with "; "', () => {

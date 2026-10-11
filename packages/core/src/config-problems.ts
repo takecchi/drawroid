@@ -14,8 +14,9 @@ export function describeConfigIssues(error: ZodError, root: readonly string[] = 
 /** root は、検証した値が config.json のどの欄の下かを言う（llm だけを検証したなら ['llm']） */
 export function describeConfigIssue(issue: Issue, root: readonly string[] = []): string {
   const path = [...root, ...issue.path.map(String)];
-  // 自前の日本語の文には、原文を付けない: すでに人が読める文で、括弧を足すと同じことを2度言う
-  if (issue.code === 'custom' && JAPANESE.test(issue.message)) {
+  // 自前の日本語の文には、原文を付けない: すでに人が読める文で、括弧を足すと同じことを2度言う。
+  // issue の種類（custom・too_small など）では分けない: .min(1, '日本語の文') も自前の文のため
+  if (JAPANESE.test(issue.message)) {
     return describeConfigNote(issue.message, path);
   }
   return `config.json の ${fieldName(path)} が読めない（${explain(issue)}）（原文: ${issue.message}）`;
@@ -32,7 +33,7 @@ export function describeInputIssues(error: ZodError): string {
 
 function describeInputIssue(issue: Issue): string {
   const field = fieldName(issue.path.map(String), '(body)');
-  if (issue.code === 'custom' && JAPANESE.test(issue.message)) return `${field}: ${issue.message}`;
+  if (JAPANESE.test(issue.message)) return `${field}: ${issue.message}`;
   return `${field} の値が違う（${explain(issue)}）（原文: ${issue.message}）`;
 }
 
