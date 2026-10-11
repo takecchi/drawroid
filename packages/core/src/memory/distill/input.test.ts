@@ -148,6 +148,70 @@ describe('the human words that are both an intervention and a conversation messa
     expect(text).toContain('会話での人間の発言: 逆光にして');
   });
 
+  it('are kept in the conversation when only the punctuation or spaces differ', () => {
+    const text = textOf(
+      stopped(
+        material({
+          interventions: [{ id: 'i1', text: '逆光にして。' }],
+          conversation: [
+            { id: '8', text: '逆光にして' },
+            { id: '9', text: '逆光 にして。' },
+          ],
+        }),
+      ),
+    );
+
+    expect(text).toContain('会話での人間の発言: 逆光にして\n');
+    expect(text).toContain('会話での人間の発言: 逆光 にして。');
+  });
+
+  describe('when the intervention is clipped before it goes into the input', () => {
+    const full = 'あ'.repeat(budget.interventionChars) + 'い'.repeat(50);
+    const shown = 'あ'.repeat(budget.interventionChars);
+    const droppedAsSame = (input: DistillInput, id: string) =>
+      input.messages.report.notes.some(
+        (n) =>
+          n.kind === 'dropped' &&
+          n.section === `message[${id}]` &&
+          n.reason === '同じ文が口出しにある',
+      );
+
+    it('drops the message that is the same as the clipped text that the input shows', () => {
+      const input = stopped(
+        material({
+          interventions: [{ id: 'i1', text: full }],
+          conversation: [{ id: '9', text: shown }],
+        }),
+      );
+
+      expect(droppedAsSame(input, '9')).toBe(true);
+      expect(textOf(input)).not.toContain('会話での人間の発言');
+    });
+
+    it('keeps the message that is the same only as the whole text that the input does not show', () => {
+      const input = stopped(
+        material({
+          interventions: [{ id: 'i1', text: full }],
+          conversation: [{ id: '9', text: full }],
+        }),
+      );
+
+      expect(droppedAsSame(input, '9')).toBe(false);
+      expect(textOf(input)).toContain('会話での人間の発言');
+    });
+
+    it('keeps the message that only starts the same as the clipped text', () => {
+      const input = stopped(
+        material({
+          interventions: [{ id: 'i1', text: full }],
+          conversation: [{ id: '9', text: shown.slice(0, 100) }],
+        }),
+      );
+
+      expect(droppedAsSame(input, '9')).toBe(false);
+    });
+  });
+
   it('are left in the notes as dropped for being the same as the intervention', () => {
     const input = stopped(
       material({
