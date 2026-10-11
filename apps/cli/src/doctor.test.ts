@@ -306,6 +306,21 @@ describe('runDoctor', () => {
     }
   });
 
+  // 起動の行・API と同じ文で言う: 欄名（budgets.<欄>・generationProgress.<欄>）と日本語の説明、原文は括弧の中
+  it('says broken budgets and generationProgress in Japanese, with the original message after', async () => {
+    const { text } = await setup({
+      budgets: { text: { prompt: -1 }, imageShortEdge: 3 },
+      generationProgress: { includePreview: 'yes' },
+    });
+    for (const line of [
+      '足りない  config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）',
+      '足りない  config.json の budgets.imageShortEdge: 知らない欄',
+      '足りない  config.json の generationProgress.includePreview が読めない（true か false で書く）（原文: Invalid input: expected boolean, received string）',
+    ]) {
+      expect(text).toContain(line);
+    }
+  });
+
   it('names the mode of a broken permission only once', async () => {
     const { text } = await setup({ permissions: { steps: { mode: 'sometimes' } } });
     expect(text).toContain(
