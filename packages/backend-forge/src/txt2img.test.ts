@@ -86,6 +86,18 @@ describe('generateWithForge request', () => {
     expect(forge.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
   });
 
+  it.each([':', '<', '>'])('refuses a LoRA name containing %s', async (mark) => {
+    await expect(
+      generate({ loras: [{ name: `bad${mark}name`, weight: 1 }] }),
+    ).rejects.toMatchObject({ kind: 'failed' });
+    expect(forge.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
+  });
+
+  it('writes a UNet weight of 0 into the LoRA tag instead of leaving it out', async () => {
+    await generate({ loras: [{ name: 'watercolor', weight: 0.6, unetWeight: 0 }] });
+    expect(sentPayload().prompt).toBe('a cat <lora:watercolor:0.6:0>');
+  });
+
   it('sets the checkpoint for this request only, without touching global options', async () => {
     await generate({ checkpoint: 'animagine-xl-4.0.safetensors [6327eca98b]' });
     expect(sentPayload()).toMatchObject({
@@ -208,6 +220,14 @@ describe('generateWithForge with sampler and scheduler names (Issue #41)', () =>
 
   it('refuses a sampler alias, which Forge does not look names up by', async () => {
     await expect(generate({ sampler: 'k_euler_a' })).rejects.toMatchObject({ kind: 'failed' });
+    expect(generated()).toBe(false);
+  });
+
+  it('refuses a sampler written with a scheduler when the sampler part is unknown to Forge', async () => {
+    await expect(generate({ sampler: 'NoSuchSampler Karras' })).rejects.toMatchObject({
+      kind: 'failed',
+      message: expect.stringContaining('NoSuchSampler Karras') as unknown,
+    });
     expect(generated()).toBe(false);
   });
 
