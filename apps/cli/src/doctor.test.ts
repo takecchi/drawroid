@@ -790,6 +790,48 @@ describe('runDoctor', () => {
     expect(byOwnFlag.text).not.toContain(hint);
   });
 
+  // 起動はこの URL でバックエンドを作れずに落ちる。doctor は落ちずに、ほかの項と並べて言う
+  describe('when the backend URL is not http or https', () => {
+    it('says backend.url of config.json as one that start-up refuses, and still checks the web', async () => {
+      const { report, text } = await setup(
+        { backend: { url: 'ftp://user:secret@bad' } },
+        { backendUrl: undefined },
+      );
+      expect(report.sections[0]?.items).toEqual([
+        {
+          ok: false,
+          what: 'config.json の backend.url が使えない（http:// か https:// で始まる URL で書く）: ftp://bad',
+          todo: 'config.json の backend を直す。直すまで drawroid は起動しない',
+        },
+      ]);
+      expect(text.split('→ config.json を直してから確かめる')).toHaveLength(3);
+      expect(text).not.toContain('drawroid を起動し、画面の「設定」');
+      expect(text).toContain('よい      ある（');
+      expect(text).not.toContain('secret');
+    });
+
+    // 起動も --backend-url を使い、config.json の URL は使わない
+    it('does not refuse config.json when doctor is given --backend-url', async () => {
+      const { report, text, url } = await setup({ backend: { url: 'ftp://bad' } });
+      expect(report.sections[0]?.items[0]?.ok).toBe(true);
+      expect(text).toContain(`足りない  繋がらない: ${url}（--backend-url で指定）`);
+    });
+
+    it('says to fix --backend-url when the URL came from it', async () => {
+      const { text } = await setup(undefined, { backendUrl: 'ftp://bad' });
+      expect(text).toContain(
+        '足りない  URL として使えない: ftp://bad（--backend-url で指定）（http:// か https:// で始まる URL で書く）\n' +
+          '            → --backend-url を http:// か https:// で始まる URL にする。この URL では drawroid も起動しない',
+      );
+    });
+
+    it('does not show the password written in the URL', async () => {
+      const { text } = await setup(undefined, { backendUrl: 'ftp://user:secret@bad' });
+      expect(text).toContain('URL として使えない: ftp://bad（--backend-url で指定）');
+      expect(text).not.toContain('secret');
+    });
+  });
+
   it('reports a missing web build as lacking', async () => {
     const { text } = await setup(undefined, { webRoot: () => '/nonexistent/web' });
     expect(text).toMatch(/足りない {2}\/nonexistent\/web に index\.html が無い\n {12}→ /);
