@@ -20,6 +20,7 @@ import {
   ChatComposer,
   ChatLayout,
   ChatLog,
+  COMPOSER_FIELD_ID,
   ErrorNote,
   GenerationProgress,
   ImageRow,
@@ -1009,7 +1010,10 @@ export function ConversationView({
   const { chat, loaded, error, disconnected } = useConversationStream(conversationId, source);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | undefined>();
+  // focus: 断られた時点で、フォーカスが発言欄の外にあったか。
+  // 発言欄は送っている間も押せるので、Enter で送った人のフォーカスは欄に残る。入力中の人から奪わず、
+  // 「送り直す」のように送っている間 disabled になって、フォーカスが落ちたボタンを押したときだけ、断りへ移す
+  const [sendError, setSendError] = useState<{ message: string; focus: boolean } | undefined>();
   const [stopError, setStopError] = useState<string | undefined>();
   // つながり直したら、切れている間の「送れない」「止められない」は消す: 残ると、直ったあとも効かないように見えるため
   const wasDisconnected = useRef(false);
@@ -1077,7 +1081,10 @@ export function ConversationView({
         setAttached((current) => current.filter((item) => !withAttachments.includes(item)));
       }
     } catch (caught) {
-      setSendError(caught instanceof Error ? caught.message : String(caught));
+      setSendError({
+        message: caught instanceof Error ? caught.message : String(caught),
+        focus: document.activeElement !== document.getElementById(COMPOSER_FIELD_ID),
+      });
     } finally {
       setSending(false);
     }
@@ -1215,7 +1222,9 @@ export function ConversationView({
                   {refusals.map((reason) => (
                     <ErrorNote key={reason}>添えられない: {reason}</ErrorNote>
                   ))}
-                  {sendError !== undefined && <ErrorNote>送れない: {sendError}</ErrorNote>}
+                  {sendError !== undefined && (
+                    <ErrorNote focus={sendError.focus}>送れない: {sendError.message}</ErrorNote>
+                  )}
                   {stopError !== undefined && <ErrorNote>止められない: {stopError}</ErrorNote>}
                 </>
               )
