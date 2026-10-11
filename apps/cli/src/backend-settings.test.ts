@@ -89,10 +89,105 @@ describe('backend settings', () => {
       kindSource: 'cli',
       url: 'http://old:7860',
       urlSource: 'cli',
+      startupArgs: { kind: true, url: true },
       auth: { username: 'u' },
       generateTimeoutMs: 5000,
     });
     expect(JSON.stringify(view)).not.toContain('secret');
+  });
+
+  describe('telling whether the start-up arguments are in effect', () => {
+    it('keeps saying both arguments win next time after saving a kind and a url, while the sources become config', async () => {
+      const { settings } = await setup({}, { source: 'cli', kindSource: 'cli' });
+      const view = await settings.write({ url: 'http://new:7860', kind: 'forge' });
+      expect(view).toMatchObject({
+        kindSource: 'config',
+        urlSource: 'config',
+        startupArgs: { kind: true, url: true },
+      });
+      expect(await settings.read()).toEqual(view);
+    });
+
+    it('tells the kind and the url apart', async () => {
+      const { settings } = await setup({}, { source: 'cli', kindSource: 'config' });
+      expect((await settings.read()).startupArgs).toEqual({ kind: false, url: true });
+      const view = await settings.write({ url: 'http://new:7860', kind: 'forge' });
+      expect(view.startupArgs).toEqual({ kind: false, url: true });
+    });
+
+    it('says neither is in effect when started without the arguments, also after a save', async () => {
+      const { settings } = await setup({}, { source: 'default', kindSource: 'default' });
+      expect((await settings.read()).startupArgs).toEqual({ kind: false, url: false });
+      const view = await settings.write({ url: 'http://new:7860', kind: 'forge' });
+      expect(view.startupArgs).toEqual({ kind: false, url: false });
+    });
+
+    it('carries it also in the view shown after a failed write that could not put the old backend back', async () => {
+      const backend = new ReplaceableBackend(new StubBackend());
+      const held = new HeldStubBackend();
+      let running: Promise<unknown> | undefined;
+      const settings = createBackendSettings({
+        configPath: join(dir, 'no-such-dir', 'config.json'),
+        backend,
+        createBackend: () => {
+          queueMicrotask(() => {
+            running = backend.generate(request, new AbortController().signal);
+          });
+          return held;
+        },
+        initial: {
+          kind: 'a1111',
+          kindSource: 'cli',
+          url: 'http://old:7860',
+          source: 'cli',
+          config: {},
+        },
+      });
+      await expect(settings.write({ url: 'http://new:7860', kind: 'forge' })).rejects.toThrow();
+      expect((await settings.read()).startupArgs).toEqual({ kind: true, url: true });
+      held.release();
+      await running;
+    });
+  });
+
+  describe('saving a kind without a url', () => {
+    it('reconnects with the url in use and leaves the url in config.json and its source as they were', async () => {
+      const { settings, created } = await setup(
+        { backend: { kind: 'a1111', url: 'http://configured:7860' } },
+        { source: 'cli' },
+      );
+      const view = await settings.write({ kind: 'forge' });
+      expect(created.map(({ kind, options }) => [kind, options.baseUrl])).toEqual([
+        ['forge', 'http://old:7860'],
+      ]);
+      expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
+        backend: { kind: 'forge', url: 'http://configured:7860' },
+      });
+      expect(view).toMatchObject({
+        kind: 'forge',
+        kindSource: 'config',
+        url: 'http://old:7860',
+        urlSource: 'cli',
+      });
+      expect(await settings.read()).toEqual(view);
+    });
+
+    it('writes no url to config.json when it had none', async () => {
+      const { settings } = await setup({}, { source: 'cli' });
+      await settings.write({ kind: 'forge' });
+      expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
+        backend: { kind: 'forge' },
+      });
+    });
+
+    it('writes the url and sets its source to config when one is given', async () => {
+      const { settings } = await setup({}, { source: 'cli' });
+      const view = await settings.write({ url: 'http://new:7860' });
+      expect(JSON.parse(await readFile(configPath, 'utf8'))).toEqual({
+        backend: { url: 'http://new:7860' },
+      });
+      expect(view).toMatchObject({ url: 'http://new:7860', urlSource: 'config' });
+    });
   });
 
   it('sends generations to the new url after a write', async () => {

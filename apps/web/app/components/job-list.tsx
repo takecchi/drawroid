@@ -57,11 +57,13 @@ export function JobList() {
       )}
       {JOB_STATUS_ORDER.map((status) => (
         <Section key={status} title={`${STATUS_LABELS[status]}（${groups[status].length}）`}>
-          <ItemList>
-            {groups[status].map((job) => (
-              <JobRow key={job.jobId} job={job} backendKind={backendKind} />
-            ))}
-          </ItemList>
+          {groups[status].length > 0 && (
+            <ItemList>
+              {groups[status].map((job) => (
+                <JobRow key={job.jobId} job={job} backendKind={backendKind} />
+              ))}
+            </ItemList>
+          )}
         </Section>
       ))}
       <InvalidJobs invalid={data.invalid} />

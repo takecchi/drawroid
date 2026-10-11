@@ -49,4 +49,21 @@ describe('Conversations', () => {
     expect(row.textContent).toContain(formatTime(lastActiveAt));
     expect(row.textContent).not.toContain(formatTime(createdAt));
   });
+
+  // 項目の無い list は、読み上げで「0 項目のリスト」と聞こえるだけ
+  it('says there is no conversation yet without leaving an empty list', () => {
+    vi.mocked(useConversations).mockReturnValue({
+      data: { conversations: [] },
+      error: undefined,
+    } as never);
+
+    render(
+      <MemoryRouter>
+        <Conversations />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/まだ会話は無い/)).toBeTruthy();
+    expect(screen.queryByRole('list')).toBeNull();
+  });
 });

@@ -38,11 +38,18 @@ const saved = {
   kindSource: 'config',
   url: 'http://gpu:7860',
   urlSource: 'config',
+  startupArgs: { kind: false, url: false },
   auth: null,
   generateTimeoutMs: null,
 };
 
 describe('saving the backend settings', () => {
+  it('sends only the kind in the body when the url is left out', async () => {
+    fetchMock.mockResolvedValue(json(200, saved));
+    await saveBackendSettings({ kind: 'forge' });
+    expect(await sentBody()).toEqual({ kind: 'forge' });
+  });
+
   it('sends the kind in the body when one is given', async () => {
     fetchMock.mockResolvedValue(json(200, saved));
     await saveBackendSettings({ url: 'http://gpu:7860', kind: 'forge' });

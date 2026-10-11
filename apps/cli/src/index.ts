@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { dataPaths, resolveDataDir } from '@drawroid/storage-fs';
 
-import { parseCliArgs } from './args.js';
+import { parseCliArgs, usageText } from './args.js';
 import { assembleDrawroid } from './assemble.js';
 import { listeningLine } from './dev-mode.js';
 import { formatDoctorReport, runDoctor } from './doctor.js';
@@ -10,6 +10,11 @@ import { resolveWebRoot } from './web-root.js';
 
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
+  if (args.command === 'help') {
+    // resolveDataDir より前: 使い方を見るだけで、データディレクトリには触れない
+    process.stdout.write(usageText());
+    return;
+  }
   const root = resolveDataDir({ cliArg: args.dataDir, env: process.env.DRAWROID_HOME });
   if (args.command === 'doctor') {
     // データディレクトリは作らない: 確かめるだけで、何も書き換えない

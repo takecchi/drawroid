@@ -1,6 +1,7 @@
 import type { StopReason } from '../../job/types.js';
 import type { LlmAttempt, LlmCallOutcome, LlmPort } from '../../llm/port.js';
 import { toLlmCallRecord } from '../../llm/record.js';
+import { normalizeForMatch } from '../../text/normalize.js';
 import type { ConversationEvent } from '../events.js';
 import type { ConversationHubs } from '../hub.js';
 import type { StoppedJob } from '../job-bridge.js';
@@ -36,6 +37,8 @@ export type TalkRunnerDeps = {
   hubs: ConversationHubs;
   /** いま使う LLM。未設定なら undefined（ターンは理由付きの error で閉じる） */
   llm: () => LlmPort | undefined;
+  /** LLM を取り出す前に待つ。失敗は投げない前提（LLM の窓を読み直すため） */
+  beforeLlm?: () => Promise<void>;
   tools: readonly TalkTool[];
   /** ターンの始めに読む。設定で直した予算を、次のターンから効かせるため */
   limits: () => Promise<TalkLimits>;
@@ -64,6 +67,9 @@ export type TalkRunnerDeps = {
 // 空の配列の欄は鍵から落とす: 話す役は省いた欄を [] で書くことがあり、{instruction} と {instruction, attachments: []} が
 // 別の呼び出しとして2度走り、同じ口出しが2つ書かれたため。ツールの入力で配列の欄を持つもの（添えた画像・tags）は、
 // 空と省略が同じ意味（どれも「無し」）なので、落としてよい
+// 文字列は normalizeForMatch で寄せてから比べる: 話す役は同じ意味の口出しを全角の括弧と半角の括弧で書き分け、
+// 別の呼び出しとして2度走って、同じ口出しが2件置かれたため。前後の空白も落とす（描くツールの引数は、すでに trim で読み直している）
+// 寄せた値は鍵にだけ使い、ツールへ渡す引数・記録する引数は書かれたままにする
 function repeatKeyOf(name: string, input: unknown): string {
   const significant =
     typeof input === 'object' && input !== null && !Array.isArray(input)
@@ -73,7 +79,25 @@ function repeatKeyOf(name: string, input: unknown): string {
           ),
         )
       : input;
-  return `${name}:${JSON.stringify(significant)}`;
+  return `${name}:${JSON.stringify(foldForRepeatKey(significant))}`;
+}
+
+// 寄せない欄: 大小・仮名・全角半角の違いで別の物を指す名前。寄せると、間違えた ID・名前が断られたあとの、
+// 直した値での呼び直しを、同じ呼び出しとして塞いでしまう（uploadId は添えた画像の ID、permissions の中は LoRA などの名前）
+const EXACT_FIELDS: ReadonlySet<string> = new Set(['uploadId', 'permissions']);
+
+function foldForRepeatKey(value: unknown): unknown {
+  if (typeof value === 'string') return normalizeForMatch(value).trim();
+  if (Array.isArray(value)) return value.map(foldForRepeatKey);
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, inner]) => [
+        key,
+        EXACT_FIELDS.has(key) ? inner : foldForRepeatKey(inner),
+      ]),
+    );
+  }
+  return value;
 }
 
 /** 話す役の1ステップの結果（記録に残す値） */
@@ -386,6 +410,7 @@ export class TalkRunner {
     // turn.started を確定する前に届いた発言も、打ち切りにする
     void this.noticeNewMessage(conversationId);
 
+    await this.deps.beforeLlm?.();
     const llm = this.deps.llm();
     if (llm === undefined) {
       await end('error', LLM_NOT_CONFIGURED_REASON);

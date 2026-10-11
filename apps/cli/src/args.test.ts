@@ -1,7 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseCliArgs } from './args.js';
+import { parseCliArgs, usageText } from './args.js';
 import { DEFAULT_PORT } from './listen.js';
+
+describe('usageText', () => {
+  it('lists the commands and options with their defaults', () => {
+    expect(usageText()).toBe(`使い方: drawroid [doctor] [指定]
+
+  drawroid         待ち受けを始める（画面は http://127.0.0.1:<ポート>/ で開く）
+  drawroid doctor  設定ファイル・画像のバックエンド・LLM・web の配り先を確かめて終わる（何も書き換えない）
+
+指定:
+  --port <番号>        待ち受けるポート（既定 7878）
+  --data-dir <場所>    データディレクトリ（既定は環境変数 DRAWROID_HOME、無ければ ~/.drawroid）
+  --backend <種類>     画像のバックエンドの種類。forge か a1111（既定は config.json の backend.kind、無ければ forge）
+  --backend-url <URL>  画像のバックエンドの URL。古い名前 --forge-url も受ける（既定は config.json の backend.url、無ければ http://127.0.0.1:7860）
+  -h, --help           この使い方を出して終わる
+
+LLM などの設定は、起動して画面の「設定」から入れるか、データディレクトリの config.json に書く。
+`);
+  });
+});
 
 describe('parseCliArgs', () => {
   it('uses the default port when none is given', () => {
@@ -19,6 +38,15 @@ describe('parseCliArgs', () => {
       command: 'doctor',
       dataDir: '/data',
     });
+  });
+
+  it('asks for the usage with --help or -h, before checking the other options', () => {
+    expect(parseCliArgs(['--help'])).toMatchObject({ command: 'help' });
+    expect(parseCliArgs(['-h'])).toMatchObject({ command: 'help' });
+    expect(parseCliArgs(['--help', '--port', 'abc'])).toMatchObject({ command: 'help' });
+    expect(parseCliArgs(['--port', 'abc', '-h'])).toMatchObject({ command: 'help' });
+    expect(parseCliArgs(['--backend', 'comfyui', '--help'])).toMatchObject({ command: 'help' });
+    expect(parseCliArgs(['doctor', '--help'])).toMatchObject({ command: 'help' });
   });
 
   it('refuses unknown commands and extra words', () => {
@@ -65,24 +93,41 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['--host', '0.0.0.0'])).toThrow();
   });
 
-  it('names an unknown option in Japanese with what it takes, instead of the raw parser message', () => {
+  it('names an unknown option in Japanese with what it takes and where the usage is, instead of the raw parser message', () => {
     for (const [args, option] of [
-      [['--help'], '--help'],
-      [['-h'], '-h'],
       [['doctor', '--verbose'], '--verbose'],
       [['--version'], '--version'],
       [['-v'], '-v'],
     ] as const) {
       expect(() => parseCliArgs([...args])).toThrow(
-        `知らない指定: ${option}（使えるのは doctor と --port・--data-dir・--backend・--backend-url（古い名前 --forge-url））`,
+        `知らない指定: ${option}（使えるのは doctor と --port・--data-dir・--backend・--backend-url（古い名前 --forge-url）。使い方は drawroid --help）`,
       );
       expect(() => parseCliArgs([...args])).not.toThrow(/Unknown option|place it at the end/);
     }
   });
 
+  it('points to the usage when the command is not known', () => {
+    expect(() => parseCliArgs(['serve'])).toThrow(
+      '知らない指定: serve（使えるのは doctor だけ。使い方は drawroid --help）',
+    );
+    expect(() => parseCliArgs(['help'])).toThrow('使い方は drawroid --help');
+  });
+
   it('says an option is missing its value in Japanese', () => {
     expect(() => parseCliArgs(['--port'])).toThrow('--port に値が無い（例: --port 7878）');
     expect(() => parseCliArgs(['--port'])).not.toThrow(/argument missing/);
+  });
+
+  it('shows, for an option missing its value, an example of that option', () => {
+    for (const [option, example] of [
+      ['--port', '--port 7878'],
+      ['--data-dir', '--data-dir /tmp/drawroid-check'],
+      ['--backend', '--backend a1111'],
+      ['--backend-url', '--backend-url http://127.0.0.1:7860'],
+      ['--forge-url', '--forge-url http://127.0.0.1:7860'],
+    ] as const) {
+      expect(() => parseCliArgs([option])).toThrow(`${option} に値が無い（例: ${example}）`);
+    }
   });
 
   it('names the option that is missing its value, whichever option it is, also when another option follows', () => {

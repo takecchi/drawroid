@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react';
+import { Fragment, useId, type ComponentType, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -30,6 +30,7 @@ export function AppSidebar({
   inDrawer?: boolean;
   className?: string;
 }) {
+  const idPrefix = useId();
   return (
     <nav
       aria-label="行き先"
@@ -46,37 +47,71 @@ export function AppSidebar({
         <BrandMark />
       </div>
 
-      <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        {items.map((item, index) => {
-          const Icon = item.icon;
-          const startsSection = index > 0 && item.section !== items[index - 1]?.section;
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        {sectionsOf(items).map((group, index) => {
+          const headingId = `${idPrefix}-section-${index}`;
+          const labelled = group.section !== undefined && group.section.length > 0;
           return (
-            <li key={item.to}>
-              {startsSection ? <SectionStart label={item.section} inDrawer={inDrawer} /> : null}
-              {renderLink(item, {
-                className: (isActive) => sidebarLinkClassName({ isActive, inDrawer }),
-                children: (
-                  <>
-                    <Icon className="size-4 shrink-0" aria-hidden />
-                    <span className="flex-1 truncate">{item.label}</span>
-                  </>
-                ),
-              })}
-            </li>
+            <Fragment key={group.items[0]?.to}>
+              {index === 0 ? null : labelled ? (
+                <SectionStart id={headingId} label={group.section} inDrawer={inDrawer} />
+              ) : (
+                <div role="separator" className="mx-2.5 my-2 border-t border-border" />
+              )}
+              <ul aria-labelledby={index > 0 && labelled ? headingId : undefined}>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.to}>
+                      {renderLink(item, {
+                        className: (isActive) => sidebarLinkClassName({ isActive, inDrawer }),
+                        children: (
+                          <>
+                            <Icon className="size-4 shrink-0" aria-hidden />
+                            <span className="flex-1 truncate">{item.label}</span>
+                          </>
+                        ),
+                      })}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Fragment>
           );
         })}
-      </ul>
+      </div>
     </nav>
   );
 }
 
-// 見出しを `aria-hidden` にしない: 読み上げでも「いまどのまとまりか」が分かるように
-function SectionStart({ label, inDrawer }: { label: string | undefined; inDrawer: boolean }) {
-  if (label === undefined || label.length === 0) {
-    return <div role="separator" className="mx-2.5 my-2 border-t border-border" />;
+// 行き先を並べた順のまま、同じ section が続く所で区切る
+function sectionsOf(
+  items: readonly AppSidebarItem[],
+): { section?: string; items: AppSidebarItem[] }[] {
+  const groups: { section?: string; items: AppSidebarItem[] }[] = [];
+  for (const item of items) {
+    const last = groups.at(-1);
+    if (last !== undefined && last.section === item.section) last.items.push(item);
+    else
+      groups.push({ ...(item.section !== undefined && { section: item.section }), items: [item] });
   }
+  return groups;
+}
+
+// 見出しを `aria-hidden` にしない: 読み上げでも「いまどのまとまりか」が分かるように。
+// 見出しは項目（li）の外に置き、組の ul の名前にする: 中に入れると、最初の項目が「描く 依頼」と1つに聞こえるため
+function SectionStart({
+  id,
+  label,
+  inDrawer,
+}: {
+  id: string;
+  label: string | undefined;
+  inDrawer: boolean;
+}) {
   return (
     <p
+      id={id}
       className={cn(
         'px-2.5 pb-1 text-[11px] tracking-wide text-muted-foreground/80',
         inDrawer ? 'pt-4' : 'pt-3',

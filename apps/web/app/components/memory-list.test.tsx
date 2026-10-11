@@ -114,6 +114,29 @@ describe('MemoryList', () => {
     ).toBeTruthy();
   });
 
+  it('leaves no empty list when there is no item, nor when only unreadable files exist', () => {
+    mocks.useMemoryList.mockReturnValue({ data: { items: [], invalid: [] }, error: undefined });
+    const { unmount } = render(
+      <MemoryRouter>
+        <MemoryList />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('list')).toBeNull();
+    unmount();
+
+    mocks.useMemoryList.mockReturnValue({
+      data: { items: [], invalid: [{ id: 'broken', reason: '壊れている' }] },
+      error: undefined,
+    });
+    render(
+      <MemoryRouter>
+        <MemoryList />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByRole('list')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
   // 記憶の画面の頭の見出しにする: この一覧は記憶の画面にだけ置かれ、ほかに h1 が無いため
   it('heads the page with 記憶', () => {
     mocks.useMemoryList.mockReturnValue({ data: { items: [], invalid: [] }, error: undefined });

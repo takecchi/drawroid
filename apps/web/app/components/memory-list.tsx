@@ -17,20 +17,22 @@ export function MemoryList() {
       </p>
       {error !== undefined && <ErrorNote>一覧を読めない: {error.message}</ErrorNote>}
       {data?.items.length === 0 && <EmptyState title="まだ無い。" />}
-      <ItemList>
-        {data?.items.map((item) => (
-          <Item key={item.id}>
-            <Link
-              to={`/memory/${encodeURIComponent(item.id)}`}
-              className="underline underline-offset-2"
-            >
-              {bodyHead(item.body)}
-            </Link>{' '}
-            [{item.scope}] {item.tags.map((tag) => `#${tag}`).join(' ')}{' '}
-            {new Date(item.updatedAt).toLocaleString('ja-JP')} 学んだ元 {item.sources.length}件
-          </Item>
-        ))}
-      </ItemList>
+      {data !== undefined && data.items.length > 0 && (
+        <ItemList>
+          {data.items.map((item) => (
+            <Item key={item.id}>
+              <Link
+                to={`/memory/${encodeURIComponent(item.id)}`}
+                className="underline underline-offset-2"
+              >
+                {bodyHead(item.body)}
+              </Link>{' '}
+              [{item.scope}] {item.tags.map((tag) => `#${tag}`).join(' ')}{' '}
+              {new Date(item.updatedAt).toLocaleString('ja-JP')} 学んだ元 {item.sources.length}件
+            </Item>
+          ))}
+        </ItemList>
+      )}
       {data !== undefined && data.invalid.length > 0 && (
         <SubSection title="読めない項目" level={2}>
           <ItemList>
