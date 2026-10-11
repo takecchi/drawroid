@@ -19,6 +19,7 @@ beforeEach(() => {
       url: 'http://127.0.0.1:7860',
       urlSource: 'default',
       kindSource: 'default',
+      startupArgs: { kind: false, url: false },
     },
     error: undefined,
   } as never);
@@ -41,7 +42,12 @@ describe('BackendUrlSettings', () => {
 
   it('starts the field with the URL it is connected to now, not an empty field', () => {
     vi.mocked(useBackendSettings).mockReturnValue({
-      data: { kind: 'forge', url: 'http://127.0.0.1:35267', urlSource: 'config' },
+      data: {
+        kind: 'forge',
+        url: 'http://127.0.0.1:35267',
+        urlSource: 'config',
+        startupArgs: { kind: false, url: false },
+      },
       error: undefined,
     } as never);
     render(<BackendUrlSettings />);
@@ -52,7 +58,12 @@ describe('BackendUrlSettings', () => {
 
   it('keeps the warning that the start-up argument wins next time, with the URL in the field', () => {
     vi.mocked(useBackendSettings).mockReturnValue({
-      data: { kind: 'forge', url: 'http://gpu:7860', urlSource: 'cli' },
+      data: {
+        kind: 'forge',
+        url: 'http://gpu:7860',
+        urlSource: 'cli',
+        startupArgs: { kind: false, url: true },
+      },
       error: undefined,
     } as never);
     render(<BackendUrlSettings />);
@@ -66,7 +77,13 @@ describe('BackendUrlSettings', () => {
     const user = userEvent.setup();
     vi.mocked(saveBackendSettings).mockImplementation(async ({ url }) => {
       vi.mocked(useBackendSettings).mockReturnValue({
-        data: { kind: 'forge', url, urlSource: 'config', kindSource: 'config' },
+        data: {
+          kind: 'forge',
+          url,
+          urlSource: 'config',
+          kindSource: 'config',
+          startupArgs: { kind: false, url: false },
+        },
         error: undefined,
       } as never);
       return {} as never;
@@ -112,7 +129,18 @@ describe('BackendUrlSettings', () => {
     urlSource: 'cli' | 'config' | 'default',
     kind: 'forge' | 'a1111' = 'forge',
     kindSource: 'cli' | 'config' | 'default' = urlSource,
-  ) => ({ kind, url, urlSource, kindSource, auth: null, generateTimeoutMs: null }) as const;
+    // 既定は出どころが 'cli' かどうか。出どころと食い違う組（保存のあと）を見る試験だけが渡す
+    startupArgs = { kind: kindSource === 'cli', url: urlSource === 'cli' },
+  ) =>
+    ({
+      kind,
+      url,
+      urlSource,
+      kindSource,
+      startupArgs,
+      auth: null,
+      generateTimeoutMs: null,
+    }) as const;
   const saveButton = () => screen.getByRole('button', { name: '保存' });
 
   it('saves the URL without the spaces around it, and says the trimmed URL', async () => {
@@ -252,6 +280,88 @@ describe('BackendUrlSettings', () => {
     expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://gpu:7860' });
   });
 
+  // 保存すると出どころは config になるが、次の起動でまた引数が勝つ。注意は出どころでなく startupArgs で出す
+  describe('the start-up argument warnings', () => {
+    const urlWarning = /注意: 起動時に --backend-url/;
+    const kindWarning = /注意: 起動時に --backend で/;
+
+    it('keeps both warnings when the arguments are in effect, even though the sources are config after a save', () => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://gpu:7860', 'config', 'a1111', 'config', { kind: true, url: true }),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(screen.getByText(urlWarning)).toBeTruthy();
+      expect(screen.getByText(kindWarning)).toBeTruthy();
+    });
+
+    it('shows only the warning of the argument that is in effect', () => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://gpu:7860', 'config', 'a1111', 'config', { kind: false, url: true }),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(screen.getByText(urlWarning)).toBeTruthy();
+      expect(screen.queryByText(kindWarning)).toBeNull();
+    });
+
+    it('shows no warning when the arguments are not in effect, even though the sources say cli', () => {
+      vi.mocked(useBackendSettings).mockReturnValue({
+        data: view('http://gpu:7860', 'cli', 'a1111', 'cli', { kind: false, url: false }),
+        error: undefined,
+      } as never);
+      render(<BackendUrlSettings />);
+
+      expect(screen.queryByText(urlWarning)).toBeNull();
+      expect(screen.queryByText(kindWarning)).toBeNull();
+    });
+  });
+
+  describe('what a save sends', () => {
+    const kindField = () => screen.getByLabelText<HTMLSelectElement>('バックエンドの種類');
+
+    it('sends only the kind when only the kind was touched, so that the URL is not written to config.json', async () => {
+      const user = userEvent.setup();
+      render(<BackendUrlSettings />);
+
+      await user.selectOptions(kindField(), 'a1111');
+      await user.click(saveButton());
+
+      expect(saveBackendSettings).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(saveBackendSettings).mock.calls[0]?.[0]).toEqual({ kind: 'a1111' });
+    });
+
+    it('sends only the URL when only the URL was touched', async () => {
+      const user = userEvent.setup();
+      render(<BackendUrlSettings />);
+
+      await user.clear(field());
+      await user.type(field(), 'http://127.0.0.1:7861');
+      await user.click(saveButton());
+
+      expect(vi.mocked(saveBackendSettings).mock.calls[0]?.[0]).toEqual({
+        url: 'http://127.0.0.1:7861',
+      });
+    });
+
+    it('sends both when both were touched', async () => {
+      const user = userEvent.setup();
+      render(<BackendUrlSettings />);
+
+      await user.selectOptions(kindField(), 'a1111');
+      await user.clear(field());
+      await user.type(field(), 'http://127.0.0.1:7861');
+      await user.click(saveButton());
+
+      expect(vi.mocked(saveBackendSettings).mock.calls[0]?.[0]).toEqual({
+        url: 'http://127.0.0.1:7861',
+        kind: 'a1111',
+      });
+    });
+  });
+
   describe('the kind', () => {
     const kindField = () => screen.getByLabelText<HTMLSelectElement>('バックエンドの種類');
     const warning =
@@ -272,7 +382,7 @@ describe('BackendUrlSettings', () => {
       expect(screen.queryByText(/起動時の --backend か config.json の/)).toBeNull();
     });
 
-    it('saves the chosen kind with the URL, and says which kind it connects to', async () => {
+    it('saves the chosen kind, and says which kind and URL it connects to', async () => {
       const user = userEvent.setup();
       vi.mocked(saveBackendSettings).mockResolvedValue(
         view('http://127.0.0.1:7860', 'config', 'a1111'),
@@ -282,10 +392,7 @@ describe('BackendUrlSettings', () => {
       await user.selectOptions(kindField(), 'a1111');
       await user.click(saveButton());
 
-      expect(saveBackendSettings).toHaveBeenCalledWith({
-        url: 'http://127.0.0.1:7860',
-        kind: 'a1111',
-      });
+      expect(vi.mocked(saveBackendSettings).mock.calls[0]?.[0]).toEqual({ kind: 'a1111' });
       expect(
         await screen.findByText('保存した。A1111 の http://127.0.0.1:7860 に繋ぐ。'),
       ).toBeTruthy();
@@ -321,10 +428,7 @@ describe('BackendUrlSettings', () => {
       await user.click(saveButton());
 
       expect(saveBackendSettings).toHaveBeenCalledTimes(2);
-      expect(saveBackendSettings).toHaveBeenNthCalledWith(1, {
-        url: 'http://127.0.0.1:7860',
-        kind: 'a1111',
-      });
+      expect(saveBackendSettings).toHaveBeenNthCalledWith(1, { kind: 'a1111' });
       expect(saveBackendSettings).toHaveBeenNthCalledWith(2, { url: 'http://127.0.0.1:7860' });
     });
 
@@ -352,10 +456,7 @@ describe('BackendUrlSettings', () => {
       await user.selectOptions(kindField(), 'a1111');
       await user.click(saveButton());
 
-      expect(saveBackendSettings).toHaveBeenCalledWith({
-        url: 'http://127.0.0.1:7860',
-        kind: 'a1111',
-      });
+      expect(vi.mocked(saveBackendSettings).mock.calls[0]?.[0]).toEqual({ kind: 'a1111' });
     });
 
     it('keeps the chosen kind when the settings are read again', async () => {
