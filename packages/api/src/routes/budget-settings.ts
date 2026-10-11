@@ -1,6 +1,7 @@
 import {
   budgetOverridesSchema,
   DEFAULT_BUDGETS,
+  describeInputIssues,
   resolveBudgets,
   type BudgetOverrides,
   type Budgets,
@@ -27,29 +28,32 @@ export function budgetSettingsRoutes(deps: ApiDeps) {
     invalid,
   });
 
-  return new Hono()
-    .get('/', async (c) => {
-      // 読めない欄は既定に戻して答え、どの欄が効いていないかを invalid で見せる。config.json そのものが読めないときだけ断る
-      try {
-        const { overrides, effective, invalid } = await budgetSettings.read();
-        return c.json(view(overrides, effective, invalid), 200);
-      } catch (error) {
-        return invalidConfig(c, error instanceof Error ? error.message : String(error));
-      }
-    })
-    .put('/', jsonBody(budgetOverridesSchema), async (c) => {
-      // 書く本文は厳しく検証するので、書いた直後に読めない欄は無い
-      const overrides: BudgetOverrides = c.req.valid('json');
-      // 窓に入らない予算は保存しない: 保存すると、次に投入するジョブが入力を組む段で必ず止まるため（architecture の予算）
-      const saved = await inWindowCheckLine(
-        deps,
-        async (): Promise<{ problem: string } | { problem: undefined; effective: Budgets }> => {
-          const problem = await windowProblem(deps, resolveBudgets(overrides));
-          if (problem !== undefined) return { problem };
-          return { problem: undefined, effective: await budgetSettings.write(overrides) };
-        },
-      );
-      if (saved.problem !== undefined) return invalidRequest(c, saved.problem);
-      return c.json(view(overrides, saved.effective, []), 200);
-    });
+  return (
+    new Hono()
+      .get('/', async (c) => {
+        // 読めない欄は既定に戻して答え、どの欄が効いていないかを invalid で見せる。config.json そのものが読めないときだけ断る
+        try {
+          const { overrides, effective, invalid } = await budgetSettings.read();
+          return c.json(view(overrides, effective, invalid), 200);
+        } catch (error) {
+          return invalidConfig(c, error instanceof Error ? error.message : String(error));
+        }
+      })
+      // 断りの文は、画面が欄名を日本語に置き換えて出す。zod の英語のままにしない
+      .put('/', jsonBody(budgetOverridesSchema, describeInputIssues), async (c) => {
+        // 書く本文は厳しく検証するので、書いた直後に読めない欄は無い
+        const overrides: BudgetOverrides = c.req.valid('json');
+        // 窓に入らない予算は保存しない: 保存すると、次に投入するジョブが入力を組む段で必ず止まるため（architecture の予算）
+        const saved = await inWindowCheckLine(
+          deps,
+          async (): Promise<{ problem: string } | { problem: undefined; effective: Budgets }> => {
+            const problem = await windowProblem(deps, resolveBudgets(overrides));
+            if (problem !== undefined) return { problem };
+            return { problem: undefined, effective: await budgetSettings.write(overrides) };
+          },
+        );
+        if (saved.problem !== undefined) return invalidRequest(c, saved.problem);
+        return c.json(view(overrides, saved.effective, []), 200);
+      })
+  );
 }

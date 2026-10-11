@@ -41,17 +41,17 @@ describe('handleUncaught with an HTTPException', () => {
   });
 
   it('keeps invalid_request for a 400 that is not about JSON, and says it the same way', async () => {
-    expect(await answer(new HTTPException(400, { message: 'Malformed FormData request.' }))).toEqual(
-      {
-        status: 400,
-        body: {
-          error: {
-            kind: 'invalid_request',
-            message: 'HTTP 400 で断った（原文: Malformed FormData request.）',
-          },
+    expect(
+      await answer(new HTTPException(400, { message: 'Malformed FormData request.' })),
+    ).toEqual({
+      status: 400,
+      body: {
+        error: {
+          kind: 'invalid_request',
+          message: 'HTTP 400 で断った（原文: Malformed FormData request.）',
         },
       },
-    );
+    });
   });
 
   it('does not return the message of an unexpected failure', async () => {
@@ -74,8 +74,9 @@ describe('the memory routes and the app-wide handler', () => {
     });
     const inMemory = ((await res.json()) as { error: { message: string } }).error.message;
 
-    const app = (await answer(new HTTPException(400, { message: 'Malformed JSON in request body' })))
-      .body as { error: { message: string } };
+    const app = (
+      await answer(new HTTPException(400, { message: 'Malformed JSON in request body' }))
+    ).body as { error: { message: string } };
 
     expect(app.error.message.startsWith(inMemory)).toBe(true);
   });

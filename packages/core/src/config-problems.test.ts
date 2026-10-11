@@ -125,9 +125,9 @@ function saidOfInput(schema: z.ZodType, value: unknown): string {
 
 describe('describeInputIssues', () => {
   it('says the input field, a Japanese explanation, and the original message, without naming config.json', () => {
-    expect(saidOfInput(z.object({ imageLongEdge: z.number().min(128) }), { imageLongEdge: 0 })).toBe(
-      'imageLongEdge の値が違う（128 以上）（原文: Too small: expected number to be >=128）',
-    );
+    expect(
+      saidOfInput(z.object({ imageLongEdge: z.number().min(128) }), { imageLongEdge: 0 }),
+    ).toBe('imageLongEdge の値が違う（128 以上）（原文: Too small: expected number to be >=128）');
   });
 
   it('joins a nested path with dots', () => {

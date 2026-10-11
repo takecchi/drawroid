@@ -19,7 +19,7 @@ export function handleUncaught(error: Error, c: Context) {
   if (error instanceof HTTPException) {
     const status = error.status as ContentfulStatusCode;
     const kind = status === 400 ? 'invalid_request' : 'http_error';
-    return c.json(errorBody(kind, error.message), status);
+    return c.json(errorBody(kind, describeHttpRefusal(status, error.message)), status);
   }
   const storage = describeStorageFailure(error);
   if (storage !== undefined) {
@@ -30,6 +30,17 @@ export function handleUncaught(error: Error, c: Context) {
   }
   console.error(error);
   return c.json(errorBody('internal_error', 'サーバの中で想定外の失敗があった'), 500);
+}
+
+/**
+ * hono の HTTPException の文（英語）を、日本語の説明を前に、原文を括弧で後ろに置いて言う。
+ * 読めない JSON の本文は、記憶の口（routes/memory.ts）と同じ言い方にする
+ */
+function describeHttpRefusal(status: number, original: string): string {
+  if (status === 400 && original.startsWith('Malformed JSON')) {
+    return `(body): JSON として読めない（原文: ${original}）`;
+  }
+  return `HTTP ${status} で断った（原文: ${original}）`;
 }
 
 /** データディレクトリの読み書きの失敗を、何が起きたかと次に何をするかの言葉にする。ほかの失敗は undefined */
