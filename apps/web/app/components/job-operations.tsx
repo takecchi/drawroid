@@ -18,7 +18,7 @@ import {
   SubSection,
   Textarea,
 } from '@drawroid/ui';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { buildReferenceUpload, type AttachedReference } from '../lib/reference-upload';
 import {
@@ -32,7 +32,18 @@ import {
 import { ReferenceAttacher } from './reference-attacher';
 import { StopConditionsEditor } from './stop-conditions-editor';
 
-function StopButton({ jobId, manual = false }: { jobId: string; manual?: boolean }) {
+/** 最後に押した操作の断り（断りの知らせと同じ文）。押し直すたびに undefined で消す */
+type OnRefused = (refusal: string | undefined) => void;
+
+function StopButton({
+  jobId,
+  manual = false,
+  onRefused,
+}: {
+  jobId: string;
+  manual?: boolean;
+  onRefused: OnRefused;
+}) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
@@ -40,11 +51,13 @@ function StopButton({ jobId, manual = false }: { jobId: string; manual?: boolean
     if (!window.confirm('このジョブを止める。走っている回は途中で打ち切られる。よいか')) return;
     setPending(true);
     setError(undefined);
+    onRefused(undefined);
     try {
       await (manual ? stopManualJob(jobId) : stopJob(jobId));
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
+      onRefused(`止められない: ${caught.message}`);
     } finally {
       setPending(false);
     }
@@ -61,7 +74,7 @@ function StopButton({ jobId, manual = false }: { jobId: string; manual?: boolean
   );
 }
 
-function InstructionForm({ jobId }: { jobId: string }) {
+function InstructionForm({ jobId, onRefused }: { jobId: string; onRefused: OnRefused }) {
   const [text, setText] = useState('');
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -71,6 +84,7 @@ function InstructionForm({ jobId }: { jobId: string }) {
     setPending(true);
     setError(undefined);
     setSent(false);
+    onRefused(undefined);
     try {
       await addInstruction(jobId, text);
       setText('');
@@ -78,6 +92,7 @@ function InstructionForm({ jobId }: { jobId: string }) {
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
+      onRefused(`送れない: ${caught.message}`);
     } finally {
       setPending(false);
     }
@@ -103,7 +118,7 @@ function InstructionForm({ jobId }: { jobId: string }) {
   );
 }
 
-function ReferenceForm({ jobId }: { jobId: string }) {
+function ReferenceForm({ jobId, onRefused }: { jobId: string; onRefused: OnRefused }) {
   const [items, setItems] = useState<AttachedReference[]>([]);
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState(0);
@@ -114,6 +129,7 @@ function ReferenceForm({ jobId }: { jobId: string }) {
     setPending(true);
     setError(undefined);
     setSent(0);
+    onRefused(undefined);
     let rest = items;
     try {
       for (const item of items) {
@@ -130,6 +146,7 @@ function ReferenceForm({ jobId }: { jobId: string }) {
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
+      onRefused(`送れない: ${caught.message}`);
     } finally {
       setPending(false);
     }
@@ -153,7 +170,7 @@ function ReferenceForm({ jobId }: { jobId: string }) {
   );
 }
 
-function StopConditionsChanger({ jobId }: { jobId: string }) {
+function StopConditionsChanger({ jobId, onRefused }: { jobId: string; onRefused: OnRefused }) {
   // 走行中の画面にだけ出すので live 固定: 別の口出し（別タブ・API）で変わった条件も、取り直して見せるため
   const { data, error: loadError } = useStopConditions(jobId, { live: true });
   // 手で直した欄だけを下書きとして持ち、取り直した current に重ねて出す: 直した欄を取り直しで消さず、直していない欄は
@@ -200,6 +217,7 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
     }
     setPending(true);
     setError(undefined);
+    onRefused(undefined);
     try {
       // 成功したら下書きを捨てる: changeStopConditions が current を取り直すので、欄は重ねたあとの実際の値になる
       await changeStopConditions(jobId, change.value);
@@ -207,6 +225,7 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
     } catch (caught) {
       if (!isApiError(caught)) throw caught;
       setError(caught.message);
+      onRefused(`変えられない: ${caught.message}`);
     } finally {
       setPending(false);
     }
@@ -250,24 +269,76 @@ function StopConditionsChanger({ jobId }: { jobId: string }) {
   );
 }
 
-/** 止まっていないジョブにだけ出す。どれも HTTP API の口出しの経路を呼ぶ */
+function StoppedNote({ manual, focus }: { manual: boolean; focus: boolean }) {
+  const note = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (focus) note.current?.focus();
+    // 出たときの一度だけ: 描き直すたびに移すと、ほかの所へ移った人からフォーカスを奪うため
+  }, []);
+  return (
+    <p ref={note} role="status" className="text-sm" {...(focus && { tabIndex: -1 })}>
+      {manual
+        ? 'このジョブは止まった。'
+        : 'このジョブは止まった。指示・参照画像・止める条件は、もう送れない。'}
+    </p>
+  );
+}
+
+/** 止まっていないジョブにだけ操作を出す。どれも HTTP API の口出しの経路を呼ぶ */
 export function JobOperations({ job }: { job: JobOverview }) {
   const { spec, state } = job;
-  if (state.status === 'stopped') return null;
-  // 手動の生成は口出しを受けないので、止めるだけを出す
-  if (spec.kind === 'manual') {
+  const operations = useRef<HTMLDivElement>(null);
+  const [running, setRunning] = useState(state.status !== 'stopped');
+  // 開いている間に止まったら、区画を消さずに、止まったことと最後の断りを残す: 取り直しで止まりが届くと中の操作は外れ、
+  // 押したばかりの断り（止まったので 409）も一緒に消えて、押した人には何が起きたか分からず、フォーカスも落ちるため
+  const [stoppedHere, setStoppedHere] = useState<{ takeFocus: boolean }>();
+  const [refusal, setRefusal] = useState<string>();
+  if (state.status === 'stopped' && running) {
+    setRunning(false);
+    // 止まった時点のフォーカスで決める: 操作の中（か、ページの外）に居た人にだけ移し、ほかの所に居る人からは奪わない
+    const active = document.activeElement;
+    setStoppedHere({
+      takeFocus:
+        active === null ||
+        active === document.body ||
+        (operations.current?.contains(active) ?? false),
+    });
+  }
+
+  if (state.status === 'stopped') {
+    // 最初から止まっているジョブには出さない
+    if (stoppedHere === undefined) return null;
     return (
       <Section title="操作">
-        <StopButton jobId={spec.jobId} manual />
+        <StoppedNote
+          manual={spec.kind === 'manual'}
+          focus={stoppedHere.takeFocus && refusal === undefined}
+        />
+        {refusal !== undefined && (
+          <ErrorNote key={refusal} focus={stoppedHere.takeFocus}>
+            {refusal}
+          </ErrorNote>
+        )}
       </Section>
     );
   }
+
   return (
-    <Section title="操作">
-      <StopButton jobId={spec.jobId} />
-      <InstructionForm jobId={spec.jobId} />
-      <ReferenceForm jobId={spec.jobId} />
-      <StopConditionsChanger jobId={spec.jobId} />
-    </Section>
+    // contents: 区画の並びに箱を1段足さない。中にフォーカスがあるかを見るためだけの枠
+    <div ref={operations} className="contents">
+      {/* 手動の生成は口出しを受けないので、止めるだけを出す */}
+      {spec.kind === 'manual' ? (
+        <Section title="操作">
+          <StopButton jobId={spec.jobId} manual onRefused={setRefusal} />
+        </Section>
+      ) : (
+        <Section title="操作">
+          <StopButton jobId={spec.jobId} onRefused={setRefusal} />
+          <InstructionForm jobId={spec.jobId} onRefused={setRefusal} />
+          <ReferenceForm jobId={spec.jobId} onRefused={setRefusal} />
+          <StopConditionsChanger jobId={spec.jobId} onRefused={setRefusal} />
+        </Section>
+      )}
+    </div>
   );
 }

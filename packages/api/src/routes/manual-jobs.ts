@@ -1,9 +1,9 @@
-import type { JobStore } from '@drawroid/core';
+import { describeInputIssues, type JobStore } from '@drawroid/core';
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { describeIssues, invalidRequest, notFound } from '../errors.js';
+import { invalidRequest, notFound } from '../errors.js';
 
 async function isManualJob(store: JobStore, jobId: string): Promise<boolean> {
   // 一覧に在るものだけを通す: 外から来た文字列をそのまま置き場所へ渡さないため
@@ -20,7 +20,7 @@ export function manualJobsRoutes({ manualRunner, store }: ApiDeps) {
           const { jobId } = await manualRunner.start(body);
           return c.json({ jobId }, 202);
         } catch (error) {
-          if (error instanceof ZodError) return invalidRequest(c, describeIssues(error));
+          if (error instanceof ZodError) return invalidRequest(c, describeInputIssues(error));
           throw error;
         }
       })

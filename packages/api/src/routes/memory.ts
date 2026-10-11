@@ -1,5 +1,6 @@
 import {
   conversationOfSource,
+  describeInputIssues,
   isMemoryId,
   memoryScopeSchema,
   type DistillBudget,
@@ -11,7 +12,7 @@ import { validator } from 'hono/validator';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { conflict, describeIssues, invalidFile, invalidRequest, notFound } from '../errors.js';
+import { conflict, invalidFile, invalidRequest, notFound } from '../errors.js';
 import { jobRequestText } from '../job-request.js';
 
 // 蒸留の出力と同じ上限を人間の編集にも掛ける: 手で長く書けると、予算で締めた LLM への入力が人間の編集で膨らむため。
@@ -103,7 +104,9 @@ export function memoryRoutes({ memoryStore, store, budgetSettings }: ApiDeps) {
         validator('json', async (value, c) => {
           const { effective } = await budgetSettings.read();
           const parsed = updateMemorySchema(effective.distill.output).safeParse(value);
-          return parsed.success ? parsed.data : invalidRequest(c, describeIssues(parsed.error));
+          return parsed.success
+            ? parsed.data
+            : invalidRequest(c, describeInputIssues(parsed.error));
         }),
         async (c) => {
           const id = c.req.param('id');

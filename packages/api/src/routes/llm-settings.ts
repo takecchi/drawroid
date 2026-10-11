@@ -1,4 +1,4 @@
-import { describeConfigIssues, describeInputIssues } from '@drawroid/core';
+import { describeConfigIssues } from '@drawroid/core';
 import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import { Hono } from 'hono';
 
@@ -33,7 +33,7 @@ export function llmSettingsRoutes(deps: ApiDeps) {
         return c.json(view(parsed.data), 200);
       })
       // validator を通す: 送る本文の型を、画面の側が hono/client から引けるようにするため
-      .put('/', jsonBody(llmConfigSchema, describeInputIssues), async (c) => {
+      .put('/', jsonBody(llmConfigSchema), async (c) => {
         const config = c.req.valid('json');
         // 組み立てられない設定は保存しない: 保存した設定と実際に使う設定がずれ、走っているジョブが次の呼び出しで止まるため
         try {

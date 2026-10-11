@@ -1,7 +1,6 @@
 import {
   budgetOverridesSchema,
   DEFAULT_BUDGETS,
-  describeInputIssues,
   resolveBudgets,
   type BudgetOverrides,
   type Budgets,
@@ -40,7 +39,7 @@ export function budgetSettingsRoutes(deps: ApiDeps) {
         }
       })
       // 断りの文は、画面が欄名を日本語に置き換えて出す。zod の英語のままにしない
-      .put('/', jsonBody(budgetOverridesSchema, describeInputIssues), async (c) => {
+      .put('/', jsonBody(budgetOverridesSchema), async (c) => {
         // 書く本文は厳しく検証するので、書いた直後に読めない欄は無い
         const overrides: BudgetOverrides = c.req.valid('json');
         // 窓に入らない予算は保存しない: 保存すると、次に投入するジョブが入力を組む段で必ず止まるため（architecture の予算）
