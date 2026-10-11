@@ -311,7 +311,7 @@ export function JobOperations({ job }: { job: JobOverview }) {
     return (
       <Section title="操作">
         <StoppedNote
-          manual={spec.kind === 'manual'}
+          manual={false}
           focus={stoppedHere.takeFocus && refusal === undefined}
         />
         {refusal !== undefined && (
