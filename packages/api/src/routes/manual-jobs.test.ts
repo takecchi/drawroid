@@ -31,12 +31,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function apiWith(backend: StubBackend) {
+function apiWith(
+  backend: StubBackend,
+  manualRunner: ManualGenerationRunner = new ManualGenerationRunner({ backend, store }),
+) {
   return createApi({
     backend,
     store,
     memoryStore: createFsMemoryStore(join(root, 'memory')),
-    manualRunner: new ManualGenerationRunner({ backend, store }),
+    manualRunner,
     autoQueue: {
       kick: () => undefined,
       stop: async (jobId) => void autoStops.push(jobId),
@@ -122,6 +125,25 @@ describe('POST /jobs/manual', () => {
       expect(await store.listJobIds()).toEqual([]);
     },
   );
+
+  // 検証の誤りだけを 400 にする: 置き場所の失敗などを、呼び手の誤りとして message を返さないため
+  it('answers 500 without the error text when starting fails for a reason other than the request shape', async () => {
+    const backend = new StubBackend();
+    class FailingRunner extends ManualGenerationRunner {
+      override start(): never {
+        throw new Error('置き場所 /secret/path に書けない');
+      }
+    }
+    const api = apiWith(backend, new FailingRunner({ backend, store }));
+    const res = await api.request('/jobs/manual', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('/secret/path');
+  });
 });
 
 describe('POST /jobs/manual/:jobId/stop', () => {
