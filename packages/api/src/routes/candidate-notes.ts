@@ -11,7 +11,7 @@ export const MAX_CANDIDATE_NOTES = 5000;
 
 // 名前 → 説明を丸ごと受ける: 部分の更新にすると、消したい説明を消す口が別に要るため
 const notesSchema = z
-  .record(z.string().min(1).max(500), z.string().trim().min(1).max(MAX_CANDIDATE_NOTE_CHARS))
+  .record(z.string().min(1).max(500), z.string().trim().max(MAX_CANDIDATE_NOTE_CHARS))
   .refine((notes) => Object.keys(notes).length <= MAX_CANDIDATE_NOTES, {
     message: `説明は ${MAX_CANDIDATE_NOTES} 件まで`,
   });
