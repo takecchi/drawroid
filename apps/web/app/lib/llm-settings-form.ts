@@ -51,6 +51,8 @@ export interface LlmSettingsFormValues {
   networkRetries: string;
   /** LLM が何も返さないまま待つ上限（秒。空ならサーバの既定） */
   callTimeoutSeconds: string;
+  /** 出力が流れ続けていても1回の呼び出しを打ち切る上限（秒。空なら使う所の既定） */
+  totalCallTimeoutSeconds: string;
 }
 
 export function emptyProviderRow(): ProviderRow {
@@ -93,6 +95,7 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
       validationRetries: '',
       networkRetries: '',
       callTimeoutSeconds: '',
+      totalCallTimeoutSeconds: '',
     };
   }
   return {
@@ -107,6 +110,9 @@ export function toFormValues(config: StoredLlmConfig | null): LlmSettingsFormVal
     validationRetries: String(config.validationRetries),
     networkRetries: String(config.networkRetries),
     callTimeoutSeconds: String(config.callTimeoutSeconds),
+    // 省かれた設定には欄が無い（既定は使う所で埋まる）。空で見せる
+    totalCallTimeoutSeconds:
+      config.totalCallTimeoutSeconds === undefined ? '' : String(config.totalCallTimeoutSeconds),
   };
 }
 
@@ -261,10 +267,12 @@ export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInpu
   const validationRetries = optionalNumber(values.validationRetries);
   const networkRetries = optionalNumber(values.networkRetries);
   const callTimeoutSeconds = optionalNumber(values.callTimeoutSeconds);
+  const totalCallTimeoutSeconds = optionalNumber(values.totalCallTimeoutSeconds);
   return {
     ...(validationRetries === undefined ? {} : { validationRetries }),
     ...(networkRetries === undefined ? {} : { networkRetries }),
     ...(callTimeoutSeconds === undefined ? {} : { callTimeoutSeconds }),
+    ...(totalCallTimeoutSeconds === undefined ? {} : { totalCallTimeoutSeconds }),
     providers,
     roles: {
       think,
