@@ -153,9 +153,10 @@ describe('BackendUrlSettings', () => {
     await user.click(saveButton());
 
     expect(saveBackendSettings).toHaveBeenCalledWith({ url: 'http://127.0.0.1:7861' });
-    expect(
-      await screen.findByText('保存した。Forge の http://127.0.0.1:7861 に繋ぐ。'),
-    ).toBeTruthy();
+    // findByText は空白を畳んで比べるので、知らせの文字そのものを見る
+    expect((await screen.findByText(savedNotice)).textContent).toBe(
+      '保存した。Forge の http://127.0.0.1:7861 に繋ぐ。',
+    );
   });
 
   it('cannot save a field of only spaces', async () => {
@@ -179,6 +180,17 @@ describe('BackendUrlSettings', () => {
     await screen.findByText(savedNotice);
 
     expect(saveButton()).toHaveProperty('disabled', false);
+  });
+
+  it('cannot be saved again while saving', async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveBackendSettings).mockReturnValue(new Promise(() => undefined));
+    render(<BackendUrlSettings />);
+
+    await user.click(saveButton());
+
+    expect(saveBackendSettings).toHaveBeenCalledTimes(1);
+    expect(saveButton()).toHaveProperty('disabled', true);
   });
 
   // 押した保存は送っている間押せなくなるので、フォーカスは保存した知らせへ移る（読み上げは移った先を読む）

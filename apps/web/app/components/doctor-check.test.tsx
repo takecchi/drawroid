@@ -85,6 +85,21 @@ describe('DoctorCheck', () => {
     expect(screen.getByRole('link', { name: '会話へ' }).getAttribute('href')).toBe('/');
   });
 
+  it('does not say all is fine when one thing is lacking', async () => {
+    vi.mocked(runDoctor).mockResolvedValue({
+      report: {
+        lacking: 1,
+        sections: [{ title: 'LLM', items: [{ ok: false, what: '考える役が答えない' }] }],
+      },
+    });
+    renderCheck();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '確かめる' }));
+
+    expect(await screen.findByText(/足りないものが 1 つある/)).toBeTruthy();
+    expect(screen.queryByText(/すべてよい/)).toBeNull();
+  });
+
   // 「確かめる」は設定の画面のいちばん下にあり、結果はボタンの下（画面の外）に出る。結果へ目を移せないと、押しても何も起きないように見える
   it('moves focus to the result when the check finishes, so that it comes into view', async () => {
     vi.mocked(runDoctor).mockResolvedValue(recordedDoctor);
@@ -245,6 +260,13 @@ describe('DoctorCheck', () => {
       { lacking: 0, sections: [{ ...okSection, items: [{ ok: true }] }] },
     ],
     ['a section has no title', { lacking: 0, sections: [{ items: okSection.items }] }],
+    [
+      'what to do is not a sentence',
+      {
+        lacking: 1,
+        sections: [{ ...okSection, items: [{ ok: false, what: 'LLM', todo: { step: 1 } }] }],
+      },
+    ],
   ])('says the result could not be read when %s', async (_, report) => {
     vi.mocked(runDoctor).mockResolvedValue({ report } as never);
     await expectUnreadable();

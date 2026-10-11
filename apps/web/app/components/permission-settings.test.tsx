@@ -160,6 +160,17 @@ describe('PermissionSettings', () => {
     await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
+  it('cannot be saved again while it is saving', async () => {
+    mocks.savePermissionSettings.mockReturnValue(new Promise(() => {}));
+    render(<PermissionSettings />);
+
+    await save();
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '許可を保存' }).disabled).toBe(
+      true,
+    );
+  });
+
   it('shows why the API refused the permissions', async () => {
     mocks.savePermissionSettings.mockRejectedValue(
       new ApiError('invalid_request', 'vae: 形が違う', 400),

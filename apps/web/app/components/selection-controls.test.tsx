@@ -90,6 +90,20 @@ describe('SelectionControls', () => {
     );
   });
 
+  it('disables the other buttons too while a selection is being saved', async () => {
+    select.mockReturnValue(new Promise(() => {}));
+    const user = renderControls('favorite');
+
+    await user.click(screen.getByRole('button', { name: '却下: 1 回目の画像 1 番' }));
+
+    for (const name of ['お気に入り', '却下', '外す']) {
+      expect(screen.getByRole('button', { name: `${name}: 1 回目の画像 1 番` })).toHaveProperty(
+        'disabled',
+        true,
+      );
+    }
+  });
+
   it('cannot clear a verdict on an image that has none', () => {
     renderControls(null);
 
