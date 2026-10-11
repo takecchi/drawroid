@@ -2243,6 +2243,29 @@ describe('ConversationView', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
+    // 送ると塗る形が閉じ、押した「マスクを送る」は消える。フォーカスは送った知らせへ移る。もう一度塗って送っても移る
+    it('moves the focus to the note that the mask was sent, also on a second send', async () => {
+      const { user, dialog } = await startPainting();
+      const sendOnce = async () => {
+        await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+        paint(loadOriginal(dialog));
+        dialog().getByRole('button', { name: 'マスクを送る' }).focus();
+        await user.keyboard('{Enter}');
+      };
+
+      await sendOnce();
+      const first = await dialog().findByRole('status');
+      await waitFor(() => expect(document.activeElement).toBe(first));
+
+      await sendOnce();
+      await waitFor(() => expect(addMask).toHaveBeenCalledTimes(2));
+      await waitFor(() => {
+        const note = dialog().getByRole('status');
+        expect(note).not.toBe(first);
+        expect(document.activeElement).toBe(note);
+      });
+    });
+
     it('closes on Escape while painting with nothing painted yet, without saying it stays open', async () => {
       const { user, dialog } = await startPainting();
       await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
