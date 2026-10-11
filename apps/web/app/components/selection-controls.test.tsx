@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { setSelection } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SelectionControls } from './selection-controls';
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
 
 vi.mock('@drawroid/swr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@drawroid/swr')>()),
@@ -147,5 +152,22 @@ describe('SelectionControls', () => {
     await user.click(screen.getByRole('button', { name: '却下: 1 回目の画像 1 番' }));
 
     expect((await screen.findByText(/選べない/)).textContent).toContain('画像が無い');
+  });
+
+  // 押したボタンは送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when the selection is refused, also on a second refusal', async () => {
+    const { ApiError } = await vi.importActual<typeof import('@drawroid/swr')>('@drawroid/swr');
+    select.mockRejectedValue(new ApiError('not_found', '画像が無い', 404));
+    const user = renderControls(null);
+    const reject = () => screen.getByRole('button', { name: '却下: 1 回目の画像 1 番' });
+
+    reject().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    reject().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(select).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
   });
 });
