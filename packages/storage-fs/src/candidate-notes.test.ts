@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -35,6 +35,15 @@ describe('readCandidateNotes', () => {
 
   it('has no notes and nothing to report when the file does not exist', async () => {
     expect(await readCandidateNotes(path)).toEqual({ notes: new Map() });
+  });
+
+  it('goes on without notes, saying why, when the file is there but cannot be read', async () => {
+    await mkdir(path);
+
+    const { notes, problem } = await readCandidateNotes(path);
+
+    expect(notes.size).toBe(0);
+    expect(problem).toContain('candidate-notes.json');
   });
 
   it('goes on without notes, saying why, when the file is not JSON', async () => {
