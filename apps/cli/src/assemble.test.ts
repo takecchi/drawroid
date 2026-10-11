@@ -184,6 +184,61 @@ describe('assembleDrawroid, telling where the backend kind came from', () => {
   });
 });
 
+describe('assembleDrawroid, telling whether the start-up arguments are in effect', () => {
+  const startWith = async (args: { backend?: 'forge' | 'a1111'; backendUrl?: string }) => {
+    running = await assembleDrawroid({
+      root,
+      args: { port: 0, backend: args.backend, backendUrl: args.backendUrl },
+      env: {},
+      signals: new EventEmitter(),
+      exit: vi.fn(),
+      write: () => undefined,
+      webRoot,
+    });
+    return `http://127.0.0.1:${running.address.port}/api/settings/backend`;
+  };
+  const save = (url: string, body: object) =>
+    fetch(url, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('keeps saying both arguments win next time after the screen saves a kind and a url', async () => {
+    const url = await startWith({ backend: 'forge', backendUrl: 'http://127.0.0.1:9' });
+    expect(await (await fetch(url)).json()).toMatchObject({
+      startupArgs: { kind: true, url: true },
+    });
+    const saved = await save(url, { url: 'http://127.0.0.1:9', kind: 'a1111' });
+    expect(await saved.json()).toMatchObject({
+      kindSource: 'config',
+      urlSource: 'config',
+      startupArgs: { kind: true, url: true },
+    });
+    expect(await (await fetch(url)).json()).toMatchObject({
+      kindSource: 'config',
+      urlSource: 'config',
+      startupArgs: { kind: true, url: true },
+    });
+  });
+
+  it('says neither argument is in effect when started without them, also after a save', async () => {
+    const url = await startWith({});
+    expect(await (await fetch(url)).json()).toMatchObject({
+      startupArgs: { kind: false, url: false },
+    });
+    const saved = await save(url, { url: 'http://127.0.0.1:9', kind: 'a1111' });
+    expect(await saved.json()).toMatchObject({ startupArgs: { kind: false, url: false } });
+  });
+
+  it('tells the kind and the url apart when only one of them is given at start-up', async () => {
+    const url = await startWith({ backend: 'a1111' });
+    expect(await (await fetch(url)).json()).toMatchObject({
+      startupArgs: { kind: true, url: false },
+    });
+  });
+});
+
 describe('assembleDrawroid after a restart', () => {
   // 落ちる前の止まりで話しかけ直さない: 途切れたターンをやり直さないのと同じく、話しかけるのは止まったその場だけ
   it('does not speak about a job that stopped before the process went down, even if it had not spoken yet', async () => {
