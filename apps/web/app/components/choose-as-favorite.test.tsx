@@ -100,6 +100,20 @@ describe('ChooseAsFavorite refusal', () => {
   });
 });
 
+describe('ChooseAsFavorite while sending', () => {
+  it('cannot be pressed again until the choice comes back', async () => {
+    vi.mocked(setSelection).mockReturnValue(new Promise(() => undefined));
+    render(
+      <ChooseAsFavorite jobId={JOB} imageKey="2-0" imageLabel="2 回目の画像 1 番" verdict={null} />,
+    );
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: CHOOSE }));
+
+    expect(screen.getByRole('button', { name: CHOOSE })).toHaveProperty('disabled', true);
+  });
+});
+
 describe('ChooseAsFavorite refusal drawn again', () => {
   // 断りが出たまま描き直されても（別の所の選び直しが届いたとき）、ほかへ移したフォーカスを奪わない
   it('does not take the focus again when it is drawn again while the refusal stays', async () => {

@@ -96,6 +96,21 @@ describe('AdoptButton', () => {
     ).toBeNull();
   });
 
+  // 送ったあとは取り消せず、二度は送らない
+  it('lets neither deciding nor changing the mind be pressed while sending', async () => {
+    vi.mocked(adoptImage).mockReturnValue(new Promise(() => undefined));
+    const user = renderButton();
+
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
+    await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
+
+    expect(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(screen.getByRole('button', { name: 'やめる' })).toHaveProperty('disabled', true);
+  });
+
   it('says the image was chosen when the record says so, without being pressed (as after reopening)', () => {
     render(
       <AdoptButton

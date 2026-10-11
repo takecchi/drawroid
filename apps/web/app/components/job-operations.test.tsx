@@ -393,6 +393,17 @@ describe('JobOperations, when the job stops while it is open', () => {
     await expectFocusMovesTo(screen.getByText(STOPPED));
   });
 
+  // jsdom は activeElement を null にしないので、ページの外に居る（何も持っていない）状態を差し替えで作る
+  it('moves the focus to the note that the job stopped when the page holds no focus at all', async () => {
+    const { rerender } = render(page(runningAuto()));
+    const active = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(null);
+
+    rerender(page(stoppedAuto()));
+    active.mockRestore();
+
+    await expectFocusMovesTo(screen.getByText(STOPPED));
+  });
+
   it('shows a refusal that comes back after the stop without taking the focus from elsewhere on the page', async () => {
     let refuse!: (error: unknown) => void;
     instruct.mockImplementation(
@@ -686,6 +697,15 @@ describe('JobOperations', () => {
   describe('instruction', () => {
     it('keeps the send button disabled while the text is blank', () => {
       render(<JobOperations job={runningAuto()} />);
+
+      expect(screen.getByRole('button', { name: '送る' })).toHaveProperty('disabled', true);
+    });
+
+    it('keeps the send button disabled while the text is only spaces', async () => {
+      render(<JobOperations job={runningAuto()} />);
+      const user = userEvent.setup();
+
+      await user.type(screen.getByLabelText('人間の指示'), '   ');
 
       expect(screen.getByRole('button', { name: '送る' })).toHaveProperty('disabled', true);
     });
