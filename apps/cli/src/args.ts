@@ -58,22 +58,17 @@ LLM などの設定は、起動して画面の「設定」から入れるか、�
 export function parseCliArgs(argv: string[]): CliOptions {
   const { values, positionals } = parseKnownArgs(argv);
   // ほかの指定の検証より先に返す: 値の間違った指定と一緒でも、使い方を見たい人には使い方を出す
-  if (values.help === true) {
-    return {
-      command: 'help',
-      port: DEFAULT_PORT,
-      dataDir: undefined,
-      backend: undefined,
-      backendUrl: undefined,
-    };
-  }
-  return {
+  const parsed = {
     command: parseCommand(positionals),
     port: parsePort(values.port),
     dataDir: values['data-dir'],
     backend: parseBackend(values.backend),
     backendUrl: parseBackendUrl(values['backend-url'], values['forge-url']),
   };
+  if (values.help === true) {
+    return { ...parsed, command: 'help' };
+  }
+  return parsed;
 }
 
 // node の文をそのまま出さない: 英語のうえ、「-- のあとに置け」と、この CLI では落ちる書き方を勧めるため
