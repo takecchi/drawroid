@@ -487,8 +487,7 @@ export class JobRunner {
         const spec = await this.deps.store.readJob(jobId);
         if (spec.kind !== 'auto') continue;
         const { status } = await this.deps.store.readState(jobId);
-        if (status === 'running') return jobId;
-        if (status === 'queued') queued ??= jobId;
+        if (status === 'running' || status === 'queued') queued ??= jobId;
       } catch (error) {
         // 1件が読めなくても待ち行列全体を止めない。消えた1件（人の操作）は黙って飛ばし、壊れているものは理由を残して飛ばす
         if (!isMissingFile(error)) {
