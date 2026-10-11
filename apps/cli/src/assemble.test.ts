@@ -15,7 +15,7 @@ import {
   initDataDir,
   writeLlmSettings,
 } from '@drawroid/storage-fs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
 import { assembleDrawroid } from './assemble.js';
 import type { Listening } from './listen.js';
@@ -983,7 +983,7 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
 
   let llm: Awaited<ReturnType<typeof loadingLlm>>;
   // 組み立ての中のランナーは外に出ていない: kick を素通しで見張り、呼ばれた相手（ランナー）を控える
-  let kicked: ReturnType<typeof vi.spyOn<JobRunner, 'kick'>>;
+  let kicked: MockInstance<JobRunner['kick']>;
   beforeEach(async () => {
     kicked = vi.spyOn(JobRunner.prototype, 'kick');
     llm = await loadingLlm();
@@ -991,7 +991,8 @@ describe('assembleDrawroid, reading the window again for an LLM that was still l
   afterEach(async () => {
     // ジョブが止まっても、ランナーは待ち行列をもう一度走査している: データディレクトリを消す前に、その走査が終わるのを待つ
     // （待たないと、消えたあとの state.json を読んで Unhandled Rejection になる）
-    await Promise.all(kicked.mock.contexts.map((runner) => runner.idle()));
+    // kick は this を型に書いていないので、呼ばれた相手の型は spyOn から伝わらない（JobRunner.prototype に掛けたので、相手はランナー）
+    await Promise.all((kicked.mock.contexts as JobRunner[]).map((runner) => runner.idle()));
     kicked.mockRestore();
     await llm.close();
   });
