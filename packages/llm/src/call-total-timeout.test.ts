@@ -173,7 +173,7 @@ describe('the time one LLM call may take in total', () => {
     const result = outcome.value as LlmCallOutcome<unknown>;
     expect(result.ok).toBe(false);
     expect(!result.ok && result.reason).toBe(
-      `${LLM_CALL_FAILED_PREFIX}LLM が時間内に終わらなかった（1回の呼び出しの全体の上限 900 秒を超えた。出力は流れ続けていた）。出力が止まらないモデルかもしれない。LLM の設定の「1回の呼び出しの全体の上限（秒）」（config.json の llm.totalCallTimeoutSeconds）を延ばすか、役の出力の上限（maxOutputTokens）を設ける`,
+      `${LLM_CALL_FAILED_PREFIX}LLM が時間内に終わらなかった（1回の試行の上限 900 秒を超えた。出力は流れ続けていた）。出力が止まらないモデルかもしれない。LLM の設定の「1回の呼び出しの全体の上限（秒）」（config.json の llm.totalCallTimeoutSeconds）を延ばすか、役の出力の上限（maxOutputTokens）を設ける`,
     );
   });
 
@@ -190,7 +190,7 @@ describe('the time one LLM call may take in total', () => {
     expect(outcome.settled).toBe(true);
 
     const result = outcome.value as LlmCallOutcome<unknown>;
-    expect(!result.ok && result.reason).toContain('全体の上限 60 秒を超えた');
+    expect(!result.ok && result.reason).toContain('1回の試行の上限 60 秒を超えた');
   });
 
   it('lets a call that keeps streaming finish when it ends before the time is up', async () => {
@@ -299,7 +299,7 @@ describe('the time one LLM call may take in total', () => {
       outcome: outcome.value as LlmCallOutcome<unknown>,
     });
     expect(record.outcome.ok).toBe(false);
-    expect(!record.outcome.ok && record.outcome.reason).toContain('全体の上限 30 秒を超えた');
+    expect(!record.outcome.ok && record.outcome.reason).toContain('1回の試行の上限 30 秒を超えた');
     expect(record.attempts).toHaveLength(1);
     expect(record.durationMs).toBe(30_000);
   });
@@ -325,7 +325,7 @@ describe('the time one LLM call may take in total', () => {
     expect(done.settled).toBe(true);
 
     const finish = parts.at(-1);
-    expect(finish?.type === 'finish' && finish.failure).toContain('全体の上限 30 秒を超えた');
+    expect(finish?.type === 'finish' && finish.failure).toContain('1回の試行の上限 30 秒を超えた');
   });
 
   it('still says nothing came back when the LLM goes silent before the total time', async () => {
@@ -392,7 +392,7 @@ describe('the time one LLM call may take in total', () => {
     expect(outcome.settled).toBe(true);
 
     const result = outcome.value as LlmCallOutcome<unknown>;
-    expect(!result.ok && result.reason).toContain('全体の上限 30 秒を超えた');
+    expect(!result.ok && result.reason).toContain('1回の試行の上限 30 秒を超えた');
   });
 
   it('applies 900 seconds to a call made from settings that do not write the limit', async () => {
@@ -405,6 +405,6 @@ describe('the time one LLM call may take in total', () => {
     expect(outcome.settled).toBe(true);
 
     const result = outcome.value as LlmCallOutcome<unknown>;
-    expect(!result.ok && result.reason).toContain('全体の上限 900 秒を超えた');
+    expect(!result.ok && result.reason).toContain('1回の試行の上限 900 秒を超えた');
   });
 });

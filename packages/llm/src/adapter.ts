@@ -88,10 +88,10 @@ class CallTimedOut extends Error {
   }
 }
 
-/** 出力が流れ続けたまま、1回の呼び出しの全体の時間の上限を超えた */
+/** 出力が流れ続けたまま、1回の試行の時間の上限を超えた（出し直しのたびに数え直す） */
 class CallRanTooLong extends Error {
   constructor(readonly seconds: number) {
-    super(`LLM の1回の呼び出しが全体の上限 ${seconds} 秒を超えた`);
+    super(`LLM の1回の試行が上限 ${seconds} 秒を超えた`);
   }
 }
 
@@ -155,7 +155,7 @@ export function describeCallFailure(error: unknown): string {
     return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に答えなかった（${error.seconds} 秒、何も返らなかった）。LLM のサーバが動いているかを確かめる。遅いモデルなら、LLM の設定の「応答を待つ上限（秒）」を延ばす`;
   }
   if (error instanceof CallRanTooLong) {
-    return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に終わらなかった（1回の呼び出しの全体の上限 ${error.seconds} 秒を超えた。出力は流れ続けていた）。出力が止まらないモデルかもしれない。LLM の設定の「1回の呼び出しの全体の上限（秒）」（config.json の llm.totalCallTimeoutSeconds）を延ばすか、役の出力の上限（maxOutputTokens）を設ける`;
+    return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に終わらなかった（1回の試行の上限 ${error.seconds} 秒を超えた。出力は流れ続けていた）。出力が止まらないモデルかもしれない。LLM の設定の「1回の呼び出しの全体の上限（秒）」（config.json の llm.totalCallTimeoutSeconds）を延ばすか、役の出力の上限（maxOutputTokens）を設ける`;
   }
   // 見分けるのは切り詰める前の文で行う: 切り詰めるのは画面に出す長さのためで、理由が切った先に書かれていることもあるため
   const whole = error instanceof Error ? error.message : String(error);
