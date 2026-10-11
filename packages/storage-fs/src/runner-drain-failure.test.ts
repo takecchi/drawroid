@@ -38,9 +38,13 @@ const judge: Script = (call) => ({
   canStop: false,
 });
 
-/** 次の listJobIds を、読んだ値を持ったまま、試験が開けるまで返さない。さらに、指定した writeState を1度だけ失敗させる */
+/**
+ * 次の listJobIds を、読んだ値を持ったまま、試験が開けるまで返さない。さらに、指定した writeState を1度だけ失敗させる。
+ * 次の listJobIds そのものを1度だけ失敗させることもできる
+ */
 function instrumentedStore(inner: JobStore) {
   let armed = false;
+  let failScan: Error | undefined;
   let release: () => void = () => undefined;
   let reached: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => (release = resolve));
@@ -50,6 +54,11 @@ function instrumentedStore(inner: JobStore) {
     get(target, property, receiver) {
       if (property === 'listJobIds') {
         return async () => {
+          if (failScan !== undefined) {
+            const error = failScan;
+            failScan = undefined;
+            throw error;
+          }
           const ids = await target.listJobIds();
           if (armed) {
             armed = false;
@@ -80,6 +89,7 @@ function instrumentedStore(inner: JobStore) {
     scanned,
     release: () => release(),
     failStoppedWriteOnce: (jobId: string) => (failStopWrite = jobId),
+    failNextScan: (error: Error) => (failScan = error),
   };
 }
 
@@ -144,6 +154,40 @@ describe('when the queue scan fails', () => {
       expect(line).toContain(`ジョブ ${broken.jobId}`);
       expect(line).toContain('state.json');
     }
+  });
+
+  // 一覧すら読めない走査はやめて、次の kick を待つ: 読み直し続けると、失敗が続く間 drain が終わらず、ログも積もり続ける
+  it('logs why when the list of jobs cannot be read, ends the run, and runs the job on the next kick', async () => {
+    const { files, instrumented, runner, submit, logs } = setup();
+    const waiting = await submit();
+    instrumented.failNextScan(new Error('EIO: i/o error, scandir jobs'));
+
+    runner.kick();
+    await runner.idle();
+
+    expect(await files.readState(waiting.jobId)).toMatchObject({ status: 'queued' });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('待ち行列の走査に失敗した');
+    expect(logs[0]).toContain('EIO: i/o error, scandir jobs');
+
+    runner.kick();
+    await runner.idle();
+
+    expect(await files.readState(waiting.jobId)).toMatchObject({ status: 'stopped' });
+  });
+
+  // job.json はあるが state.json が無いのは、消している最中か書きかけのジョブで、異常ではない
+  it('skips without a log a job whose state file is not there, and still runs the others', async () => {
+    const { files, runner, submit, logs } = setup();
+    const partial = await submit();
+    const healthy = await submit();
+    await rm(join(root, 'jobs', partial.jobId, 'state.json'));
+
+    runner.kick();
+    await runner.idle();
+
+    expect(await files.readState(healthy.jobId)).toMatchObject({ status: 'stopped' });
+    expect(logs).toEqual([]);
   });
 });
 
