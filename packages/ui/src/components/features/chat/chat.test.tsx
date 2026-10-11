@@ -509,6 +509,18 @@ describe('ChatLayout status', () => {
     expect(region.textContent).toBe('話を聞いています（描くのは待たせています）');
   });
 
+  it('is the one main landmark of the page, holding the header, the log and the composer', () => {
+    render(
+      <ChatLayout header={<h1>題</h1>} log={<p>ログ</p>} composer={<textarea aria-label="発言" />} />,
+    );
+
+    const main = screen.getByRole('main');
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(main.contains(screen.getByRole('heading', { level: 1 }))).toBe(true);
+    expect(main.contains(screen.getByText('ログ'))).toBe(true);
+    expect(main.contains(screen.getByLabelText('発言'))).toBe(true);
+  });
+
   it('keeps the visible status line out of what is read aloud, so it is not read twice', () => {
     render(layout('waiting-llm'));
 
