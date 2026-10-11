@@ -44,7 +44,7 @@ export function createLlm(
       validationRetries: config.validationRetries,
       networkRetries: config.networkRetries,
       callTimeoutSeconds: config.callTimeoutSeconds,
-      totalCallTimeoutSeconds: config.totalCallTimeoutSeconds ?? DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS,
+      totalCallTimeoutSeconds: config.totalCallTimeoutSeconds,
       configKeys: {
         think: 'think',
         judge: config.roles.judge === undefined ? 'think' : 'judge',
