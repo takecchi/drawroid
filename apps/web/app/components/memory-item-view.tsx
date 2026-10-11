@@ -86,7 +86,6 @@ function MemoryItemBody({
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
-    setProblem(undefined);
     // 送っている間は消す: 2回続けて保存したとき、知らせを作り直してフォーカスをもう一度移すため
     setSaved(false);
     try {
