@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+import { UnparsableConfigError } from '@drawroid/core';
+
 import { writeJsonAtomic } from './atomic.js';
 
 /** config.json を JSON のオブジェクトとして読む。ファイルが無ければ空 */
@@ -14,7 +16,12 @@ export async function readConfigObject(configPath: string): Promise<Record<strin
     }
     throw error;
   }
-  const parsed: unknown = JSON.parse(text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new UnparsableConfigError((error as Error).message, { cause: error });
+  }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`${configPath} が JSON のオブジェクトではない`);
   }

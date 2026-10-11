@@ -1,4 +1,4 @@
-import { isBackendError } from '@drawroid/core';
+import { isBackendError, UnparsableConfigError } from '@drawroid/core';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -21,6 +21,8 @@ export function handleUncaught(error: Error, c: Context) {
     const kind = status === 400 ? 'invalid_request' : 'http_error';
     return c.json(errorBody(kind, describeHttpRefusal(status, error.message)), status);
   }
+  // 読めない config.json は、どの口でも起動・doctor と同じ文で言う（設定の口ごとに受けない）
+  if (error instanceof UnparsableConfigError) return invalidConfig(c, error.message);
   const storage = describeStorageFailure(error);
   if (storage !== undefined) {
     // 置き場所は端末にだけ出す（応答には出さない）。積み上げは出さない: 権限や空きの問題で、コードの不具合ではないため
