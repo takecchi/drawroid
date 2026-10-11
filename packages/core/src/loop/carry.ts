@@ -63,7 +63,12 @@ export function adoptAsBest(
   carry: Carry,
   adopted: { iteration: number; imageIndex: number; params: ThinkParams; issues: string[] },
 ): Carry {
-  return { ...carry, best: { ...adopted, score: 1, nextChange: '' } };
+  return {
+    intent: carry.intent,
+    completedIterations: carry.completedIterations,
+    ...(carry.latest === undefined ? {} : { latest: carry.latest }),
+    best: { ...adopted, score: 1, nextChange: '' },
+  };
 }
 
 function topResult(
