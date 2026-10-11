@@ -88,6 +88,19 @@ describe('describeCallFailure', () => {
     expect(describeCallFailure(error)).toBe(`${LLM_CALL_FAILED_PREFIX}odd`);
   });
 
+  // 状態の符号が返ったのなら、LLM のサーバまでは届いている
+  it('does not claim it cannot reach the LLM when the server answered with a status', () => {
+    const error = new APICallError({
+      message: 'odd',
+      url: 'http://x',
+      requestBodyValues: {},
+      statusCode: 400,
+      cause: new Error('body was not JSON'),
+    });
+
+    expect(describeCallFailure(error)).toBe(`${LLM_CALL_FAILED_PREFIX}odd`);
+  });
+
   // 見分けられない失敗は、今までどおり LLM の言葉をそのまま添える（言い当てられないことを言い当てたふりをしない）
   it('keeps the words of the LLM for a failure it cannot tell apart', async () => {
     reply = { status: 400, body: refusal('Unsupported parameter: tools') };
