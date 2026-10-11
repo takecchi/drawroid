@@ -940,6 +940,14 @@ describe('LlmSettings', () => {
       expect(text).toContain('空なら 900 秒');
     });
 
+    it('says in its hint that the limit is for one attempt and counted again at every retry', () => {
+      render(<LlmSettings />);
+
+      const text = input(label).labels?.[0]?.textContent ?? '';
+      expect(text).toContain('1回の試行ごとの上限');
+      expect(text).toContain('出し直しのたびに数え直す');
+    });
+
     it('shows the value that is stored, and an empty field when none is stored', () => {
       mocks.useLlmSettings.mockReturnValue({
         data: { ...stored, config: { ...stored.config!, totalCallTimeoutSeconds: 1800 } },
