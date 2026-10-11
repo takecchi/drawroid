@@ -226,7 +226,7 @@ export function CandidateNotes() {
         </form>
       )}
       {saved && <OkNote focus>保存した。次のジョブから考える役に渡る。</OkNote>}
-      {problem !== undefined && <ErrorNote>保存できない: {problem}</ErrorNote>}
+      {problem !== undefined && <ErrorNote focus>保存できない: {problem}</ErrorNote>}
     </Section>
   );
 }

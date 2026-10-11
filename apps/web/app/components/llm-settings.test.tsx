@@ -793,6 +793,22 @@ describe('LlmSettings', () => {
     expect(screen.queryByText('保存した。次に話しかけたときから、この設定を使う。')).toBeNull();
   });
 
+  // 押した保存は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when saving is refused, also on a second refusal', async () => {
+    mocks.saveLlmSettings.mockRejectedValue(new ApiError('invalid_request', '形が合わない', 400));
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+    const button = () => screen.getByRole('button', { name: 'LLM の設定を保存' });
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
   it('takes back that it saved when saving again fails', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);

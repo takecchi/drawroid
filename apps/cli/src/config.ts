@@ -1,7 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
-import { backendKindSchema, type BackendKind } from '@drawroid/api';
+import {
+  backendKindSchema,
+  describeConfigIssues,
+  describeUnparsableConfig,
+  type BackendKind,
+} from '@drawroid/api';
 import { z } from 'zod';
 
 // Forge も A1111 も既定で 7860 を待ち受けるので、種類に依らず同じ既定を使う
@@ -46,16 +51,15 @@ export async function readConfig(path: string): Promise<Config> {
     json = JSON.parse(text);
   } catch (error) {
     throw new Error(
-      `${name} が JSON として読めない（${path}）: ${(error as Error).message}。${CONFIG_FIX}`,
+      `${describeUnparsableConfig((error as Error).message)}（${path}）。${CONFIG_FIX}`,
       { cause: error },
     );
   }
   const parsed = configSchema.safeParse(json);
   if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
-    throw new Error(`${name} の形が違う（${path}）: ${issues}。${CONFIG_FIX}`);
+    throw new Error(
+      `${name} の形が違う（${path}）: ${describeConfigIssues(parsed.error)}。${CONFIG_FIX}`,
+    );
   }
   return parsed.data;
 }

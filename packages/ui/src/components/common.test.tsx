@@ -119,6 +119,24 @@ describe('ErrorNote', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('依頼が長すぎる');
   });
+
+  // 押して保存が断られたときは、断りへフォーカスを移す（出たときの一度だけ）。渡さなければ移さない
+  it('takes the focus when it appears, only when asked and only once', () => {
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+    const { unmount } = render(<ErrorNote>送れない: 依頼が長すぎる</ErrorNote>);
+    expect(document.activeElement).toBe(elsewhere);
+    unmount();
+
+    const { rerender } = render(<ErrorNote focus>保存できない: 形が違う</ErrorNote>);
+    expect(document.activeElement).toBe(screen.getByRole('alert'));
+
+    elsewhere.focus();
+    rerender(<ErrorNote focus>保存できない: 形が違う。直して保存する</ErrorNote>);
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
 });
 
 describe('OkNote', () => {

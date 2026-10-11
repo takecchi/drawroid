@@ -196,14 +196,14 @@ function MemoryItemBody({
       </SubSection>
 
       {problem?.kind === 'conflict' && (
-        <ErrorNote>
+        <ErrorNote focus>
           開いたあとにファイルが変わった。読み直してから直す。{' '}
           <Button onClick={reloadLatest} disabled={busy}>
             読み直す
           </Button>
         </ErrorNote>
       )}
-      {problem?.kind === 'other' && <ErrorNote>できなかった: {problem.message}</ErrorNote>}
+      {problem?.kind === 'other' && <ErrorNote focus>できなかった: {problem.message}</ErrorNote>}
     </>
   );
 }

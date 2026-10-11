@@ -2,13 +2,15 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type {
-  BackendKind,
-  BackendSettingsPort,
-  DoctorItem,
-  DoctorPort,
-  DoctorReport,
-  DoctorSection,
+import {
+  describeConfigIssue,
+  describeUnparsableConfig,
+  type BackendKind,
+  type BackendSettingsPort,
+  type DoctorItem,
+  type DoctorPort,
+  type DoctorReport,
+  type DoctorSection,
 } from '@drawroid/api';
 import {
   DEFAULT_BUDGET,
@@ -103,8 +105,13 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const config = await checkConfig(options.configPath);
   const sections = [
     config.section,
-    await checkBackend(options, config.backend),
-    await checkLlm(options, config.llm, config.imageLongEdge ?? DEFAULT_BUDGET.imageLongEdge),
+    // 起動が拒む config.json のときは、config.json に頼る項を確かめない: 既定の値で確かめても、起動できない今は意味が無い
+    config.refusedAtStart
+      ? mustFixConfigFirst('画像のバックエンド')
+      : await checkBackend(options, config.backend),
+    config.refusedAtStart
+      ? mustFixConfigFirst('LLM')
+      : await checkLlm(options, config.llm, config.imageLongEdge ?? DEFAULT_BUDGET.imageLongEdge),
     checkWeb(options.webRoot, devWebUrl(options.env)),
   ];
   const secrets = apiKeyValues(config.llm, options.env);
@@ -146,6 +153,8 @@ type LlmState = { state: 'unset' } | { state: 'invalid' } | { state: 'ok'; confi
 
 interface ConfigCheck {
   section: DoctorSection;
+  // 起動が config.json を読めずに拒む（読めない・JSON でない・欄の集まりでない・backend の形が違う）。llm の誤りは含まない（起動は未設定で続ける）
+  refusedAtStart: boolean;
   // 読めなかった欄は undefined にして、既定で続ける（起動と同じ値で確かめるため）
   backend: Config['backend'];
   llm: LlmState;
@@ -168,6 +177,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
           title,
           items: [{ ok: true, what: `まだ無い（${path}）。無くても既定の値で動く` }],
         },
+        refusedAtStart: false,
         backend: undefined,
         llm: { state: 'unset' },
       };
@@ -183,6 +193,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
           },
         ],
       },
+      refusedAtStart: true,
       backend: undefined,
       llm: { state: 'invalid' },
     };
@@ -197,11 +208,12 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
         items: [
           {
             ok: false,
-            what: `JSON として読めない（${path}）: ${(error as Error).message}`,
+            what: `${describeUnparsableConfig((error as Error).message)}（${path}）`,
             todo: '書き損じ（カンマ・引用符・括弧）を直す。直せなければ別の名前へ退け、画面の「設定」から入れ直す',
           },
         ],
       },
+      refusedAtStart: true,
       backend: undefined,
       llm: { state: 'invalid' },
     };
@@ -218,6 +230,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
           },
         ],
       },
+      refusedAtStart: true,
       backend: undefined,
       llm: { state: 'invalid' },
     };
@@ -230,7 +243,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
     items.push(
       ...backend.error.issues.map((issue) => ({
         ok: false,
-        what: `${issuePath(issue.path)}: ${issue.message}`,
+        what: describeConfigIssue(issue),
         todo: 'config.json の backend を直す。直すまで drawroid は起動しない',
       })),
     );
@@ -246,7 +259,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
       items.push(
         ...parsed.error.issues.map((issue) => ({
           ok: false,
-          what: `${issuePath(['llm', ...issue.path])}: ${issue.message}`,
+          what: describeConfigIssue(issue, ['llm']),
           todo: '画面の「設定」の「LLM の設定」で入れ直すか、config.json の llm を直す。直すまで LLM は未設定として扱われる',
         })),
       );
@@ -291,6 +304,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
   if (items.length === 0) items.push({ ok: true, what: `読める（${path}）` });
   return {
     section: { title, items },
+    refusedAtStart: !backend.success,
     backend: backend.success ? backend.data.backend : undefined,
     llm,
     imageLongEdge: resolveBudgets(readBudgetOverrides(record.budgets).overrides).imageLongEdge,
@@ -299,6 +313,19 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
 
 function issuePath(path: readonly PropertyKey[]): string {
   return path.map(String).join('.') || '(全体)';
+}
+
+function mustFixConfigFirst(title: string): DoctorSection {
+  return {
+    title,
+    items: [
+      {
+        ok: false,
+        what: 'config.json が読めないので確かめられない（「設定ファイル」の項を見る）',
+        todo: 'config.json を直してから確かめる',
+      },
+    ],
+  };
 }
 
 // --- バックエンド -------------------------------------------------------------
@@ -563,7 +590,8 @@ async function checkLlm(
     section.items.push({
       ok: false,
       what: 'config.json の llm が読めないので確かめられない（「設定ファイル」の項を見る）',
-      todo: '「設定ファイル」の項の llm の欄を直す',
+      // 起動を勧めない: 起動しても LLM は未設定のままで、勧めた先の画面でも、この llm の誤りは直るまで残る
+      todo: 'config.json の llm を直してから確かめる（直すまで、起動しても LLM は未設定のまま）',
     });
     return section;
   }

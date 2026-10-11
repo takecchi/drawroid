@@ -53,7 +53,7 @@ export function GenerationProgressSettings() {
           onChange={(event) => void change(event.target.checked)}
         />
       )}
-      {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
+      {saveError !== undefined && <ErrorNote focus>保存できない: {saveError}</ErrorNote>}
       {saved && <OkNote focus>保存した。次に始まる生成から効く。</OkNote>}
     </Section>
   );

@@ -218,6 +218,21 @@ describe('BackendUrlSettings', () => {
       expect(field().value).toBe('http://127.0.0.1:7861');
     });
 
+    // 押した保存は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+    it('moves the focus to the reason, also on a second refusal', async () => {
+      const user = userEvent.setup();
+      failSave();
+      render(<BackendUrlSettings />);
+
+      saveButton().focus();
+      await user.keyboard('{Enter}');
+      await expectFocusMovesTo(await screen.findByRole('alert'));
+
+      saveButton().focus();
+      await user.keyboard('{Enter}');
+      await expectFocusMovesTo(await screen.findByRole('alert'));
+    });
+
     it('can be tried again, not left waiting', async () => {
       const user = userEvent.setup();
       failSave();

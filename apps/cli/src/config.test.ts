@@ -76,10 +76,10 @@ describe('readConfig', () => {
   it('says where the broken file is and how to start anyway', async () => {
     const path = join(dir, 'config.json');
     for (const [text, said] of [
-      ['{ broken', `config.json が JSON として読めない（${path}）: `],
+      ['{ broken', 'config.json が JSON として読めない（原文: '],
       [
         JSON.stringify({ backend: { url: 'not a url' } }),
-        `config.json の形が違う（${path}）: backend.url: `,
+        `config.json の形が違う（${path}）: config.json の backend.url が読めない（`,
       ],
     ] as const) {
       await writeFile(path, text);
@@ -90,6 +90,31 @@ describe('readConfig', () => {
       );
       expect((error as Error).message).not.toContain('\n');
     }
+  });
+
+  // 初めて使う人が読む文: 欄の名前と日本語の説明を前に、node・zod の原文を括弧で後ろに残す
+  it.each([
+    [
+      '{',
+      `config.json が JSON として読めない（原文: Expected property name or '}' in JSON at position 1 (line 1 column 2)）（PATH）。`,
+    ],
+    [
+      '{"backend":{"url":123}}',
+      'config.json の形が違う（PATH）: config.json の backend.url が読めない（文字列で書く）（原文: Invalid input: expected string, received number）。',
+    ],
+    [
+      '{"backend":{"kind":"comfyui"}}',
+      'config.json の形が違う（PATH）: config.json の backend.kind が読めない（"forge" か "a1111" のどちらか）（原文: Invalid option: expected one of "forge"|"a1111"）。',
+    ],
+    [
+      '{"backend":{"url":"http://a:7860","forgeUrl":"http://b:7860"}}',
+      'config.json の形が違う（PATH）: config.json の backend: backend の url と forgeUrl（古い名前）が両方ある。url だけにする。',
+    ],
+  ])('says a broken config.json in Japanese, with the field name: %s', async (text, expected) => {
+    const path = join(dir, 'config.json');
+    await writeFile(path, text);
+    const error = await readConfig(path).catch((caught: unknown) => caught as Error);
+    expect((error as Error).message.replace(path, 'PATH')).toContain(expected);
   });
 
   it('names the file when a value has the wrong shape', async () => {
