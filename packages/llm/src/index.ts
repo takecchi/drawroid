@@ -1,6 +1,11 @@
 import type { LlmPort } from '@drawroid/core';
 import { AiSdkLlm, type AdapterOptions } from './adapter.js';
-import { llmConfigSchema, resolveRoles, type LlmConfig } from './config.js';
+import {
+  DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS,
+  llmConfigSchema,
+  resolveRoles,
+  type LlmConfig,
+} from './config.js';
 import { createLanguageModel, type ModelEnvironment } from './models.js';
 
 export {
@@ -39,6 +44,7 @@ export function createLlm(
       validationRetries: config.validationRetries,
       networkRetries: config.networkRetries,
       callTimeoutSeconds: config.callTimeoutSeconds,
+      totalCallTimeoutSeconds: config.totalCallTimeoutSeconds ?? DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS,
       configKeys: {
         think: 'think',
         judge: config.roles.judge === undefined ? 'think' : 'judge',

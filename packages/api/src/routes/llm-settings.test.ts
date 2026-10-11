@@ -160,6 +160,31 @@ describe('PUT /settings/llm', () => {
     });
   });
 
+  it('stores the limit on the whole time of one LLM call and reads it back', async () => {
+    const app = makeApp({ TEST_KEY: SECRET });
+    const res = await put(app, { ...config, totalCallTimeoutSeconds: 1800 });
+    expect(res.status).toBe(200);
+    expect(written[0]?.totalCallTimeoutSeconds).toBe(1800);
+    expect(await (await app.request('/settings/llm')).json()).toMatchObject({
+      config: { totalCallTimeoutSeconds: 1800 },
+    });
+  });
+
+  it('leaves the limit on the whole time of one LLM call unwritten when it is left out', async () => {
+    const res = await put(makeApp({ TEST_KEY: SECRET }), config);
+    expect(res.status).toBe(200);
+    expect(written[0]).not.toHaveProperty('totalCallTimeoutSeconds');
+    expect(((await res.json()) as { config: LlmConfig }).config).not.toHaveProperty(
+      'totalCallTimeoutSeconds',
+    );
+  });
+
+  it('rejects a limit on the whole time that is zero, and stores nothing', async () => {
+    const res = await put(makeApp({ TEST_KEY: SECRET }), { ...config, totalCallTimeoutSeconds: 0 });
+    expect(res.status).toBe(400);
+    expect(written).toEqual([]);
+  });
+
   it('rejects an invalid config with 400 and stores nothing', async () => {
     const res = await put(makeApp({}), { providers: {}, roles: {} });
     expect(res.status).toBe(400);
