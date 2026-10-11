@@ -191,6 +191,40 @@ describe('PUT /settings/backend', () => {
   });
 });
 
+describe('PUT /settings/backend refusal messages', () => {
+  const messageOf = async (body: unknown) => {
+    const { put } = setup(initial);
+    const res = await put(body);
+    expect(res.status).toBe(400);
+    return ((await res.json()) as { error: { message: string } }).error.message;
+  };
+
+  it.each([
+    ['not a url', { url: 'gpu:7860' }],
+    ['a scheme other than http and https', { url: 'ftp://gpu' }],
+    ['a url that is not a string', { url: 7860 }],
+  ])('tells in Japanese how to write the url for %s', async (_name, body) => {
+    expect(await messageOf(body)).toBe('url: URL は http:// か https:// で始まる形で書く');
+  });
+
+  it('tells that a body with neither a url nor a kind needs one of them', async () => {
+    expect(await messageOf({})).toBe('(body): url か kind の少なくとも一方が要る');
+  });
+
+  it('does not show the raw validation text (marks and line breaks)', async () => {
+    for (const body of [{ url: 'ftp://gpu' }, {}, { kind: 'comfyui' }]) {
+      const message = await messageOf(body);
+      expect(message).not.toContain('✖');
+      expect(message).not.toContain('→');
+      expect(message).not.toContain('\n');
+    }
+  });
+
+  it('does not put the url message on a refused kind', async () => {
+    expect(await messageOf({ kind: 'comfyui' })).not.toContain('URL');
+  });
+});
+
 async function notUsed(): Promise<never> {
   throw new Error('この試験では使わない口');
 }

@@ -281,6 +281,7 @@ describe('drawing_status', () => {
   type Stored = {
     conversationId: string;
     kind?: string;
+    createdAt?: string;
     state: Record<string, unknown>;
     /** job.json の止める条件 */
     stopConditions?: Record<string, unknown>;
@@ -295,6 +296,7 @@ describe('drawing_status', () => {
         jobId,
         kind: stored[jobId]?.kind ?? 'auto',
         conversationId: stored[jobId]?.conversationId,
+        createdAt: stored[jobId]?.createdAt ?? at,
         stopConditions: stored[jobId]?.stopConditions ?? { aiJudgement: true },
       }),
       readState: async (jobId: string) => stored[jobId]?.state,
@@ -526,6 +528,42 @@ describe('drawing_status', () => {
     const outcome = await run('drawing_status', {});
 
     expect(outcome.result).not.toContain('残り');
+    expect(outcome.result).not.toContain('これから');
+  });
+
+  it('tells zero left, not a negative count, when the limit was lowered under the iterations done', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: runningAt(3, 0),
+        stopConditions: { aiJudgement: true, maxIterations: 6 },
+        stopChanges: [{ maxIterations: 2 }],
+      },
+    });
+    const { run } = setup({ jobs });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('これから 4 回目（残り 0 回）');
+    // ジョブ ID にも - が入るので、残りの括弧の中だけを見る
+    expect(outcome.result).not.toMatch(/残り[^）]*-/);
+  });
+
+  // 順番待ちの間は時間を数えない: 作られてからの時間を引くと、始まってもいないのに残りが減る
+  it('does not count the time spent waiting in the queue against the time limit', async () => {
+    const { jobs } = storeOf({
+      '20261010-100000-aaaaaa': {
+        conversationId: 'c1',
+        state: { status: 'queued' },
+        createdAt: new Date(Date.parse(at) - 30 * 60_000).toISOString(),
+        stopConditions: { aiJudgement: true, maxDurationMs: 600_000 },
+      },
+    });
+    const { run } = setup({ jobs, now: () => new Date(at) });
+
+    const outcome = await run('drawing_status', {});
+
+    expect(outcome.result).toContain('残り 約 10 分');
   });
 
   it('tells no remainder of a stopped job, only why it stopped', async () => {

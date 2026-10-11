@@ -31,12 +31,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function apiWith(backend: StubBackend) {
+function apiWith(
+  backend: StubBackend,
+  manualRunner: ManualGenerationRunner = new ManualGenerationRunner({ backend, store }),
+) {
   return createApi({
     backend,
     store,
     memoryStore: createFsMemoryStore(join(root, 'memory')),
-    manualRunner: new ManualGenerationRunner({ backend, store }),
+    manualRunner,
     autoQueue: {
       kick: () => undefined,
       stop: async (jobId) => void autoStops.push(jobId),
@@ -98,6 +101,50 @@ async function autoJob(): Promise<string> {
     )
   ).jobId;
 }
+
+describe('POST /jobs/manual', () => {
+  it.each([
+    ['a missing prompt', { ...request, prompt: undefined }],
+    ['steps given as a string', { ...request, steps: 'four' }],
+    ['a body that is not JSON', 'not json'],
+  ])(
+    'refuses %s with 400 and a message in the path: reason form, not raw JSON',
+    async (_n, body) => {
+      const res = await app.request('/jobs/manual', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: typeof body === 'string' ? body : JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      const { error } = (await res.json()) as { error: { kind: string; message: string } };
+      expect(error.kind).toBe('invalid_request');
+      expect(error.message).not.toContain('[');
+      expect(error.message).not.toContain('"code"');
+      expect(error.message).toMatch(/^[^:\n]+: /);
+      expect(await store.listJobIds()).toEqual([]);
+    },
+  );
+
+  // 検証の誤りだけを 400 にする: 置き場所の失敗などを、呼び手の誤りとして message を返さないため
+  it('answers 500 without the error text when starting fails for a reason other than the request shape', async () => {
+    const backend = new StubBackend();
+    class FailingRunner extends ManualGenerationRunner {
+      override start(): never {
+        throw new Error('置き場所 /secret/path に書けない');
+      }
+    }
+    const api = apiWith(backend, new FailingRunner({ backend, store }));
+    const res = await api.request('/jobs/manual', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('/secret/path');
+  });
+});
 
 describe('POST /jobs/manual/:jobId/stop', () => {
   it('stops the manual job as a human stop and answers 202', async () => {
