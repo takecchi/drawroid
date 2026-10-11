@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import {
+  ApiError,
   createAutoJob,
   useBackendStatus,
   useCandidates,
   usePermissionSettings,
 } from '@drawroid/swr';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -180,6 +181,67 @@ describe('AutoJobForm', () => {
     expect(create).not.toHaveBeenCalled();
     const alerts = screen.getAllByRole('alert').map((alert) => alert.textContent);
     expect(alerts.some((text) => text?.includes('送れない: この条件では止まらない'))).toBe(true);
+  });
+});
+
+// 文が見えたすぐあとに確かめない: フォーカスを移すのは描いたあとの effect で、act の外で結果が届くと、
+// findBy* が文を見つけた時点ではまだ走っていないことがある
+const expectFocusMovesTo = (element: Element) =>
+  waitFor(() => expect(document.activeElement).toBe(element));
+
+describe('AutoJobForm moving the focus to a refusal', () => {
+  const submitButton = () => screen.getByRole('button', { name: '投入する' });
+
+  // 押した投入は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when the API refuses, also on a second refusal', async () => {
+    create.mockRejectedValue(new ApiError('invalid_request', '依頼が長すぎる', 400));
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+
+    submitButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    submitButton().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('moves the focus to the reason when the form refuses before sending, also when pressed again', async () => {
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+    await user.click(screen.getByText('このジョブだけの許可'));
+    await user.selectOptions(screen.getByLabelText('steps の許可'), 'fixed');
+    await user.type(screen.getByLabelText('steps の固定の値'), '二十');
+
+    submitButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    submitButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('leaves the focus in a field being corrected after a refusal', async () => {
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+    await user.click(screen.getByText('このジョブだけの許可'));
+    await user.selectOptions(screen.getByLabelText('steps の許可'), 'fixed');
+    await user.type(screen.getByLabelText('steps の固定の値'), '二十');
+    await user.click(submitButton());
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    const field = screen.getByLabelText('steps の固定の値');
+    await user.clear(field);
+    await user.type(field, '30');
+
+    expect(document.activeElement).toBe(field);
   });
 });
 

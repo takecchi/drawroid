@@ -26,6 +26,8 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
   const [permissionRows, setPermissionRows] = useState<Rows>(() => toRows({}));
   const globalPermissions = usePermissionSettings();
   const [error, setError] = useState<string | undefined>();
+  // 押すたびに断りを作り直す: 送る前の断りは同じ文のまま続くことがあり、知らせが残ったままではフォーカスが断りへ移らないため
+  const [attempt, setAttempt] = useState(0);
   const [sending, setSending] = useState(false);
 
   const stopBlocker = stopConditionsBlocker(stopForm);
@@ -34,6 +36,7 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setAttempt((count) => count + 1);
     const stopConditions = buildStopConditions(stopForm);
     if (!stopConditions.ok) return;
     // ボタンの disabled だけに任せない: Enter での送信など、ボタンを通らない経路でも止まらないジョブを投入しないため
@@ -124,7 +127,12 @@ export function AutoJobForm({ onCreated }: { onCreated: (jobId: string) => void 
       >
         投入する
       </Button>
-      {error !== undefined && <ErrorNote>送れない: {error}</ErrorNote>}
+      {/* 押した投入は送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す */}
+      {error !== undefined && (
+        <ErrorNote key={attempt} focus>
+          送れない: {error}
+        </ErrorNote>
+      )}
     </form>
   );
 }
