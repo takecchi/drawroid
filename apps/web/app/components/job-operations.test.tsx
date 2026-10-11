@@ -341,6 +341,67 @@ describe('JobOperations, when the job stops while it is open', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(document.activeElement).toBe(elsewhere);
   });
+
+  // 止まったことへ一度移したあと、人がほかの所へ移ったら、描き直しで奪い返さない
+  it('does not take the focus back on a later render once the user has moved elsewhere', async () => {
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと');
+    rerender(page(stoppedAuto()));
+    await expectFocusMovesTo(screen.getByText(STOPPED));
+    const elsewhere = screen.getByRole('button', { name: 'ほかの所' });
+    elsewhere.focus();
+
+    rerender(page(stoppedAuto()));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  // 断りは操作ごとに別の部品が知らせる: どれも、止まったあとに残す
+  it.each([
+    [
+      'stop',
+      '止められない: もう止まっている',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        stop.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+        await user.click(screen.getByRole('button', { name: 'ジョブを止める' }));
+      },
+    ],
+    [
+      'reference image',
+      '送れない: もう止まっている',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        reference.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+        await user.upload(
+          screen.getByLabelText(/参照画像を選ぶ/),
+          new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'ref.png', { type: 'image/png' }),
+        );
+        await user.click(screen.getByRole('button', { name: '参照画像を送る' }));
+      },
+    ],
+    [
+      'stop conditions',
+      '変えられない: もう止まっている',
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        change.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+        await user.type(screen.getByLabelText(/枚数の上限/), '6');
+        await user.click(screen.getByRole('button', { name: '条件を変える' }));
+      },
+    ],
+  ])('keeps the refusal of the %s operation after the job has stopped', async (_, text, act) => {
+    const { rerender } = render(page(runningAuto()));
+    await act(userEvent.setup());
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    rerender(page(stoppedAuto()));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(text);
+    await expectFocusMovesTo(alert);
+    expect(screen.getByText(STOPPED)).toBeTruthy();
+  });
 });
 
 describe('JobOperations', () => {
