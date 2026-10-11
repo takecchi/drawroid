@@ -68,6 +68,53 @@ function gatedStore(inner: JobStore) {
   return { store, arm: () => (armed = true), scanned, release: () => release() };
 }
 
+/**
+ * 置き場所の一覧の読み出し（走査の口）を、n 回目ごとに門で待たせる置き場所。同時に読み出しの中にいる数の最大も数える。
+ * 窓は、番号を渡した読み出しだけに作る（1 から数える）
+ */
+function scanSpyStore(inner: JobStore, gatedScans: readonly number[] = []) {
+  let scans = 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const windows = new Map(
+    gatedScans.map((n) => {
+      let release: () => void = () => undefined;
+      let reached: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const scanned = new Promise<void>((resolve) => (reached = resolve));
+      return [n, { gate, scanned, reached: () => reached(), release: () => release() }];
+    }),
+  );
+  const store = new Proxy(inner, {
+    get(target, property, receiver) {
+      if (property === 'listJobIds') {
+        return async () => {
+          scans += 1;
+          const window = windows.get(scans);
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          try {
+            const ids = await target.listJobIds();
+            if (window !== undefined) {
+              window.reached();
+              await window.gate;
+            }
+            return ids;
+          } finally {
+            inFlight -= 1;
+          }
+        };
+      }
+      const value: unknown = Reflect.get(target, property, receiver);
+      return typeof value === 'function'
+        ? (value as (...args: unknown[]) => unknown).bind(target)
+        : value;
+    },
+  });
+  const window = (n: number) => windows.get(n) as NonNullable<ReturnType<typeof windows.get>>;
+  return { store, window, maxInFlight: () => maxInFlight };
+}
+
 /** 同時に generate の中にいる数の最大を数えるバックエンド */
 class CountingBackend extends StubBackend {
   maxConcurrent = 0;
@@ -113,7 +160,64 @@ function setup(backend: StubBackend = new StubBackend()) {
   return { files, gated, runner, submit };
 }
 
+function setupSpy(gatedScans: readonly number[] = []) {
+  const files = new FsJobStore(root);
+  const spy = scanSpyStore(files, gatedScans);
+  const runner = new JobRunner({
+    store: spy.store,
+    llm: new ScriptedLlm({ think, judge }),
+    backend: new StubBackend(),
+    budget: DEFAULT_BUDGET,
+    permissions: basicPermissions({ width: 64, height: 64 }),
+  });
+  const submit = () =>
+    files.createJob(
+      {
+        kind: 'auto',
+        request: '海辺の少女',
+        stopConditions: { aiJudgement: false, maxIterations: 1 },
+        batchSize: 1,
+      },
+      { status: 'queued', carry: { intent: '海辺の少女', completedIterations: 0 } },
+      new Date(),
+    );
+  return { files, spy, runner, submit };
+}
+
 describe('submitting a job while the runner is finishing its last scan', () => {
+  it('still runs the job submitted in each of two such windows within one run of the queue', async () => {
+    // 1回目の走査は空で読み終える（窓 1）。投入したジョブを走らせたあと、3回目の走査も何も拾わず読み終える（窓 2）
+    const { files, spy, runner, submit } = setupSpy([1, 3]);
+
+    runner.kick();
+    await spy.window(1).scanned;
+    const first = await submit();
+    runner.kick();
+    spy.window(1).release();
+
+    await spy.window(3).scanned;
+    const second = await submit();
+    runner.kick();
+    spy.window(3).release();
+    await runner.idle();
+
+    expect(await files.readState(first.jobId)).toMatchObject({ status: 'stopped' });
+    expect(await files.readState(second.jobId)).toMatchObject({ status: 'stopped' });
+  });
+
+  it('never has more than one scan of the queue going at once, however often it is kicked', async () => {
+    const { files, spy, runner, submit } = setupSpy();
+
+    const specs = [await submit(), await submit()];
+    for (let i = 0; i < 5; i += 1) runner.kick();
+    await runner.idle();
+
+    for (const spec of specs) {
+      expect(await files.readState(spec.jobId)).toMatchObject({ status: 'stopped' });
+    }
+    expect(spy.maxInFlight()).toBe(1);
+  });
+
   it('still runs a job submitted right after the runner found the queue empty', async () => {
     const { files, gated, runner, submit } = setup();
 
