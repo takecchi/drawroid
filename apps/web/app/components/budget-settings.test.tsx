@@ -205,6 +205,53 @@ describe('BudgetSettings', () => {
     expect(saveClass).toBe(screen.getByRole('button', { name: '保存' }).className);
   });
 
+  // 押した保存は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when the API refuses, also on a second refusal', async () => {
+    const user = userEvent.setup();
+    mocks.saveBudgetSettings.mockRejectedValue(
+      new ApiError('invalid_request', 'imageLongEdge: 128 以上で入れる', 400),
+    );
+    render(<BudgetSettings />);
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
+  it('moves the focus to the reasons when the form refuses several values, also when pressed again', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+    await user.type(input('imageLongEdge'), '2.5');
+    await user.type(input('text.prompt'), '0');
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+    expect(mocks.saveBudgetSettings).not.toHaveBeenCalled();
+  });
+
+  it('leaves the focus in a field being corrected after a refusal', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+    await user.type(input('imageLongEdge'), '2.5');
+    await user.click(saveButton());
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    await user.clear(input('imageLongEdge'));
+    await user.type(input('imageLongEdge'), '256');
+
+    expect(document.activeElement).toBe(input('imageLongEdge'));
+    expect(input('imageLongEdge').value).toBe('256');
+  });
+
   it('says it could not save in the same note as the other settings', async () => {
     const user = userEvent.setup();
     mocks.saveBudgetSettings.mockRejectedValue(
