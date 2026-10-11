@@ -54,10 +54,11 @@ async function openPainter() {
   return { user, canvas, rerender };
 }
 
+// 押している間の pointer は buttons が 1（主ボタン・指・ペン先が触れている）
 function drag(canvas: HTMLElement, from: [number, number], to: [number, number]) {
-  fireEvent.pointerDown(canvas, { clientX: from[0], clientY: from[1], pointerId: 1 });
-  fireEvent.pointerMove(canvas, { clientX: to[0], clientY: to[1], pointerId: 1 });
-  fireEvent.pointerUp(canvas, { clientX: to[0], clientY: to[1], pointerId: 1 });
+  fireEvent.pointerDown(canvas, { clientX: from[0], clientY: from[1], pointerId: 1, buttons: 1 });
+  fireEvent.pointerMove(canvas, { clientX: to[0], clientY: to[1], pointerId: 1, buttons: 1 });
+  fireEvent.pointerUp(canvas, { clientX: to[0], clientY: to[1], pointerId: 1, buttons: 0 });
 }
 
 describe('MaskPainter', () => {
@@ -156,6 +157,25 @@ describe('MaskPainter', () => {
     );
     expect(send).toHaveBeenCalledWith('job-1', { iteration: 2, index: 1 }, 'PNG-BASE64');
     expect(await screen.findByText(/送った/)).toBeTruthy();
+  });
+
+  // 離したことが塗る面に届かないことがある（ブラウザの窓の外で離したときなど）。押していない移動では、前の筆を伸ばさない
+  it('paints only while the pointer is pressed, not while it moves without being pressed', async () => {
+    const { user, canvas } = await openPainter();
+
+    fireEvent.pointerDown(canvas, { clientX: 0, clientY: 0, pointerId: 1, buttons: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 256, clientY: 192, pointerId: 1, buttons: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 500, clientY: 10, pointerId: 1, buttons: 0 });
+    fireEvent.pointerMove(canvas, { clientX: 10, clientY: 300, pointerId: 1, buttons: 0 });
+    await user.click(screen.getByRole('button', { name: 'マスクを送る' }));
+
+    const [strokes] = encode.mock.calls[0]!;
+    expect(strokes.map(({ points }) => points)).toEqual([
+      [
+        { x: 0, y: 0 },
+        { x: 512, y: 384 },
+      ],
+    ]);
   });
 
   it('does not send until something is painted', async () => {

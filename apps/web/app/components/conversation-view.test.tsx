@@ -2239,9 +2239,9 @@ describe('ConversationView', () => {
     }
 
     function paint(canvas: HTMLElement) {
-      fireEvent.pointerDown(canvas, { clientX: 0, clientY: 0, pointerId: 1 });
-      fireEvent.pointerMove(canvas, { clientX: 256, clientY: 192, pointerId: 1 });
-      fireEvent.pointerUp(canvas, { clientX: 256, clientY: 192, pointerId: 1 });
+      fireEvent.pointerDown(canvas, { clientX: 0, clientY: 0, pointerId: 1, buttons: 1 });
+      fireEvent.pointerMove(canvas, { clientX: 256, clientY: 192, pointerId: 1, buttons: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 256, clientY: 192, pointerId: 1, buttons: 0 });
     }
 
     // 窓の中のボタンも指で押せる 44px にする（広い画面をマウスで操作するときだけ詰める）。実際の大きさは、ブラウザで測る
