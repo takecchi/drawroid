@@ -138,6 +138,11 @@ export function MaskSurface({
 
   function extend(event: PointerEvent<HTMLCanvasElement>) {
     if (!drawing) return;
+    // drawing だけに任せない: ブラウザの窓の外で離すと pointerup が面に届かず、押していない移動で前の筆が伸びるため
+    if (event.buttons === 0) {
+      setDrawing(false);
+      return;
+    }
     const point = pointOf(event);
     if (point === undefined) return;
     setStrokes((current) => {
