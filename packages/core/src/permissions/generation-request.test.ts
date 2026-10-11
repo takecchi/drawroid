@@ -68,6 +68,16 @@ describe('toGenerationRequest', () => {
     });
   });
 
+  it('generates with a fixed seed of 0, not the seed the AI returned', () => {
+    const request = toGenerationRequest({
+      decided: decidedByAi,
+      permissions: mergePermissions(allAuto(), { seed: { mode: 'fixed', value: 0 } }),
+      batchSize: 1,
+    });
+
+    expect(request.seed).toBe(0);
+  });
+
   it('leaves a parameter that is not used to the backend, even if the AI returned it', () => {
     const request = toGenerationRequest({
       decided: { ...decidedByAi, vae: 'kl-f8-anime', loras: [{ name: 'detail', weight: 0.8 }] },
