@@ -188,7 +188,7 @@ describe('assembleDrawroid, telling whether the start-up arguments are in effect
   const startWith = async (args: { backend?: 'forge' | 'a1111'; backendUrl?: string }) => {
     running = await assembleDrawroid({
       root,
-      args: { port: 0, ...args },
+      args: { port: 0, backend: args.backend, backendUrl: args.backendUrl },
       env: {},
       signals: new EventEmitter(),
       exit: vi.fn(),
