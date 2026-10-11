@@ -331,7 +331,13 @@ describe('the notes on candidates over HTTP', () => {
   });
 
   it('refuses notes it cannot take, writing nothing', async () => {
-    for (const body of [{ watercolor_v2: '' }, { watercolor_v2: 3 }, ['水彩']]) {
+    for (const body of [
+      { watercolor_v2: '' },
+      { watercolor_v2: 3 },
+      ['水彩'],
+      { ' ': '水彩' },
+      { '  ': '水彩' },
+    ]) {
       expect((await send('PUT', '/backend/candidate-notes', body)).status).toBe(400);
     }
     await expect(readFile(paths.candidateNotes, 'utf8')).rejects.toThrow();
