@@ -220,7 +220,12 @@ function VerdictButtons({
           {reject}
         </Button>
       </div>
-      {error !== undefined && <p className="text-xs text-destructive">選べない: {error}</p>}
+      {/* 押したボタンは送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す。画像の小さな枠の中なので、文字と余白は小さく保つ */}
+      {error !== undefined && (
+        <ErrorNote focus className="px-2 py-1 *:data-[slot=alert-description]:text-xs">
+          選べない: {error}
+        </ErrorNote>
+      )}
     </div>
   );
 }

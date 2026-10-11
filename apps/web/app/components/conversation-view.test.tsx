@@ -1382,6 +1382,33 @@ describe('ConversationView', () => {
     expect(setSelection).toHaveBeenCalledWith(JOB, '2-1', 'rejected');
   });
 
+  // 断りは role=alert で出し（文は変えない）、押したボタンは送っている間押せなくなるので、フォーカスは断りへ移る。2回続けても移る
+  it('says why a favorite could not be marked as an alert, and moves the focus to it, also on a second refusal', async () => {
+    vi.mocked(setSelection).mockRejectedValue(new ApiError('conflict', '画像が無い', 409));
+    const { source, stream } = fakeSource([]);
+    const { user } = renderView(source);
+    await waitFor(() => expect(stream.listeners.size).toBeGreaterThan(0));
+    stream.emit(
+      confirmed({ type: 'job.images', jobId: JOB, iteration: 2, images: [{ index: 1, seed: 9 }] }),
+    );
+    const favorite = () => screen.getByRole('button', { name: 'お気に入り: 2 回目の画像 2 番' });
+
+    favorite().focus();
+    await user.keyboard('{Enter}');
+    const first = await screen.findByRole('alert');
+    expect(first.textContent).toBe('選べない: 画像が無い');
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    favorite().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(setSelection).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const second = screen.getByRole('alert');
+      expect(second).not.toBe(first);
+      expect(document.activeElement).toBe(second);
+    });
+  });
+
   it('shows the judge score and words in the large view, and chooses the image there through the same APIs', async () => {
     vi.mocked(setSelection).mockResolvedValue({} as never);
     const { source, stream } = fakeSource([]);
