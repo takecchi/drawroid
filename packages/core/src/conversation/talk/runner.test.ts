@@ -319,6 +319,115 @@ describe('TalkRunner', () => {
     expect(results).toEqual([true, true]);
   });
 
+  /** 口出しを置くツール（revise_drawing と同じ形の引数）。受け取った引数をそのまま控える */
+  const reviseLike = () => {
+    const received: unknown[] = [];
+    const tool: TalkTool = {
+      name: 'revise_like',
+      description: '試験用。口出しを置く',
+      inputSchema: z.object({
+        instruction: z.string().optional(),
+        attachments: z
+          .array(z.object({ uploadId: z.string(), note: z.string().optional() }))
+          .optional(),
+        permissions: z.record(z.string(), z.unknown()).optional(),
+      }),
+      run: async (input) => {
+        received.push(input);
+        return { ok: true, result: '置いた', summary: '置いた' };
+      },
+    };
+    return { tool, received };
+  };
+
+  /** 同じターンの2ステップで、続けて2つの引数を呼ばせる */
+  const callTwice = async (first: unknown, second: unknown) => {
+    const { tool, received } = reviseLike();
+    const { say, events } = await setup(
+      (_call, n) =>
+        n === 0
+          ? { toolCalls: [{ name: 'revise_like', input: first }] }
+          : n === 1
+            ? { toolCalls: [{ name: 'revise_like', input: second }] }
+            : { text: '置きました' },
+      { extraTools: [tool] },
+    );
+    await say('直して');
+    return { received, events: await events() };
+  };
+
+  it.each([
+    [
+      'full-width and half-width punctuation',
+      '（添えた画像: 20261010-231056-532e16）',
+      '(添えた画像: 20261010-231056-532e16)',
+    ],
+    ['katakana and hiragana', 'ネコを描く', 'ねこを描く'],
+    ['upper and lower case', 'Sunset glow', 'sunset glow'],
+    ['half-width and full-width katakana', 'ﾈｺを描く', 'ネコを描く'],
+    ['surrounding whitespace', '  夕焼けにして\n', '夕焼けにして'],
+    ['a full-width space around the text', '　夕焼けにして　', '夕焼けにして'],
+  ])('treats text that differs only in %s as the same call', async (_label, first, second) => {
+    const { received, events } = await callTwice({ instruction: first }, { instruction: second });
+
+    expect(received).toHaveLength(1);
+    const results = events.flatMap((e) => (e.type === 'tool.result' ? [e] : []));
+    expect(results.map((r) => r.ok)).toEqual([true, false]);
+    expect(results[1]).toMatchObject({
+      summary: `${TOOL_THREW_PREFIX}${REPEATED_TOOL_CALL_REASON}`,
+    });
+  });
+
+  it('treats text nested in an array of objects as the same call when only its width differs', async () => {
+    const { received } = await callTwice(
+      { attachments: [{ uploadId: 'u1', note: '（この構図で）' }] },
+      { attachments: [{ uploadId: 'u1', note: '(この構図で)' }] },
+    );
+
+    expect(received).toHaveLength(1);
+  });
+
+  it('hands the tool and records the arguments as the model wrote them', async () => {
+    const wrote = { instruction: '（添えた画像: u1）' };
+    const { received, events } = await callTwice(wrote, { instruction: '(添えた画像: u1)' });
+
+    expect(received).toEqual([wrote]);
+    const calls = events.flatMap((e) => (e.type === 'tool.call' ? [e.input] : []));
+    expect(calls).toEqual([wrote, { instruction: '(添えた画像: u1)' }]);
+  });
+
+  it('runs a call again when the text means something else', async () => {
+    const { received } = await callTwice(
+      { instruction: '夕焼けにして' },
+      { instruction: '朝焼けにして' },
+    );
+
+    expect(received).toHaveLength(2);
+  });
+
+  // ID は大小・仮名・全角半角の違いで別の物を指しうる: 間違えた ID が断られたあとの、直した ID での呼び直しを、同じ呼び出しとして塞がないため
+  it.each([
+    ['upper and lower case', 'ABC-1', 'abc-1'],
+    ['katakana and hiragana', 'ネコ', 'ねこ'],
+    ['full-width and half-width', 'ＡＢＣ１', 'ABC1'],
+  ])('runs a call again when an image ID differs in %s', async (_label, first, second) => {
+    const { received } = await callTwice(
+      { attachments: [{ uploadId: first }] },
+      { attachments: [{ uploadId: second }] },
+    );
+
+    expect(received).toHaveLength(2);
+  });
+
+  it('runs a call again when a name in the permissions differs in case', async () => {
+    const { received } = await callTwice(
+      { permissions: { loras: { mode: 'fixed', value: [{ name: 'Miku_V2' }] } } },
+      { permissions: { loras: { mode: 'fixed', value: [{ name: 'miku_v2' }] } } },
+    );
+
+    expect(received).toHaveLength(2);
+  });
+
   /** 入れ子の欄を持つ、走った回数を数えるツール。choices が空なら断る（許可の choices と同じ） */
   const narrowing = () => {
     const counter = { runs: 0 };
