@@ -123,6 +123,18 @@ describe('BackendUrlSettings', () => {
     expect(screen.queryByText(savedNotice)).toBeNull();
   });
 
+  // 欄を触ったら、前の保存の知らせは古くなる。種類を選び直すのも欄を触ることに入る
+  it('takes the notice back once another kind is chosen', async () => {
+    const user = userEvent.setup();
+    render(<BackendUrlSettings />);
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByText(savedNotice);
+
+    await user.selectOptions(screen.getByLabelText('バックエンドの種類'), 'a1111');
+
+    expect(screen.queryByText(savedNotice)).toBeNull();
+  });
+
   // 欠けた形や {} で流さない: 本番の API が返す view（保存は urlSource 'config'）でしか起きない崩れを見落とすため
   const view = (
     url: string,
