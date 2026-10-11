@@ -426,9 +426,9 @@ export class JobRunner {
 
   private async drain(): Promise<void> {
     for (;;) {
+      await this.deps.beforeJob?.();
       const next = await this.nextJobId();
       if (next === undefined) return;
-      await this.deps.beforeJob?.();
       await this.runJob(next);
     }
   }
