@@ -14,7 +14,7 @@ export const STATUS_LABELS: Record<JobSummary['state']['status'], string> = {
 const REQUEST_PREVIEW_LIMIT = 60;
 
 export function previewRequest(request: string): string {
-  const chars = [...request.trim()];
+  const chars = [...request];
   return chars.length <= REQUEST_PREVIEW_LIMIT
     ? chars.join('')
     : `${chars.slice(0, REQUEST_PREVIEW_LIMIT).join('')}…`;

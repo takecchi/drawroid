@@ -34,6 +34,7 @@ describe('JobList', () => {
 
   it('shows what each job was asked to draw, cut short when it is long', () => {
     const long = '夕暮れの海辺に立つ白いワンピースの少女、アニメ調、'.repeat(10);
+    const exactlyAtLimit = 'あ'.repeat(60);
     mocks.useJobs.mockReturnValue({
       data: {
         jobs: [
@@ -51,6 +52,13 @@ describe('JobList', () => {
             request: long,
             state: { status: 'queued' },
           },
+          {
+            jobId: 'manual-2',
+            kind: 'manual',
+            createdAt: '2026-10-09T00:02:00Z',
+            request: exactlyAtLimit,
+            state: { status: 'queued' },
+          },
         ],
         invalid: [],
       },
@@ -63,6 +71,7 @@ describe('JobList', () => {
     );
 
     expect(screen.getByText('猫の絵')).toBeTruthy();
+    expect(screen.getByText(exactlyAtLimit)).toBeTruthy();
     expect(screen.queryByText(long)).toBeNull();
     expect(screen.getByText(`${[...long].slice(0, 60).join('')}…`)).toBeTruthy();
   });
