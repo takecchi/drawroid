@@ -108,6 +108,43 @@ describe('img2img and inpaint on Forge', () => {
     expect(sent('/sdapi/v1/img2img')).toMatchObject({ inpaint_full_res: true, inpainting_fill: 2 });
   });
 
+  it.each([
+    ['stretch', 0],
+    ['crop', 1],
+    ['fill', 2],
+  ] as const)('sends resize %s of img2img as the number %i', async (resize, value) => {
+    await generate({ img2img: { image: SOURCE, denoisingStrength: 0.5, resize } });
+
+    expect(sent('/sdapi/v1/img2img')).toMatchObject({ resize_mode: value });
+  });
+
+  it.each([
+    ['fill', 0],
+    ['original', 1],
+    ['latentNoise', 2],
+    ['latentNothing', 3],
+  ] as const)('sends inpaint fill %s as the number %i', async (fill, value) => {
+    await generate({ inpaint: { image: SOURCE, mask: MASK, denoisingStrength: 0.6, fill } });
+
+    expect(sent('/sdapi/v1/img2img')).toMatchObject({ inpainting_fill: value });
+  });
+
+  it.each([
+    ['stretch', 0],
+    ['crop', 1],
+    ['fill', 2],
+  ] as const)('sends resize %s of inpaint as the number %i', async (resize, value) => {
+    await generate({ inpaint: { image: SOURCE, mask: MASK, denoisingStrength: 0.6, resize } });
+
+    expect(sent('/sdapi/v1/img2img')).toMatchObject({ resize_mode: value });
+  });
+
+  it('does not ask Forge to return the source image with an inpaint either', async () => {
+    await generate({ inpaint: { image: SOURCE, mask: MASK, denoisingStrength: 0.6 } });
+
+    expect(sent('/sdapi/v1/img2img')).toMatchObject({ include_init_images: false });
+  });
+
   it('sends the repaint strength asked for in an inpaint', async () => {
     await generate({ inpaint: { image: SOURCE, mask: MASK, denoisingStrength: 0.35 } });
 
@@ -216,6 +253,52 @@ describe('ControlNet on Forge', () => {
       pixel_perfect: false,
       save_detected_map: false,
     });
+  });
+
+  it.each([
+    ['balanced', 'Balanced'],
+    ['prompt', 'My prompt is more important'],
+    ['controlnet', 'ControlNet is more important'],
+  ] as const)('sends control mode %s as the string "%s"', async (controlMode, text) => {
+    await generate({ controlnet: [{ ...unit, controlMode }] });
+
+    expect(controlnetArgs()[0]).toMatchObject({ control_mode: text });
+  });
+
+  it.each([
+    ['stretch', 'Just Resize'],
+    ['crop', 'Crop and Resize'],
+    ['fill', 'Resize and Fill'],
+  ] as const)('sends resize %s of a unit as the string "%s"', async (resize, text) => {
+    await generate({ controlnet: [{ ...unit, resize }] });
+
+    expect(controlnetArgs()[0]).toMatchObject({ resize_mode: text });
+  });
+
+  it('sends as many units as Forge takes, without refusing at exactly the limit', async () => {
+    await generate({ controlnet: [unit, unit, unit] });
+
+    expect(controlnetArgs().map((a) => a.enabled)).toEqual([true, true, true]);
+  });
+
+  it('refuses a model name that matches several models, asking for the "name [hash]" form', async () => {
+    forge.route(
+      'GET /controlnet/model_list',
+      json(200, {
+        model_list: ['same_canny [11111111]', 'same_canny [22222222]', 'other_canny [33333333]'],
+      }),
+    );
+
+    await expect(
+      generate({ controlnet: [{ ...unit, model: 'same_canny' }] }),
+    ).rejects.toMatchObject({
+      kind: 'failed',
+      message: expect.stringContaining('[ハッシュ]') as unknown,
+    });
+    expect(called('/sdapi/v1/txt2img')).toBe(false);
+
+    await generate({ controlnet: [{ ...unit, model: 'same_canny [22222222]' }] });
+    expect(controlnetArgs()[0]).toMatchObject({ model: 'same_canny [22222222]' });
   });
 
   it('sends each unit its own image', async () => {
