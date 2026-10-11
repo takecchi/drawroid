@@ -96,7 +96,8 @@ function InstructionForm({ jobId }: { jobId: string }) {
           送る
         </Button>
       </div>
-      {sent && <OkNote>送った。次の回の「考える」から反映される</OkNote>}
+      {/* 送ると欄は空になり、押したボタンも押せなくなってフォーカスが落ちるので、知らせへ移す。送るたびに作り直す（setSent(false)） */}
+      {sent && <OkNote focus>送った。次の回の「考える」から反映される</OkNote>}
       {error !== undefined && <ErrorNote focus>送れない: {error}</ErrorNote>}
     </SubSection>
   );
@@ -143,7 +144,7 @@ function ReferenceForm({ jobId }: { jobId: string }) {
         </Button>
       </div>
       {sent > 0 && (
-        <OkNote>
+        <OkNote focus>
           {sent} 枚送った。次の回の境目で見る役が1度だけ見て要点にする（原寸の画像は毎回は渡さない）
         </OkNote>
       )}

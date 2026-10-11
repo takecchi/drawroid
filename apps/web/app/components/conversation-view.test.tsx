@@ -2155,7 +2155,7 @@ describe('ConversationView', () => {
       for (const event of extra) stream.emit(event);
       await user.click(screen.getByRole('button', { name: /^大きく見る: 2 回目の画像 1 番/ }));
       const dialog = () => within(screen.getByRole('dialog'));
-      return { user, dialog };
+      return { user, dialog, stream };
     }
 
     // 原寸の画像（1024×768）が読み込まれたことにし、画面には 512×384 で出ているとする
@@ -2241,6 +2241,44 @@ describe('ConversationView', () => {
       expect(dialog().queryByText(/Esc や窓の外を押しても閉じない/)).toBeNull();
       await user.keyboard('{Escape}');
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    // 送ると塗る形が閉じ、押した「マスクを送る」は消える。フォーカスは送った知らせへ移る。もう一度塗って送っても移る
+    it('moves the focus to the note that the mask was sent, also on a second send', async () => {
+      const { user, dialog, stream } = await startPainting();
+      const sendOnce = async () => {
+        await user.click(dialog().getByRole('button', { name: 'マスクを塗る' }));
+        paint(loadOriginal(dialog));
+        dialog().getByRole('button', { name: 'マスクを送る' }).focus();
+        await user.keyboard('{Enter}');
+      };
+
+      await sendOnce();
+      const first = await dialog().findByRole('status');
+      await waitFor(() => expect(document.activeElement).toBe(first));
+
+      // 知らせが出たまま会話が流れて描き直されても、ほかへ移したフォーカスを奪わない
+      const favorite = dialog().getByRole('button', { name: 'お気に入り: 2 回目の画像 1 番' });
+      favorite.focus();
+      stream.emit(
+        confirmed({
+          type: 'job.images',
+          jobId: JOB,
+          iteration: 3,
+          images: [{ index: 0, seed: 1 }],
+        }),
+      );
+      expect(dialog().getByRole('status')).toBe(first);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      expect(document.activeElement).toBe(favorite);
+
+      await sendOnce();
+      await waitFor(() => expect(addMask).toHaveBeenCalledTimes(2));
+      await waitFor(() => {
+        const note = dialog().getByRole('status');
+        expect(note).not.toBe(first);
+        expect(document.activeElement).toBe(note);
+      });
     });
 
     it('closes on Escape while painting with nothing painted yet, without saying it stays open', async () => {

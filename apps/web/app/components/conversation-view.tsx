@@ -420,7 +420,8 @@ function ConversationImageViewer({
         const stopped = stoppedJobs.has(source.jobId);
         return (
           <div className="space-y-2">
-            {sentKey === image.key && <OkNote>{MASK_SENT}</OkNote>}
+            {/* 送ると塗る道具ごと消え、押した「マスクを送る」からフォーカスが落ちるので、知らせへ移す。塗り直すと sentKey が空になり、次は作り直される */}
+            {sentKey === image.key && <OkNote focus>{MASK_SENT}</OkNote>}
             <ViewerImageDetails
               {...source}
               stopped={stopped}

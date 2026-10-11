@@ -245,7 +245,8 @@ export function MaskTools({
       <p className="text-xs">
         白く塗った所を、次の回で描き直す。マスクは1回使うか、新しいマスクを送ると切れる。
       </p>
-      {painting.sent && <OkNote>マスクを送った。次の回で描き直す。</OkNote>}
+      {/* 送ると塗りは空になり、押した「マスクを送る」は押せなくなってフォーカスが落ちるので、知らせへ移す。塗り始めると消えるので、次に送るときは作り直される */}
+      {painting.sent && <OkNote focus>マスクを送った。次の回で描き直す。</OkNote>}
       {/* 押した「マスクを送る」は送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す */}
       {painting.error !== undefined && <ErrorNote focus>送れない: {painting.error}</ErrorNote>}
     </>

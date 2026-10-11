@@ -159,6 +159,55 @@ describe('JobOperations moving the focus to a refusal', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('人間の指示'));
   });
 
+  // 送ると欄は空になり、押したボタンも押せなくなる。フォーカスは成功の知らせへ移る。2回続けて送っても移る
+  it('moves the focus to the note that the instruction was sent, also on a second send', async () => {
+    instruct.mockResolvedValue({} as Awaited<ReturnType<typeof addInstruction>>);
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと明るく');
+
+    await press(user, screen.getByRole('button', { name: '送る' }));
+    const first = await screen.findByRole('status');
+    await expectFocusMovesTo(first);
+
+    await user.type(screen.getByLabelText('人間の指示'), 'さらに');
+    expect(document.activeElement).toBe(screen.getByLabelText('人間の指示'));
+
+    await press(user, screen.getByRole('button', { name: '送る' }));
+    await waitFor(() => expect(instruct).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const note = screen.getByRole('status');
+      expect(note).not.toBe(first);
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
+  it('moves the focus to the note that reference images were sent, also on a second send', async () => {
+    reference.mockResolvedValue({} as Awaited<ReturnType<typeof addReference>>);
+    render(<JobOperations job={runningAuto()} />);
+    const user = userEvent.setup();
+    const png = () =>
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'ref.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText(/参照画像を選ぶ/), png());
+
+    await press(user, screen.getByRole('button', { name: '参照画像を送る' }));
+    const first = await screen.findByRole('status');
+    await expectFocusMovesTo(first);
+
+    // 次の画像を選び始めても、フォーカスは奪われない
+    await user.upload(screen.getByLabelText(/参照画像を選ぶ/), png());
+    expect(screen.getByRole('status')).toBe(first);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('status');
+
+    await press(user, screen.getByRole('button', { name: '参照画像を送る' }));
+    await waitFor(() => expect(reference).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const note = screen.getByRole('status');
+      expect(note).not.toBe(first);
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
   it('moves the focus to the reason when a reference image is refused, also on a second refusal', async () => {
     reference.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
     render(<JobOperations job={runningAuto()} />);

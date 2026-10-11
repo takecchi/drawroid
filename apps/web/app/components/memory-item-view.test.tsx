@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, type MemoryItemDetail } from '@drawroid/swr';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -168,6 +168,86 @@ describe('MemoryItemView editing', () => {
     save().focus();
     await user.keyboard('{Enter}');
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('alert')));
+  });
+
+  // 保存すると押した保存は送っている間押せなくなり、フォーカスが body に落ちる。成功の知らせへ移す。2回続けても移す
+  it('moves the focus to the note that it saved, also on a second save without editing', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderView();
+    const save = () => screen.getByRole('button', { name: '保存' });
+
+    save().focus();
+    await user.keyboard('{Enter}');
+    const first = await screen.findByRole('status');
+    expect(first.textContent).toMatch(/^保存した。/);
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    save().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(mocks.saveMemoryItem).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const note = screen.getByRole('status');
+      expect(note).not.toBe(first);
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
+  it('clears the note when a field is touched, and does not take the focus from the field', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('status');
+
+    const body = screen.getByLabelText('本文');
+    await user.type(body, 'あ');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.activeElement).toBe(body);
+    await user.type(screen.getByLabelText(/tags/), 'x');
+    expect(document.activeElement).toBe(screen.getByLabelText(/tags/));
+  });
+
+  // 知らせが出たまま画面が描き直されても（読み直しで項目が届いたとき）、触っている欄からフォーカスを奪わない
+  it('does not take the focus again when the view is drawn again while the note stays', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    // 描き直すたびに新しい要素を渡す: 同じ要素を渡すと、React は描き直さない
+    const tree = () => (
+      <MemoryRouter initialEntries={['/memory/m1']}>
+        <Routes>
+          <Route path="/memory/:id" element={<MemoryItemView id="m1" />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const { rerender } = render(tree());
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    const note = await screen.findByRole('status');
+    await waitFor(() => expect(document.activeElement).toBe(note));
+
+    const tags = screen.getByLabelText(/tags/);
+    tags.focus();
+    mocks.useMemoryItem.mockReturnValue({ data: { ...detail }, error: undefined, mutate: reload });
+    rerender(tree());
+
+    expect(screen.getByRole('status')).toBe(note);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(document.activeElement).toBe(tags);
+  });
+
+  it('shows no note when saving is refused', async () => {
+    mocks.saveMemoryItem.mockRejectedValue(new ApiError('invalid_request', '本文が空', 400));
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('moves the focus to the explanation of a conflict', async () => {

@@ -214,6 +214,34 @@ describe('MaskPainter', () => {
     await expectFocusMovesTo(await screen.findByRole('alert'));
   });
 
+  // 送ると塗りは空になり、押した「マスクを送る」も押せなくなる。フォーカスは成功の知らせへ移る。2回続けて送っても移る
+  it('moves the focus to the note that the mask was sent, also on a second send', async () => {
+    const { user, canvas } = await openPainter();
+    drag(canvas, [0, 0], [10, 10]);
+    const button = () => screen.getByRole('button', { name: 'マスクを送る' });
+
+    button().focus();
+    await user.keyboard('{Enter}');
+    const first = await screen.findByRole('status');
+    await expectFocusMovesTo(first);
+
+    // 知らせのあとに筆の太さを直し始めても、フォーカスは奪われない
+    const radius = screen.getByLabelText('筆の太さ（px）');
+    await user.clear(radius);
+    await user.type(radius, '8');
+    expect(document.activeElement).toBe(radius);
+
+    drag(canvas, [20, 20], [30, 30]);
+    button().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const note = screen.getByRole('status');
+      expect(note).not.toBe(first);
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
   it('moves the focus to the reason when the mask is refused before sending, also when pressed again', async () => {
     encode.mockResolvedValue(Buffer.from(new Uint8Array(MAX_MASK_BYTES + 1)).toString('base64'));
     const { user, canvas } = await openPainter();
