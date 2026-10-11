@@ -138,7 +138,7 @@ export type JobRunnerDeps = {
   referenceLimits?: ReferenceLimits;
   /** 省けば、記憶を渡さず、止まったときの蒸留もしない */
   memory?: JobMemory;
-  /** 蒸留が投げて失敗したときの理由の行き先。ジョブの止まった状態には触れない */
+  /** 蒸留や待ち行列の走査が投げて失敗したときの理由の行き先。ジョブの止まった状態には触れない */
   log?: (line: string) => void;
   now?: () => Date;
   /**
@@ -429,33 +429,74 @@ export class JobRunner {
     return readStopConditions(this.deps.store, spec);
   }
 
+  // 失敗は drain の中で受ける: kick() は Promise を捨てて呼ばれるので、投げたままだと誰も受けない reject になり、プロセスが落ちうるため。
+  // プロセス全体の unhandledRejection の拾い手では受けない（落ち方の性格が変わる）
   private async drain(): Promise<void> {
+    // この走査で失敗したジョブ。同じジョブを続けて選び直して止まらなくなるのを避ける（次の kick では選び直す）
+    const failed = new Set<string>();
     try {
       for (;;) {
         this.rescanRequested = false;
-        const next = await this.nextJobId();
+        let next: string | undefined;
+        try {
+          next = await this.nextJobId(failed);
+        } catch (error) {
+          this.deps.log?.(`drawroid: 待ち行列の走査に失敗した: ${messageOf(error)}`);
+          return;
+        }
         if (next === undefined) {
           // 走査が空を返したあとに来た合図を取りこぼさない。見るのと draining を外すのは同じ同期の区間にする
           if (this.rescanRequested) continue;
           return;
         }
-        await this.deps.beforeJob?.();
-        await this.runJob(next);
+        try {
+          await this.deps.beforeJob?.();
+          await this.runJob(next);
+        } catch (error) {
+          failed.add(next);
+          // ジョブのディレクトリが消えたのは人の操作（docs: jobs/<jobId>/ を消せば、そのジョブは消える）で、異常ではないので記録しない。
+          // Why not ENOENT だけで黙る: ENOENT は参照画像・マスクなど、ジョブは在るのに別のファイルが無いときにも出る。
+          // 走査（nextJobId）で ENOENT を黙るのは、消えたジョブと作りかけのジョブで、どちらも異常ではないため。回す側では、ジョブが在るなら異常なので残す。
+          // 消えたと確かめられたとき（そのジョブの読み出しが ENOENT）だけ黙り、確かめが別の理由で失敗したら残す側に倒す。
+          if (!(isMissingFile(error) && (await this.jobIsGone(next)))) {
+            this.deps.log?.(`drawroid: ジョブ ${next} を回すのに失敗した: ${messageOf(error)}`);
+          }
+        }
       }
     } finally {
       this.draining = undefined;
     }
   }
 
+  /** そのジョブの止まった状態を読んで ENOENT になったときだけ true。読めた・別の理由で失敗したときは false */
+  private async jobIsGone(jobId: string): Promise<boolean> {
+    try {
+      await this.deps.store.readState(jobId);
+      return false;
+    } catch (error) {
+      return isMissingFile(error);
+    }
+  }
+
   /** 走りかけのジョブ（落ちる前に running だったもの）を先に、次に待っているものを作成順に */
-  private async nextJobId(): Promise<string | undefined> {
+  private async nextJobId(failed: ReadonlySet<string>): Promise<string | undefined> {
     let queued: string | undefined;
     for (const jobId of await this.deps.store.listJobIds()) {
-      const spec = await this.deps.store.readJob(jobId);
-      if (spec.kind !== 'auto') continue;
-      const { status } = await this.deps.store.readState(jobId);
-      if (status === 'running') return jobId;
-      if (status === 'queued') queued ??= jobId;
+      if (failed.has(jobId)) continue;
+      try {
+        const spec = await this.deps.store.readJob(jobId);
+        if (spec.kind !== 'auto') continue;
+        const { status } = await this.deps.store.readState(jobId);
+        if (status === 'running') return jobId;
+        if (status === 'queued') queued ??= jobId;
+      } catch (error) {
+        // 1件が読めなくても待ち行列全体を止めない。消えた1件（人の操作）は黙って飛ばし、壊れているものは理由を残して飛ばす
+        if (!isMissingFile(error)) {
+          this.deps.log?.(
+            `drawroid: ジョブ ${jobId} を読めず、待ち行列から飛ばした: ${messageOf(error)}`,
+          );
+        }
+      }
     }
     return queued;
   }
@@ -1376,6 +1417,10 @@ function reopenClaimedBy(
     const { kind, interventionId, receivedAt, text } = intervention;
     return { kind, interventionId, receivedAt, text };
   });
+}
+
+function isMissingFile(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 }
 
 function messageOf(error: unknown): string {
