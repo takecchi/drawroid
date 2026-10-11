@@ -118,12 +118,12 @@ describe('the sentence of a refused PUT /settings/budgets', () => {
     expect(message).toContain('imagesPerJudge の値が違う');
   });
 
-  it('keeps the other routes on the sentence of describeIssues', async () => {
+  it('says it in the same form as the other routes do', async () => {
     const res = await send('PUT', '/settings/permissions', { nope: 1 });
 
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { message: string } }).error.message).not.toContain(
-      'の値が違う',
+    expect(((await res.json()) as { error: { message: string } }).error.message).toBe(
+      '(body) の値が違う（知らない欄 nope）（原文: Unrecognized key: "nope"）',
     );
   });
 });

@@ -1,8 +1,9 @@
+import { describeInputIssues } from '@drawroid/core';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { ApiDeps } from '../deps.js';
-import { conflict, describeIssues, invalidRequest } from '../errors.js';
+import { conflict, invalidRequest } from '../errors.js';
 import { LlmNotConfiguredError } from '../stop-condition-parse.js';
 
 const bodySchema = z.object({
@@ -13,7 +14,7 @@ const bodySchema = z.object({
 export function stopConditionParseRoutes({ stopConditionParser }: ApiDeps) {
   return new Hono().post('/parse', async (c) => {
     const body = bodySchema.safeParse(await c.req.json().catch(() => undefined));
-    if (!body.success) return invalidRequest(c, describeIssues(body.error));
+    if (!body.success) return invalidRequest(c, describeInputIssues(body.error));
     try {
       const draft = await stopConditionParser.parse(body.data.text, c.req.raw.signal);
       if (!draft.ok) {
