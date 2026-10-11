@@ -18,7 +18,7 @@ export function resolveDataDir({
   home = homedir(),
   cwd = process.cwd(),
 }: DataDirSource): string {
-  const chosen = nonEmpty(cliArg) ?? nonEmpty(env);
+  const chosen = nonEmpty(env) ?? nonEmpty(cliArg);
   if (chosen === undefined) return join(home, '.drawroid');
   return isAbsolute(chosen) ? chosen : resolve(cwd, chosen);
 }
