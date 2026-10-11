@@ -81,7 +81,6 @@ function MemoryItemBody({
   // 欄を触ったら、知らせは古くなる
   function edit(next: MemoryFormValues) {
     setValues(next);
-    setSaved(false);
   }
 
   async function run(action: () => Promise<void>) {
