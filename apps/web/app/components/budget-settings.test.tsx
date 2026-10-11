@@ -84,6 +84,17 @@ describe('BudgetSettings', () => {
     await expectFocusMovesTo(await screen.findByText(SAVED));
   });
 
+  // ほかの設定の区切りと同じ枠（Section のカード）に収める。見た目そのものは jsdom で測れないので、構造だけを見る
+  it('keeps its heading, its fields and its save button in one card like the other settings', () => {
+    render(<BudgetSettings />);
+
+    const heading = screen.getByRole('heading', { level: 2, name: '予算の設定' });
+    const card = heading.closest('[data-slot="card"]');
+    expect(card).not.toBeNull();
+    expect(card?.contains(input('imageLongEdge'))).toBe(true);
+    expect(card?.contains(saveButton())).toBe(true);
+  });
+
   it('shows an empty field for every number of the defaults, with the default as the placeholder', () => {
     render(<BudgetSettings />);
 
