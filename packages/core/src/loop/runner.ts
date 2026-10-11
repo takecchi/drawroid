@@ -454,14 +454,27 @@ export class JobRunner {
           await this.runJob(next);
         } catch (error) {
           failed.add(next);
-          // ジョブのディレクトリが消えたのは人の操作（docs: jobs/<jobId>/ を消せば、そのジョブは消える）で、異常ではないので記録しない
-          if (!isMissingFile(error)) {
+          // ジョブのディレクトリが消えたのは人の操作（docs: jobs/<jobId>/ を消せば、そのジョブは消える）で、異常ではないので記録しない。
+          // Why not ENOENT だけで黙る: ENOENT は参照画像・マスクなど、ジョブは在るのに別のファイルが無いときにも出る。
+          // 走査（nextJobId）で ENOENT を黙るのは、消えたジョブと作りかけのジョブで、どちらも異常ではないため。回す側では、ジョブが在るなら異常なので残す。
+          // 消えたと確かめられたとき（そのジョブの読み出しが ENOENT）だけ黙り、確かめが別の理由で失敗したら残す側に倒す。
+          if (!(isMissingFile(error) && (await this.jobIsGone(next)))) {
             this.deps.log?.(`drawroid: ジョブ ${next} を回すのに失敗した: ${messageOf(error)}`);
           }
         }
       }
     } finally {
       this.draining = undefined;
+    }
+  }
+
+  /** そのジョブの止まった状態を読んで ENOENT になったときだけ true。読めた・別の理由で失敗したときは false */
+  private async jobIsGone(jobId: string): Promise<boolean> {
+    try {
+      await this.deps.store.readState(jobId);
+      return false;
+    } catch (error) {
+      return isMissingFile(error);
     }
   }
 

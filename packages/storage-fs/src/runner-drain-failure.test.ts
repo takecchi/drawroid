@@ -188,4 +188,43 @@ describe('when running a queued job fails outside the job loop', () => {
 
     expect(await files.readState(first.jobId)).toMatchObject({ status: 'stopped' });
   });
+
+  it('logs a missing-file failure when the job itself still exists', async () => {
+    let failures = 1;
+    const { files, runner, submit, logs } = setup(async () => {
+      if (failures-- > 0) {
+        // 参照画像などが無い、のような「ジョブは在るのに別のファイルが無い」失敗
+        throw Object.assign(new Error('ENOENT: no such file or directory, open reference.png'), {
+          code: 'ENOENT',
+        });
+      }
+    });
+    const first = await submit();
+
+    runner.kick();
+    await runner.idle();
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain(`ジョブ ${first.jobId}`);
+    expect(logs[0]).toContain('reference.png');
+
+    runner.kick();
+    await runner.idle();
+
+    expect(await files.readState(first.jobId)).toMatchObject({ status: 'stopped' });
+  });
+
+  it('stays silent when the job directory itself vanished before it could run', async () => {
+    let vanish: () => Promise<void> = async () => undefined;
+    const { runner, submit, logs } = setup(() => vanish());
+    const vanishing = await submit();
+    // 走り出す直前（beforeJob）に消えるので、runJob の最初の読み出しが ENOENT で失敗する
+    vanish = () => rm(join(root, 'jobs', vanishing.jobId), { recursive: true, force: true });
+
+    runner.kick();
+    await runner.idle();
+
+    // 人が消したのは異常ではないので、記録は増やさない
+    expect(logs).toEqual([]);
+  });
 });
