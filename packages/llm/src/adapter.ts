@@ -40,6 +40,7 @@ import sharp from 'sharp';
 import { z, type ZodType } from 'zod';
 import {
   DEFAULT_CALL_TIMEOUT_SECONDS,
+  DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS,
   ROLE_LABELS,
   type ResolvedRoles,
   type RoleConfig,
@@ -54,6 +55,8 @@ export type AdapterOptions = {
   networkRetries: number;
   /** LLM が何も返さないまま待つ上限（秒）。省けば DEFAULT_CALL_TIMEOUT_SECONDS */
   callTimeoutSeconds?: number;
+  /** 1回の呼び出しの全体の時間の上限（秒）。出力が流れ続けていても超えたら打ち切る。省けば DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS */
+  totalCallTimeoutSeconds?: number;
   /**
    * 役ごとの設定が、config.json の llm.roles のどの鍵にあるか。見る役を省いた設定では、見る役も think を使う。
    * 出力が上限で切れたときに、上げるべき設定の場所を名指すために使う。省けば役の名前と同じ鍵
@@ -82,6 +85,13 @@ class OutputCutAtLimit extends Error {
 class CallTimedOut extends Error {
   constructor(readonly seconds: number) {
     super(`LLM が ${seconds} 秒のあいだ何も返さなかった`);
+  }
+}
+
+/** 出力が流れ続けたまま、1回の呼び出しの全体の時間の上限を超えた */
+class CallRanTooLong extends Error {
+  constructor(readonly seconds: number) {
+    super(`LLM の1回の呼び出しが全体の上限 ${seconds} 秒を超えた`);
   }
 }
 
@@ -143,6 +153,9 @@ export function describeCallFailure(error: unknown): string {
   if (RetryError.isInstance(error)) return describeCallFailure(error.lastError);
   if (error instanceof CallTimedOut) {
     return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に答えなかった（${error.seconds} 秒、何も返らなかった）。LLM のサーバが動いているかを確かめる。遅いモデルなら、LLM の設定の「応答を待つ上限（秒）」を延ばす`;
+  }
+  if (error instanceof CallRanTooLong) {
+    return `${LLM_CALL_FAILED_PREFIX}LLM が時間内に終わらなかった（1回の呼び出しの全体の上限 ${error.seconds} 秒を超えた。出力は流れ続けていた）。出力が止まらないモデルかもしれない。LLM の設定の「1回の呼び出しの全体の上限（秒）」（config.json の llm.totalCallTimeoutSeconds）を延ばすか、役の出力の上限（maxOutputTokens）を設ける`;
   }
   // 見分けるのは切り詰める前の文で行う: 切り詰めるのは画面に出す長さのためで、理由が切った先に書かれていることもあるため
   const whole = error instanceof Error ? error.message : String(error);
@@ -534,21 +547,28 @@ export class AiSdkLlm implements LlmPort {
       onEvent?: (event: StreamEvent) => void;
     },
   ): Promise<Streamed> {
-    // 何も返らない時間で打ち切る（呼び出しの全体の時間ではない）: 遅いモデルでも、流れ続けている間は切らないため
+    // 黙っている時間の上限は、流れが続く間は巻き直す: 遅いモデルを、答えが来ている間は切らないため。
+    // 全体の上限は巻き直さない（別の時計）: 巻き直す時計だけでは、出力を出し続けて止まらない呼び出しを、いつまでも切れないため
     const seconds = this.options.callTimeoutSeconds ?? DEFAULT_CALL_TIMEOUT_SECONDS;
-    const silence = new AbortController();
+    const totalSeconds = this.options.totalCallTimeoutSeconds ?? DEFAULT_TOTAL_CALL_TIMEOUT_SECONDS;
+    const cutoff = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const rearm = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => silence.abort(new CallTimedOut(seconds)), seconds * 1000);
+      timer = setTimeout(() => cutoff.abort(new CallTimedOut(seconds)), seconds * 1000);
     };
+    const totalTimer = setTimeout(
+      () => cutoff.abort(new CallRanTooLong(totalSeconds)),
+      totalSeconds * 1000,
+    );
     rearm();
     try {
-      // 黙っていたので切ったときは、中断の理由（CallTimedOut）が投げられる。呼び手が止めたときは、呼び手の理由
-      const signal = AbortSignal.any([request.signal, silence.signal]);
+      // 切ったときは、中断の理由（CallTimedOut・CallRanTooLong）が投げられる。呼び手が止めたときは、呼び手の理由
+      const signal = AbortSignal.any([request.signal, cutoff.signal]);
       return await this.streamParts(role, config, request, signal, rearm);
     } finally {
       clearTimeout(timer);
+      clearTimeout(totalTimer);
     }
   }
 

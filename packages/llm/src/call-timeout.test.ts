@@ -31,6 +31,8 @@ function adapter(model: MockLanguageModelV4, callTimeoutSeconds?: number) {
     {
       validationRetries: 0,
       networkRetries: 0,
+      // 全体の上限に当たらないようにする: この試験が縛るのは、黙っている時間の上限だけ
+      totalCallTimeoutSeconds: 86_400,
       ...(callTimeoutSeconds === undefined ? {} : { callTimeoutSeconds }),
     },
   );
