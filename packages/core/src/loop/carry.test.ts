@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BUDGET } from './budget.js';
-import { advanceCarry, createCarry } from './carry.js';
+import { adoptAsBest, advanceCarry, createCarry } from './carry.js';
 import type { JudgeOutput, ThinkParams } from './schemas.js';
 
 const budget = DEFAULT_BUDGET;
@@ -27,6 +27,36 @@ describe('advanceCarry', () => {
     const carry = advanceCarry(start, 1, params, judgement([0.2, 0.9, 0.4]));
     expect(carry.latest?.imageIndex).toBe(1);
     expect(carry.latest?.score).toBe(0.9);
+  });
+
+  it('makes the image a human chose the best, even when it only ties the best so far', () => {
+    const start = createCarry('request', budget).carry;
+    const judged = advanceCarry(start, 1, params, judgement([1]));
+
+    const carry = advanceCarry(judged, 2, params, { ...judgement([1]), adopted: true });
+
+    expect(carry.best).toMatchObject({ iteration: 2, imageIndex: 0 });
+  });
+});
+
+describe('adoptAsBest', () => {
+  const references = [{ refId: 'r1', gist: '夕暮れの海辺の構図' }];
+  const judged = {
+    ...advanceCarry(createCarry('request', budget).carry, 1, params, judgement([0.4])),
+    references,
+  };
+
+  it('makes the chosen image the best with full score, leaving the latest result as it was', () => {
+    const carry = adoptAsBest(judged, { iteration: 1, imageIndex: 0, params, issues: [] });
+
+    expect(carry.best).toMatchObject({ iteration: 1, imageIndex: 0, score: 1 });
+    expect(carry.latest).toEqual(judged.latest);
+  });
+
+  it('keeps the gists of the reference images', () => {
+    const carry = adoptAsBest(judged, { iteration: 1, imageIndex: 0, params, issues: [] });
+
+    expect(carry.references).toEqual(references);
   });
 });
 
