@@ -272,7 +272,14 @@ export function buildLlmSettings(values: LlmSettingsFormValues): LlmSettingsInpu
     ...(validationRetries === undefined ? {} : { validationRetries }),
     ...(networkRetries === undefined ? {} : { networkRetries }),
     ...(callTimeoutSeconds === undefined ? {} : { callTimeoutSeconds }),
-    ...(totalCallTimeoutSeconds === undefined ? {} : { totalCallTimeoutSeconds }),
+    ...(totalCallTimeoutSeconds === undefined
+      ? {}
+      : {
+          totalCallTimeoutSeconds:
+            callTimeoutSeconds !== undefined && totalCallTimeoutSeconds < callTimeoutSeconds
+              ? callTimeoutSeconds
+              : totalCallTimeoutSeconds,
+        }),
     providers,
     roles: {
       think,
