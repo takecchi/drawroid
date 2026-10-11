@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, type MemoryItemDetail } from '@drawroid/swr';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -210,6 +210,35 @@ describe('MemoryItemView editing', () => {
     expect(document.activeElement).toBe(body);
     await user.type(screen.getByLabelText(/tags/), 'x');
     expect(document.activeElement).toBe(screen.getByLabelText(/tags/));
+  });
+
+  // 知らせが出たまま画面が描き直されても（読み直しで項目が届いたとき）、触っている欄からフォーカスを奪わない
+  it('does not take the focus again when the view is drawn again while the note stays', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    // 描き直すたびに新しい要素を渡す: 同じ要素を渡すと、React は描き直さない
+    const tree = () => (
+      <MemoryRouter initialEntries={['/memory/m1']}>
+        <Routes>
+          <Route path="/memory/:id" element={<MemoryItemView id="m1" />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const { rerender } = render(tree());
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    const note = await screen.findByRole('status');
+    await waitFor(() => expect(document.activeElement).toBe(note));
+
+    const tags = screen.getByLabelText(/tags/);
+    tags.focus();
+    mocks.useMemoryItem.mockReturnValue({ data: { ...detail }, error: undefined, mutate: reload });
+    rerender(tree());
+
+    expect(screen.getByRole('status')).toBe(note);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(document.activeElement).toBe(tags);
   });
 
   it('shows no note when saving is refused', async () => {

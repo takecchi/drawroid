@@ -196,7 +196,8 @@ describe('JobOperations moving the focus to a refusal', () => {
 
     // 次の画像を選び始めても、フォーカスは奪われない
     await user.upload(screen.getByLabelText(/参照画像を選ぶ/), png());
-    expect(document.activeElement).not.toBe(first);
+    expect(screen.getByRole('status')).toBe(first);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('status');
 
     await press(user, screen.getByRole('button', { name: '参照画像を送る' }));
     await waitFor(() => expect(reference).toHaveBeenCalledTimes(2));
