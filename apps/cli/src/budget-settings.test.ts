@@ -60,6 +60,38 @@ describe('budget settings of the CLI', () => {
     expect(invalid.every((i) => i.reason !== '')).toBe(true);
   });
 
+  // 起動の行・設定の口（API）が同じ文を言う: 英語の原文だけを出さず、budgets.<欄> と日本語の説明で言う
+  it('says each unreadable field as budgets.<field> in Japanese, in the startup line and through the API', async () => {
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        budgets: { imageLongEdge: 0, text: { prompt: 50, negativePrompt: 'x' }, imageShortEdge: 3 },
+      }),
+    );
+    const lines: string[] = [];
+    const settings = createBudgetSettings(configPath, (line) => lines.push(line));
+
+    const { invalid } = await settings.read();
+
+    const reasons = [
+      'config.json の budgets.imageLongEdge が読めない（128 以上）（原文: Too small: expected number to be >=128）',
+      'config.json の budgets.text.negativePrompt が読めない（数で書く）（原文: Invalid input: expected number, received string）',
+      'config.json の budgets.imageShortEdge: 知らない欄',
+    ];
+    expect(invalid.map((i) => i.reason).sort()).toEqual([...reasons].sort());
+    expect(lines).toHaveLength(1);
+    for (const reason of reasons) expect(lines[0]).toContain(reason);
+    expect(lines[0]).toMatch(
+      /^drawroid: config.json の budgets に読めない欄があり、既定に戻した: /,
+    );
+
+    const app = createApi({ ...stubDeps(dir), budgetSettings: settings });
+    const body = (await (await app.request('/settings/budgets')).json()) as {
+      invalid: { reason: string }[];
+    };
+    expect(body.invalid.map((i) => i.reason).sort()).toEqual([...reasons].sort());
+  });
+
   it('drops all of budgets when it is not an object of fields', async () => {
     await writeFile(configPath, JSON.stringify({ budgets: 7 }));
 
@@ -67,7 +99,9 @@ describe('budget settings of the CLI', () => {
 
     expect(overrides).toEqual({});
     expect(effective).toEqual(DEFAULT_BUDGETS);
-    expect(invalid).toEqual([{ path: '*', reason: expect.any(String) }]);
+    expect(invalid).toEqual([
+      { path: '*', reason: 'config.json の budgets: 予算が、欄の集まりになっていない' },
+    ]);
   });
 
   it('still takes a job with broken budgets, and tells the reasons through the API', async () => {

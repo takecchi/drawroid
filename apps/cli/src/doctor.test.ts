@@ -297,13 +297,44 @@ describe('runDoctor', () => {
     for (const field of [
       'config.json の backend.url',
       'config.json の llm.roles.think',
-      'budgets.text.prompt',
+      'config.json の budgets.text.prompt',
       'permissions.steps',
-      'generationProgress.',
+      'config.json の generationProgress.includePreview',
       'conversations.defaultStopConditions',
     ]) {
       expect(text).toMatch(new RegExp(`足りない {2}${field.replaceAll('.', '\\.')}`));
     }
+  });
+
+  // 起動の行・API と同じ文で言う: 欄名（budgets.<欄>・generationProgress.<欄>）と日本語の説明、原文は括弧の中
+  it('says broken budgets and generationProgress in Japanese, with the original message after', async () => {
+    const { text } = await setup({
+      budgets: { text: { prompt: -1 }, imageShortEdge: 3 },
+      generationProgress: { includePreview: 'yes' },
+    });
+    for (const line of [
+      '足りない  config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）',
+      '足りない  config.json の budgets.imageShortEdge: 知らない欄',
+      '足りない  config.json の generationProgress.includePreview が読めない（true か false で書く）（原文: Invalid input: expected boolean, received string）',
+    ]) {
+      expect(text).toContain(line);
+    }
+  });
+
+  it('lists only the budget fields it cannot read, not the ones it can', async () => {
+    const { report } = await setup({ budgets: { imageLongEdge: 256, text: { prompt: -1 } } });
+    const section = report.sections.find(({ title }) => title === '設定ファイル');
+    expect(section?.items.map(({ what }) => what)).toEqual([
+      'config.json の budgets.text.prompt が読めない（1 以上）（原文: Too small: expected number to be >=1）',
+    ]);
+  });
+
+  it('says a budgets that is not an object of fields, once, as budgets', async () => {
+    const { report } = await setup({ budgets: 7 });
+    const section = report.sections.find(({ title }) => title === '設定ファイル');
+    expect(section?.items.map(({ what }) => what)).toEqual([
+      'config.json の budgets: 予算が、欄の集まりになっていない',
+    ]);
   });
 
   it('names the mode of a broken permission only once', async () => {

@@ -13,12 +13,21 @@ export function describeConfigIssues(error: ZodError, root: readonly string[] = 
 
 /** root は、検証した値が config.json のどの欄の下かを言う（llm だけを検証したなら ['llm']） */
 export function describeConfigIssue(issue: Issue, root: readonly string[] = []): string {
-  const field = [...root, ...issue.path.map(String)].join('.') || '(全体)';
+  const path = [...root, ...issue.path.map(String)];
   // 自前の日本語の文には、原文を付けない: すでに人が読める文で、括弧を足すと同じことを2度言う
   if (issue.code === 'custom' && JAPANESE.test(issue.message)) {
-    return `config.json の ${field}: ${issue.message}`;
+    return describeConfigNote(issue.message, path);
   }
-  return `config.json の ${field} が読めない（${explain(issue)}）（原文: ${issue.message}）`;
+  return `config.json の ${fieldName(path)} が読めない（${explain(issue)}）（原文: ${issue.message}）`;
+}
+
+/** zod の issue が無い、自前の日本語の1文（予算の「欄の集まりになっていない」など）を、同じ形で言う */
+export function describeConfigNote(note: string, path: readonly string[] = []): string {
+  return `config.json の ${fieldName(path)}: ${note}`;
+}
+
+function fieldName(path: readonly string[]): string {
+  return path.join('.') || '(全体)';
 }
 
 /** JSON として読めないときは、欄を言えない（全体が読めていない）。ファイルのパスは呼び手が添える */
