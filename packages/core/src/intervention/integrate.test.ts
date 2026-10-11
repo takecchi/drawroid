@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BUDGET } from '../loop/budget.js';
+import { DEFAULT_BUDGET, type Budget } from '../loop/budget.js';
 import { createCarry } from '../loop/carry.js';
 import type { ThinkOutput } from '../loop/schemas.js';
 import { applyIntegratedIntent } from './integrate.js';
 
-const budget = DEFAULT_BUDGET;
-const limit = budget.text.intent;
-const carry = createCarry('夕暮れの海辺に立つ少女', budget).carry;
+const budget: Budget = { ...DEFAULT_BUDGET, text: { ...DEFAULT_BUDGET.text, intent: 10 } };
+const carry = createCarry('海辺の少女', budget).carry;
 
 const integrated = (intent: string): ThinkOutput => ({
   params: { prompt: 'girl, beach' },
@@ -16,12 +15,14 @@ const integrated = (intent: string): ThinkOutput => ({
 
 describe('applyIntegratedIntent', () => {
   it('keeps an integrated intent of exactly the limit as it is', () => {
-    const intent = 'あ'.repeat(limit);
-    expect(applyIntegratedIntent(carry, integrated(intent), budget).intent).toBe(intent);
+    expect(applyIntegratedIntent(carry, integrated('逆光の海辺に立つ少女'), budget).intent).toBe(
+      '逆光の海辺に立つ少女',
+    );
   });
 
   it('clips an integrated intent longer than the limit, so the carry stays bounded', () => {
-    const next = applyIntegratedIntent(carry, integrated('あ'.repeat(limit + 50)), budget);
-    expect(next.intent).toBe('あ'.repeat(limit));
+    expect(
+      applyIntegratedIntent(carry, integrated('逆光の夕暮れの海辺に立つ少女'), budget).intent,
+    ).toBe('逆光の夕暮れの海辺に');
   });
 });

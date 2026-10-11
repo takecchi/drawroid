@@ -24,6 +24,7 @@ import {
   memoryBudgetSettings,
   memoryProgressDeps,
   memoryConversations,
+  signatureOnly,
   solidImage,
 } from '../test-support.js';
 
@@ -333,12 +334,20 @@ describe('reference images, at submission and as an intervention', () => {
   });
 
   it('refuses an unreadable image before looking for the job', async () => {
-    const res = await intervene('no-such-job', {
+    const unreadable = b64(signatureOnly('png'));
+
+    const reference = await intervene('no-such-job', {
       kind: 'reference',
-      image: { mediaType: 'image/png', data: b64(JPEG) },
+      image: { mediaType: 'image/png', data: unreadable },
+    });
+    const mask = await intervene('no-such-job', {
+      kind: 'mask',
+      image: { iteration: 1, index: 0 },
+      mask: unreadable,
     });
 
-    expect(res.status).toBe(400);
+    expect(reference.status).toBe(400);
+    expect(mask.status).toBe(400);
   });
 });
 
