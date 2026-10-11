@@ -212,6 +212,58 @@ describe('MemoryItemView editing', () => {
     expect(document.activeElement).toBe(screen.getByLabelText(/tags/));
   });
 
+  it('clears the note when only the tags are touched, and keeps the focus in the tags', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('status');
+
+    const tags = screen.getByLabelText(/tags/);
+    await user.type(tags, 'x');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.activeElement).toBe(tags);
+  });
+
+  it('clears the note when only the scope is changed', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('status');
+
+    await user.selectOptions(screen.getByLabelText('scope'), 'tagged');
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('shows no note when a refused save is followed by reloading the latest item', async () => {
+    mocks.saveMemoryItem.mockRejectedValue(new ApiError('conflict', '書き換えられた', 409));
+    reload.mockResolvedValue({
+      ...detail,
+      item: {
+        ...detail.item,
+        body: 'ファイルで直された本文',
+        updatedAt: '2026-10-04T00:00:00.000Z',
+      },
+    });
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('alert');
+
+    await user.click(screen.getByRole('button', { name: '読み直す' }));
+    await waitFor(() =>
+      expect((screen.getByLabelText('本文') as HTMLTextAreaElement).value).toBe(
+        'ファイルで直された本文',
+      ),
+    );
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   // 知らせが出たまま画面が描き直されても（読み直しで項目が届いたとき）、触っている欄からフォーカスを奪わない
   it('does not take the focus again when the view is drawn again while the note stays', async () => {
     mocks.saveMemoryItem.mockResolvedValue({
