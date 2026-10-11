@@ -238,6 +238,21 @@ describe('BudgetSettings', () => {
     expect(mocks.saveBudgetSettings).not.toHaveBeenCalled();
   });
 
+  it('moves the focus to the reason when the form refuses one value, also when pressed again', async () => {
+    const user = userEvent.setup();
+    render(<BudgetSettings />);
+    await user.type(input('imageLongEdge'), '2.5');
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    saveButton().focus();
+    await user.keyboard('{Enter}');
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+    expect(mocks.saveBudgetSettings).not.toHaveBeenCalled();
+  });
+
   it('leaves the focus in a field being corrected after a refusal', async () => {
     const user = userEvent.setup();
     render(<BudgetSettings />);

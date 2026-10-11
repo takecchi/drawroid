@@ -171,6 +171,45 @@ describe('AutoJobForm', () => {
     expect(onCreated).toHaveBeenCalledWith('job-1');
   });
 
+  it('cannot be submitted again while the job is being created', async () => {
+    create.mockReturnValue(new Promise(() => undefined));
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+    await user.click(screen.getByRole('button', { name: '投入する' }));
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '投入する' })).toHaveProperty('disabled', true);
+  });
+
+  it.each(['0', '9', '1.5'])(
+    'refuses %s images a round, as it takes a whole 1 to 8',
+    async (value) => {
+      render(<AutoJobForm onCreated={() => {}} />);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+
+      await user.clear(screen.getByLabelText('1回の枚数（1〜8）'));
+      await user.type(screen.getByLabelText('1回の枚数（1〜8）'), value);
+
+      expect(screen.queryByRole('alert')?.textContent ?? '').toContain('1〜8 の整数で書く');
+      expect(screen.getByRole('button', { name: '投入する' })).toHaveProperty('disabled', true);
+    },
+  );
+
+  it.each(['1', '8'])('takes %s images a round', async (value) => {
+    render(<AutoJobForm onCreated={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/依頼/), '夕暮れの海');
+
+    await user.clear(screen.getByLabelText('1回の枚数（1〜8）'));
+    await user.type(screen.getByLabelText('1回の枚数（1〜8）'), value);
+
+    expect(screen.queryByText('1〜8 の整数で書く')).toBeNull();
+    expect(screen.getByRole('button', { name: '投入する' })).toHaveProperty('disabled', false);
+  });
+
   it('does not create a job that can never stop even when submitted without the button', async () => {
     render(<AutoJobForm onCreated={() => {}} />);
     await fillNeverStopping();

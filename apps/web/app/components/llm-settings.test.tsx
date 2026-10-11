@@ -669,6 +669,33 @@ describe('LlmSettings', () => {
     expect(screen.queryByLabelText(/API キーの値/)).toBeNull();
   });
 
+  // 確かめたのは保存されている名前だけなので、書き換えた名前の状態のように見せない
+  it('does not say whether a variable renamed in the form is set', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+
+    await user.clear(input('provider cloud の API キーの環境変数'));
+    await user.type(input('provider cloud の API キーの環境変数'), 'OTHER_KEY');
+
+    expect(screen.queryByText(/は入っていない/)).toBeNull();
+  });
+
+  it('hides the fields of the judging role while it uses the same model as the thinking role', async () => {
+    const user = userEvent.setup();
+    render(<LlmSettings />);
+    expect(input('見る役のモデル')).toBeTruthy();
+
+    await user.click(screen.getByLabelText('見る役も考える役と同じモデルを使う'));
+
+    expect(screen.queryByLabelText('見る役のモデル')).toBeNull();
+  });
+
+  it('says in its hint how long it waits for an answer by default', () => {
+    render(<LlmSettings />);
+
+    expect(input('応答を待つ上限（秒）').labels?.[0]?.textContent ?? '').toContain('既定は 300 秒');
+  });
+
   it('saves the edited model, keeping the rest of the settings', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);
