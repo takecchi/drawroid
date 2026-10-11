@@ -43,7 +43,9 @@ export function progressOf(args: {
   const { maxIterations, maxImages, maxDurationMs } = conditions;
   return {
     iteration,
-    ...(maxIterations === undefined ? {} : { remainingIterations: maxIterations - iteration + 1 }),
+    ...(maxIterations === undefined
+      ? {}
+      : { remainingIterations: Math.max(0, maxIterations - iteration + 1) }),
     ...(maxImages === undefined
       ? {}
       : { remainingImages: Math.max(0, maxImages - imagesGenerated) }),

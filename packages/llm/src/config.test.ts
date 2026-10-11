@@ -119,6 +119,20 @@ describe('llmConfigSchema', () => {
     ]);
   });
 
+  // 空白だけの名前は「空」ではなく、定義に無い名前として断る（min(1) は通るので、ここで言わないと黙って通る）
+  it('says a provider name made only of spaces is not among the defined providers', () => {
+    const result = llmConfigSchema.safeParse({
+      ...base,
+      roles: { think: { provider: '  ', model: 'x' } },
+    });
+    expect(result.error?.issues.map(({ path, message }) => ({ path, message }))).toEqual([
+      {
+        path: ['roles', 'think', 'provider'],
+        message: '考える役の provider「  」が、定義した provider（local）に無い',
+      },
+    ]);
+  });
+
   it('rejects a provider that carries an API key value instead of an env var name', () => {
     const result = llmConfigSchema.safeParse({
       ...base,
