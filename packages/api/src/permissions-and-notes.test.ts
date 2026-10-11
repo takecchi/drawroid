@@ -285,4 +285,21 @@ describe('the notes on candidates over HTTP', () => {
     }
     await expect(readFile(paths.candidateNotes, 'utf8')).rejects.toThrow();
   });
+
+  it('takes a note of up to 200 characters, and refuses a longer one', async () => {
+    expect(
+      (await send('PUT', '/backend/candidate-notes', { watercolor_v2: 'あ'.repeat(200) })).status,
+    ).toBe(200);
+    expect(
+      (await send('PUT', '/backend/candidate-notes', { watercolor_v2: 'あ'.repeat(201) })).status,
+    ).toBe(400);
+  });
+
+  it('takes notes on up to 5000 candidates, and refuses one more', async () => {
+    const notesOn = (count: number) =>
+      Object.fromEntries(Array.from({ length: count }, (_, i) => [`lora_${i}`, '水彩']));
+
+    expect((await send('PUT', '/backend/candidate-notes', notesOn(5000))).status).toBe(200);
+    expect((await send('PUT', '/backend/candidate-notes', notesOn(5001))).status).toBe(400);
+  });
 });
