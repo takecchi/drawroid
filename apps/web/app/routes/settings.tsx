@@ -27,8 +27,21 @@ export default function Settings() {
     if (target.tagName === 'H2') target.tabIndex = -1;
     // 欄そのものを流す: 開いたばかりの画面では欄があとから描かれるので、ブラウザは欄まで流さない。
     // 見出しのフォーカスで流さない: 欄の id に付けた scroll-mt の余白が効かないため
-    part.scrollIntoView?.({ block: 'start' });
+    const bringIntoView = () => part.scrollIntoView?.({ block: 'start' });
+    bringIntoView();
     target.focus({ preventScroll: true });
+    // 一度流すだけにしない: 上の欄はあとから読めて高さが伸び、下の欄（予算・確かめる）は画面の外へ押し出されるため。
+    // 人が動かしたら止める: 読んでいる所を、上の欄の伸び縮みで引き戻さないため
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(bringIntoView);
+    observer.observe(document.body);
+    const moves = ['keydown', 'pointerdown', 'wheel', 'touchstart'] as const;
+    const stop = () => {
+      observer.disconnect();
+      for (const move of moves) window.removeEventListener(move, stop);
+    };
+    for (const move of moves) window.addEventListener(move, stop, { passive: true });
+    return stop;
   }, [hash, key]);
   return (
     <Page title="設定">

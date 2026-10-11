@@ -102,6 +102,53 @@ describe('Settings, reached from a link to one of its parts', () => {
     }
   });
 
+  // 上の欄はあとから読めて高さが伸びるので、一度流しただけでは、下の欄は画面の外へ押し出される
+  it('keeps the part in view while the page above it grows, until the person moves', async () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    const observers: { grow: () => void }[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        private watching = false;
+        constructor(private readonly callback: () => void) {
+          observers.push(this);
+        }
+        observe() {
+          this.watching = true;
+        }
+        disconnect() {
+          this.watching = false;
+        }
+        grow() {
+          if (this.watching) this.callback();
+        }
+      },
+    );
+    const growPage = () => observers.forEach((observer) => observer.grow());
+    try {
+      renderAt('/settings#budgets');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByText('詳しい設定（LLM に渡す量の予算）')),
+      );
+      scrolled.length = 0;
+
+      growPage();
+      expect(scrolled).toEqual([document.getElementById('budgets')]);
+
+      await userEvent.setup().keyboard('{Shift}');
+      scrolled.length = 0;
+      growPage();
+      expect(scrolled).toEqual([]);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('leaves the focus alone when the address names no part', async () => {
     renderAt('/settings');
     await new Promise((resolve) => setTimeout(resolve, 50));
