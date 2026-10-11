@@ -95,6 +95,19 @@ describe('GenerationProgressSettings', () => {
     expect(box().checked).toBe(false);
   });
 
+  // 欄は送っている間押せなくなるので、断られたらフォーカスは断りへ移る
+  it('moves the focus to the reason when saving is refused', async () => {
+    mocks.saveGenerationProgressSettings.mockRejectedValue(
+      new ApiError('invalid_request', '形が違う', 400),
+    );
+    render(<GenerationProgressSettings />);
+
+    await userEvent.setup().click(box());
+
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(alert));
+  });
+
   it('says why the setting could not be read', () => {
     mocks.useGenerationProgressSettings.mockReturnValue({
       data: undefined,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError, type MemoryItemDetail } from '@drawroid/swr';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -151,6 +151,34 @@ describe('MemoryItemView editing', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
     expect(await screen.findByText(/本文が長すぎる/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '読み直す' })).toBeNull();
+  });
+
+  // 押した保存は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when saving is refused, also on a second refusal', async () => {
+    mocks.saveMemoryItem.mockRejectedValue(new ApiError('invalid_request', '本文が空', 400));
+    const user = userEvent.setup();
+    renderView();
+    const save = () => screen.getByRole('button', { name: '保存' });
+
+    save().focus();
+    await user.keyboard('{Enter}');
+    const first = await screen.findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    save().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('alert')));
+  });
+
+  it('moves the focus to the explanation of a conflict', async () => {
+    mocks.saveMemoryItem.mockRejectedValue(new ApiError('conflict', '書き換えられた', 409));
+    const user = userEvent.setup();
+    renderView();
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(alert));
   });
 });
 

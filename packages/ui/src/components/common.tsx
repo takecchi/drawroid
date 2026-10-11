@@ -341,9 +341,31 @@ export function Select({
 }
 
 /** 失敗の知らせ。role="alert" を持つ（読み上げに割り込ませるため） */
-export function ErrorNote({ className, children }: { className?: string; children: ReactNode }) {
+export function ErrorNote({
+  className,
+  focus = false,
+  children,
+}: {
+  className?: string;
+  /**
+   * 出たときに、知らせへフォーカスを移す。押して保存が断られたときに渡す: 押した保存は送っている間押せなくなり、
+   * フォーカスがページの外に落ちる（OkNote の focus と同じ）
+   */
+  focus?: boolean;
+  children: ReactNode;
+}) {
+  const note = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus) note.current?.focus();
+    // 出たときの一度だけ: 描き直すたびに移すと、直し始めた人からフォーカスを奪うため
+  }, []);
   return (
-    <Alert variant="destructive" className={cn('border-destructive/40', className)}>
+    <Alert
+      ref={note}
+      variant="destructive"
+      {...(focus && { tabIndex: -1 })}
+      className={cn('border-destructive/40', className)}
+    >
       <AlertTriangle aria-hidden />
       <AlertDescription className="min-w-0 break-words text-destructive">
         {children}

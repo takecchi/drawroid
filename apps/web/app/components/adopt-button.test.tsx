@@ -64,6 +64,36 @@ describe('AdoptButton', () => {
     ).toBeTruthy();
   });
 
+  // 確かめは窓ではなくその場に出るが、窓と同じく Escape で閉じる。フォーカスは選ぶボタンへ戻る
+  it('takes nothing and goes back to choosing when Escape is pressed while asking', async () => {
+    const user = renderButton();
+    const choose = () =>
+      screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' });
+
+    choose().focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{Escape}');
+
+    expect(adoptImage).not.toHaveBeenCalled();
+    expect(screen.queryByRole('group', { name: '2 回目の画像 1 番に決めるかの確かめ' })).toBeNull();
+    expect(document.activeElement).toBe(choose());
+  });
+
+  // 送ったあとは取り消せないので、Escape で「やめた」ように見せない
+  it('keeps saying it is deciding when Escape is pressed after sending', async () => {
+    vi.mocked(adoptImage).mockReturnValue(new Promise(() => undefined));
+    const user = renderButton();
+
+    await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
+    await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('group', { name: '2 回目の画像 1 番に決めるかの確かめ' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }),
+    ).toBeNull();
+  });
+
   it('says the image was chosen when the record says so, without being pressed (as after reopening)', () => {
     render(
       <AdoptButton
