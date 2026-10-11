@@ -28,6 +28,7 @@ import {
 import {
   describeDetectedContext,
   detectContextTokens,
+  type DetectedContext,
   llmConfigSchema,
   type LlmConfig,
 } from '@drawroid/llm';
@@ -65,6 +66,7 @@ import { ReplaceableBackend } from './replaceable-backend.js';
 import { shutdownHandler, type ShutdownSignal } from './shutdown.js';
 import { createStopConditionParser } from './stop-condition-parser.js';
 import { resolveWebRoot } from './web-root.js';
+import { createWindowReread } from './window-reread.js';
 
 export interface AssembleOptions {
   /** データディレクトリ */
@@ -79,6 +81,8 @@ export interface AssembleOptions {
   write: (text: string) => void;
   /** 配る画面の置き場所。省けば固めた drawroid の中を探す */
   webRoot?: string;
+  /** 窓の読み直しの間隔を測る時計（ミリ秒）。省けば Date.now */
+  now?: () => number;
 }
 
 /**
@@ -95,6 +99,7 @@ export async function assembleDrawroid({
   exit,
   write,
   webRoot,
+  now = Date.now,
 }: AssembleOptions): Promise<Listening> {
   const { sweptTempFiles } = await initDataDir(root);
   write(`drawroid: データディレクトリ ${root}\n`);
@@ -175,6 +180,7 @@ export async function assembleDrawroid({
     backend,
     env,
     budget: DEFAULT_BUDGET,
+    beforeJob: () => windowReread.reread(),
     // 回の境目ごとに config.json を読み直す: API で変えた許可を、再起動せずに走行中のジョブの次の回から効かせるため
     permissions: readPermissions,
     candidateNotes: () => readCandidateNotes(dataPaths(root).candidateNotes),
@@ -211,14 +217,24 @@ export async function assembleDrawroid({
     },
     log,
   });
-  // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため。
-  // 保存のときに読んだばかりの設定だけは、その読みを使う
-  const configureLlm = async (llm: LlmConfig) => {
-    const { config, detected } =
-      detectedOnSave.recall(llm) ?? (await detectContextTokens(llm, { env }));
+  const installLlm = ({ config, detected }: { config: LlmConfig; detected: DetectedContext[] }) => {
     for (const read of detected) log(describeDetectedContext(read));
     configuredLlm = config;
     autoQueue.configure(config);
+  };
+  // 読めなかった役の窓は、起動のときの読みで固めない: LLM がモデルを読み込み中（/v1/models が 503）に起動が重なると、
+  // 上がったあとも既定の窓のまま回り続けるため。次に LLM を使うとき（ジョブを始めるとき・話す役のターンを始めるとき）に読み直す
+  const windowReread = createWindowReread({
+    current: () => configuredLlm,
+    detect: (llm) => detectContextTokens(llm, { env }),
+    apply: installLlm,
+    now,
+  });
+  // 窓の長さは保存せず、設定を効かせるたびに読む: LLM 側で窓を変えたら、drawroid の設定を書き直さずに追従させるため。
+  // 保存のときに読んだばかりの設定だけは、その読みを使う
+  const configureLlm = async (llm: LlmConfig) => {
+    installLlm(detectedOnSave.recall(llm) ?? (await detectContextTokens(llm, { env })));
+    windowReread.markRead();
   };
   const stored = await readLlmSettings(configPath);
   if (stored === undefined) {
@@ -271,6 +287,7 @@ export async function assembleDrawroid({
     store: conversationStore,
     hubs: conversationHubs,
     llm: () => autoQueue.currentLlm(),
+    beforeLlm: () => windowReread.reread(),
     tools: [
       ...createReadOnlyTools({
         backend,

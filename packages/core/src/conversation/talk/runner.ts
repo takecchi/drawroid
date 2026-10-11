@@ -36,6 +36,8 @@ export type TalkRunnerDeps = {
   hubs: ConversationHubs;
   /** いま使う LLM。未設定なら undefined（ターンは理由付きの error で閉じる） */
   llm: () => LlmPort | undefined;
+  /** LLM を取り出す前に待つ。失敗は投げない前提（LLM の窓を読み直すため） */
+  beforeLlm?: () => Promise<void>;
   tools: readonly TalkTool[];
   /** ターンの始めに読む。設定で直した予算を、次のターンから効かせるため */
   limits: () => Promise<TalkLimits>;
@@ -386,6 +388,7 @@ export class TalkRunner {
     // turn.started を確定する前に届いた発言も、打ち切りにする
     void this.noticeNewMessage(conversationId);
 
+    await this.deps.beforeLlm?.();
     const llm = this.deps.llm();
     if (llm === undefined) {
       await end('error', LLM_NOT_CONFIGURED_REASON);
