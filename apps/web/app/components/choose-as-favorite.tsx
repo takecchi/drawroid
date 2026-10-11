@@ -1,6 +1,6 @@
 import type { SelectionVerdict } from '@drawroid/core';
 import { isApiError, recheckJobDistill, setSelection } from '@drawroid/swr';
-import { Button } from '@drawroid/ui';
+import { Button, ErrorNote } from '@drawroid/ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { DecidedMark } from './decided-mark';
@@ -88,7 +88,12 @@ export function ChooseAsFavorite({
           )}
         </span>
       </Button>
-      {error !== undefined && <p className="text-xs text-destructive">決められない: {error}</p>}
+      {/* 押したボタンは送っている間押せなくなり、フォーカスがページの外に落ちるので、断りへ移す。画像の小さな枠の中なので、文字と余白は小さく保つ */}
+      {error !== undefined && (
+        <ErrorNote focus className="px-2 py-1 *:data-[slot=alert-description]:text-xs">
+          決められない: {error}
+        </ErrorNote>
+      )}
     </div>
   );
 }
