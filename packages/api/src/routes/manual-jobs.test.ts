@@ -104,21 +104,24 @@ describe('POST /jobs/manual', () => {
     ['a missing prompt', { ...request, prompt: undefined }],
     ['steps given as a string', { ...request, steps: 'four' }],
     ['a body that is not JSON', 'not json'],
-  ])('refuses %s with 400 and a message in the path: reason form, not raw JSON', async (_n, body) => {
-    const res = await app.request('/jobs/manual', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: typeof body === 'string' ? body : JSON.stringify(body),
-    });
+  ])(
+    'refuses %s with 400 and a message in the path: reason form, not raw JSON',
+    async (_n, body) => {
+      const res = await app.request('/jobs/manual', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: typeof body === 'string' ? body : JSON.stringify(body),
+      });
 
-    expect(res.status).toBe(400);
-    const { error } = (await res.json()) as { error: { kind: string; message: string } };
-    expect(error.kind).toBe('invalid_request');
-    expect(error.message).not.toContain('[');
-    expect(error.message).not.toContain('"code"');
-    expect(error.message).toMatch(/^[^:\n]+: /);
-    expect(await store.listJobIds()).toEqual([]);
-  });
+      expect(res.status).toBe(400);
+      const { error } = (await res.json()) as { error: { kind: string; message: string } };
+      expect(error.kind).toBe('invalid_request');
+      expect(error.message).not.toContain('[');
+      expect(error.message).not.toContain('"code"');
+      expect(error.message).toMatch(/^[^:\n]+: /);
+      expect(await store.listJobIds()).toEqual([]);
+    },
+  );
 });
 
 describe('POST /jobs/manual/:jobId/stop', () => {
