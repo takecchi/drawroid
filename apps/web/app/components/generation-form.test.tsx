@@ -117,6 +117,15 @@ describe('GenerationForm', () => {
     expect(onStarted).toHaveBeenCalledWith('job-1');
   });
 
+  it('cannot be sent again while it is sending', async () => {
+    mocks.startManualJob.mockReturnValue(new Promise(() => {}));
+    render(<GenerationForm onStarted={() => {}} />);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '生成する' }));
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '生成する' }).disabled).toBe(true);
+  });
+
   // 押した「生成する」は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
   it('moves the focus to the reason when the API refuses, also on a second refusal', async () => {
     const user = userEvent.setup();
