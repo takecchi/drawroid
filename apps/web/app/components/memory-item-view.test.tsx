@@ -170,6 +170,57 @@ describe('MemoryItemView editing', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('alert')));
   });
 
+  // 保存すると押した保存は送っている間押せなくなり、フォーカスが body に落ちる。成功の知らせへ移す。2回続けても移す
+  it('moves the focus to the note that it saved, also on a second save without editing', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderView();
+    const save = () => screen.getByRole('button', { name: '保存' });
+
+    save().focus();
+    await user.keyboard('{Enter}');
+    const first = await screen.findByRole('status');
+    expect(first.textContent).toMatch(/^保存した。/);
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    save().focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(mocks.saveMemoryItem).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      const note = screen.getByRole('status');
+      expect(note).not.toBe(first);
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
+  it('clears the note when a field is touched, and does not take the focus from the field', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('status');
+
+    const body = screen.getByLabelText('本文');
+    await user.type(body, 'あ');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.activeElement).toBe(body);
+    await user.type(screen.getByLabelText(/tags/), 'x');
+    expect(document.activeElement).toBe(screen.getByLabelText(/tags/));
+  });
+
+  it('shows no note when saving is refused', async () => {
+    mocks.saveMemoryItem.mockRejectedValue(new ApiError('invalid_request', '本文が空', 400));
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('moves the focus to the explanation of a conflict', async () => {
     mocks.saveMemoryItem.mockRejectedValue(new ApiError('conflict', '書き換えられた', 409));
     const user = userEvent.setup();

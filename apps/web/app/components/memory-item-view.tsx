@@ -13,6 +13,7 @@ import {
   Item,
   ItemList,
   Muted,
+  OkNote,
   Section,
   Select,
   SubSection,
@@ -67,6 +68,8 @@ function MemoryItemBody({
   const [values, setValues] = useState<MemoryFormValues>(memoryToFormValues(detail.item));
   const [problem, setProblem] = useState<{ kind: 'conflict' | 'other'; message: string }>();
   const [busy, setBusy] = useState(false);
+  // 保存が通ったことの知らせ。保存しても欄の見た目は変わらないので、効いたことを知らせる
+  const [saved, setSaved] = useState(false);
   const navigate = useNavigate();
 
   function open(item: MemoryItem) {
@@ -75,9 +78,17 @@ function MemoryItemBody({
     setProblem(undefined);
   }
 
+  // 欄を触ったら、知らせは古くなる
+  function edit(next: MemoryFormValues) {
+    setValues(next);
+    setSaved(false);
+  }
+
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setProblem(undefined);
+    // 送っている間は消す: 2回続けて保存したとき、知らせを作り直してフォーカスをもう一度移すため
+    setSaved(false);
     try {
       await action();
     } catch (caught) {
@@ -94,8 +105,9 @@ function MemoryItemBody({
   const save = (event: FormEvent) => {
     event.preventDefault();
     void run(async () => {
-      const saved = await saveMemoryItem(id, buildSaveInput(values, base.updatedAt));
-      open(saved.item);
+      const result = await saveMemoryItem(id, buildSaveInput(values, base.updatedAt));
+      open(result.item);
+      setSaved(true);
     });
   };
 
@@ -160,7 +172,7 @@ function MemoryItemBody({
           <Field label="本文" wide>
             <Textarea
               value={values.body}
-              onChange={(event) => setValues({ ...values, body: event.target.value })}
+              onChange={(event) => edit({ ...values, body: event.target.value })}
               rows={3}
             />
           </Field>
@@ -168,7 +180,7 @@ function MemoryItemBody({
             <Input
               type="text"
               value={values.tags}
-              onChange={(event) => setValues({ ...values, tags: event.target.value })}
+              onChange={(event) => edit({ ...values, tags: event.target.value })}
               className="w-80"
             />
           </Field>
@@ -176,7 +188,7 @@ function MemoryItemBody({
             <Select
               value={values.scope}
               onChange={(event) =>
-                setValues({ ...values, scope: event.target.value as MemoryItem['scope'] })
+                edit({ ...values, scope: event.target.value as MemoryItem['scope'] })
               }
               className="w-72"
             >
@@ -195,6 +207,7 @@ function MemoryItemBody({
         </form>
       </SubSection>
 
+      {saved && <OkNote focus>保存した。次に記憶を渡すときから効く。</OkNote>}
       {problem?.kind === 'conflict' && (
         <ErrorNote focus>
           開いたあとにファイルが変わった。読み直してから直す。{' '}
