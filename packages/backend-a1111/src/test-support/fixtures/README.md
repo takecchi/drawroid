@@ -36,7 +36,7 @@ Forge の雛形（`packages/backend-forge/src/test-support/fixtures/`）と対�
 ## Forge の雛形と違う所（A1111 のアダプタが吸収する差）
 
 - **VAE の口が違う。** A1111 は `/sdapi/v1/sd-vae`（`{ model_name, filename }`）で、`model_name` はファイル名（拡張子つき・サブフォルダは付かない）。Forge の `/sdapi/v1/sd-modules` は A1111 に無い
-- **サブフォルダのチェックポイントの `model_name`。** A1111 は `/` を `_` に置き換える（`real/juggernaut-xl.safetensors` → `real_juggernaut-xl`）。Forge の雛形は `real/juggernaut-xl` のまま。指定には `title` を使うので、`model_name` は表示の材料にだけ使う
+- **サブフォルダのチェックポイントの `model_name`。** A1111 は `/` を `_` に置き換える（`real/juggernaut-xl.safetensors` → `real_juggernaut-xl`）。Forge の雛形は `real/juggernaut-xl` のまま。指定は `title` か `model_name`。`model_name` が重なるときは断るので、`title` で指定する
 - **ControlNet の有無。** A1111 の ControlNet は外部の拡張（Mikubill/sd-webui-controlnet）。入っていれば `/sdapi/v1/scripts` の txt2img・img2img の両方に `controlnet` が出る（拡張の `scripts/controlnet.py:319-320` の title が `"ControlNet"`）。`scripts.json` は入っていない構成、`scripts-with-controlnet.json` は入っている構成
 - **スクリプトの名前の一覧は例。** 本体と内蔵の拡張の title から起こした一部で、実機では拡張の入れ方で変わる。見分けに使うのは `controlnet` があるかだけ
 - **サンプラの `options` の値は文字列。** 応答の型が `dict[str, str]`（`models.py:236`）なので、`True` は `"True"` になる見込み（Forge の雛形と同じ書き方）

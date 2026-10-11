@@ -101,6 +101,27 @@ describe('A1111Backend', () => {
     );
   });
 
+  it('refuses a model name that two checkpoints share, and picks either one by its title', async () => {
+    a1111.route(
+      'GET /sdapi/v1/sd-models',
+      json(200, [
+        { title: 'model.safetensors [aaaaaaaaaa]', model_name: 'model' },
+        { title: 'model.ckpt [bbbbbbbbbb]', model_name: 'model' },
+      ]),
+    );
+
+    await expect(generate({ checkpoint: 'model' })).rejects.toMatchObject({
+      kind: 'failed',
+      message: expect.stringContaining('title で指定する') as unknown,
+    });
+    expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
+
+    await generate({ checkpoint: 'model.ckpt [bbbbbbbbbb]' });
+    expect(sent('/sdapi/v1/txt2img').override_settings).toEqual({
+      sd_model_checkpoint: 'model.ckpt [bbbbbbbbbb]',
+    });
+  });
+
   it('sends Hires. fix without the fields only Forge has', async () => {
     await generate({
       hiresFix: { upscaler: 'Latent', scale: 1.5, steps: 10, denoisingStrength: 0.5 },
