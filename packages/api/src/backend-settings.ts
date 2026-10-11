@@ -23,7 +23,9 @@ export type BackendSettingsView = z.infer<typeof backendSettingsViewSchema>;
 // どちらも省けるが、省いたほうは、いま使っている値のまま config.json にも触れない（触っていない値を書くと、--backend などの引数で起動した値が config.json に残り、次の起動が変わるため）。両方を省いた body は受けない
 export const updateBackendSettingsSchema = z
   .object({
-    url: z.url({ protocol: /^https?$/ }).optional(),
+    url: z
+      .url({ protocol: /^https?$/, error: 'URL は http:// か https:// で始まる形で書く' })
+      .optional(),
     kind: backendKindSchema.optional(),
   })
   .refine(({ url, kind }) => url !== undefined || kind !== undefined, {
