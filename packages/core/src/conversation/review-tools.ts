@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { resolveBudgets, type Budgets } from '../budget/settings.js';
 import type { ImageRef, JobStore } from '../job/store.js';
 import type { AutoJobSpec } from '../job/types.js';
-import type { LlmPort } from '../llm/port.js';
+import { generateRecordingAbort } from '../llm/aborted.js';
+import type { LlmCallOutcome, LlmPort } from '../llm/port.js';
 import { toLlmCallRecord } from '../llm/record.js';
 import { adoptionCutting } from '../loop/adoption.js';
 import { buildJudgeInput } from '../loop/inputs.js';
@@ -171,29 +172,35 @@ export function createReviewTools(deps: ReviewToolDeps): TalkTool[] {
         ...(memory !== undefined && { memory }),
       });
       const startedAt = now();
-      const result = await llm.generateStructured({
-        role: 'judge',
-        purpose: 'judge',
-        schema: buildJudgeOutputSchema(1),
-        messages,
-        signal: context.signal,
-      });
-      const callId = newCallId(startedAt);
       const { provider, model } = llm.describe('judge');
-      await deps.jobs.writeLlmCall(
-        toLlmCallRecord({
-          callId,
-          jobId,
-          iteration,
+      const record = <U>(callId: string, outcome: LlmCallOutcome<U>) =>
+        deps.jobs.writeLlmCall(
+          toLlmCallRecord({
+            callId,
+            jobId,
+            iteration,
+            role: 'judge',
+            purpose: 'judge',
+            provider,
+            model,
+            startedAt,
+            messages,
+            outcome,
+          }),
+        );
+      const result = await generateRecordingAbort(
+        llm,
+        {
           role: 'judge',
           purpose: 'judge',
-          provider,
-          model,
-          startedAt,
+          schema: buildJudgeOutputSchema(1),
           messages,
-          outcome: result,
-        }),
+          signal: context.signal,
+        },
+        (aborted) => record(newCallId(startedAt), aborted),
       );
+      const callId = newCallId(startedAt);
+      await record(callId, result);
       await deps.jobs.markSent(ref, callId, now());
       if (!result.ok) return outcome(false, `見る役が評価を返せなかった: ${result.reason}`);
       const only = result.value.images[0]!;

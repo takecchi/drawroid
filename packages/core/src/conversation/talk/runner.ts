@@ -515,6 +515,17 @@ export class TalkRunner {
           state.phase = 'other';
         }
         const aborted = controller.signal.aborted;
+        // 打ち切ると finish が来ない: 流れた本文と思考を、途中で止まった試行として記録に残す
+        if (aborted && attempts.length === 0) {
+          attempts = [
+            {
+              rawOutput: text,
+              usage: { inputTokens: null, outputTokens: null },
+              durationMs: this.now().getTime() - startedAt.getTime(),
+              ...(reasoning !== '' && { reasoning }),
+            },
+          ];
+        }
         // 前後の空行は返答に含めない: 思考のあとの改行だけが残った応答を、空の返答として扱うため
         text = text.trim();
         const value: StepValue = {
@@ -526,21 +537,26 @@ export class TalkRunner {
           failure === undefined
             ? { ok: true, value, attempts }
             : { ok: false, reason: failure, attempts };
-        await this.deps.store.writeLlmCall(
-          conversationId,
-          toLlmCallRecord({
-            callId: this.newCallId(startedAt),
-            jobId: null,
-            iteration: null,
-            role: 'talk',
-            purpose: 'talk',
-            provider: info.provider,
-            model: info.model,
-            startedAt,
-            messages,
-            outcome,
-          }),
-        );
+        try {
+          await this.deps.store.writeLlmCall(
+            conversationId,
+            toLlmCallRecord({
+              callId: this.newCallId(startedAt),
+              jobId: null,
+              iteration: null,
+              role: 'talk',
+              purpose: 'talk',
+              provider: info.provider,
+              model: info.model,
+              startedAt,
+              messages,
+              outcome,
+            }),
+          );
+        } catch (error) {
+          // 打ち切ったターンは、記録を書けなくても interrupted で閉じる: 記録の失敗を、ターンの失敗にしないため
+          if (!aborted) throw error;
+        }
         // 思考は画面とファイルにだけ残す。次のステップの入力（steps）には入れない
         if (reasoning !== '') {
           await hub.confirm({

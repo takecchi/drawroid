@@ -23,6 +23,7 @@ import type {
   LlmPurpose,
   LlmRole,
 } from '../llm/port.js';
+import { generateRecordingAbort } from '../llm/aborted.js';
 import { toLlmCallRecord } from '../llm/record.js';
 import type { MemoryItem } from '../memory/item.js';
 import type { MemoryLimits } from '../memory/limits.js';
@@ -1248,7 +1249,7 @@ export class JobRunner {
   }
 
   /**
-   * LLM を呼び、記録を置き、渡した画像に印を付ける。中断のときは記録を置かずに投げる。
+   * LLM を呼び、記録を置き、渡した画像に印を付ける。中断のときは、途中までの記録だけを置いて（画像には印を付けず）投げる。
    */
   // 印は呼び出しのあとに付ける: 先に付けると、呼び出しの途中で落ちたときに、再開した回が
   // 「渡し済み」の画像を渡せず進めなくなるため。そのかわり、呼び出しが返ってから印を付けるまでの
@@ -1273,31 +1274,39 @@ export class JobRunner {
   ): Promise<LlmCallOutcome<T>> {
     const startedAt = this.now();
     const onReasoning = options.onReasoning;
-    const outcome = await this.deps.llm.generateStructured({
-      role,
-      purpose,
-      schema: options.schema,
-      messages,
-      signal: options.signal,
-      ...(onReasoning === undefined ? {} : { onReasoning }),
-      ...(options.onRetry === undefined ? {} : { onRetry: options.onRetry }),
-    });
-    const callId = this.newCallId(startedAt);
     const { provider, model } = this.deps.llm.describe(role);
-    await this.deps.store.writeLlmCall(
-      toLlmCallRecord({
-        callId,
-        jobId,
-        iteration,
+    const record = <U>(callId: string, outcome: LlmCallOutcome<U>) =>
+      this.deps.store.writeLlmCall(
+        toLlmCallRecord({
+          callId,
+          jobId,
+          iteration,
+          role,
+          purpose,
+          provider,
+          model,
+          startedAt,
+          messages,
+          outcome,
+        }),
+      );
+    // 打ち切られた呼び出しも記録する（呼び出しが終わってからだけ書くと、20 分出力を出し続けて止めた呼び出しが何も残らない）
+    const outcome = await generateRecordingAbort(
+      this.deps.llm,
+      {
         role,
         purpose,
-        provider,
-        model,
-        startedAt,
+        schema: options.schema,
         messages,
-        outcome,
-      }),
+        signal: options.signal,
+        ...(onReasoning === undefined ? {} : { onReasoning }),
+        ...(options.onRetry === undefined ? {} : { onRetry: options.onRetry }),
+      },
+      (aborted) => record(this.newCallId(startedAt), aborted),
+      this.deps.log,
     );
+    const callId = this.newCallId(startedAt);
+    await record(callId, outcome);
     await options.keepBeforeMarking?.(outcome);
     for (const ref of options.sentImages ?? [])
       await this.deps.store.markSent(ref, callId, this.now());

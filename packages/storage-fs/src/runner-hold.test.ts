@@ -105,9 +105,11 @@ describe('holding the LLM stages of a running job', () => {
     expect(judging.signals[1]!.aborted).toBe(false);
     expect(await store.readStage(jobId, 1, 'judge')).toMatchObject({ canStop: false });
     expect(await stoppedReason(store, jobId)).toBe('limit:iterations');
-    expect(
-      (await store.listLlmCalls(jobId)).filter((record) => record.purpose === 'judge'),
-    ).toHaveLength(1);
+    // 止められた呼び出しも、やり直した呼び出しとは別の記録として残る
+    const records = (await store.listLlmCalls(jobId)).filter(
+      (record) => record.purpose === 'judge',
+    );
+    expect(records.map((record) => record.outcome.ok)).toEqual([false, true]);
   });
 
   it('does the same for the think call', async () => {

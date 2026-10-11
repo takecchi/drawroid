@@ -120,6 +120,31 @@ describe('parseStopConditions', () => {
     expect(llm.calls).toEqual([]);
     expect(records).toEqual([]);
   });
+
+  it('records the call as cut off when the caller aborts it, and still rejects', async () => {
+    const controller = new AbortController();
+    const llm = new ScriptedLlm({ 'stop-parse': () => new Promise(() => undefined) });
+    const records: LlmCallRecord[] = [];
+    const pending = parseStopConditions({
+      llm,
+      text: '10回まで',
+      signal: controller.signal,
+      now: () => new Date('2026-10-09T00:00:00Z'),
+      newCallId: () => 'c1',
+      record: async (r) => {
+        records.push(r);
+      },
+    });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.purpose).toBe('stop-parse');
+    expect(records[0]?.outcome).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('呼び手が打ち切った'),
+    });
+  });
 });
 
 // #68 の P7: 止める条件の文が窓に入らないときは、呼び出す前に断る

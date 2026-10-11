@@ -76,6 +76,20 @@ export type LlmCallOutcome<T> =
   | { ok: true; value: T; attempts: LlmAttempt[] }
   | { ok: false; reason: string; attempts: LlmAttempt[] };
 
+/**
+ * 呼び手の中断（signal）で打ち切られた構造化出力の呼び出し。それまでに流れた本文・思考を、試行として運ぶ。
+ * 名前は AbortError のまま: 中断を見分ける既存の読み手を変えないため
+ */
+export class LlmCallAborted extends Error {
+  constructor(
+    readonly attempts: LlmAttempt[],
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : '呼び手が止めた', { cause });
+    this.name = 'AbortError';
+  }
+}
+
 export type LlmCall<T> = {
   role: LlmRole;
   purpose: LlmPurpose;
@@ -137,7 +151,7 @@ export interface LlmPort {
   describe(role: LlmRole): LlmRoleInfo;
   /**
    * 構造化出力を検証して返す。検証の失敗と呼び出しの失敗は ok: false で返す。
-   * signal が中断されたときだけ、中断のエラーを投げる。
+   * signal が中断されたときだけ、中断のエラーを投げる。LlmCallAborted にして、それまでの試行を運ぶ。
    */
   generateStructured<T>(call: LlmCall<T>): Promise<LlmCallOutcome<T>>;
   /**

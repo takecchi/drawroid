@@ -11,7 +11,7 @@ import type {
   TalkStepPart,
   ToolSpec,
 } from '@drawroid/core';
-import { DEFAULT_MODEL_WINDOW, LLM_CALL_FAILED_PREFIX } from '@drawroid/core';
+import { DEFAULT_MODEL_WINDOW, LLM_CALL_FAILED_PREFIX, LlmCallAborted } from '@drawroid/core';
 import {
   APICallError,
   EmptyResponseBodyError,
@@ -416,19 +416,25 @@ export class AiSdkLlm implements LlmPort {
       const started = this.now();
       let raw: RawResponse;
       // 試行ごとに空から溜める: 前の試行の思考を混ぜないため
-      const thought = { text: '' };
+      const thought = { text: '', body: '' };
       try {
         raw = await this.callOnce(call, config, previousError, thought);
       } catch (error) {
-        if (call.signal.aborted) throw error;
+        // 途中で終わった試行には、流れた分を残す: 打ち切った呼び出しの入力と出力を、あとから追えるように
+        const unfinished = {
+          rawOutput: thought.body,
+          usage: { inputTokens: null, outputTokens: null },
+          durationMs: this.now() - started,
+          ...reasoningOf(thought.text),
+        };
+        if (call.signal.aborted) throw new LlmCallAborted([...attempts, unfinished], error);
         const message = error instanceof Error ? error.message : String(error);
         if (error instanceof OutputCutAtLimit || LENGTH_IN_MESSAGE.test(message)) {
           const cut = error instanceof OutputCutAtLimit ? error : undefined;
           attempts.push({
-            rawOutput: cut?.rawOutput ?? '',
-            usage: cut?.usage ?? { inputTokens: null, outputTokens: null },
-            durationMs: this.now() - started,
-            ...reasoningOf(thought.text),
+            ...unfinished,
+            rawOutput: cut?.rawOutput ?? unfinished.rawOutput,
+            usage: cut?.usage ?? unfinished.usage,
           });
           return {
             ok: false,
@@ -436,12 +442,7 @@ export class AiSdkLlm implements LlmPort {
             attempts,
           };
         }
-        attempts.push({
-          rawOutput: '',
-          usage: { inputTokens: null, outputTokens: null },
-          durationMs: this.now() - started,
-          ...reasoningOf(thought.text),
-        });
+        attempts.push(unfinished);
         return {
           ok: false,
           reason: describeCallFailure(error),
@@ -489,7 +490,7 @@ export class AiSdkLlm implements LlmPort {
     config: RoleConfig,
     previousError: string | undefined,
     // この試行で流れた思考を溜める入れ物: 途中で失敗して投げても、試行の記録に残せるようにするため
-    thought: { text: string },
+    thought: { text: string; body: string },
   ): Promise<RawResponse> {
     const instructions =
       config.structuredOutput === 'native'
@@ -519,7 +520,10 @@ export class AiSdkLlm implements LlmPort {
       signal: call.signal,
       ...(output === undefined ? {} : { output }),
       onEvent: (event) => {
-        if (event.kind !== 'reasoning') return;
+        if (event.kind !== 'reasoning') {
+          thought.body += event.text;
+          return;
+        }
         thought.text += event.text;
         onReasoning?.(event.text);
       },
@@ -762,7 +766,7 @@ export class AiSdkLlm implements LlmPort {
       } catch (error) {
         const failure = this.callFailure(call, error);
         attempts.push({
-          rawOutput: '',
+          rawOutput: body,
           usage: { inputTokens: null, outputTokens: null },
           durationMs: this.now() - started,
           ...reasoningOf(reasoning),
@@ -867,6 +871,7 @@ export class AiSdkLlm implements LlmPort {
       let emitted = '';
       // この試行で流した思考。試行ごとに空から溜める（記録の attempts に載せる）
       let reasoning = '';
+      let raw = '';
       try {
         const stream = this.pumpStream(call.role, config, {
           instructions,
@@ -874,7 +879,6 @@ export class AiSdkLlm implements LlmPort {
           signal: call.signal,
           ...(output === undefined ? {} : { output }),
         });
-        let raw = '';
         for (;;) {
           const next = await stream.next();
           if (next.done === true) {
@@ -901,7 +905,7 @@ export class AiSdkLlm implements LlmPort {
       } catch (error) {
         const failure = this.callFailure(call, error);
         attempts.push({
-          rawOutput: '',
+          rawOutput: raw,
           usage: { inputTokens: null, outputTokens: null },
           durationMs: this.now() - started,
           ...reasoningOf(reasoning),

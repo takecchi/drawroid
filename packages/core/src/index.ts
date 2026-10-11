@@ -59,8 +59,9 @@ export type {
   TextPart,
   ToolSpec,
 } from './llm/port.js';
-export { LLM_CALL_FAILED_PREFIX, sealMessages } from './llm/port.js';
+export { LLM_CALL_FAILED_PREFIX, LlmCallAborted, sealMessages } from './llm/port.js';
 export * from './llm/record.js';
+export { generateRecordingAbort, LLM_CALL_ABORTED_REASON } from './llm/aborted.js';
 export * from './loop/budget.js';
 export * from './loop/carry.js';
 // 名前を挙げて出す: inputs.js の区画の部品（seal・SectionWriter・Section）は蒸留と共有する内部の部品で、
