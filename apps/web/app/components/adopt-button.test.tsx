@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { adoptImage, ApiError } from '@drawroid/swr';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -86,7 +86,9 @@ describe('AdoptButton', () => {
 
     await user.click(screen.getByRole('button', { name: 'この画像に決める: 2 回目の画像 1 番' }));
     await user.click(screen.getByRole('button', { name: '決める: 2 回目の画像 1 番' }));
-    await user.keyboard('{Escape}');
+    // 送っている間はボタンが押せず、確かめの中にフォーカスが無いことがあるので、確かめそのものに送る
+    const asking = screen.getByRole('group', { name: '2 回目の画像 1 番に決めるかの確かめ' });
+    fireEvent.keyDown(asking, { key: 'Escape' });
 
     expect(screen.getByRole('group', { name: '2 回目の画像 1 番に決めるかの確かめ' })).toBeTruthy();
     expect(
