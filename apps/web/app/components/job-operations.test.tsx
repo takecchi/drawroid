@@ -253,6 +253,96 @@ describe('JobOperations moving the focus to a refusal', () => {
   });
 });
 
+// 開いている間に別の口でジョブが止まると、取り直した状態で操作の区画が外れる。外れても、送ったものの断りと、
+// 止まったことは残す: 消えると、押した人には何が起きたか分からず、フォーカスもページの外に落ちる
+describe('JobOperations, when the job stops while it is open', () => {
+  const STOPPED = /このジョブは止まった/;
+  const page = (job: JobDetail) => (
+    <>
+      <button type="button">ほかの所</button>
+      <JobOperations job={job} />
+    </>
+  );
+
+  it('keeps the refusal of an instruction refused just before the stop arrives, with the focus on it', async () => {
+    instruct.mockRejectedValue(await apiError('conflict', '止まったジョブには送れない', 409));
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと明るく');
+    await user.click(screen.getByRole('button', { name: '送る' }));
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    rerender(page(stoppedAuto()));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('送れない: 止まったジョブには送れない');
+    await expectFocusMovesTo(alert);
+    expect(screen.getByText(STOPPED)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '送る' })).toBeNull();
+  });
+
+  it('shows the refusal that comes back after the stop has arrived, with the focus on it', async () => {
+    let refuse!: (error: unknown) => void;
+    instruct.mockImplementation(
+      () => new Promise((_, reject) => (refuse = reject)) as ReturnType<typeof addInstruction>,
+    );
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと明るく');
+    await user.click(screen.getByRole('button', { name: '送る' }));
+    await waitFor(() => expect(instruct).toHaveBeenCalledTimes(1));
+
+    rerender(page(stoppedAuto()));
+    expect(screen.getByText(STOPPED)).toBeTruthy();
+    refuse(await apiError('conflict', '止まったジョブには送れない', 409));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('送れない: 止まったジョブには送れない');
+    await expectFocusMovesTo(alert);
+  });
+
+  // 残すのは最後に押した操作の断りだけ: 送り直して通ったあとに止まっても、古い断りを持ち出さない
+  it('does not bring back a refusal that a later send has already got past', async () => {
+    instruct.mockRejectedValueOnce(await apiError('invalid_request', '長すぎる', 400));
+    instruct.mockResolvedValueOnce({} as Awaited<ReturnType<typeof addInstruction>>);
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと明るく');
+    await user.click(screen.getByRole('button', { name: '送る' }));
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: '送る' }));
+    await screen.findByText(/送った。/);
+
+    rerender(page(stoppedAuto()));
+
+    expect(screen.getByText(STOPPED)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says the job stopped and moves the focus there when the focus was in the operations', async () => {
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('人間の指示'), 'もっと');
+
+    rerender(page(stoppedAuto()));
+
+    await expectFocusMovesTo(screen.getByText(STOPPED));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says the job stopped without taking the focus from elsewhere on the page', async () => {
+    const { rerender } = render(page(runningAuto()));
+    const elsewhere = screen.getByRole('button', { name: 'ほかの所' });
+    elsewhere.focus();
+
+    rerender(page(stoppedAuto()));
+
+    expect(screen.getByText(STOPPED)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+});
+
 describe('JobOperations', () => {
   it('shows no operations for a stopped job', () => {
     render(<JobOperations job={stoppedAuto()} />);
