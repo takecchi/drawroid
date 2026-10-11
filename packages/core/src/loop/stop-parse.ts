@@ -9,6 +9,7 @@ import {
   type LlmCallOutcome,
   type LlmPort,
 } from '../llm/port.js';
+import { generateRecordingAbort } from '../llm/aborted.js';
 import { toLlmCallRecord, type LlmCallRecord } from '../llm/record.js';
 import type { ModelWindow } from './budget.js';
 import { InputOverBudgetError } from './inputs.js';
@@ -118,27 +119,33 @@ export async function parseStopConditions(args: {
   const info = llm.describe('think');
   const messages = buildStopParseInput(text, info.window);
   const startedAt = args.now();
-  const outcome: LlmCallOutcome<StopParseOutput> = await llm.generateStructured({
-    role: 'think',
-    purpose: 'stop-parse',
-    schema: stopParseOutputSchema,
-    messages,
-    signal: args.signal,
-  });
-  await args.record(
-    toLlmCallRecord({
-      callId: args.newCallId(startedAt),
-      jobId: null,
-      iteration: null,
+  const record = <U>(outcome: LlmCallOutcome<U>) =>
+    args.record(
+      toLlmCallRecord({
+        callId: args.newCallId(startedAt),
+        jobId: null,
+        iteration: null,
+        role: 'think',
+        purpose: 'stop-parse',
+        provider: info.provider,
+        model: info.model,
+        startedAt,
+        messages,
+        outcome,
+      }),
+    );
+  const outcome: LlmCallOutcome<StopParseOutput> = await generateRecordingAbort(
+    llm,
+    {
       role: 'think',
       purpose: 'stop-parse',
-      provider: info.provider,
-      model: info.model,
-      startedAt,
+      schema: stopParseOutputSchema,
       messages,
-      outcome,
-    }),
+      signal: args.signal,
+    },
+    record,
   );
+  await record(outcome);
   if (!outcome.ok) return { ok: false, reason: outcome.reason };
 
   const conditions = toStopConditions(outcome.value);

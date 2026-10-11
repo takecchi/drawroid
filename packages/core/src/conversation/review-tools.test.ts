@@ -291,7 +291,7 @@ describe('review_image', () => {
     expect(llm.calls).toHaveLength(0);
   });
 
-  it('stops the judge call when the signal aborts', async () => {
+  it('stops the judge call when the signal aborts, and records the call as cut off', async () => {
     const controller = new AbortController();
     const { review, calls } = setup(
       { 'job-1': job(stoppedState()) },
@@ -302,7 +302,11 @@ describe('review_image', () => {
     controller.abort(new Error('stop'));
 
     await expect(pending).rejects.toThrow();
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      purpose: 'judge',
+      outcome: { ok: false, reason: expect.stringContaining('呼び手が打ち切った') },
+    });
   });
 
   it('builds the judge input like the loop does, within the budget of the job', async () => {
