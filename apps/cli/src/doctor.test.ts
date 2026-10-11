@@ -229,6 +229,27 @@ describe('runDoctor', () => {
       expect(report_text).not.toContain('繋がらない');
     });
 
+    // 題と並びを固定する: 取り違えると、画像のバックエンドの項に LLM の案内が出る
+    it('keeps the four sections in order, with the backend and the LLM on their own titles', async () => {
+      const { report } = await setup('{');
+      expect(report.sections.map(({ title }) => title)).toEqual([
+        '設定ファイル',
+        '画像のバックエンド',
+        'LLM',
+        'web の配り先',
+      ]);
+    });
+
+    // ファイルはあるが読めないときも、起動は拒む。config.json の場所をディレクトリにして、ENOENT 以外の読めない形にする
+    it('says to fix it first when config.json exists but cannot be read', async () => {
+      const { report, text } = await setup(undefined, { configPath: tmpdir() });
+      expect(report.sections[0]?.items[0]).toMatchObject({ ok: false, todo: expect.any(String) });
+      expect(report.sections[0]?.items[0]?.what).toContain('読めない（');
+      expect(text.split(FIX_FIRST)).toHaveLength(3);
+      expect(text).not.toContain(START_ADVICE);
+      expect(text).not.toContain('繋がらない');
+    });
+
     it('does not ask the backend, even when the URL in config.json answers', async () => {
       let asked = 0;
       const server = createServer((_, res) => {
