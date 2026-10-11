@@ -108,4 +108,31 @@ describe('Settings, reached from a link to one of its parts', () => {
 
     expect(document.activeElement).toBe(document.body);
   });
+
+  it('leaves the focus alone when the address names a part that does not exist', async () => {
+    renderAt('/settings#nothing');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  // 同じ欄へのリンクを押し直したときも移す: 住所は変わらず、location の key だけが変わる
+  it('moves the focus again when the link to the same part is pressed again', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/settings#llm']}>
+        <Link to="/settings#llm">LLM をもう一度</Link>
+        <Routes>
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const heading = () => screen.getByRole('heading', { name: 'LLM の設定' });
+    await waitFor(() => expect(document.activeElement).toBe(heading()));
+
+    screen.getByRole('textbox', { name: '考える役のモデル' }).focus();
+    await user.click(screen.getByRole('link', { name: 'LLM をもう一度' }));
+
+    await waitFor(() => expect(document.activeElement).toBe(heading()));
+  });
 });

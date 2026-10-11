@@ -108,7 +108,7 @@ export function BackendUrlSettings() {
           保存した。{BACKEND_KIND_LABELS[saved.kind]} の {saved.url} に繋ぐ。
         </OkNote>
       )}
-      {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
+      {saveError !== undefined && <ErrorNote focus>保存できない: {saveError}</ErrorNote>}
     </Section>
   );
 }
