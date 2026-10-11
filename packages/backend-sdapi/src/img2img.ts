@@ -5,7 +5,7 @@ import type { ResolvedImages } from './images.js';
 // 数で渡す: /sdapi/v1/img2img の resize_mode は int だけを受け付ける（modules/images.py の resize_image）
 const RESIZE_MODE: Record<ResizeMode, number> = { stretch: 0, crop: 1, fill: 2 };
 
-const INPAINTING_FILL = { fill: 0, original: 1, latentNoise: 2, latentNothing: 3 } as const;
+const INPAINTING_FILL = { fill: 5, original: 1, latentNoise: 2, latentNothing: 3 } as const;
 
 /** /sdapi/v1/img2img だけにある欄（元画像・マスク・描き直しの強さ） */
 export function img2imgFields(
