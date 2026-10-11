@@ -98,8 +98,9 @@ export function BudgetSettings() {
                 const invalid = data.invalid.find((entry) => entry.path === path);
                 return (
                   <div key={path}>
-                    {/* 入力欄は右の決まった幅の列に置く: ラベルの長さなりに並べると、欄の位置が行ごとにずれるため */}
-                    <label className="grid grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-x-3">
+                    {/* 入力欄は右の決まった幅の列に置く: ラベルの長さなりに並べると、欄の位置が行ごとにずれるため。
+                        並びの幅は抑える: カードの幅いっぱいだと、広い画面でラベルと欄が離れすぎて、どの欄かを目で追えないため */}
+                    <label className="grid max-w-2xl grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-x-3">
                       <span className="min-w-0">
                         {label} <code className="text-xs text-muted-foreground">{path}</code>
                       </span>
