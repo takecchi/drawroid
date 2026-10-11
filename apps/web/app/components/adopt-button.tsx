@@ -72,7 +72,15 @@ export function AdoptButton({
   }
   if (state.step === 'confirming' || state.step === 'sending') {
     return (
-      <div className="space-y-1" role="group" aria-label={`${imageLabel}に決めるかの確かめ`}>
+      <div
+        className="space-y-1"
+        role="group"
+        aria-label={`${imageLabel}に決めるかの確かめ`}
+        onKeyDown={(event) => {
+          // 送ったあとは取り消せないので、閉じない
+          if (event.key === 'Escape' && state.step === 'confirming') press({ step: 'idle' });
+        }}
+      >
         <p className="text-xs">
           {imageLabel}に決める？ 続きの指示が無ければ、描くのはここで止まる。
         </p>

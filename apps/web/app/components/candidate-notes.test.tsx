@@ -157,6 +157,21 @@ describe('CandidateNotes', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('説明は 5000 件まで');
   });
 
+  // 押した保存は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when saving is refused, also on a second refusal', async () => {
+    mocks.saveCandidateNotes.mockRejectedValue(
+      new ApiError('invalid_request', '説明は 5000 件まで', 400),
+    );
+    render(<CandidateNotes />);
+
+    await save();
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    screen.getByRole('button', { name: '説明を保存' }).focus();
+    await save();
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
   it('says the notes file could not be read and that saving replaces it', () => {
     mocks.useCandidateNotes.mockReturnValue({
       data: { notes: {}, problem: 'JSON として読めない' },

@@ -53,6 +53,8 @@ export function BudgetSettings() {
   // 触るまでは保存されている設定をそのまま出す: 読み込みが後から届いても、欄が空のまま残らないようにするため
   const [edited, setEdited] = useState<BudgetFormValues | undefined>();
   const [problems, setProblems] = useState<string[]>([]);
+  // 押すたびに断りを作り直す: 手元の検証で同じ断りが続くと知らせが残ったままになり、フォーカスが断りへ移らないため
+  const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   // 保存できたことを知らせる: 保存しても欄の見た目は変わらないので、押した人が通ったかを分からないため
   const [saved, setSaved] = useState(false);
@@ -62,6 +64,7 @@ export function BudgetSettings() {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (values === undefined) return;
+    setAttempt((count) => count + 1);
     const built = buildBudgetOverrides(values);
     if (!built.ok) {
       setProblems(built.errors.map((e) => `${budgetFieldName(e.path)}: ${e.reason}`));
@@ -133,9 +136,13 @@ export function BudgetSettings() {
           </Button>
         </form>
       )}
-      {problems.length === 1 && <ErrorNote>保存できない: {problems[0]}</ErrorNote>}
+      {problems.length === 1 && (
+        <ErrorNote key={attempt} focus>
+          保存できない: {problems[0]}
+        </ErrorNote>
+      )}
       {problems.length > 1 && (
-        <ErrorNote>
+        <ErrorNote key={attempt} focus>
           保存できない:
           <ul className="mt-1 list-disc pl-5">
             {problems.map((problem) => (

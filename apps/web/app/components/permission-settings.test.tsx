@@ -171,6 +171,21 @@ describe('PermissionSettings', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('vae: 形が違う');
   });
 
+  // 押した保存は送っている間押せなくなるので、断られたらフォーカスは断りへ移る。2回続けて断られても移る
+  it('moves the focus to the reason when saving is refused, also on a second refusal', async () => {
+    mocks.savePermissionSettings.mockRejectedValue(
+      new ApiError('invalid_request', 'vae: 形が違う', 400),
+    );
+    render(<PermissionSettings />);
+
+    await save();
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+
+    screen.getByRole('button', { name: '許可を保存' }).focus();
+    await save();
+    await expectFocusMovesTo(await screen.findByRole('alert'));
+  });
+
   it('marks the rows that could not be read as falling back to the default, with why', () => {
     mocks.usePermissionSettings.mockReturnValue({
       data: {

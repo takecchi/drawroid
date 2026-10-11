@@ -419,7 +419,7 @@ export function LlmSettings() {
           </Button>
         </form>
       )}
-      {saveError !== undefined && <ErrorNote>保存できない: {saveError}</ErrorNote>}
+      {saveError !== undefined && <ErrorNote focus>保存できない: {saveError}</ErrorNote>}
       {saved && <OkNote focus>保存した。次に話しかけたときから、この設定を使う。</OkNote>}
       {saved && windowNotCompared !== undefined && <WarnNote>{windowNotCompared}</WarnNote>}
     </Section>
