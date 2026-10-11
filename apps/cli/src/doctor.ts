@@ -266,10 +266,10 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
     }
   }
 
-  for (const { path: field, reason } of readBudgetOverrides(record.budgets).invalid) {
+  for (const { reason } of readBudgetOverrides(record.budgets).invalid) {
     items.push({
       ok: false,
-      what: `budgets.${field}: ${reason}`,
+      what: reason,
       todo: '直すまで、この欄は既定の値で動く。画面の「設定」の「詳しい設定」で直せる',
     });
   }
@@ -286,7 +286,7 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
       items.push(
         ...parsed.error.issues.map((issue) => ({
           ok: false,
-          what: `${issuePath(['generationProgress', ...issue.path])}: ${issue.message}`,
+          what: describeConfigIssue(issue, ['generationProgress']),
           todo: '直すまで、生成の進み具合が読めない。config.json の generationProgress を直すか消す',
         })),
       );
@@ -309,10 +309,6 @@ async function checkConfig(path: string): Promise<ConfigCheck> {
     llm,
     imageLongEdge: resolveBudgets(readBudgetOverrides(record.budgets).overrides).imageLongEdge,
   };
-}
-
-function issuePath(path: readonly PropertyKey[]): string {
-  return path.map(String).join('.') || '(全体)';
 }
 
 function mustFixConfigFirst(title: string): DoctorSection {

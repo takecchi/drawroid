@@ -297,9 +297,9 @@ describe('runDoctor', () => {
     for (const field of [
       'config.json の backend.url',
       'config.json の llm.roles.think',
-      'budgets.text.prompt',
+      'config.json の budgets.text.prompt',
       'permissions.steps',
-      'generationProgress.',
+      'config.json の generationProgress.includePreview',
       'conversations.defaultStopConditions',
     ]) {
       expect(text).toMatch(new RegExp(`足りない {2}${field.replaceAll('.', '\\.')}`));

@@ -185,6 +185,7 @@ export * from './loop/stop-parse.js';
 export * from './reference/reference.js';
 export * from './selection/selection.js';
 export * from './selection/adopt.js';
+export * from './config-problems.js';
 export * from './budget/settings.js';
 export * from './conversation/events.js';
 export * from './conversation/store.js';

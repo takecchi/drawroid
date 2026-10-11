@@ -1,8 +1,8 @@
+import { describeConfigIssues } from '@drawroid/core';
 import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@drawroid/llm';
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
-import { describeConfigIssues } from '../config-problems.js';
 import { invalidConfig, invalidRequest } from '../errors.js';
 import { checkWindows, inWindowCheckLine } from '../input-windows.js';
 import { jsonBody } from '../validate.js';

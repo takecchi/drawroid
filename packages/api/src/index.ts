@@ -65,7 +65,7 @@ export {
   describeConfigIssue,
   describeConfigIssues,
   describeUnparsableConfig,
-} from './config-problems.js';
+} from '@drawroid/core';
 
 // 機能ごとのルートは routes/ に1ファイルずつ置き、ここには1行ずつ足す。
 // 本文の上限はルートごとに付けず、ここで全体にかける: ルートを足したときに付け忘れないため
