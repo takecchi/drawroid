@@ -80,6 +80,24 @@ describe('planInterventions', () => {
     expect(idsOf(plan.carried)).toEqual(['c', 'd']);
   });
 
+  it('takes in interventions up to exactly the total limit, and carries over one that would go past it', () => {
+    const within = { maxCount: 5, maxSize: 25, textEach: 10 };
+    const upTo = (last: string) => [
+      said('a', 'あ'.repeat(10), 1),
+      said('b', 'い'.repeat(10), 2),
+      said('c', last, 3),
+    ];
+
+    expect(idsOf(planInterventions(upTo('う'.repeat(5)), within).included)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+    const over = planInterventions(upTo('う'.repeat(6)), within);
+    expect(idsOf(over.included)).toEqual(['a', 'b']);
+    expect(idsOf(over.carried)).toEqual(['c']);
+  });
+
   it('always takes in the oldest intervention, even if one is longer than the whole limit', () => {
     const plan = planInterventions([said('a', 'あ'.repeat(50), 1)], {
       maxCount: 3,

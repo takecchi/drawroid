@@ -331,6 +331,15 @@ describe('reference images, at submission and as an intervention', () => {
     expect(await store.listReferences(jobId)).toEqual([]);
     expect(await store.listJobIds()).toEqual(before);
   });
+
+  it('refuses an unreadable image before looking for the job', async () => {
+    const res = await intervene('no-such-job', {
+      kind: 'reference',
+      image: { mediaType: 'image/png', data: b64(JPEG) },
+    });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('inpaint masks, as an intervention', () => {
