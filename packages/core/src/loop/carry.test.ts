@@ -37,6 +37,16 @@ describe('advanceCarry', () => {
 
     expect(carry.best).toMatchObject({ iteration: 2, imageIndex: 0 });
   });
+
+  it('keeps the earlier best when a later image only ties it', () => {
+    const start = createCarry('request', budget).carry;
+    const judged = advanceCarry(start, 1, params, judgement([0.8]));
+
+    const carry = advanceCarry(judged, 2, params, judgement([0.8]));
+
+    expect(carry.best).toMatchObject({ iteration: 1, imageIndex: 0, score: 0.8 });
+    expect(carry.latest).toMatchObject({ iteration: 2, imageIndex: 0, score: 0.8 });
+  });
 });
 
 describe('adoptAsBest', () => {
