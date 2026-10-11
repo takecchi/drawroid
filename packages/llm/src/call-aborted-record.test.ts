@@ -230,7 +230,7 @@ describe('a call that times out while the model is still writing', () => {
     await flush();
 
     const result = await settled;
-    expect(!result.ok && result.reason).toContain('全体の上限');
+    expect(!result.ok && result.reason).toContain('1回の試行の上限');
     expect(result.attempts).toEqual([
       expect.objectContaining({ rawOutput: `{"prompt": "${'あ'.repeat(89)}` }),
     ]);
