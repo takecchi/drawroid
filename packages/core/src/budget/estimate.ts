@@ -25,5 +25,5 @@ export type Clipped = { text: string; clippedFrom?: number };
 export function clipText(text: string, limit: number): Clipped {
   const chars = [...text];
   if (chars.length <= limit) return { text };
-  return { text: chars.slice(0, limit).join(''), clippedFrom: chars.length };
+  return { text: chars.slice(0, limit).join(''), clippedFrom: text.length };
 }
