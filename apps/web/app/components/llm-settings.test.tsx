@@ -926,6 +926,81 @@ describe('LlmSettings', () => {
     expect(mocks.saveLlmSettings.mock.lastCall?.[0]).not.toHaveProperty('callTimeoutSeconds');
   });
 
+  describe('limit on the whole time of one call', () => {
+    const label = '1回の呼び出しの全体の上限（秒）';
+
+    // 欄の見出しと説明は、隣の欄と同じく入力を包む label の中にある
+    it('is found by its heading, and says in its hint what an empty one means', () => {
+      render(<LlmSettings />);
+
+      expect(screen.getByRole('textbox', { name: label })).toBeTruthy();
+      const text = input(label).labels?.[0]?.textContent ?? '';
+      expect(text).toContain(label);
+      expect(text).toContain('出力が流れ続けていても');
+      expect(text).toContain('空なら 900 秒');
+    });
+
+    it('shows the value that is stored, and an empty field when none is stored', () => {
+      mocks.useLlmSettings.mockReturnValue({
+        data: { ...stored, config: { ...stored.config!, totalCallTimeoutSeconds: 1800 } },
+        error: undefined,
+      });
+      const { unmount } = render(<LlmSettings />);
+      expect(input(label).value).toBe('1800');
+      unmount();
+
+      mocks.useLlmSettings.mockReturnValue({ data: stored, error: undefined });
+      render(<LlmSettings />);
+      expect(input(label).value).toBe('');
+    });
+
+    it('saves what is typed as a number, apart from the time to wait for an answer', async () => {
+      const user = userEvent.setup();
+      render(<LlmSettings />);
+
+      await user.type(input(label), '1800');
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      expect(mocks.saveLlmSettings).toHaveBeenLastCalledWith({
+        ...stored.config,
+        callTimeoutSeconds: 300,
+        totalCallTimeoutSeconds: 1800,
+      });
+    });
+
+    it('does not send the limit when it is left empty, and leaves it to the server default', async () => {
+      const user = userEvent.setup();
+      mocks.useLlmSettings.mockReturnValue({
+        data: { ...stored, config: { ...stored.config!, totalCallTimeoutSeconds: 1800 } },
+        error: undefined,
+      });
+      render(<LlmSettings />);
+
+      await user.clear(input(label));
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      expect(mocks.saveLlmSettings.mock.lastCall?.[0]).not.toHaveProperty(
+        'totalCallTimeoutSeconds',
+      );
+    });
+
+    it('moves the focus to the reason when the server refuses a value that is not a positive integer', async () => {
+      const user = userEvent.setup();
+      mocks.saveLlmSettings.mockRejectedValue(
+        new ApiError('invalid_request', `${label}: Too small: expected number to be >0`, 400),
+      );
+      render(<LlmSettings />);
+
+      await user.type(input(label), '0');
+      await user.click(screen.getByRole('button', { name: 'LLM の設定を保存' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain(label);
+      await expectFocusMovesTo(alert);
+      expect(input(label).value).toBe('0');
+    });
+  });
+
   it('leaves an emptied retry count to the server default', async () => {
     const user = userEvent.setup();
     render(<LlmSettings />);
