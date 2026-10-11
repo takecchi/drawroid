@@ -73,8 +73,8 @@ describe('describeConfigIssues', () => {
   });
 
   it('falls back to "書き方が違う" for the other kinds', () => {
-    const schema = z.object({ f: z.string().regex(/^a$/) });
-    expect(said(schema, { f: 'b' })).toContain('（書き方が違う）');
+    const schema = z.object({ f: z.number().multipleOf(5) });
+    expect(said(schema, { f: 3 })).toContain('（書き方が違う）');
   });
 
   it('does not put the original message after a custom message that is already Japanese', () => {

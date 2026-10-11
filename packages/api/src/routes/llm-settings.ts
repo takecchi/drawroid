@@ -2,7 +2,8 @@ import { createLlm, LlmConfigError, llmConfigSchema, type LlmConfig } from '@dra
 import { Hono } from 'hono';
 
 import type { ApiDeps } from '../deps.js';
-import { describeIssues, invalidConfig, invalidRequest } from '../errors.js';
+import { describeConfigIssues } from '../config-problems.js';
+import { invalidConfig, invalidRequest } from '../errors.js';
 import { checkWindows, inWindowCheckLine } from '../input-windows.js';
 import { jsonBody } from '../validate.js';
 
@@ -27,7 +28,7 @@ export function llmSettingsRoutes(deps: ApiDeps) {
         if (stored === undefined) return c.json({ config: null }, 200);
         const parsed = llmConfigSchema.safeParse(stored);
         if (!parsed.success) {
-          return invalidConfig(c, describeIssues(parsed.error));
+          return invalidConfig(c, describeConfigIssues(parsed.error, ['llm']));
         }
         return c.json(view(parsed.data), 200);
       })
