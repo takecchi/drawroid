@@ -14,7 +14,7 @@ const CONTROL_MODE: Record<ControlNetUnit['controlMode'], string> = {
 
 // A1111 の拡張も同じ文字列（sd-webui-controlnet の scripts/enums.py:262-270）
 const RESIZE_MODE: Record<ResizeMode, string> = {
-  stretch: 'Just Resize',
+  stretch: 'Crop and Resize',
   crop: 'Crop and Resize',
   fill: 'Resize and Fill',
 };
