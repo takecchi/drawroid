@@ -119,7 +119,7 @@ describe('the sentence of a refused PUT /settings/budgets', () => {
   });
 
   it('keeps the other routes on the sentence of describeIssues', async () => {
-    const res = await send('PUT', '/settings/llm', { nope: 1 });
+    const res = await send('PUT', '/settings/permissions', { nope: 1 });
 
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: { message: string } }).error.message).not.toContain(
