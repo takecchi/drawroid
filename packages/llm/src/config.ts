@@ -60,6 +60,13 @@ export const roleConfigSchema = z.object({
 });
 export type RoleConfig = z.infer<typeof roleConfigSchema>;
 
+// 役ごとに文を書き分ける: 画面で初めて設定する人が空のまま保存すると、この文がそのまま出るため
+const roleConfigOf = (role: keyof typeof ROLE_LABELS) =>
+  roleConfigSchema.extend({
+    provider: z.string().min(1, `${ROLE_LABELS[role]}の provider を選ぶ`),
+    model: z.string().min(1, `${ROLE_LABELS[role]}のモデルの名前を入れる`),
+  });
+
 // 長めにする: ローカルの CPU で動く小さなモデルは、長い入力を読み終えて最初の1語を返すまでに数分かかることがあるため
 export const DEFAULT_CALL_TIMEOUT_SECONDS = 300;
 
@@ -67,11 +74,11 @@ export const llmConfigSchema = z
   .object({
     providers: z.record(z.string(), providerConfigSchema),
     roles: z.object({
-      think: roleConfigSchema,
+      think: roleConfigOf('think'),
       /** 省略したら考える役と同じモデルを使う */
-      judge: roleConfigSchema.optional(),
+      judge: roleConfigOf('judge').optional(),
       /** 会話で人間と話す役（ツールを呼ぶ）。省略したら考える役と同じモデルを使う */
-      talk: roleConfigSchema.optional(),
+      talk: roleConfigOf('talk').optional(),
     }),
     /** スキーマに合わない出力を出し直させる回数 */
     validationRetries: z.number().int().min(0).default(2),
@@ -84,7 +91,8 @@ export const llmConfigSchema = z
     const defined = Object.keys(config.providers);
     for (const role of ['think', 'judge', 'talk'] as const) {
       const provider = config.roles[role]?.provider;
-      if (provider !== undefined && !(provider in config.providers)) {
+      // 空の名前はここで言わない: 「provider を選ぶ」と同じ欄を二度言うことになるため
+      if (provider !== undefined && provider !== '' && !(provider in config.providers)) {
         ctx.addIssue({
           code: 'custom',
           path: ['roles', role, 'provider'],
