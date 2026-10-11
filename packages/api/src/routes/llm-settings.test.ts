@@ -116,6 +116,19 @@ describe('GET /settings/llm', () => {
   });
 });
 
+describe('GET /settings/llm with an empty model', () => {
+  it('says the own Japanese message of the schema once, without the original message behind', async () => {
+    saved = { ...config, roles: { think: { provider: 'cloud', model: '' } } };
+    const res = await makeApp({}).request('/settings/llm');
+    expect(await res.json()).toEqual({
+      error: {
+        kind: 'invalid_config',
+        message: 'config.json の llm.roles.think.model: 考える役のモデルの名前を入れる',
+      },
+    });
+  });
+});
+
 describe('PUT /settings/llm', () => {
   it('stores a valid config and reports whether each env var is set', async () => {
     const res = await put(makeApp({ TEST_KEY: SECRET }), config);
