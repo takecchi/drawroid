@@ -117,6 +117,8 @@ export type JobMemory = {
 export type JobRunnerDeps = {
   store: JobStore;
   llm: LlmPort;
+  /** ジョブを回し始める前に待つ。失敗は投げない前提（LLM の窓を読み直すため） */
+  beforeJob?: () => Promise<void>;
   backend: ImageBackend;
   /** job.json に budgets が無い古いジョブのための既定。新しいジョブは投入のときの値で回る */
   budget: Budget;
@@ -426,6 +428,7 @@ export class JobRunner {
     for (;;) {
       const next = await this.nextJobId();
       if (next === undefined) return;
+      await this.deps.beforeJob?.();
       await this.runJob(next);
     }
   }

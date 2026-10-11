@@ -49,6 +49,8 @@ export type AutoJobQueueOptions = {
   /** 会話に属するジョブの生成の進み具合の流し先。省けば流さない */
   generationProgress?: GenerationProgressPort;
   createLlm?: (config: LlmConfig, env: Env) => LlmPort;
+  /** ジョブを回し始める前に待つ（LLM の窓を読み直すため） */
+  beforeJob?: () => Promise<void>;
   /** 考える役・見る役の思考の増分を受ける（会話へ流すため） */
   onReasoning?: JobRunnerDeps['onReasoning'];
   /** ジョブの LLM の段が待たされ始めた・解けたとき（会話へ job.held を流すため） */
@@ -74,6 +76,7 @@ export class AutoJobQueue implements AutoJobQueuePort {
     this.runner = new JobRunner({
       store: options.store,
       llm: delegating,
+      ...(options.beforeJob !== undefined && { beforeJob: options.beforeJob }),
       backend: options.backend,
       budget: options.budget,
       permissions: async () =>
