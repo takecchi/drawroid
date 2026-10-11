@@ -63,12 +63,7 @@ function savesTheSelection() {
 describe('ChooseAsFavorite refusal', () => {
   const renderOne = () => {
     render(
-      <ChooseAsFavorite
-        jobId={JOB}
-        imageKey="2-0"
-        imageLabel="2 回目の画像 1 番"
-        verdict={null}
-      />,
+      <ChooseAsFavorite jobId={JOB} imageKey="2-0" imageLabel="2 回目の画像 1 番" verdict={null} />,
     );
     return userEvent.setup();
   };
