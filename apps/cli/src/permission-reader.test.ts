@@ -37,4 +37,43 @@ describe('createPermissionReader', () => {
     expect(log).toHaveBeenCalledTimes(3);
     expect(log.mock.calls[2]?.[0]).toContain('読めない許可は無くなった');
   });
+
+  it('logs nothing while every row has been readable from the start', async () => {
+    const log = vi.fn();
+    const read = createPermissionReader(async () => ({ steps: { mode: 'fixed', value: 28 } }), log);
+
+    await read();
+    await read();
+
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('logs again when other rows break, even if as many break as before', async () => {
+    let stored: unknown = { width: { mode: 'fixed', value: 'x' } };
+    const log = vi.fn();
+    const read = createPermissionReader(async () => stored, log);
+
+    await read();
+    stored = { steps: { mode: 'fixed', value: 'x' } };
+    await read();
+
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(log.mock.calls[1]?.[0]).toContain('steps');
+  });
+
+  it('names every broken row in the log', async () => {
+    const log = vi.fn();
+    const read = createPermissionReader(
+      async () => ({
+        cfgScale: { mode: 'fixed', value: 'x' },
+        steps: { mode: 'fixed', value: 'x' },
+      }),
+      log,
+    );
+
+    await read();
+
+    expect(log.mock.calls[0]?.[0]).toContain('cfgScale');
+    expect(log.mock.calls[0]?.[0]).toContain('steps');
+  });
 });
