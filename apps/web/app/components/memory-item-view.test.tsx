@@ -212,6 +212,47 @@ describe('MemoryItemView editing', () => {
     expect(document.activeElement).toBe(screen.getByLabelText(/tags/));
   });
 
+  // 知らせは、いちばん新しい操作の結果だけ: 次の操作を押した時点で前の知らせを消す（返事を待つ間も、前の結果を今の状態と読ませない）
+  it('clears the note that it saved as soon as deleting is pressed, and then shows only the refusal', async () => {
+    mocks.saveMemoryItem.mockResolvedValue({
+      item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },
+    });
+    let refuse!: (error: unknown) => void;
+    mocks.deleteMemoryItem.mockImplementation(() => new Promise((_, reject) => (refuse = reject)));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('status');
+
+    await user.click(screen.getByRole('button', { name: '消す' }));
+    expect(screen.queryByRole('status')).toBeNull();
+    await act(async () => refuse(new ApiError('internal', '消せなかった', 500)));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('消せなかった');
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('clears the refusal as soon as saving is pressed again, and then shows only the note that it saved', async () => {
+    mocks.deleteMemoryItem.mockRejectedValue(new ApiError('internal', '消せなかった', 500));
+    let pass!: (value: unknown) => void;
+    mocks.saveMemoryItem.mockImplementation(() => new Promise((resolve) => (pass = resolve)));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: '消す' }));
+    await screen.findByRole('alert');
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    await act(async () =>
+      pass({ item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' } }),
+    );
+
+    expect((await screen.findByRole('status')).textContent).toMatch(/^保存した。/);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('clears the note when only the tags are touched, and keeps the focus in the tags', async () => {
     mocks.saveMemoryItem.mockResolvedValue({
       item: { ...detail.item, updatedAt: '2026-10-03T00:00:00.000Z' },

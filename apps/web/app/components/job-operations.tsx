@@ -136,6 +136,8 @@ function ReferenceForm({ jobId, onRefused }: { jobId: string; onRefused: OnRefus
         const upload = await buildReferenceUpload(item);
         if (!upload.ok) {
           setError(upload.reason);
+          // 画面で断ったときも、区画に残す最後の断りにする: 頭で前の断りを消したあとなので、知らせないと止まったときに区画が空になる
+          onRefused(`送れない: ${upload.reason}`);
           return;
         }
         await addReference(jobId, upload.value);

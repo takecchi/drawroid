@@ -490,6 +490,53 @@ describe('JobOperations, when the job stops while it is open', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  // 区画に残すのは、いちばん新しい操作の結果: 送る前に画面で断った（API を呼ばなかった）ときも、それが最後の断り
+  const tooLongNote = 'あ'.repeat(201);
+  const attachWithTooLongNote = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.upload(screen.getByLabelText(/参照画像を選ぶ/), png());
+    await user.click(screen.getByLabelText('用途の言葉（ref.png）'));
+    await user.paste(tooLongNote);
+    await user.click(screen.getByRole('button', { name: '参照画像を送る' }));
+    await waitFor(() =>
+      expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toContainEqual(
+        expect.stringContaining('用途の言葉は 200 文字まで'),
+      ),
+    );
+    expect(reference).not.toHaveBeenCalled();
+  };
+
+  it('keeps the refusal of a reference image refused before sending, not the older refusal of the stop', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    stop.mockRejectedValue(await apiError('conflict', 'もう止まっている', 409));
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'ジョブを止める' }));
+    await screen.findByRole('alert');
+    await attachWithTooLongNote(user);
+
+    rerender(page(stoppedAuto()));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      '送れない: ref.png: 用途の言葉は 200 文字まで（いまは 201 文字）',
+    );
+    await expectFocusMovesTo(alert);
+  });
+
+  it('keeps the refusal of a reference image refused before sending, without taking the focus from elsewhere on the page', async () => {
+    const { rerender } = render(page(runningAuto()));
+    const user = userEvent.setup();
+    await attachWithTooLongNote(user);
+    const elsewhere = screen.getByRole('button', { name: 'ほかの所' });
+    elsewhere.focus();
+
+    rerender(page(stoppedAuto()));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('用途の言葉は 200 文字まで');
+    await settle();
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
   // 手動の生成は口出しを受けないので、止まったあとも、送れないものの文は出さない
   it('says only that a manual job stopped, without listing operations it never had', () => {
     const job = manualJob();
