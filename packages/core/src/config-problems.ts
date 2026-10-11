@@ -51,7 +51,7 @@ export function describeUnparsableConfig(message: string): string {
   return `config.json が JSON として読めない（原文: ${message}）`;
 }
 
-const JAPANESE = /[぀-ヿ㐀-鿿]/u;
+const JAPANESE = /[぀-ゟ]/u;
 
 const EXPECTED_TYPES: Readonly<Record<string, string>> = {
   string: '文字列で書く',
