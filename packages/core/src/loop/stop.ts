@@ -5,6 +5,7 @@ import type {
   StopConditionsChange,
   StopReason,
 } from '../job/types.js';
+import { formatDuration } from '../text/duration.js';
 
 /** 今そのジョブに効いている止める条件。job.json の条件に、interventions/ の変更を受けた順に重ねる */
 export async function readStopConditions(
@@ -81,7 +82,7 @@ export function checkStopAtBoundary(check: StopCheck): StopReason | undefined {
   if (conditions.maxDurationMs !== undefined && check.elapsedMs >= conditions.maxDurationMs) {
     return {
       kind: 'limit:duration',
-      detail: `${Math.round(conditions.maxDurationMs / 1000)} 秒に達した`,
+      detail: `${formatDuration(conditions.maxDurationMs)}に達した`,
     };
   }
   return undefined;

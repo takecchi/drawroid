@@ -91,6 +91,24 @@ describe('A1111Backend', () => {
     expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
   });
 
+  it('takes a sampler written with a scheduler alias, which is neither its name nor its label', async () => {
+    await generate({ sampler: 'DPM++ 2M SGMUniform' });
+
+    expect(sent('/sdapi/v1/txt2img')).toMatchObject({ sampler_name: 'DPM++ 2M SGMUniform' });
+  });
+
+  it('does not fetch the sampler and scheduler lists when no name is given, Hires. fix included', async () => {
+    await generate({});
+    await generate({
+      hiresFix: { upscaler: 'Latent', scale: 1.5, steps: 0, denoisingStrength: 0.5 },
+    });
+
+    const listed = a1111.requests.filter(
+      (r) => r.path === '/sdapi/v1/samplers' || r.path === '/sdapi/v1/schedulers',
+    );
+    expect(listed).toEqual([]);
+  });
+
   it('picks a checkpoint in a subfolder by its title or its model name', async () => {
     await generate({ checkpoint: 'real_juggernaut-xl' });
     expect(sent('/sdapi/v1/txt2img').override_settings).toEqual({
@@ -99,6 +117,27 @@ describe('A1111Backend', () => {
     await expect(generate({ checkpoint: 'real/juggernaut-xl' })).rejects.toThrow(
       'チェックポイント real/juggernaut-xl が A1111 に無い',
     );
+  });
+
+  it('refuses a model name that two checkpoints share, and picks either one by its title', async () => {
+    a1111.route(
+      'GET /sdapi/v1/sd-models',
+      json(200, [
+        { title: 'model.safetensors [aaaaaaaaaa]', model_name: 'model' },
+        { title: 'model.ckpt [bbbbbbbbbb]', model_name: 'model' },
+      ]),
+    );
+
+    await expect(generate({ checkpoint: 'model' })).rejects.toMatchObject({
+      kind: 'failed',
+      message: expect.stringContaining('title で指定する') as unknown,
+    });
+    expect(a1111.requests.some((r) => r.path === '/sdapi/v1/txt2img')).toBe(false);
+
+    await generate({ checkpoint: 'model.ckpt [bbbbbbbbbb]' });
+    expect(sent('/sdapi/v1/txt2img').override_settings).toEqual({
+      sd_model_checkpoint: 'model.ckpt [bbbbbbbbbb]',
+    });
   });
 
   it('sends Hires. fix without the fields only Forge has', async () => {
