@@ -47,6 +47,22 @@ describe('checkStopAtBoundary', () => {
     ).toBe('limit:duration');
   });
 
+  it.each([
+    [400, '400 ミリ秒に達した'],
+    [999, '999 ミリ秒に達した'],
+    [1000, '1 秒に達した'],
+    [30_000, '30 秒に達した'],
+    [59_600, '1 分に達した'],
+    [120_000, '2 分に達した'],
+  ])('words a time limit of %i ms as "%s"', (maxDurationMs, detail) => {
+    const reason = checkStopAtBoundary({
+      ...base,
+      conditions: { aiJudgement: false, maxDurationMs },
+      elapsedMs: maxDurationMs,
+    });
+    expect(reason).toEqual({ kind: 'limit:duration', detail });
+  });
+
   it('prefers the AI judgement over a limit reached at the same time', () => {
     const check = {
       ...base,

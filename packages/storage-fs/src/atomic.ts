@@ -8,14 +8,7 @@ import { TEMP_FILE_PREFIX } from './paths.js';
 export async function writeFileAtomic(path: string, data: string | Uint8Array): Promise<void> {
   const dir = dirname(path);
   const temp = join(dir, `${TEMP_FILE_PREFIX}${randomBytes(6).toString('hex')}-${basename(path)}`);
-  const file = await open(temp, 'wx');
-  try {
-    await file.writeFile(data);
-    // fsync してから rename する: しないと、電源断のあとに「名前は新しいが中身が空」のファイルが残りうるため
-    await file.sync();
-  } finally {
-    await file.close();
-  }
+  await writeTempFile(temp, data);
   try {
     await rename(temp, path);
   } catch (error) {
@@ -44,13 +37,7 @@ export async function createFileExclusive(
 ): Promise<boolean> {
   const dir = dirname(path);
   const temp = join(dir, `${TEMP_FILE_PREFIX}${randomBytes(6).toString('hex')}-${basename(path)}`);
-  const file = await open(temp, 'wx');
-  try {
-    await file.writeFile(data);
-    await file.sync();
-  } finally {
-    await file.close();
-  }
+  await writeTempFile(temp, data);
   try {
     await link(temp, path);
   } catch (error) {
@@ -61,6 +48,23 @@ export async function createFileExclusive(
   }
   await syncDir(dir);
   return true;
+}
+
+// 書き込みの段の失敗でも、その場で一時ファイルを消す: rename の失敗では既に消しており、ここだけ次の起動の掃除（sweepTempFiles）まで残す理由が無いため。消すのに失敗しても、投げるのは元の失敗
+async function writeTempFile(temp: string, data: string | Uint8Array): Promise<void> {
+  const file = await open(temp, 'wx');
+  try {
+    try {
+      await file.writeFile(data);
+      // fsync してから rename する: しないと、電源断のあとに「名前は新しいが中身が空」のファイルが残りうるため
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+  } catch (error) {
+    await unlink(temp).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function syncDir(dir: string): Promise<void> {

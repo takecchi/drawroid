@@ -29,6 +29,13 @@ describe('advanceCarry', () => {
     expect(carry.latest?.score).toBe(0.9);
   });
 
+  it('carries the earlier image as the best and the latest when two images of the round tie', () => {
+    const start = createCarry('request', budget).carry;
+    const carry = advanceCarry(start, 1, params, judgement([0.8, 0.8]));
+    expect(carry.best).toMatchObject({ imageIndex: 0, score: 0.8 });
+    expect(carry.latest).toMatchObject({ imageIndex: 0, score: 0.8 });
+  });
+
   it('makes the image a human chose the best, even when it only ties the best so far', () => {
     const start = createCarry('request', budget).carry;
     const judged = advanceCarry(start, 1, params, judgement([1]));
