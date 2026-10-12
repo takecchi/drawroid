@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BudgetedMessages } from '../llm/port.js';
 import { DEFAULT_BUDGET, DEFAULT_MODEL_WINDOW, type Budget } from './budget.js';
-import { advanceCarry, createCarry, type Carry } from './carry.js';
+import { adoptAsBest, advanceCarry, createCarry, type Carry } from './carry.js';
 import {
   buildJudgeInput,
   buildThinkInput,
@@ -96,6 +96,50 @@ describe('buildThinkInput', () => {
     expect(text).toMatchObject({ type: 'text' });
     expect(text?.type === 'text' && text.text.includes('最良')).toBe(true);
     expect(text?.type === 'text' && text.text.includes('直近')).toBe(false);
+  });
+
+  describe('the "次に変えること" line of a carried result', () => {
+    const thinkText = (carry: Carry) =>
+      buildThinkInput({
+        carry,
+        progress: { iteration: 3 },
+        allowed: THINK_PARAM_KEYS,
+        budget,
+        window,
+      })
+        .user.map((part) => (part.type === 'text' ? part.text : ''))
+        .join('\n');
+
+    it('leaves the line out for a best candidate a human chose, which has no next change', () => {
+      const judged = advanceCarry(
+        createCarry('海辺の少女', budget).carry,
+        1,
+        { prompt: 'girl, beach' },
+        { images: [{ score: 0.4, issues: [] }], nextChange: '空を明るくする', canStop: false },
+      );
+      const carry = adoptAsBest(judged, {
+        iteration: 1,
+        imageIndex: 0,
+        params: { prompt: 'girl, beach' },
+        issues: [],
+      });
+
+      const text = thinkText(carry);
+
+      expect(text).toContain('最良（1回目・画像0・1.00）');
+      expect(text).not.toContain('次に変えること');
+    });
+
+    it('writes the line when the result has a next change', () => {
+      const carry = advanceCarry(
+        createCarry('海辺の少女', budget).carry,
+        1,
+        { prompt: 'girl, beach' },
+        { images: [{ score: 0.4, issues: [] }], nextChange: '空を明るくする', canStop: false },
+      );
+
+      expect(thinkText(carry)).toContain('次に変えること: 空を明るくする');
+    });
   });
 
   it('writes the source image keys only when img2img is left to the AI', () => {

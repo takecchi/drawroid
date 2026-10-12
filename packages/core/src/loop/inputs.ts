@@ -175,9 +175,12 @@ export class SectionWriter {
       const clipped = issues.map((s, i) => this.clip(`${name}.issues[${i}]`, s, budget.text.issue));
       lines.push(`問題点: ${clipped.join(' / ')}`);
     }
-    lines.push(
-      `次に変えること: ${this.clip(`${name}.nextChange`, result.nextChange, budget.text.nextChange)}`,
-    );
+    // 空の行を足さない: 人が選んだ最良候補は nextChange が空で、考える役に何も伝えずトークンだけを使うため
+    if (result.nextChange !== '') {
+      lines.push(
+        `次に変えること: ${this.clip(`${name}.nextChange`, result.nextChange, budget.text.nextChange)}`,
+      );
+    }
     return { name, text: lines.join('\n') };
   }
 }
